@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 
 import { PpgisApiClient } from './src/api/client';
-import { MapCanvas, type MapCanvasProps } from './src/map';
+import { INTERACTIVE_PROPOSAL_LAYER_IDS, MapCanvas, ORTHOPHOTO_LAYER_ID, ORTHOPHOTO_SOURCE_ID, buildDraftGeoJson, buildDraftLayerSpecs, buildOrthophotoLayerSpec, buildOrthophotoSourceSpec, buildPolygonLayerSpecs, buildProposalGeoJson, dedupeFeatureIdsPreservingOrder, type MapCanvasProps } from './src/map';
 import {
   appReducer,
   initialAppState,
@@ -30,6 +30,19 @@ import {
 } from './src/storage/tokenStorage';
 
 const DEFAULT_API_BASE_URL = 'http://127.0.0.1:3000';
+
+export const mapStylePrimitives = {
+  ORTHOPHOTO_SOURCE_ID,
+  ORTHOPHOTO_LAYER_ID,
+  INTERACTIVE_PROPOSAL_LAYER_IDS,
+  dedupeFeatureIdsPreservingOrder,
+  buildProposalGeoJson,
+  buildDraftGeoJson,
+  buildOrthophotoSourceSpec,
+  buildOrthophotoLayerSpec,
+  buildPolygonLayerSpecs,
+  buildDraftLayerSpecs,
+} as const;
 
 function resolveDefaultApiBaseUrl(): string {
   const envObj = (
