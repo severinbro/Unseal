@@ -1,0 +1,32 @@
+export const SURFACE_TYPES = ['asphalt', 'concrete', 'pavers', 'other'] as const;
+
+export type SurfaceType = (typeof SURFACE_TYPES)[number];
+
+export const GEOMETRY_LIMITS = {
+  MIN_AREA_M2: 2,
+  MAX_AREA_M2: 500_000,
+  MIN_VERTICES: 3,
+  MAX_VERTICES: 200,
+  MIN_RING_POSITIONS: 4,
+  MAX_RING_POSITIONS: 201,
+  MAX_POLYGON_SPAN_DEG: 0.05,
+  MAX_ABS_LAT: 85,
+  MAX_BBOX_SPAN_DEG: 0.15,
+  BBOX_FEATURE_LIMIT: 500,
+  DEDUPE_EPSILON_DEG: 1e-7,
+  MIN_TURN_ANGLE_DEG: 2,
+  MAX_NOTE_LENGTH: 500,
+} as const;
+
+export const AUTH_LIMITS = {
+  PSEUDONYM_REGEX: /^[a-zA-Z0-9_-]{3,32}$/,
+  MIN_PASSWORD_LENGTH: 8,
+  MAX_PASSWORD_LENGTH: 128,
+  MAX_PASSWORD_BYTES: 1024,
+  RECOVERY_CODE_BYTES: 16,
+  RECOVERY_CODE_HEX_LENGTH: 32,
+  SESSION_TTL_DAYS: 30,
+  MAX_SESSIONS_PER_USER: 10,
+} as const;
+
+export const RESERVED_PSEUDONYMS = ['deleted'] as const;

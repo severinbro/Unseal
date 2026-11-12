@@ -1,0 +1,792 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { ZodError } from 'zod';
+
+import {
+  AUTH_LIMITS,
+  ApiError,
+  ApiErrorEnvelopeSchema,
+  AuthUserSchema,
+  BboxQuerySchema,
+  CreatePolygonRequestSchema,
+  type DraftValidationResult,
+  type ErrorCode,
+  GEOMETRY_LIMITS,
+  HealthResponseSchema,
+  LoginRequestSchema,
+  PatchPolygonRequestSchema,
+  type PolygonFeature,
+  PolygonCollectionResponseSchema,
+  PolygonFeatureSchema,
+  RESERVED_PSEUDONYMS,
+  RecoverRequestSchema,
+  RegisterRequestSchema,
+  RegisterResponseSchema,
+  type RuntimeConfig,
+  RuntimeConfigSchema,
+  SURFACE_TYPES,
+  SessionResponseSchema,
+  type SurfaceType,
+  UuidParamSchema,
+  VoteRequestSchema,
+  VoteResponseSchema,
+  checkBboxSpan,
+  checkPolygonRingStructure,
+  closeRingIfNeeded,
+  dedupeConsecutivePoints,
+  normalizeRecoveryCode,
+  validateDraftPolygon,
+} from '../src/index.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const sharedRoot = path.resolve(__dirname, '..');
+const repoRoot = path.resolve(sharedRoot, '../..');
+
+/**
+ * Valid ~120 m² courtyard rectangle in Hamburg (~10 m × ~12 m at 53.5511°N).
+ * At 53.5511°N: 0.00015° lng ≈ 9.92 m, 0.000108° lat ≈ 12.02 m -> ~119.3 m².
+ */
+const VALID_COURTYARD_VERTICES: [number, number][] = [
+  [9.9937, 53.5511],
+  [9.99385, 53.5511],
+  [9.99385, 53.551208],
+  [9.9937, 53.551208],
+];
+
+describe('@entsiegelung/shared bootstrap, licensing, and compiled ESM contract', () => {
+  it('ships split AGPL-3.0-or-later root LICENSE (with §13 HTTP client clarification) and MPL-2.0 shared LICENSE', () => {
+    const rootLicense = fs.readFileSync(path.join(repoRoot, 'LICENSE'), 'utf8');
+    const sharedLicense = fs.readFileSync(path.join(sharedRoot, 'LICENSE'), 'utf8');
+
+    assert.match(rootLicense, /GNU AFFERO GENERAL PUBLIC LICENSE/);
+    assert.match(rootLicense, /Section 13/i);
+    assert.match(rootLicense, /MPL-2\.0/);
+    assert.match(sharedLicense, /Mozilla Public License Version 2\.0/);
+  });
+
+  it('contains zero Node Buffer references across packages/shared/src for Hermes and browser compatibility', () => {
+    const srcDir = path.join(sharedRoot, 'src');
+    const srcFiles = fs.readdirSync(srcDir).filter((f) => f.endsWith('.ts'));
+    assert.ok(srcFiles.length >= 5, 'Expected all shared source modules to exist');
+
+    for (const file of srcFiles) {
+      const content = fs.readFileSync(path.join(srcDir, file), 'utf8');
+      assert.equal(
+        /\bBuffer\b/.test(content),
+        false,
+        `Unexpected Buffer reference found in packages/shared/src/${file}`,
+      );
+    }
+  });
+
+  it('compiles ESM dist/index.js and dist/index.d.ts exporting all runtime symbols', async () => {
+    const distIndexJs = path.join(sharedRoot, 'dist', 'index.js');
+    const distIndexDts = path.join(sharedRoot, 'dist', 'index.d.ts');
+    assert.equal(fs.existsSync(distIndexJs), true, 'Expected dist/index.js to exist');
+    assert.equal(fs.existsSync(distIndexDts), true, 'Expected dist/index.d.ts to exist');
+
+    const compiled = await import('../dist/index.js');
+    const expectedRuntimeExports = [
+      'SURFACE_TYPES',
+      'GEOMETRY_LIMITS',
+      'AUTH_LIMITS',
+      'RESERVED_PSEUDONYMS',
+      'ApiError',
+      'ApiErrorEnvelopeSchema',
+      'RegisterRequestSchema',
+      'LoginRequestSchema',
+      'RecoverRequestSchema',
+      'AuthUserSchema',
+      'RegisterResponseSchema',
+      'SessionResponseSchema',
+      'HealthResponseSchema',
+      'RuntimeConfigSchema',
+      'UuidParamSchema',
+      'CreatePolygonRequestSchema',
+      'PatchPolygonRequestSchema',
+      'VoteRequestSchema',
+      'VoteResponseSchema',
+      'PolygonFeatureSchema',
+      'PolygonCollectionResponseSchema',
+      'BboxQuerySchema',
+      'checkBboxSpan',
+      'normalizeRecoveryCode',
+      'checkPolygonRingStructure',
+      'dedupeConsecutivePoints',
+      'closeRingIfNeeded',
+      'validateDraftPolygon',
+    ];
+    for (const sym of expectedRuntimeExports) {
+      assert.ok(sym in compiled, `Missing runtime export ${sym} in dist/index.js`);
+    }
+  });
+
+  it('exports exact domain constants and ApiError / ApiErrorEnvelopeSchema', () => {
+    const surfaceSample: SurfaceType = 'asphalt';
+    assert.equal(surfaceSample, 'asphalt');
+    assert.deepEqual(SURFACE_TYPES, ['asphalt', 'concrete', 'pavers', 'other']);
+    assert.deepEqual(RESERVED_PSEUDONYMS, ['deleted']);
+    assert.equal(GEOMETRY_LIMITS.MIN_AREA_M2, 2);
+    assert.equal(GEOMETRY_LIMITS.MAX_AREA_M2, 500_000);
+    assert.equal(GEOMETRY_LIMITS.MIN_VERTICES, 3);
+    assert.equal(GEOMETRY_LIMITS.MAX_VERTICES, 200);
+    assert.equal(GEOMETRY_LIMITS.MIN_RING_POSITIONS, 4);
+    assert.equal(GEOMETRY_LIMITS.MAX_RING_POSITIONS, 201);
+    assert.equal(GEOMETRY_LIMITS.MAX_POLYGON_SPAN_DEG, 0.05);
+    assert.equal(GEOMETRY_LIMITS.MAX_ABS_LAT, 85);
+    assert.equal(GEOMETRY_LIMITS.MAX_BBOX_SPAN_DEG, 0.15);
+    assert.equal(GEOMETRY_LIMITS.BBOX_FEATURE_LIMIT, 500);
+    assert.equal(GEOMETRY_LIMITS.DEDUPE_EPSILON_DEG, 1e-7);
+    assert.equal(GEOMETRY_LIMITS.MIN_TURN_ANGLE_DEG, 2);
+    assert.equal(GEOMETRY_LIMITS.MAX_NOTE_LENGTH, 500);
+
+    assert.equal(AUTH_LIMITS.MIN_PASSWORD_LENGTH, 8);
+    assert.equal(AUTH_LIMITS.MAX_PASSWORD_LENGTH, 128);
+    assert.equal(AUTH_LIMITS.MAX_PASSWORD_BYTES, 1024);
+    assert.equal(AUTH_LIMITS.RECOVERY_CODE_BYTES, 16);
+    assert.equal(AUTH_LIMITS.RECOVERY_CODE_HEX_LENGTH, 32);
+    assert.equal(AUTH_LIMITS.SESSION_TTL_DAYS, 30);
+    assert.equal(AUTH_LIMITS.MAX_SESSIONS_PER_USER, 10);
+
+    const code: ErrorCode = 'GEOMETRY_INVALID';
+    const err = new ApiError(422, code, 'Self-intersection', { location: [9.99, 53.55] });
+    assert.ok(err instanceof Error);
+    assert.ok(err instanceof ApiError);
+    assert.equal(err.statusCode, 422);
+    assert.equal(err.code, 'GEOMETRY_INVALID');
+    assert.equal(err.message, 'Self-intersection');
+    assert.deepEqual(err.details, { location: [9.99, 53.55] });
+
+    const parsedEnvelope = ApiErrorEnvelopeSchema.parse({
+      error: {
+        code: 'BBOX_TOO_LARGE',
+        message: 'Viewport span exceeds 0.15 degrees',
+        requestId: 'req-001',
+      },
+    });
+    assert.equal(parsedEnvelope.error.code, 'BBOX_TOO_LARGE');
+    assert.equal(parsedEnvelope.error.requestId, 'req-001');
+  });
+});
+
+describe('Review Focus 1: Draft geometry validation & CreatePolygonRequestSchema ring rules', () => {
+  it('deduplicates consecutive taps within 1e-7° and accepts a valid 4-vertex courtyard (~120 m²)', () => {
+    const withJitterDuplicates: [number, number][] = [
+      [9.9937, 53.5511],
+      [9.9937 + 5e-8, 53.5511 - 4e-8], // duplicate tap within 1e-7°
+      [9.99385, 53.5511],
+      [9.99385, 53.551208],
+      [9.99385 + 3e-8, 53.551208 + 3e-8], // duplicate tap within 1e-7°
+      [9.9937, 53.551208],
+    ];
+
+    const deduped = dedupeConsecutivePoints(withJitterDuplicates);
+    assert.equal(deduped.length, 4);
+
+    const closed = closeRingIfNeeded(deduped);
+    assert.equal(closed.length, 5);
+    assert.deepEqual(closed[0], closed[4]);
+    assert.equal(closeRingIfNeeded(closed).length, 5);
+
+    const result: DraftValidationResult = validateDraftPolygon(withJitterDuplicates);
+    assert.equal(result.valid, true);
+    assert.equal(result.vertexCount, 4);
+    assert.ok(result.closedRing !== null);
+    assert.equal(result.closedRing.length, 5);
+    assert.deepEqual(result.closedRing[0], result.closedRing[4]);
+    assert.ok(result.areaM2 > 110 && result.areaM2 < 130, `Expected ~120 m², got ${result.areaM2}`);
+    assert.equal(result.nearAreaBound, false);
+    assert.equal(result.crossingPoint, null);
+    assert.deepEqual(result.errors, []);
+
+    // Also accepts an already-closed ring without counting the closing position as an extra vertex
+    const fromClosed = validateDraftPolygon(closed);
+    assert.equal(fromClosed.valid, true);
+    assert.equal(fromClosed.vertexCount, 4);
+    assert.equal(fromClosed.closedRing?.length, 5);
+
+    // Rejects non-finite coordinates cleanly without throwing
+    const nonFinite = validateDraftPolygon([
+      [NaN, 53.5511],
+      [9.99385, 53.5511],
+      [9.99385, 53.5512],
+    ]);
+    assert.equal(nonFinite.valid, false);
+    assert.equal(nonFinite.closedRing, null);
+  });
+
+  it('flags < 3 distinct vertices (including duplicate taps collapsing to 2) and > 200 distinct vertices', () => {
+    const twoPoints = validateDraftPolygon([
+      [9.9937, 53.5511],
+      [9.99385, 53.5511],
+    ]);
+    assert.equal(twoPoints.valid, false);
+    assert.equal(twoPoints.vertexCount, 2);
+    assert.equal(twoPoints.closedRing, null);
+    assert.ok(twoPoints.errors.length > 0);
+
+    const collapsedThreeTaps = validateDraftPolygon([
+      [9.9937, 53.5511],
+      [9.9937 + 4e-8, 53.5511 + 4e-8],
+      [9.99385, 53.5511],
+    ]);
+    assert.equal(collapsedThreeTaps.valid, false);
+    assert.equal(collapsedThreeTaps.vertexCount, 2);
+    assert.equal(collapsedThreeTaps.closedRing, null);
+
+    // 201 distinct vertices around a ~50 m radius circle in Hamburg
+    const circle201: [number, number][] = [];
+    for (let i = 0; i < 201; i++) {
+      const theta = (2 * Math.PI * i) / 201;
+      circle201.push([
+        9.9937 + 0.00075 * Math.cos(theta),
+        53.5511 + 0.00045 * Math.sin(theta),
+      ]);
+    }
+    const tooMany = validateDraftPolygon(circle201);
+    assert.equal(tooMany.valid, false);
+    assert.equal(tooMany.vertexCount, 201);
+    assert.ok(tooMany.errors.some((e) => /200/.test(e)));
+  });
+
+  it('flags > 0.05° sliver spans and |lat| > 85°', () => {
+    const continentalSliver: [number, number][] = [
+      [9.99, 53.5511],
+      [10.041, 53.5511], // lng span 0.051° > 0.05°
+      [10.041, 53.5512],
+      [9.99, 53.5512],
+    ];
+    const sliverRes = validateDraftPolygon(continentalSliver);
+    assert.equal(sliverRes.valid, false);
+    assert.ok(sliverRes.errors.some((e) => /span|0\.05/i.test(e)));
+
+    const polarPolygon: [number, number][] = [
+      [9.9937, 85.1],
+      [9.994, 85.1],
+      [9.994, 85.101],
+      [9.9937, 85.101],
+    ];
+    const polarRes = validateDraftPolygon(polarPolygon);
+    assert.equal(polarRes.valid, false);
+    assert.ok(polarRes.errors.some((e) => /85|lat/i.test(e)));
+  });
+
+  it('flags < 2° fold-back spikes (both exact A -> B -> A and ~1° needle fold-backs)', () => {
+    // 3-tap exact A -> B -> A fold-back
+    const exactThreeTapFoldBack = validateDraftPolygon([
+      [9.9937, 53.5511],
+      [9.994, 53.5511],
+      [9.9937, 53.5511],
+    ]);
+    assert.equal(exactThreeTapFoldBack.valid, false);
+    assert.ok(exactThreeTapFoldBack.errors.some((e) => /spike|2°|angle/i.test(e)));
+
+    // 4-vertex polygon with exact A -> B -> A fold-back before D
+    const fourTapFoldBack = validateDraftPolygon([
+      [9.9937, 53.5511],
+      [9.994, 53.5511],
+      [9.9937, 53.5511],
+      [9.9937, 53.5513],
+    ]);
+    assert.equal(fourTapFoldBack.valid, false);
+    assert.ok(fourTapFoldBack.errors.some((e) => /spike|2°|angle/i.test(e)));
+
+    // 4-vertex polygon with a ~0.6° sharp needle spike at vertex 1
+    const acuteNeedleSpike = validateDraftPolygon([
+      [9.9937, 53.5511],
+      [9.9942, 53.5511], // needle tip extending East (~33 m)
+      [9.99375, 53.551103], // folds almost straight back West (~0.6° turn-back angle < 2°)
+      [9.9937, 53.55125],
+    ]);
+    assert.equal(acuteNeedleSpike.valid, false);
+    assert.ok(acuteNeedleSpike.errors.some((e) => /spike|2°|angle/i.test(e)));
+  });
+
+  it('flags bow-tie self-intersections and reports crossingPoint coordinates', () => {
+    const bowTie: [number, number][] = [
+      [9.9937, 53.5511],
+      [9.9941, 53.5515],
+      [9.9941, 53.5511],
+      [9.9937, 53.5515],
+    ];
+    const res = validateDraftPolygon(bowTie);
+    assert.equal(res.valid, false);
+    assert.ok(res.crossingPoint !== null, 'Expected crossingPoint to be populated for bow-tie');
+    assert.ok(Math.abs(res.crossingPoint[0] - 9.9939) < 0.0001);
+    assert.ok(Math.abs(res.crossingPoint[1] - 53.5513) < 0.0001);
+    assert.ok(res.errors.some((e) => /cross|intersect/i.test(e)));
+  });
+
+  it('flags areas < 2 m² and > 500,000 m² and sets nearAreaBound near boundary thresholds', () => {
+    // ~0.48 m² square (~0.7 m × 0.7 m)
+    const tinyPolygon: [number, number][] = [
+      [9.9937, 53.5511],
+      [9.99371, 53.5511],
+      [9.99371, 53.551106],
+      [9.9937, 53.551106],
+    ];
+    const tinyRes = validateDraftPolygon(tinyPolygon);
+    assert.equal(tinyRes.valid, false);
+    assert.ok(tinyRes.areaM2 > 0 && tinyRes.areaM2 < 2);
+    assert.ok(tinyRes.errors.some((e) => /2 m²|minimum/i.test(e)));
+
+    // ~1.47 million m² square (0.015° × 0.013°, well within 0.05° span, > 500,000 m²)
+    const hugePolygon: [number, number][] = [
+      [9.99, 53.55],
+      [10.005, 53.55],
+      [10.005, 53.563],
+      [9.99, 53.563],
+    ];
+    const hugeRes = validateDraftPolygon(hugePolygon);
+    assert.equal(hugeRes.valid, false);
+    assert.ok(hugeRes.areaM2 > 500_000);
+    assert.ok(hugeRes.errors.some((e) => /500,?000|maximum/i.test(e)));
+
+    // ~2.08 m² square (within 10% of MIN_AREA_M2 = 2) -> valid & nearAreaBound === true
+    const nearMinPolygon: [number, number][] = [
+      [9.9937, 53.5511],
+      [9.993722, 53.5511],
+      [9.993722, 53.5511128],
+      [9.9937, 53.5511128],
+    ];
+    const nearMinRes = validateDraftPolygon(nearMinPolygon);
+    assert.equal(nearMinRes.valid, true);
+    assert.ok(nearMinRes.areaM2 >= 2 && nearMinRes.areaM2 <= 2.2);
+    assert.equal(nearMinRes.nearAreaBound, true);
+  });
+
+  it('CreatePolygonRequestSchema accepts single closed ring and rejects interior holes, unclosed rings, >0.05° span, and extra keys', () => {
+    const closedCourtyard = closeRingIfNeeded(VALID_COURTYARD_VERTICES);
+    assert.equal(checkPolygonRingStructure([closedCourtyard]).valid, true);
+
+    const validParsed = CreatePolygonRequestSchema.parse({
+      geometry: {
+        type: 'Polygon',
+        coordinates: [closedCourtyard],
+      },
+      surfaceType: 'asphalt',
+      note: 'Unused paved parking corner',
+    });
+    assert.equal(validParsed.surfaceType, 'asphalt');
+    assert.equal(validParsed.geometry.coordinates.length, 1);
+
+    // Multi-ring polygon with interior hole -> rejected!
+    const holeRing: [number, number][] = [
+      [9.99374, 53.55113],
+      [9.99378, 53.55113],
+      [9.99378, 53.55117],
+      [9.99374, 53.55117],
+      [9.99374, 53.55113],
+    ];
+    assert.equal(checkPolygonRingStructure([closedCourtyard, holeRing]).valid, false);
+    assert.throws(
+      () =>
+        CreatePolygonRequestSchema.parse({
+          geometry: {
+            type: 'Polygon',
+            coordinates: [closedCourtyard, holeRing],
+          },
+          surfaceType: 'asphalt',
+        }),
+      ZodError,
+    );
+
+    // Unclosed ring -> rejected!
+    assert.throws(
+      () =>
+        CreatePolygonRequestSchema.parse({
+          geometry: {
+            type: 'Polygon',
+            coordinates: [VALID_COURTYARD_VERTICES],
+          },
+          surfaceType: 'concrete',
+        }),
+      ZodError,
+    );
+
+    // > 0.05° span -> rejected!
+    assert.throws(
+      () =>
+        CreatePolygonRequestSchema.parse({
+          geometry: {
+            type: 'Polygon',
+            coordinates: [
+              [
+                [9.99, 53.55],
+                [10.045, 53.55],
+                [10.045, 53.56],
+                [9.99, 53.56],
+                [9.99, 53.55],
+              ],
+            ],
+          },
+          surfaceType: 'pavers',
+        }),
+      ZodError,
+    );
+
+    // Extra property on strict schema -> rejected!
+    assert.throws(
+      () =>
+        CreatePolygonRequestSchema.parse({
+          geometry: {
+            type: 'Polygon',
+            coordinates: [closedCourtyard],
+          },
+          surfaceType: 'other',
+          extraField: true,
+        }),
+      ZodError,
+    );
+
+    // < 4 ring positions and > 201 ring positions and |lat| > 85 -> rejected!
+    assert.throws(
+      () =>
+        CreatePolygonRequestSchema.parse({
+          geometry: {
+            type: 'Polygon',
+            coordinates: [
+              [
+                [9.9937, 53.5511],
+                [9.99385, 53.5511],
+                [9.9937, 53.5511],
+              ],
+            ],
+          },
+          surfaceType: 'asphalt',
+        }),
+      ZodError,
+    );
+
+    const ring202: [number, number][] = [];
+    for (let i = 0; i < 201; i++) {
+      const theta = (2 * Math.PI * i) / 201;
+      ring202.push([9.9937 + 0.0005 * Math.cos(theta), 53.5511 + 0.0005 * Math.sin(theta)]);
+    }
+    ring202.push(ring202[0]!);
+    assert.equal(ring202.length, 202);
+    assert.throws(
+      () =>
+        CreatePolygonRequestSchema.parse({
+          geometry: {
+            type: 'Polygon',
+            coordinates: [ring202],
+          },
+          surfaceType: 'asphalt',
+        }),
+      ZodError,
+    );
+
+    assert.throws(
+      () =>
+        CreatePolygonRequestSchema.parse({
+          geometry: {
+            type: 'Polygon',
+            coordinates: [
+              [
+                [9.9937, 85.2],
+                [9.99385, 85.2],
+                [9.99385, 85.2001],
+                [9.9937, 85.2],
+              ],
+            ],
+          },
+          surfaceType: 'asphalt',
+        }),
+      ZodError,
+    );
+  });
+});
+
+describe('Review Focus 2: PatchPolygonRequestSchema, TextEncoder password bounds, and surfaceType coercion', () => {
+  it('PatchPolygonRequestSchema rejects empty {} and { geometry: ... } while accepting metadata updates', () => {
+    assert.throws(() => PatchPolygonRequestSchema.parse({}), ZodError);
+    assert.throws(
+      () => PatchPolygonRequestSchema.parse({ surfaceType: undefined, note: undefined }),
+      ZodError,
+    );
+    assert.throws(
+      () =>
+        PatchPolygonRequestSchema.parse({
+          geometry: {
+            type: 'Polygon',
+            coordinates: [closeRingIfNeeded(VALID_COURTYARD_VERTICES)],
+          },
+        }),
+      ZodError,
+    );
+    assert.throws(
+      () =>
+        PatchPolygonRequestSchema.parse({
+          surfaceType: 'concrete',
+          geometry: {
+            type: 'Polygon',
+            coordinates: [closeRingIfNeeded(VALID_COURTYARD_VERTICES)],
+          },
+        }),
+      ZodError,
+    );
+    assert.throws(
+      () => PatchPolygonRequestSchema.parse({ note: 'x'.repeat(501) }),
+      ZodError,
+    );
+
+    assert.deepEqual(PatchPolygonRequestSchema.parse({ surfaceType: 'pavers' }), {
+      surfaceType: 'pavers',
+    });
+    assert.deepEqual(PatchPolygonRequestSchema.parse({ note: null }), { note: null });
+    assert.deepEqual(PatchPolygonRequestSchema.parse({ note: '' }), { note: '' });
+  });
+
+  it('RegisterRequestSchema, LoginRequestSchema, and RecoverRequestSchema enforce TextEncoder UTF-8 byte & char limits', () => {
+    // Valid registration
+    const validReg = RegisterRequestSchema.parse({
+      pseudonym: 'kiez_mapper-42',
+      password: 'correct-horse-battery-staple',
+    });
+    assert.equal(validReg.pseudonym, 'kiez_mapper-42');
+
+    // < 8-char password rejected
+    assert.throws(
+      () => RegisterRequestSchema.parse({ pseudonym: 'mapper1', password: 'short7!' }),
+      ZodError,
+    );
+
+    // > 1024-byte multi-byte UTF-8 password rejected via TextEncoder
+    const over1024Bytes = '🔐'.repeat(260); // 260 * 4 = 1040 UTF-8 bytes
+    assert.ok(new TextEncoder().encode(over1024Bytes).byteLength > 1024);
+    const overBytesRes = RegisterRequestSchema.safeParse({
+      pseudonym: 'mapper1',
+      password: over1024Bytes,
+    });
+    assert.equal(overBytesRes.success, false);
+    assert.ok(
+      overBytesRes.error.issues.some((iss) => /1024|byte/i.test(iss.message)),
+      'Expected UTF-8 1024-byte validation issue from TextEncoder check',
+    );
+
+    // > 128-char ASCII password rejected
+    assert.throws(
+      () => RegisterRequestSchema.parse({ pseudonym: 'mapper1', password: 'a'.repeat(129) }),
+      ZodError,
+    );
+
+    // Invalid pseudonym rejected
+    assert.throws(
+      () => LoginRequestSchema.parse({ pseudonym: 'ab', password: 'valid-password-123' }),
+      ZodError,
+    );
+    assert.throws(
+      () => LoginRequestSchema.parse({ pseudonym: 'bad space', password: 'valid-password-123' }),
+      ZodError,
+    );
+
+    // Recovery code normalization & RecoverRequestSchema
+    assert.equal(
+      normalizeRecoveryCode('abcd-ef01 2345-6789-abcd-ef01-2345-6789'),
+      'ABCDEF0123456789ABCDEF0123456789',
+    );
+    const validRecover = RecoverRequestSchema.parse({
+      pseudonym: 'mapper1',
+      recoveryCode: 'abcd-ef01-2345-6789-abcd-ef01-2345-6789',
+      newPassword: 'new-secure-password-99',
+    });
+    assert.equal(validRecover.pseudonym, 'mapper1');
+  });
+
+  it('PolygonFeatureSchema coerces unknown surfaceType "cobblestone_v2" to "other" and ignores extra keys', () => {
+    const featureInput = {
+      type: 'Feature',
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      geometry: {
+        type: 'Polygon',
+        coordinates: [closeRingIfNeeded(VALID_COURTYARD_VERTICES)],
+      },
+      properties: {
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        surfaceType: 'cobblestone_v2',
+        note: 'Historic courtyard',
+        areaM2: 119.4,
+        authorPseudonym: 'deleted',
+        upvotes: 5,
+        downvotes: 1,
+        score: 4,
+        myVote: 0,
+        isAuthor: false,
+        createdAt: '2026-11-12T12:00:00.000Z',
+        updatedAt: '2026-11-12T12:05:00+00:00',
+        futurePropertyFromNewerServer: 'ignored-gracefully',
+      },
+      futureTopLevelProperty: 123,
+    };
+
+    const parsed: PolygonFeature = PolygonFeatureSchema.parse(featureInput);
+    assert.equal(parsed.properties.surfaceType, 'other');
+    assert.equal(parsed.properties.authorPseudonym, 'deleted');
+    assert.equal('futurePropertyFromNewerServer' in parsed.properties, false);
+    assert.equal('futureTopLevelProperty' in parsed, false);
+
+    const collection = PolygonCollectionResponseSchema.parse({
+      type: 'FeatureCollection',
+      features: [featureInput],
+      meta: { truncated: false, limit: 500 },
+    });
+    assert.equal(collection.features.length, 1);
+    assert.equal(collection.features[0]?.properties.surfaceType, 'other');
+  });
+});
+
+describe('Review Focus 3: BboxQuerySchema vs checkBboxSpan and remaining wire schemas', () => {
+  it('BboxQuerySchema rejects malformed/inverted bounds with ZodError while accepting valid bounds', () => {
+    const parsedFromQueryObj = BboxQuerySchema.parse({ bbox: '9.98,53.54,10.01,53.56' });
+    assert.deepEqual(parsedFromQueryObj, {
+      minLng: 9.98,
+      minLat: 53.54,
+      maxLng: 10.01,
+      maxLat: 53.56,
+    });
+
+    const parsedFromString = BboxQuerySchema.parse('9.80,53.40,10.20,53.80');
+    assert.deepEqual(parsedFromString, {
+      minLng: 9.8,
+      minLat: 53.4,
+      maxLng: 10.2,
+      maxLat: 53.8,
+    });
+
+    const malformedInputs = [
+      {},
+      { bbox: '' },
+      { bbox: '9.98,53.54,10.01' },
+      { bbox: '9.98,53.54,10.01,53.56,1' },
+      { bbox: '9.98,abc,10.01,53.56' },
+      { bbox: '9.98,53.54,10.01,NaN' },
+      { bbox: '10.05,53.54,9.98,53.56' }, // inverted lng (minLng > maxLng)
+      { bbox: '9.98,53.54,9.98,53.56' }, // zero-width lng (minLng === maxLng)
+      { bbox: '9.98,53.60,10.01,53.54' }, // inverted lat (minLat > maxLat)
+      { bbox: '-181,53.54,-180.5,53.56' }, // out-of-range lng
+      { bbox: '9.98,-91,10.01,-89' }, // out-of-range lat
+    ];
+
+    for (const bad of malformedInputs) {
+      assert.throws(() => BboxQuerySchema.parse(bad), ZodError);
+    }
+  });
+
+  it('checkBboxSpan accepts spans <= 0.15° (including exact 0.15° float boundary) and throws ApiError(422, BBOX_TOO_LARGE) above 0.15°', () => {
+    // Exact 0.15° float span (10.1437 - 9.9937 === 0.15000000000000036 in IEEE-754)
+    const exactBoundary = BboxQuerySchema.parse('9.9937,53.5511,10.1437,53.7011');
+    assert.doesNotThrow(() => checkBboxSpan(exactBoundary));
+    assert.doesNotThrow(() => checkBboxSpan([9.9937, 53.5511, 10.1437, 53.7011]));
+
+    const wideLng = BboxQuerySchema.parse('9.80,53.50,9.96,53.60'); // lng span 0.16° > 0.15°
+    assert.throws(
+      () => checkBboxSpan(wideLng),
+      (err: unknown) =>
+        err instanceof ApiError && err.statusCode === 422 && err.code === 'BBOX_TOO_LARGE',
+    );
+
+    const wideLat = BboxQuerySchema.parse('9.80,53.50,9.90,53.66'); // lat span 0.16° > 0.15°
+    assert.throws(
+      () => checkBboxSpan(wideLat),
+      (err: unknown) =>
+        err instanceof ApiError && err.statusCode === 422 && err.code === 'BBOX_TOO_LARGE',
+    );
+  });
+
+  it('validates RuntimeConfigSchema, HealthResponseSchema, UuidParamSchema, Vote schemas, and Auth response schemas', () => {
+    const cleanDefaultConfig: RuntimeConfig = RuntimeConfigSchema.parse({
+      osmStyleUrl: 'https://tiles.openfreemap.org/styles/liberty',
+      orthophoto: null,
+      initialView: { lng: 9.9937, lat: 53.5511, zoom: 15 },
+      limits: {
+        minAreaM2: 2,
+        maxAreaM2: 500_000,
+        maxVertices: 200,
+        maxPolygonSpanDeg: 0.05,
+        maxBboxSpanDeg: 0.15,
+        bboxFeatureLimit: 500,
+        maxDailyPolygonsPerUser: 25,
+      },
+      disclaimerText:
+        'Community unsealing suggestions — non-binding public input, regardless of property ownership.',
+      abuseContact: null,
+    });
+    assert.equal(cleanDefaultConfig.orthophoto, null);
+
+    const wmsOrthophotoConfig = RuntimeConfigSchema.parse({
+      ...cleanDefaultConfig,
+      orthophoto: {
+        urlTemplate:
+          'https://geodienste.hamburg.de/HH_WMS_DOP?SERVICE=WMS&BBOX={bbox-epsg-3857}',
+        tileSize: 512,
+        attribution: '© Landesbetrieb Geoinformation und Vermessung',
+        bounds: [9.7, 53.35, 10.35, 53.75],
+        maxZoom: 20,
+      },
+      abuseContact: 'moderation@example.org',
+    });
+    assert.equal(wmsOrthophotoConfig.orthophoto?.tileSize, 512);
+
+    // Invalid orthophoto template without {z}/{x}/{y} or {bbox-epsg-3857}
+    assert.throws(
+      () =>
+        RuntimeConfigSchema.parse({
+          ...cleanDefaultConfig,
+          orthophoto: {
+            urlTemplate: 'https://example.org/static-image.png',
+            tileSize: 256,
+            attribution: '',
+            bounds: null,
+            maxZoom: 20,
+          },
+        }),
+      ZodError,
+    );
+
+    const health = HealthResponseSchema.parse({
+      status: 'ok',
+      postgisVersion: '3.4 USE_GEOS=1',
+      migrationsApplied: 1,
+    });
+    assert.equal(health.status, 'ok');
+
+    const uuidParam = UuidParamSchema.parse({ id: '550e8400-e29b-41d4-a716-446655440000' });
+    assert.equal(uuidParam.id, '550e8400-e29b-41d4-a716-446655440000');
+    assert.throws(() => UuidParamSchema.parse({ id: 'not-a-uuid' }), ZodError);
+
+    assert.equal(VoteRequestSchema.parse({ value: 1 }).value, 1);
+    assert.equal(VoteRequestSchema.parse({ value: -1 }).value, -1);
+    assert.throws(() => VoteRequestSchema.parse({ value: 0 }), ZodError);
+
+    const voteRes = VoteResponseSchema.parse({
+      polygonId: '550e8400-e29b-41d4-a716-446655440000',
+      upvotes: 3,
+      downvotes: 1,
+      score: 2,
+      myVote: 0,
+    });
+    assert.equal(voteRes.score, 2);
+
+    const user = AuthUserSchema.parse({
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      pseudonym: 'kiez_mapper',
+      createdAt: '2026-11-12T14:00:00.000Z',
+    });
+    const sessionRes = SessionResponseSchema.parse({
+      user,
+      sessionToken: 'opaque-session-token',
+      expiresAt: '2026-12-12T14:00:00.000Z',
+    });
+    assert.equal(sessionRes.user.pseudonym, 'kiez_mapper');
+
+    const regRes = RegisterResponseSchema.parse({
+      ...sessionRes,
+      recoveryCode: 'ABCD-EF01-2345-6789-ABCD-EF01-2345-6789',
+    });
+    assert.equal(regRes.recoveryCode.length, 39);
+  });
+});
