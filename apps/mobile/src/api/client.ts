@@ -95,11 +95,11 @@ export class PpgisApiClient {
   constructor(
     baseUrl: string,
     sessionStorage: SessionStorage,
-    fetchImpl: FetchLike = fetch,
+    fetchImpl: FetchLike = (input, init) => fetch(input, init),
   ) {
     this.baseUrl = normalizeBaseUrl(baseUrl);
     this.sessionStorage = sessionStorage;
-    this.fetchImpl = fetchImpl;
+    this.fetchImpl = (input, init) => fetchImpl(input, init);
   }
 
   public getExportGeoJsonUrl(): string {

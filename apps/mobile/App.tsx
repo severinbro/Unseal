@@ -24,11 +24,14 @@ import React, {
 } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
@@ -71,6 +74,8 @@ import {
   SESSION_TOKEN_KEY,
   type SessionStorage,
 } from './src/storage/tokenStorage';
+import { deriveResponsiveLayout, PALETTE, RADII } from './src/theme/tokens';
+import { injectWebCraftStyles } from './src/theme/webStyles';
 
 const DEFAULT_API_BASE_URL = 'http://127.0.0.1:3000';
 const LOCATE_ME_TARGET_ZOOM = 17;
@@ -88,11 +93,15 @@ export const mapStylePrimitives = {
   buildDraftLayerSpecs,
 } as const;
 
+declare const process: { env: Record<string, string | undefined> };
+
 function resolveDefaultApiBaseUrl(): string {
-  const envObj = (
-    globalThis as { process?: { env?: Record<string, string | undefined> } }
-  ).process?.env;
-  const configured = envObj?.['EXPO_PUBLIC_API_BASE_URL'];
+  let configured: string | undefined;
+  try {
+    configured = process.env.EXPO_PUBLIC_API_BASE_URL;
+  } catch (err: unknown) {
+    configured = err ? undefined : undefined;
+  }
   return configured && configured.trim().length > 0
     ? configured.trim()
     : DEFAULT_API_BASE_URL;
@@ -113,6 +122,17 @@ export function App(props: AppProps = {}): React.JSX.Element {
   );
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [locationNotice, setLocationNotice] = useState<string | null>(null);
+
+  const windowDimensions = useWindowDimensions();
+  const layout = useMemo(
+    () =>
+      deriveResponsiveLayout(windowDimensions.width, windowDimensions.height),
+    [windowDimensions.width, windowDimensions.height],
+  );
+
+  useEffect(() => {
+    injectWebCraftStyles();
+  }, []);
 
   const storage = useMemo<SessionStorage>(() => {
     if (props.sessionStorage) {
@@ -469,8 +489,8 @@ export function App(props: AppProps = {}): React.JSX.Element {
   if (state.configStatus === 'loading') {
     return (
       <SafeAreaView style={styles.centeredScreen}>
-        <ActivityIndicator size="large" color="#1f6f4a" />
-        <Text style={styles.statusTitle}>Loading map configuration…</Text>
+        <ActivityIndicator size="large" color={PALETTE.accentPrimary} />
+        <Text style={styles.statusTitle}>Loading civic unsealing map…</Text>
       </SafeAreaView>
     );
   }
@@ -478,61 +498,108 @@ export function App(props: AppProps = {}): React.JSX.Element {
   if (state.configStatus === 'error' || state.config === null) {
     return (
       <SafeAreaView style={styles.centeredScreen}>
-        <Text style={styles.errorTitle}>Could not connect to map service</Text>
-        <Text style={styles.errorBody}>
-          {state.configError ??
-            'Please verify your network connection and retry.'}
-        </Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Retry loading map configuration"
-          onPress={() => {
-            void bootstrapApp();
-          }}
-          style={styles.retryButton}
-        >
-          <Text style={styles.retryButtonLabel}>Retry</Text>
-        </Pressable>
+        <View style={styles.errorCard}>
+          <Text style={styles.errorTitle}>
+            Could not connect to map service
+          </Text>
+          <Text style={styles.errorBody}>
+            {state.configError ??
+              'Please verify your network connection and retry.'}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading map configuration"
+            onPress={() => {
+              void bootstrapApp();
+            }}
+            style={styles.retryButton}
+          >
+            <Text style={styles.retryButtonLabel}>Retry Connection</Text>
+          </Pressable>
+        </View>
       </SafeAreaView>
     );
   }
+
+  const hasActivePanel = drawingToolbar.visible || selectedFeature !== null;
+  const activeMaxHeight = drawingToolbar.visible
+    ? layout.drawingSheetMaxHeightPx
+    : layout.sheetMaxHeightPx;
+  const hasVisibleBanner =
+    (mapControls.showFirstVisitDisclaimer &&
+      mapControls.disclaimerText !== null &&
+      mapControls.disclaimerText.length > 0) ||
+    (mapControls.tileWarning !== null && mapControls.tileWarning.length > 0) ||
+    (locationNotice !== null && locationNotice.length > 0) ||
+    mapControls.showZoomInPrompt ||
+    mapControls.showTruncatedNotice;
+
+  const activePanelContent = hasActivePanel ? (
+    <ScrollView
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator
+      contentContainerStyle={styles.panelScrollContent}
+    >
+      <DrawingToolbar
+        toolbar={drawingToolbar}
+        compact={layout.isCompact}
+        onUndoVertex={() => dispatch({ type: 'UNDO_VERTEX' })}
+        onCloseRing={() => dispatch({ type: 'CLOSE_RING' })}
+        onSelectSurfaceType={(surfaceType) =>
+          dispatch({ type: 'SET_DRAFT_META', surfaceType })
+        }
+        onChangeNote={(note) => dispatch({ type: 'SET_DRAFT_META', note })}
+        onRequestDiscard={() => dispatch({ type: 'REQUEST_DISCARD_DRAFT' })}
+        onCancelDiscard={() => dispatch({ type: 'CANCEL_DISCARD_DRAFT' })}
+        onConfirmDiscard={() => dispatch({ type: 'CONFIRM_DISCARD_DRAFT' })}
+        onSubmit={() => dispatch({ type: 'SUBMIT_DRAFT' })}
+      />
+
+      <PolygonInspectorSheet
+        feature={selectedFeature}
+        overlapIndex={state.overlapIndex}
+        overlapCount={state.overlappingFeatureIds.length}
+        disclaimerText={state.config.disclaimerText}
+        abuseContact={state.config.abuseContact}
+        isAuthenticated={mapControls.isAuthenticated}
+        compact={layout.isCompact}
+        onCycleOverlap={() => dispatch({ type: 'CYCLE_OVERLAP_FEATURE' })}
+        onClose={() =>
+          dispatch({ type: 'SELECT_FEATURES_AT_TAP', featureIds: [] })
+        }
+        onVoteIntent={(polygonId, value) =>
+          dispatch({ type: 'CAST_VOTE', polygonId, value })
+        }
+        onCastVote={handleCastVote}
+        onClearVote={handleClearVote}
+        onPatchPolygon={handlePatchPolygon}
+        onDeletePolygon={handleDeletePolygon}
+      />
+    </ScrollView>
+  ) : null;
 
   return (
     <SafeAreaView
       style={styles.appContainer}
       accessibilityHint={SESSION_TOKEN_KEY}
     >
-      <DisclaimerBanner
+      <MapControlsBar
         controls={mapControls}
-        bboxFeatureLimit={state.config.limits.bboxFeatureLimit}
-        locationNotice={locationNotice}
-        onDismissDisclaimer={() =>
-          dispatch({ type: 'DISMISS_FIRST_VISIT_DISCLAIMER' })
+        proposalCount={state.features.length}
+        exportGeoJsonUrl={apiClient.getExportGeoJsonUrl()}
+        isLocating={isLocating}
+        tier={layout.tier}
+        onSetBasemapMode={(mode) =>
+          dispatch({ type: 'SET_BASEMAP_MODE', mode })
         }
-        onDismissTileWarning={() => dispatch({ type: 'DISMISS_TILE_WARNING' })}
-        onDismissLocationNotice={() => setLocationNotice(null)}
+        onLocateMe={handleLocateMe}
+        onStartDraw={() => dispatch({ type: 'START_DRAW' })}
+        onOpenAccount={() => dispatch({ type: 'OPEN_AUTH_MODAL' })}
+        onExportError={(message) => setLocationNotice(message)}
       />
 
-      <ScrollView
-        style={styles.workspaceScroll}
-        contentContainerStyle={styles.workspaceBody}
-        keyboardShouldPersistTaps="handled"
-      >
-        <MapControlsBar
-          controls={mapControls}
-          proposalCount={state.features.length}
-          exportGeoJsonUrl={apiClient.getExportGeoJsonUrl()}
-          isLocating={isLocating}
-          onSetBasemapMode={(mode) =>
-            dispatch({ type: 'SET_BASEMAP_MODE', mode })
-          }
-          onLocateMe={handleLocateMe}
-          onStartDraw={() => dispatch({ type: 'START_DRAW' })}
-          onOpenAccount={() => dispatch({ type: 'OPEN_AUTH_MODAL' })}
-          onExportError={(message) => setLocationNotice(message)}
-        />
-
-        <View style={styles.mapViewport}>
+      <View style={styles.mapStage}>
+        <View style={styles.mapCanvasFill}>
           <MapCanvas
             config={state.config}
             mode={state.mode}
@@ -549,56 +616,149 @@ export function App(props: AppProps = {}): React.JSX.Element {
           />
         </View>
 
-        <DrawingToolbar
-          toolbar={drawingToolbar}
-          onUndoVertex={() => dispatch({ type: 'UNDO_VERTEX' })}
-          onCloseRing={() => dispatch({ type: 'CLOSE_RING' })}
-          onSelectSurfaceType={(surfaceType) =>
-            dispatch({ type: 'SET_DRAFT_META', surfaceType })
-          }
-          onChangeNote={(note) => dispatch({ type: 'SET_DRAFT_META', note })}
-          onRequestDiscard={() => dispatch({ type: 'REQUEST_DISCARD_DRAFT' })}
-          onCancelDiscard={() => dispatch({ type: 'CANCEL_DISCARD_DRAFT' })}
-          onConfirmDiscard={() => dispatch({ type: 'CONFIRM_DISCARD_DRAFT' })}
-          onSubmit={() => dispatch({ type: 'SUBMIT_DRAFT' })}
-        />
+        {hasVisibleBanner ? (
+          <View
+            pointerEvents="box-none"
+            style={[
+              styles.floatingBannerOverlay,
+              layout.isDocked && hasActivePanel
+                ? { left: layout.dockWidth + 26, maxWidth: 520 }
+                : null,
+            ]}
+          >
+            <DisclaimerBanner
+              controls={mapControls}
+              bboxFeatureLimit={state.config.limits.bboxFeatureLimit}
+              locationNotice={locationNotice}
+              compact={layout.isCompact}
+              onDismissDisclaimer={() =>
+                dispatch({ type: 'DISMISS_FIRST_VISIT_DISCLAIMER' })
+              }
+              onDismissTileWarning={() =>
+                dispatch({ type: 'DISMISS_TILE_WARNING' })
+              }
+              onDismissLocationNotice={() => setLocationNotice(null)}
+            />
+          </View>
+        ) : (
+          <View
+            pointerEvents="none"
+            style={[
+              styles.legendPill,
+              layout.isDocked && hasActivePanel
+                ? { left: layout.dockWidth + 26 }
+                : null,
+            ]}
+          >
+            <View style={styles.legendItem}>
+              <View
+                style={[
+                  styles.legendSwatch,
+                  { backgroundColor: PALETTE.positiveDot },
+                ]}
+              />
+              <Text style={styles.legendLabel}>+ Backed</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View
+                style={[
+                  styles.legendSwatch,
+                  { backgroundColor: PALETTE.neutralDot },
+                ]}
+              />
+              <Text style={styles.legendLabel}>0 New</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View
+                style={[
+                  styles.legendSwatch,
+                  { backgroundColor: PALETTE.dangerDot },
+                ]}
+              />
+              <Text style={styles.legendLabel}>− Contested</Text>
+            </View>
+          </View>
+        )}
 
-        <PolygonInspectorSheet
-          feature={selectedFeature}
-          overlapIndex={state.overlapIndex}
-          overlapCount={state.overlappingFeatureIds.length}
-          disclaimerText={state.config.disclaimerText}
-          abuseContact={state.config.abuseContact}
-          isAuthenticated={mapControls.isAuthenticated}
-          onCycleOverlap={() => dispatch({ type: 'CYCLE_OVERLAP_FEATURE' })}
-          onClose={() =>
-            dispatch({ type: 'SELECT_FEATURES_AT_TAP', featureIds: [] })
-          }
-          onVoteIntent={(polygonId, value) =>
-            dispatch({ type: 'CAST_VOTE', polygonId, value })
-          }
-          onCastVote={handleCastVote}
-          onClearVote={handleClearVote}
-          onPatchPolygon={handlePatchPolygon}
-          onDeletePolygon={handleDeletePolygon}
-        />
+        {hasActivePanel && layout.isDocked ? (
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={[
+              styles.sideDockShell,
+              {
+                width: layout.dockWidth,
+                maxHeight: activeMaxHeight,
+              },
+            ]}
+          >
+            {activePanelContent}
+          </KeyboardAvoidingView>
+        ) : null}
+      </View>
 
-        <AuthAndAccountModal
-          modal={authModal}
-          onSelectView={(view) =>
-            dispatch({ type: 'SET_AUTH_MODAL_VIEW', view })
-          }
-          onToggleRecoveryCodeSaved={(checked) =>
-            dispatch({ type: 'SET_RECOVERY_CODE_SAVED_CHECKED', checked })
-          }
-          onClose={() => dispatch({ type: 'CLOSE_AUTH_MODAL' })}
-          onRegister={handleRegister}
-          onLogin={handleLogin}
-          onRecover={handleRecover}
-          onLogout={handleLogout}
-          onDeleteAccount={handleDeleteAccount}
-        />
-      </ScrollView>
+      {hasActivePanel && layout.isCompact ? (
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={[styles.bottomSheetShell, { maxHeight: activeMaxHeight }]}
+        >
+          <View style={styles.sheetGrabHeader} accessible={false}>
+            <View style={styles.sheetGrabPill} />
+          </View>
+          {activePanelContent}
+        </KeyboardAvoidingView>
+      ) : null}
+
+      {authModal.visible ? (
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={[
+            styles.modalBackdropOverlay,
+            layout.isCompact ? styles.modalBackdropCompact : null,
+          ]}
+        >
+          <Pressable
+            accessible={false}
+            disabled={!authModal.canClose}
+            onPress={() => {
+              if (authModal.canClose) {
+                dispatch({ type: 'CLOSE_AUTH_MODAL' });
+              }
+            }}
+            style={styles.modalBackdropScrim}
+          />
+          <View
+            style={[
+              styles.modalDialogWrapper,
+              { maxWidth: layout.modalMaxWidth },
+            ]}
+          >
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.modalScrollContent}
+            >
+              <AuthAndAccountModal
+                modal={authModal}
+                compact={layout.isCompact}
+                onSelectView={(view) =>
+                  dispatch({ type: 'SET_AUTH_MODAL_VIEW', view })
+                }
+                onToggleRecoveryCodeSaved={(checked) =>
+                  dispatch({
+                    type: 'SET_RECOVERY_CODE_SAVED_CHECKED',
+                    checked,
+                  })
+                }
+                onClose={() => dispatch({ type: 'CLOSE_AUTH_MODAL' })}
+                onRegister={handleRegister}
+                onLogin={handleLogin}
+                onRecover={handleRecover}
+                onLogout={handleLogout}
+                onDeleteAccount={handleDeleteAccount}
+              />
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -608,62 +768,167 @@ export default App;
 const styles = StyleSheet.create({
   appContainer: {
     flex: 1,
-    backgroundColor: '#f5f7f5',
+    backgroundColor: PALETTE.bgGround,
   },
   centeredScreen: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
-    backgroundColor: '#f5f7f5',
+    backgroundColor: PALETTE.bgGround,
   },
   statusTitle: {
-    marginTop: 16,
-    fontSize: 16,
+    marginTop: 14,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#1b2a22',
+    color: PALETTE.inkPrimary,
+  },
+  errorCard: {
+    maxWidth: 420,
+    width: '100%',
+    padding: 22,
+    borderRadius: RADII.lg,
+    backgroundColor: PALETTE.bgSurface,
+    borderWidth: 1,
+    borderColor: PALETTE.borderSubtle,
+    alignItems: 'center',
   },
   errorTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
-    color: '#8a1f1f',
+    color: PALETTE.dangerText,
     textAlign: 'center',
   },
   errorBody: {
     marginTop: 8,
-    marginBottom: 20,
-    fontSize: 14,
-    color: '#3c4a42',
+    marginBottom: 18,
+    fontSize: 13.5,
+    lineHeight: 19,
+    color: PALETTE.inkSecondary,
     textAlign: 'center',
   },
   retryButton: {
     minHeight: 44,
-    minWidth: 120,
+    minWidth: 140,
     paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
-    backgroundColor: '#1f6f4a',
+    paddingVertical: 11,
+    borderRadius: RADII.md,
+    backgroundColor: PALETTE.accentPrimary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   retryButtonLabel: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '600',
+    color: PALETTE.inkOnAccent,
+    fontSize: 14,
+    fontWeight: '700',
   },
-  workspaceScroll: {
+  mapStage: {
     flex: 1,
-  },
-  workspaceBody: {
-    flexGrow: 1,
-    padding: 14,
-    gap: 12,
-  },
-  mapViewport: {
-    flex: 1,
-    minHeight: 320,
-    borderRadius: 10,
+    position: 'relative',
+    backgroundColor: '#DFE7E2',
     overflow: 'hidden',
-    backgroundColor: '#dfe7e2',
+  },
+  mapCanvasFill: {
+    flex: 1,
+  },
+  floatingBannerOverlay: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    right: 58,
+    maxWidth: 560,
+    zIndex: 15,
+  },
+  legendPill: {
+    position: 'absolute',
+    left: 10,
+    top: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: RADII.pill,
+    backgroundColor: 'rgba(255, 255, 255, 0.94)',
+    borderWidth: 1,
+    borderColor: PALETTE.borderSubtle,
+    zIndex: 10,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  legendSwatch: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  legendLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: PALETTE.inkPrimary,
+  },
+  bottomSheetShell: {
+    width: '100%',
+    backgroundColor: PALETTE.bgSurface,
+    borderTopWidth: 1,
+    borderTopColor: PALETTE.borderStrong,
+    overflow: 'hidden',
+  },
+  sheetGrabHeader: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 8,
+    paddingBottom: 2,
+  },
+  sheetGrabPill: {
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: PALETTE.borderStrong,
+  },
+  sideDockShell: {
+    position: 'absolute',
+    top: 14,
+    left: 14,
+    zIndex: 20,
+    borderRadius: RADII.lg,
+    overflow: 'hidden',
+  },
+  panelScrollContent: {
+    flexGrow: 0,
+  },
+  modalBackdropOverlay: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  modalBackdropCompact: {
+    justifyContent: 'flex-end',
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+  },
+  modalBackdropScrim: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: PALETTE.bgScrim,
+  },
+  modalDialogWrapper: {
+    width: '100%',
+    maxHeight: '90%',
+    zIndex: 51,
+  },
+  modalScrollContent: {
+    flexGrow: 0,
   },
 });

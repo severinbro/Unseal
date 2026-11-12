@@ -3,7 +3,9 @@ import { describe, it } from 'node:test';
 
 import type { PolygonFeature, RuntimeConfig } from '@entsiegelung/shared';
 
+import { PpgisApiClient, type FetchLike } from '../src/api/client';
 import type { LocateMeResult } from '../src/location/locateMe.types';
+import { createMemorySessionStorage } from '../src/storage/tokenStorage';
 import {
   requestCurrentCoordinates,
   type WebNavigatorLike,
@@ -19,6 +21,10 @@ import {
   deriveMapControlsModel,
   MIN_TOUCH_TARGET_DP,
 } from '../src/state/viewModels';
+import {
+  deriveResponsiveLayout,
+  formatRecoveryCodeBlocks,
+} from '../src/theme/tokens';
 
 const SAMPLE_CONFIG: RuntimeConfig = {
   osmStyleUrl: 'https://tiles.openfreemap.org/styles/liberty',
@@ -312,5 +318,54 @@ describe('UI sheet, banner, and GPS camera state transitions', () => {
     assert.equal(toolbar.visible, true);
     assert.notEqual(toolbar.crossingPoint, null);
     assert.equal(toolbar.canSubmit, false);
+  });
+
+  it('adapts responsive layout across phone (390x844), tablet (768x1024), and desktop (1440x900) and formats recovery codes', () => {
+    const mobile = deriveResponsiveLayout(390, 844);
+    assert.equal(mobile.tier, 'compact');
+    assert.equal(mobile.isCompact, true);
+    assert.equal(mobile.isDocked, false);
+    assert.ok(mobile.drawingSheetMaxHeightPx <= Math.round(844 * 0.56));
+
+    const tablet = deriveResponsiveLayout(768, 1024);
+    assert.equal(tablet.tier, 'medium');
+    assert.equal(tablet.isCompact, false);
+    assert.equal(tablet.isDocked, true);
+    assert.equal(tablet.dockWidth, 368);
+
+    const desktop = deriveResponsiveLayout(1440, 900);
+    assert.equal(desktop.tier, 'expanded');
+    assert.equal(desktop.isCompact, false);
+    assert.equal(desktop.isDocked, true);
+    assert.equal(desktop.dockWidth, 404);
+
+    assert.equal(
+      formatRecoveryCodeBlocks('a1b2c3d4e5f60718293a4b5c6d7e8f90'),
+      'A1B2-C3D4-E5F6-0718-293A-4B5C-6D7E-8F90',
+    );
+  });
+
+  it('invokes browser fetch without binding PpgisApiClient as `this` (preventing Window Illegal invocation)', async () => {
+    const strictBrowserFetch: FetchLike = async function (
+      this: unknown,
+    ): Promise<Response> {
+      if (this !== undefined && this !== globalThis) {
+        throw new TypeError(
+          "Failed to execute 'fetch' on 'Window': Illegal invocation",
+        );
+      }
+      return new Response(JSON.stringify(SAMPLE_CONFIG), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const client = new PpgisApiClient(
+      'http://127.0.0.1:3000',
+      createMemorySessionStorage(),
+      strictBrowserFetch,
+    );
+    const loadedConfig = await client.getConfig();
+    assert.equal(loadedConfig.osmStyleUrl, SAMPLE_CONFIG.osmStyleUrl);
   });
 });

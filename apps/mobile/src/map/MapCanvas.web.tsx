@@ -149,11 +149,20 @@ export function MapCanvas({
       zoom: initialZoom,
       pitchWithRotate: false,
       dragRotate: false,
+      preserveDrawingBuffer: true,
     });
     mapRef.current = map;
     styleReadyRef.current = false;
 
     map.addControl(new NavigationControl({ showCompass: false }), 'top-right');
+
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(() => {
+            map.resize();
+          })
+        : null;
+    resizeObserver?.observe(container);
 
     if (modeRef.current === 'drawing') {
       map.doubleClickZoom.disable();
@@ -312,6 +321,7 @@ export function MapCanvas({
 
     return () => {
       styleReadyRef.current = false;
+      resizeObserver?.disconnect();
       if (settleTimerRef.current !== null) {
         clearTimeout(settleTimerRef.current);
         settleTimerRef.current = null;

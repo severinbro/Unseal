@@ -15,6 +15,13 @@ import {
 } from 'react-native';
 
 import { MIN_TOUCH_TARGET_DP } from '../state/viewModels';
+import {
+  MONO_FONT_FAMILY,
+  PALETTE,
+  RADII,
+  SURFACE_SWATCHES,
+  TABULAR_NUMS_STYLE,
+} from '../theme/tokens';
 
 const SURFACE_LABELS: Record<SurfaceType, string> = {
   asphalt: 'Asphalt',
@@ -30,6 +37,7 @@ export interface PolygonInspectorSheetProps {
   disclaimerText: string;
   abuseContact: string | null;
   isAuthenticated: boolean;
+  compact?: boolean;
   onCycleOverlap: () => void;
   onClose: () => void;
   onVoteIntent: (polygonId: string, value: 1 | -1) => void;
@@ -49,6 +57,7 @@ export function PolygonInspectorSheet({
   disclaimerText,
   abuseContact,
   isAuthenticated,
+  compact = false,
   onCycleOverlap,
   onClose,
   onVoteIntent,
@@ -58,7 +67,8 @@ export function PolygonInspectorSheet({
   onDeletePolygon,
 }: PolygonInspectorSheetProps): React.JSX.Element | null {
   const [isEditing, setIsEditing] = useState<boolean>(false);
-  const [editSurfaceType, setEditSurfaceType] = useState<SurfaceType>('asphalt');
+  const [editSurfaceType, setEditSurfaceType] =
+    useState<SurfaceType>('asphalt');
   const [editNote, setEditNote] = useState<string>('');
   const [confirmingDelete, setConfirmingDelete] = useState<boolean>(false);
   const [isBusy, setIsBusy] = useState<boolean>(false);
@@ -81,11 +91,25 @@ export function PolygonInspectorSheet({
   }
 
   const { properties } = feature;
+  const swatch = SURFACE_SWATCHES[properties.surfaceType];
   const effectiveOverlapCount = Math.max(1, overlapCount);
   const displayOverlapPosition = Math.min(
     effectiveOverlapCount,
     overlapIndex + 1,
   );
+
+  const scoreToneStyle =
+    properties.score > 0
+      ? styles.scoreBadgePositive
+      : properties.score < 0
+        ? styles.scoreBadgeNegative
+        : styles.scoreBadgeNeutral;
+  const scoreTextToneStyle =
+    properties.score > 0
+      ? styles.scoreBadgeTextPositive
+      : properties.score < 0
+        ? styles.scoreBadgeTextNegative
+        : styles.scoreBadgeTextNeutral;
 
   const handleVotePress = (targetValue: 1 | -1): void => {
     setActionError(null);
@@ -155,17 +179,27 @@ export function PolygonInspectorSheet({
 
   return (
     <View
-      style={styles.sheet}
+      style={[styles.sheet, compact ? styles.sheetCompact : null]}
       accessibilityLabel="Selected unsealing proposal inspector"
     >
       <View style={styles.headerRow}>
         <View style={styles.headerTitleGroup}>
-          <Text style={styles.sheetTitle}>
-            {SURFACE_LABELS[properties.surfaceType]} ·{' '}
-            {properties.areaM2.toFixed(1)} m²
-          </Text>
+          <View style={styles.materialTitleRow}>
+            <View
+              style={[styles.materialSwatch, { backgroundColor: swatch.color }]}
+            />
+            <Text style={styles.sheetTitle}>
+              {SURFACE_LABELS[properties.surfaceType]}
+            </Text>
+            <View style={styles.areaPill}>
+              <Text style={styles.areaPillText}>
+                {properties.areaM2.toFixed(1)} m²
+              </Text>
+            </View>
+          </View>
           <Text style={styles.authorMeta}>
-            Proposed by {properties.authorPseudonym}
+            Proposed by @{properties.authorPseudonym}
+            {properties.isAuthor ? ' · You' : ''}
           </Text>
         </View>
 
@@ -178,12 +212,12 @@ export function PolygonInspectorSheet({
               style={styles.overlapButton}
             >
               <Text style={styles.overlapButtonLabel}>
-                {displayOverlapPosition} / {effectiveOverlapCount} · Next
+                {displayOverlapPosition}/{effectiveOverlapCount} · Next
               </Text>
             </Pressable>
           ) : (
             <View style={styles.singleBadge}>
-              <Text style={styles.singleBadgeText}>1 / 1</Text>
+              <Text style={styles.singleBadgeText}>1/1</Text>
             </View>
           )}
 
@@ -198,13 +232,6 @@ export function PolygonInspectorSheet({
         </View>
       </View>
 
-      <View
-        style={styles.permanentDisclaimerBox}
-        accessibilityLabel="Permanent civic proposal disclaimer"
-      >
-        <Text style={styles.permanentDisclaimerText}>{disclaimerText}</Text>
-      </View>
-
       {actionError ? (
         <View style={styles.errorBox} accessibilityRole="alert">
           <Text style={styles.errorText}>{actionError}</Text>
@@ -214,9 +241,9 @@ export function PolygonInspectorSheet({
       {isEditing && properties.isAuthor ? (
         <View style={styles.editSection}>
           <Text style={styles.immutableNotice}>
-            Polygon coordinates are immutable after publication so community
-            votes stay attached to the same site. To change boundaries, delete
-            and redraw the proposal.
+            Polygon coordinates are locked after publication so community votes
+            remain anchored to the exact site. Delete and redraw to adjust
+            boundaries.
           </Text>
 
           <View style={styles.surfaceChoiceRow} accessibilityRole="radiogroup">
@@ -254,7 +281,7 @@ export function PolygonInspectorSheet({
             maxLength={GEOMETRY_LIMITS.MAX_NOTE_LENGTH}
             multiline
             placeholder="Optional site note (leave blank to clear)"
-            placeholderTextColor="#6c7b73"
+            placeholderTextColor={PALETTE.inkMuted}
             style={styles.editNoteInput}
           />
 
@@ -281,31 +308,32 @@ export function PolygonInspectorSheet({
               style={[styles.touchButton, styles.primaryButton]}
             >
               <Text style={styles.primaryButtonLabel}>
-                {isBusy ? 'Saving…' : 'Save changes'}
+                {isBusy ? 'Saving…' : 'Save Changes'}
               </Text>
             </Pressable>
           </View>
         </View>
       ) : (
-        <View style={styles.detailsSection}>
-          <Text style={styles.detailLine}>
-            Surface category: {SURFACE_LABELS[properties.surfaceType]} (
-            {properties.surfaceType}) · Geodesic area:{' '}
-            {properties.areaM2.toFixed(1)} m²
-          </Text>
+        <View style={styles.noteCard}>
           <Text style={styles.noteBody}>
             {properties.note && properties.note.trim().length > 0
               ? properties.note
-              : 'No additional site note provided.'}
+              : 'No additional site note provided by the author.'}
           </Text>
         </View>
       )}
 
-      <View style={styles.voteRow}>
-        <Text style={styles.scoreSummary}>
-          Net score: {properties.score >= 0 ? `+${properties.score}` : properties.score}{' '}
-          (+{properties.upvotes} / -{properties.downvotes})
-        </Text>
+      <View style={styles.votePanel}>
+        <View style={[styles.scoreBadge, scoreToneStyle]}>
+          <Text style={[styles.scoreBadgeValue, scoreTextToneStyle]}>
+            {properties.score > 0
+              ? `+${properties.score}`
+              : `${properties.score}`}
+          </Text>
+          <Text style={[styles.scoreBadgeCaption, scoreTextToneStyle]}>
+            net score
+          </Text>
+        </View>
 
         <View style={styles.voteButtonsGroup}>
           <Pressable
@@ -354,10 +382,17 @@ export function PolygonInspectorSheet({
                 properties.myVote === -1 ? styles.voteButtonLabelActive : null,
               ]}
             >
-              -1 ({properties.downvotes})
+              −1 ({properties.downvotes})
             </Text>
           </Pressable>
         </View>
+      </View>
+
+      <View
+        style={styles.permanentDisclaimerBox}
+        accessibilityLabel="Permanent civic proposal disclaimer"
+      >
+        <Text style={styles.permanentDisclaimerText}>{disclaimerText}</Text>
       </View>
 
       {properties.isAuthor && !isEditing ? (
@@ -375,7 +410,7 @@ export function PolygonInspectorSheet({
                   onPress={() => setConfirmingDelete(false)}
                   style={[styles.touchButton, styles.secondaryButton]}
                 >
-                  <Text style={styles.secondaryButtonLabel}>Keep proposal</Text>
+                  <Text style={styles.secondaryButtonLabel}>Keep Proposal</Text>
                 </Pressable>
                 <Pressable
                   accessibilityRole="button"
@@ -385,7 +420,7 @@ export function PolygonInspectorSheet({
                   style={[styles.touchButton, styles.dangerButton]}
                 >
                   <Text style={styles.primaryButtonLabel}>
-                    {isBusy ? 'Deleting…' : 'Confirm delete'}
+                    {isBusy ? 'Deleting…' : 'Confirm Delete'}
                   </Text>
                 </Pressable>
               </View>
@@ -399,7 +434,7 @@ export function PolygonInspectorSheet({
                 onPress={() => setIsEditing(true)}
                 style={[styles.touchButton, styles.secondaryButton]}
               >
-                <Text style={styles.secondaryButtonLabel}>Edit details</Text>
+                <Text style={styles.secondaryButtonLabel}>Edit Details</Text>
               </Pressable>
 
               <Pressable
@@ -409,7 +444,7 @@ export function PolygonInspectorSheet({
                 onPress={() => setConfirmingDelete(true)}
                 style={[styles.touchButton, styles.dangerOutlineButton]}
               >
-                <Text style={styles.dangerOutlineLabel}>Delete proposal</Text>
+                <Text style={styles.dangerOutlineLabel}>Delete Proposal</Text>
               </Pressable>
             </View>
           )}
@@ -428,11 +463,18 @@ export function PolygonInspectorSheet({
 const styles = StyleSheet.create({
   sheet: {
     padding: 14,
-    borderRadius: 10,
-    backgroundColor: '#ffffff',
+    borderRadius: RADII.lg,
+    backgroundColor: PALETTE.bgSurface,
     borderWidth: 1,
-    borderColor: '#cdd9d2',
+    borderColor: PALETTE.borderSubtle,
     gap: 10,
+  },
+  sheetCompact: {
+    borderWidth: 0,
+    borderRadius: 0,
+    paddingHorizontal: 14,
+    paddingTop: 6,
+    paddingBottom: 14,
   },
   headerRow: {
     flexDirection: 'row',
@@ -443,112 +485,150 @@ const styles = StyleSheet.create({
   },
   headerTitleGroup: {
     flex: 1,
-    minWidth: 180,
-    gap: 2,
+    minWidth: 170,
+    gap: 3,
+  },
+  materialTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 7,
+  },
+  materialSwatch: {
+    width: 12,
+    height: 12,
+    borderRadius: 3,
   },
   sheetTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1b2a22',
+    letterSpacing: -0.2,
+    color: PALETTE.inkPrimary,
+  },
+  areaPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: RADII.sm,
+    backgroundColor: PALETTE.bgSubtle,
+    borderWidth: 1,
+    borderColor: PALETTE.borderSubtle,
+  },
+  areaPillText: {
+    ...TABULAR_NUMS_STYLE,
+    fontFamily: MONO_FONT_FAMILY,
+    fontSize: 12,
+    fontWeight: '700',
+    color: PALETTE.inkPrimary,
   },
   authorMeta: {
     fontSize: 12,
-    color: '#46584f',
+    color: PALETTE.inkMuted,
   },
   headerControls: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   overlapButton: {
     minHeight: MIN_TOUCH_TARGET_DP,
     minWidth: MIN_TOUCH_TARGET_DP,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: '#e8eef5',
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    borderRadius: RADII.md,
+    backgroundColor: PALETTE.infoBg,
     borderWidth: 1,
-    borderColor: '#b8cae0',
+    borderColor: PALETTE.infoBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
   overlapButtonLabel: {
-    fontSize: 13,
+    ...TABULAR_NUMS_STYLE,
+    fontSize: 12.5,
     fontWeight: '700',
-    color: '#1f3a5c',
+    color: PALETTE.infoText,
   },
   singleBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: '#eff3f0',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: RADII.sm,
+    backgroundColor: PALETTE.bgSubtle,
+    borderWidth: 1,
+    borderColor: PALETTE.borderSubtle,
   },
   singleBadgeText: {
-    fontSize: 12,
+    ...TABULAR_NUMS_STYLE,
+    fontFamily: MONO_FONT_FAMILY,
+    fontSize: 11,
     fontWeight: '600',
-    color: '#4e6057',
+    color: PALETTE.inkMuted,
   },
   closeButton: {
     minHeight: MIN_TOUCH_TARGET_DP,
     minWidth: MIN_TOUCH_TARGET_DP,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: '#f1f5f3',
+    paddingVertical: 8,
+    borderRadius: RADII.md,
+    backgroundColor: PALETTE.bgSubtle,
+    borderWidth: 1,
+    borderColor: PALETTE.borderStrong,
     alignItems: 'center',
     justifyContent: 'center',
   },
   closeButtonLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#1b2a22',
+    color: PALETTE.inkPrimary,
   },
   permanentDisclaimerBox: {
     paddingHorizontal: 10,
     paddingVertical: 8,
-    borderRadius: 6,
-    backgroundColor: '#eef6f1',
-    borderLeftWidth: 3,
-    borderLeftColor: '#1f6f4a',
+    borderRadius: RADII.md,
+    backgroundColor: PALETTE.bgSubtle,
+    borderWidth: 1,
+    borderColor: PALETTE.borderSubtle,
   },
   permanentDisclaimerText: {
-    fontSize: 12,
-    lineHeight: 17,
-    color: '#20382b',
+    fontSize: 11.5,
+    lineHeight: 16,
+    color: PALETTE.inkSecondary,
   },
   errorBox: {
-    padding: 8,
-    borderRadius: 6,
-    backgroundColor: '#fdecec',
+    padding: 9,
+    borderRadius: RADII.sm,
+    backgroundColor: PALETTE.dangerBg,
+    borderWidth: 1,
+    borderColor: PALETTE.dangerBorder,
   },
   errorText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#8a1f1f',
+    color: PALETTE.dangerText,
   },
-  detailsSection: {
-    gap: 6,
-  },
-  detailLine: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#34473e',
+  noteCard: {
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    borderRadius: RADII.md,
+    backgroundColor: PALETTE.bgSubtle,
+    borderWidth: 1,
+    borderColor: PALETTE.borderSubtle,
   },
   noteBody: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: '#1b2a22',
+    fontSize: 13.5,
+    lineHeight: 19,
+    color: PALETTE.inkPrimary,
   },
   editSection: {
     gap: 8,
     padding: 10,
-    borderRadius: 8,
-    backgroundColor: '#f8faf9',
+    borderRadius: RADII.md,
+    backgroundColor: PALETTE.bgSubtle,
+    borderWidth: 1,
+    borderColor: PALETTE.borderSubtle,
   },
   immutableNotice: {
     fontSize: 12,
-    lineHeight: 17,
-    color: '#46584f',
+    lineHeight: 16,
+    color: PALETTE.inkSecondary,
   },
   surfaceChoiceRow: {
     flexDirection: 'row',
@@ -559,50 +639,85 @@ const styles = StyleSheet.create({
     minHeight: MIN_TOUCH_TARGET_DP,
     minWidth: MIN_TOUCH_TARGET_DP,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 8,
+    paddingVertical: 9,
+    borderRadius: RADII.md,
     borderWidth: 1,
-    borderColor: '#b7c7be',
-    backgroundColor: '#ffffff',
+    borderColor: PALETTE.borderStrong,
+    backgroundColor: PALETTE.bgSurface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   surfaceChipSelected: {
-    borderColor: '#1f6f4a',
-    backgroundColor: '#e6f2ec',
+    borderColor: PALETTE.accentPrimary,
+    backgroundColor: PALETTE.positiveBg,
   },
   surfaceChipLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#1b2a22',
+    color: PALETTE.inkPrimary,
   },
   surfaceChipLabelSelected: {
-    color: '#134c31',
+    color: PALETTE.positiveText,
+    fontWeight: '700',
   },
   editNoteInput: {
-    minHeight: 64,
+    minHeight: 60,
     paddingHorizontal: 10,
     paddingVertical: 8,
-    borderRadius: 8,
+    borderRadius: RADII.md,
     borderWidth: 1,
-    borderColor: '#b7c7be',
-    backgroundColor: '#ffffff',
+    borderColor: PALETTE.borderStrong,
+    backgroundColor: PALETTE.bgSurface,
     fontSize: 13,
-    color: '#1b2a22',
+    color: PALETTE.inkPrimary,
     textAlignVertical: 'top',
   },
-  voteRow: {
+  votePanel: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 8,
-    paddingTop: 4,
   },
-  scoreSummary: {
-    fontSize: 14,
+  scoreBadge: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: RADII.md,
+    borderWidth: 1,
+  },
+  scoreBadgePositive: {
+    backgroundColor: PALETTE.positiveBg,
+    borderColor: PALETTE.positiveBorder,
+  },
+  scoreBadgeNeutral: {
+    backgroundColor: PALETTE.neutralBg,
+    borderColor: PALETTE.neutralBorder,
+  },
+  scoreBadgeNegative: {
+    backgroundColor: PALETTE.dangerBg,
+    borderColor: PALETTE.dangerBorder,
+  },
+  scoreBadgeValue: {
+    ...TABULAR_NUMS_STYLE,
+    fontFamily: MONO_FONT_FAMILY,
+    fontSize: 15,
     fontWeight: '700',
-    color: '#1b2a22',
+  },
+  scoreBadgeCaption: {
+    fontSize: 11.5,
+    fontWeight: '600',
+  },
+  scoreBadgeTextPositive: {
+    color: PALETTE.positiveText,
+  },
+  scoreBadgeTextNeutral: {
+    color: PALETTE.neutralText,
+  },
+  scoreBadgeTextNegative: {
+    color: PALETTE.dangerText,
   },
   voteButtonsGroup: {
     flexDirection: 'row',
@@ -613,46 +728,49 @@ const styles = StyleSheet.create({
     minWidth: MIN_TOUCH_TARGET_DP,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: RADII.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
   voteButton: {
-    backgroundColor: '#ffffff',
+    backgroundColor: PALETTE.bgSurface,
     borderWidth: 1,
-    borderColor: '#b7c7be',
+    borderColor: PALETTE.borderStrong,
   },
   upvoteButtonActive: {
-    backgroundColor: '#1f6f4a',
-    borderColor: '#1f6f4a',
+    backgroundColor: PALETTE.accentPrimary,
+    borderColor: PALETTE.accentPrimaryStrong,
   },
   downvoteButtonActive: {
-    backgroundColor: '#9e2a2b',
-    borderColor: '#9e2a2b',
+    backgroundColor: PALETTE.dangerSolid,
+    borderColor: PALETTE.dangerSolid,
   },
   voteButtonLabel: {
-    fontSize: 14,
+    ...TABULAR_NUMS_STYLE,
+    fontSize: 13.5,
     fontWeight: '700',
-    color: '#1b2a22',
+    color: PALETTE.inkPrimary,
   },
   voteButtonLabelActive: {
-    color: '#ffffff',
+    color: PALETTE.inkOnAccent,
   },
   authorSection: {
     borderTopWidth: 1,
-    borderTopColor: '#e3ebe6',
+    borderTopColor: PALETTE.borderSubtle,
     paddingTop: 10,
   },
   deleteConfirmBox: {
     padding: 10,
-    borderRadius: 8,
-    backgroundColor: '#fdecec',
+    borderRadius: RADII.md,
+    backgroundColor: PALETTE.dangerBg,
+    borderWidth: 1,
+    borderColor: PALETTE.dangerBorder,
     gap: 8,
   },
   deleteConfirmText: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#8a1f1f',
+    color: PALETTE.dangerText,
   },
   buttonRow: {
     flexDirection: 'row',
@@ -661,38 +779,38 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   primaryButton: {
-    backgroundColor: '#1f6f4a',
+    backgroundColor: PALETTE.accentPrimary,
   },
   primaryButtonLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#ffffff',
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: PALETTE.inkOnAccent,
   },
   secondaryButton: {
-    backgroundColor: '#ffffff',
+    backgroundColor: PALETTE.bgSurface,
     borderWidth: 1,
-    borderColor: '#b7c7be',
+    borderColor: PALETTE.borderStrong,
   },
   secondaryButtonLabel: {
-    fontSize: 14,
+    fontSize: 13.5,
     fontWeight: '600',
-    color: '#1b2a22',
+    color: PALETTE.inkPrimary,
   },
   dangerOutlineButton: {
-    backgroundColor: '#ffffff',
+    backgroundColor: PALETTE.bgSurface,
     borderWidth: 1,
-    borderColor: '#b53838',
+    borderColor: PALETTE.dangerBorder,
   },
   dangerOutlineLabel: {
-    fontSize: 14,
+    fontSize: 13.5,
     fontWeight: '600',
-    color: '#9c2222',
+    color: PALETTE.dangerText,
   },
   dangerButton: {
-    backgroundColor: '#a62626',
+    backgroundColor: PALETTE.dangerSolid,
   },
   abuseContactText: {
     fontSize: 11,
-    color: '#52635a',
+    color: PALETTE.inkMuted,
   },
 });

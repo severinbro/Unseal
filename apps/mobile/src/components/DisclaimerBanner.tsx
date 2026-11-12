@@ -5,11 +5,13 @@ import {
   MIN_TOUCH_TARGET_DP,
   type MapControlsModel,
 } from '../state/viewModels';
+import { PALETTE, RADII, TABULAR_NUMS_STYLE } from '../theme/tokens';
 
 export interface DisclaimerBannerProps {
   controls: MapControlsModel;
   bboxFeatureLimit: number;
   locationNotice: string | null;
+  compact?: boolean;
   onDismissDisclaimer: () => void;
   onDismissTileWarning: () => void;
   onDismissLocationNotice: () => void;
@@ -19,6 +21,7 @@ export function DisclaimerBanner({
   controls,
   bboxFeatureLimit,
   locationNotice,
+  compact = false,
   onDismissDisclaimer,
   onDismissTileWarning,
   onDismissLocationNotice,
@@ -45,21 +48,27 @@ export function DisclaimerBanner({
   }
 
   return (
-    <View style={styles.stackContainer}>
+    <View style={[styles.stackContainer, compact ? styles.stackCompact : null]}>
       {showDisclaimer ? (
         <View
           style={styles.disclaimerBanner}
           accessibilityRole="alert"
           accessibilityLabel="Public participation disclaimer"
         >
-          <Text style={styles.disclaimerText}>{controls.disclaimerText}</Text>
+          <View style={styles.bannerCopyRow}>
+            <View style={styles.positiveDot} />
+            <Text style={styles.disclaimerText}>{controls.disclaimerText}</Text>
+          </View>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Dismiss disclaimer"
             onPress={onDismissDisclaimer}
-            style={styles.dismissButton}
+            style={({ pressed }) => [
+              styles.dismissButton,
+              pressed ? styles.dismissButtonPressed : null,
+            ]}
           >
-            <Text style={styles.dismissButtonLabel}>Dismiss</Text>
+            <Text style={styles.dismissButtonLabel}>Got it</Text>
           </Pressable>
         </View>
       ) : null}
@@ -70,7 +79,10 @@ export function DisclaimerBanner({
           accessibilityRole="alert"
           accessibilityLabel="Orthophoto tile warning"
         >
-          <Text style={styles.warningText}>{controls.tileWarning}</Text>
+          <View style={styles.bannerCopyRow}>
+            <View style={styles.warningDot} />
+            <Text style={styles.warningText}>{controls.tileWarning}</Text>
+          </View>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Dismiss tile warning"
@@ -88,7 +100,10 @@ export function DisclaimerBanner({
           accessibilityRole="alert"
           accessibilityLabel="GPS location notice"
         >
-          <Text style={styles.warningText}>{locationNotice}</Text>
+          <View style={styles.bannerCopyRow}>
+            <View style={styles.warningDot} />
+            <Text style={styles.warningText}>{locationNotice}</Text>
+          </View>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Dismiss location notice"
@@ -106,6 +121,7 @@ export function DisclaimerBanner({
           accessibilityRole="summary"
           accessibilityLabel={controls.zoomInPromptText}
         >
+          <View style={styles.infoDot} />
           <Text style={styles.infoText}>{controls.zoomInPromptText}</Text>
         </View>
       ) : null}
@@ -130,92 +146,131 @@ const styles = StyleSheet.create({
   stackContainer: {
     gap: 6,
   },
+  stackCompact: {
+    gap: 5,
+  },
+  bannerCopyRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  positiveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: PALETTE.accentPrimary,
+  },
+  warningDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: PALETTE.neutralDot,
+  },
+  infoDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: PALETTE.infoText,
+  },
   disclaimerBanner: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: '#e6f2ec',
-    borderBottomWidth: 1,
-    borderBottomColor: '#c5ded1',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: RADII.md,
+    backgroundColor: PALETTE.positiveBg,
+    borderWidth: 1,
+    borderColor: PALETTE.positiveBorder,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: 10,
   },
   disclaimerText: {
     flex: 1,
-    fontSize: 13,
-    lineHeight: 18,
-    color: '#1b2a22',
+    fontSize: 12.5,
+    lineHeight: 17,
+    color: PALETTE.inkPrimary,
   },
   dismissButton: {
     minHeight: MIN_TOUCH_TARGET_DP,
     minWidth: MIN_TOUCH_TARGET_DP,
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: '#1f6f4a',
+    paddingVertical: 9,
+    borderRadius: RADII.sm,
+    backgroundColor: PALETTE.accentPrimary,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  dismissButtonPressed: {
+    backgroundColor: PALETTE.accentPrimaryStrong,
+  },
   dismissButtonLabel: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '600',
+    color: PALETTE.inkOnAccent,
+    fontSize: 12.5,
+    fontWeight: '700',
   },
   warningBanner: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: '#fff4df',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eed39b',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: RADII.md,
+    backgroundColor: PALETTE.neutralBg,
+    borderWidth: 1,
+    borderColor: PALETTE.neutralBorder,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: 10,
   },
   warningText: {
     flex: 1,
-    fontSize: 13,
-    lineHeight: 18,
-    color: '#5f3d00',
+    fontSize: 12.5,
+    lineHeight: 17,
+    color: PALETTE.neutralText,
   },
   warningDismissButton: {
     minHeight: MIN_TOUCH_TARGET_DP,
     minWidth: MIN_TOUCH_TARGET_DP,
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: '#7a4f00',
+    paddingVertical: 9,
+    borderRadius: RADII.sm,
+    backgroundColor: PALETTE.neutralText,
     alignItems: 'center',
     justifyContent: 'center',
   },
   warningDismissLabel: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '600',
+    color: PALETTE.inkOnAccent,
+    fontSize: 12.5,
+    fontWeight: '700',
   },
   infoBanner: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: '#e8eef5',
-    borderBottomWidth: 1,
-    borderBottomColor: '#c7d5e6',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: RADII.md,
+    backgroundColor: PALETTE.infoBg,
+    borderWidth: 1,
+    borderColor: PALETTE.infoBorder,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   infoText: {
-    fontSize: 13,
+    flex: 1,
+    fontSize: 12.5,
     fontWeight: '600',
-    color: '#1f3a5c',
+    color: PALETTE.infoText,
   },
   truncatedBanner: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: '#eef2eb',
-    borderBottomWidth: 1,
-    borderBottomColor: '#cfd9c8',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: RADII.md,
+    backgroundColor: PALETTE.bgSurface,
+    borderWidth: 1,
+    borderColor: PALETTE.borderSubtle,
   },
   truncatedText: {
+    ...TABULAR_NUMS_STYLE,
     fontSize: 12,
-    lineHeight: 17,
-    color: '#2d3f28',
+    lineHeight: 16,
+    color: PALETTE.inkSecondary,
   },
 });

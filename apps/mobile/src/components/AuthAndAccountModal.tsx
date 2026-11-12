@@ -18,9 +18,23 @@ import {
   MIN_TOUCH_TARGET_DP,
   type AuthModalModel,
 } from '../state/viewModels';
+import {
+  formatRecoveryCodeBlocks,
+  MONO_FONT_FAMILY,
+  PALETTE,
+  RADII,
+  TABULAR_NUMS_STYLE,
+} from '../theme/tokens';
+
+interface ClipboardNavigatorLike {
+  clipboard?: {
+    writeText?(text: string): Promise<void>;
+  };
+}
 
 export interface AuthAndAccountModalProps {
   modal: AuthModalModel;
+  compact?: boolean;
   onSelectView: (view: Exclude<AuthModalView, 'recovery_code'>) => void;
   onToggleRecoveryCodeSaved: (checked: boolean) => void;
   onClose: () => void;
@@ -33,6 +47,7 @@ export interface AuthAndAccountModalProps {
 
 export function AuthAndAccountModal({
   modal,
+  compact = false,
   onSelectView,
   onToggleRecoveryCodeSaved,
   onClose,
@@ -50,10 +65,12 @@ export function AuthAndAccountModal({
     useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [copiedCode, setCopiedCode] = useState<boolean>(false);
 
   useEffect(() => {
     setLocalError(null);
     setConfirmingAccountDelete(false);
+    setCopiedCode(false);
     if (!modal.visible) {
       setPassword('');
       setRecoveryCodeInput('');
@@ -66,6 +83,28 @@ export function AuthAndAccountModal({
   }
 
   const displayedError = localError ?? modal.errorMessage;
+  const formattedRecoveryCode = modal.recoveryCode
+    ? formatRecoveryCodeBlocks(modal.recoveryCode)
+    : '';
+
+  const handleCopyRecoveryCode = (): void => {
+    if (!modal.recoveryCode) {
+      return;
+    }
+    const nav = (globalThis as { navigator?: ClipboardNavigatorLike }).navigator;
+    if (nav?.clipboard && typeof nav.clipboard.writeText === 'function') {
+      void nav.clipboard
+        .writeText(formattedRecoveryCode)
+        .then(() => {
+          setCopiedCode(true);
+        })
+        .catch(() => {
+          setLocalError(
+            'Automatic clipboard copy was blocked; select and copy the code manually above.',
+          );
+        });
+    }
+  };
 
   const handleRegisterSubmit = (): void => {
     setLocalError(null);
@@ -186,23 +225,33 @@ export function AuthAndAccountModal({
       });
   };
 
+  const hasClipboardApi = Boolean(
+    (globalThis as { navigator?: ClipboardNavigatorLike }).navigator?.clipboard
+      ?.writeText,
+  );
+
   return (
     <View
-      style={styles.modalCard}
+      style={[styles.modalCard, compact ? styles.modalCardCompact : null]}
       accessibilityLabel="Pseudonymous account modal"
     >
       <View style={styles.headerRow}>
-        <Text style={styles.modalTitle}>
-          {modal.view === 'recovery_code'
-            ? 'Save Your One-Time Recovery Code'
-            : modal.view === 'account'
-              ? `Account · ${modal.currentUser?.pseudonym ?? ''}`
-              : modal.view === 'register'
-                ? 'Register Pseudonymous Account'
-                : modal.view === 'recover'
-                  ? 'Reset Password via Recovery Code'
-                  : 'Sign In'}
-        </Text>
+        <View style={styles.headerTitleCol}>
+          <Text style={styles.modalTitle}>
+            {modal.view === 'recovery_code'
+              ? 'Save One-Time Recovery Code'
+              : modal.view === 'account'
+                ? `@${modal.currentUser?.pseudonym ?? ''}`
+                : modal.view === 'register'
+                  ? 'Create Pseudonym'
+                  : modal.view === 'recover'
+                    ? 'Recover Password'
+                    : 'Contributor Sign In'}
+          </Text>
+          <Text style={styles.zeroPiiSubtitle}>
+            Zero email · Zero phone · Open civic mapping
+          </Text>
+        </View>
 
         <Pressable
           accessibilityRole="button"
@@ -234,7 +283,7 @@ export function AuthAndAccountModal({
       ) : null}
 
       {modal.view !== 'recovery_code' && modal.view !== 'account' ? (
-        <View style={styles.tabRow} accessibilityRole="tablist">
+        <View style={styles.tabWell} accessibilityRole="tablist">
           <Pressable
             accessibilityRole="tab"
             accessibilityLabel="Sign In tab"
@@ -301,15 +350,26 @@ export function AuthAndAccountModal({
         <View style={styles.formSection}>
           <Text style={styles.privacyHint}>
             Store this 32-character hexadecimal recovery code in your password
-            manager now. Entsiegelungskartierung collects no email or phone
-            number — losing both your password and recovery code permanently
-            locks this pseudonym.
+            manager now. Because no email or phone number is collected, losing
+            both your password and this code permanently locks this pseudonym.
           </Text>
 
-          <View style={styles.recoveryCodeBox}>
+          <View style={styles.recoveryCodeVault}>
             <Text selectable style={styles.recoveryCodeValue}>
-              {modal.recoveryCode}
+              {formattedRecoveryCode}
             </Text>
+            {hasClipboardApi ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Copy recovery code to clipboard"
+                onPress={handleCopyRecoveryCode}
+                style={styles.copyCodeButton}
+              >
+                <Text style={styles.copyCodeButtonLabel}>
+                  {copiedCode ? 'Copied ✓' : 'Copy Code'}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
 
           <Pressable
@@ -334,7 +394,7 @@ export function AuthAndAccountModal({
               </Text>
             </View>
             <Text style={styles.checkboxLabel}>
-              I have saved my recovery code
+              I have saved my recovery code in a safe place
             </Text>
           </Pressable>
 
@@ -356,7 +416,7 @@ export function AuthAndAccountModal({
               !modal.canClose ? styles.primaryButtonDisabled : null,
             ]}
           >
-            <Text style={styles.primaryButtonLabel}>Continue</Text>
+            <Text style={styles.primaryButtonLabel}>Continue to Map</Text>
           </Pressable>
         </View>
       ) : null}
@@ -364,36 +424,42 @@ export function AuthAndAccountModal({
       {modal.view === 'register' ? (
         <View style={styles.formSection}>
           <Text style={styles.privacyHint}>
-            Zero email or real name required. Choose a public pseudonym (3–32
-            letters, digits, _ or -) and a password (8+ characters).
+            Choose a public pseudonym (3–32 letters, digits, _ or -) and a
+            password (8+ characters). Your recovery code is generated next.
           </Text>
 
-          <TextInput
-            accessibilityLabel="Pseudonym"
-            value={pseudonym}
-            onChangeText={setPseudonym}
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="username-new"
-            textContentType="username"
-            placeholder="Pseudonym (e.g. courtyard_mapper)"
-            placeholderTextColor="#6c7b73"
-            style={styles.inputField}
-          />
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Public Pseudonym</Text>
+            <TextInput
+              accessibilityLabel="Pseudonym"
+              value={pseudonym}
+              onChangeText={setPseudonym}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="username-new"
+              textContentType="username"
+              placeholder="e.g. courtyard_mapper"
+              placeholderTextColor={PALETTE.inkMuted}
+              style={styles.inputField}
+            />
+          </View>
 
-          <TextInput
-            accessibilityLabel="Password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="new-password"
-            textContentType="newPassword"
-            placeholder="Password (at least 8 characters)"
-            placeholderTextColor="#6c7b73"
-            style={styles.inputField}
-          />
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Password</Text>
+            <TextInput
+              accessibilityLabel="Password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="new-password"
+              textContentType="newPassword"
+              placeholder="At least 8 characters"
+              placeholderTextColor={PALETTE.inkMuted}
+              style={styles.inputField}
+            />
+          </View>
 
           <Pressable
             accessibilityRole="button"
@@ -407,7 +473,7 @@ export function AuthAndAccountModal({
             ]}
           >
             <Text style={styles.primaryButtonLabel}>
-              {isSubmitting ? 'Creating account…' : 'Create Account'}
+              {isSubmitting ? 'Creating Account…' : 'Create Account'}
             </Text>
           </Pressable>
         </View>
@@ -415,32 +481,38 @@ export function AuthAndAccountModal({
 
       {modal.view === 'login' ? (
         <View style={styles.formSection}>
-          <TextInput
-            accessibilityLabel="Pseudonym"
-            value={pseudonym}
-            onChangeText={setPseudonym}
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="username"
-            textContentType="username"
-            placeholder="Pseudonym"
-            placeholderTextColor="#6c7b73"
-            style={styles.inputField}
-          />
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Pseudonym</Text>
+            <TextInput
+              accessibilityLabel="Pseudonym"
+              value={pseudonym}
+              onChangeText={setPseudonym}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="username"
+              textContentType="username"
+              placeholder="Your pseudonym"
+              placeholderTextColor={PALETTE.inkMuted}
+              style={styles.inputField}
+            />
+          </View>
 
-          <TextInput
-            accessibilityLabel="Password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="current-password"
-            textContentType="password"
-            placeholder="Password"
-            placeholderTextColor="#6c7b73"
-            style={styles.inputField}
-          />
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Password</Text>
+            <TextInput
+              accessibilityLabel="Password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="current-password"
+              textContentType="password"
+              placeholder="Your password"
+              placeholderTextColor={PALETTE.inkMuted}
+              style={styles.inputField}
+            />
+          </View>
 
           <Pressable
             accessibilityRole="button"
@@ -454,7 +526,7 @@ export function AuthAndAccountModal({
             ]}
           >
             <Text style={styles.primaryButtonLabel}>
-              {isSubmitting ? 'Signing in…' : 'Sign In'}
+              {isSubmitting ? 'Signing In…' : 'Sign In'}
             </Text>
           </Pressable>
         </View>
@@ -464,48 +536,57 @@ export function AuthAndAccountModal({
         <View style={styles.formSection}>
           <Text style={styles.privacyHint}>
             Enter your pseudonym, saved 32-hex recovery code, and a new
-            password. Your previous recovery code and sessions will be rotated.
+            password. Your recovery code and active sessions rotate immediately.
           </Text>
 
-          <TextInput
-            accessibilityLabel="Pseudonym"
-            value={pseudonym}
-            onChangeText={setPseudonym}
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="username"
-            textContentType="username"
-            placeholder="Pseudonym"
-            placeholderTextColor="#6c7b73"
-            style={styles.inputField}
-          />
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Pseudonym</Text>
+            <TextInput
+              accessibilityLabel="Pseudonym"
+              value={pseudonym}
+              onChangeText={setPseudonym}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="username"
+              textContentType="username"
+              placeholder="Your pseudonym"
+              placeholderTextColor={PALETTE.inkMuted}
+              style={styles.inputField}
+            />
+          </View>
 
-          <TextInput
-            accessibilityLabel="32-hex recovery code"
-            value={recoveryCodeInput}
-            onChangeText={setRecoveryCodeInput}
-            autoCapitalize="characters"
-            autoCorrect={false}
-            autoComplete="off"
-            textContentType="oneTimeCode"
-            placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
-            placeholderTextColor="#6c7b73"
-            style={styles.inputField}
-          />
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>32-Hex Recovery Code</Text>
+            <TextInput
+              accessibilityLabel="32-hex recovery code"
+              value={recoveryCodeInput}
+              onChangeText={setRecoveryCodeInput}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              autoComplete="off"
+              textContentType="oneTimeCode"
+              placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
+              placeholderTextColor={PALETTE.inkMuted}
+              style={[styles.inputField, styles.monoInputField]}
+            />
+          </View>
 
-          <TextInput
-            accessibilityLabel="New password"
-            value={newPassword}
-            onChangeText={setNewPassword}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="new-password"
-            textContentType="newPassword"
-            placeholder="New password (at least 8 characters)"
-            placeholderTextColor="#6c7b73"
-            style={styles.inputField}
-          />
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>New Password</Text>
+            <TextInput
+              accessibilityLabel="New password"
+              value={newPassword}
+              onChangeText={setNewPassword}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="new-password"
+              textContentType="newPassword"
+              placeholder="At least 8 characters"
+              placeholderTextColor={PALETTE.inkMuted}
+              style={styles.inputField}
+            />
+          </View>
 
           <Pressable
             accessibilityRole="button"
@@ -519,7 +600,7 @@ export function AuthAndAccountModal({
             ]}
           >
             <Text style={styles.primaryButtonLabel}>
-              {isSubmitting ? 'Resetting password…' : 'Reset Password'}
+              {isSubmitting ? 'Resetting Password…' : 'Reset Password'}
             </Text>
           </Pressable>
         </View>
@@ -528,8 +609,8 @@ export function AuthAndAccountModal({
       {modal.view === 'account' && modal.currentUser ? (
         <View style={styles.formSection}>
           <Text style={styles.privacyHint}>
-            Signed in as pseudonymous contributor{' '}
-            {modal.currentUser.pseudonym}. No email address or contact data is
+            Signed in as pseudonymous contributor @
+            {modal.currentUser.pseudonym}. Zero personal contact information is
             stored on this server.
           </Text>
 
@@ -541,7 +622,7 @@ export function AuthAndAccountModal({
             style={[styles.touchButton, styles.secondaryButton]}
           >
             <Text style={styles.secondaryButtonLabel}>
-              {isSubmitting ? 'Working…' : 'Log Out'}
+              {isSubmitting ? 'Signing Out…' : 'Log Out'}
             </Text>
           </Pressable>
 
@@ -598,125 +679,181 @@ export function AuthAndAccountModal({
 
 const styles = StyleSheet.create({
   modalCard: {
-    padding: 16,
-    borderRadius: 10,
-    backgroundColor: '#ffffff',
+    padding: 18,
+    borderRadius: RADII.lg,
+    backgroundColor: PALETTE.bgSurface,
     borderWidth: 1,
-    borderColor: '#cdd9d2',
+    borderColor: PALETTE.borderSubtle,
     gap: 12,
+  },
+  modalCardCompact: {
+    padding: 16,
   },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 8,
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  headerTitleCol: {
+    flex: 1,
+    gap: 2,
   },
   modalTitle: {
-    flex: 1,
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
-    color: '#1b2a22',
+    letterSpacing: -0.25,
+    color: PALETTE.inkPrimary,
+  },
+  zeroPiiSubtitle: {
+    fontSize: 11.5,
+    color: PALETTE.inkMuted,
   },
   closeButton: {
     minHeight: MIN_TOUCH_TARGET_DP,
     minWidth: MIN_TOUCH_TARGET_DP,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: '#f1f5f3',
+    paddingVertical: 8,
+    borderRadius: RADII.md,
+    backgroundColor: PALETTE.bgSubtle,
+    borderWidth: 1,
+    borderColor: PALETTE.borderStrong,
     alignItems: 'center',
     justifyContent: 'center',
   },
   closeButtonLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#1b2a22',
+    color: PALETTE.inkPrimary,
   },
   disabledButton: {
-    opacity: 0.45,
+    opacity: 0.42,
   },
   intentBanner: {
     padding: 10,
-    borderRadius: 8,
-    backgroundColor: '#e8eef5',
+    borderRadius: RADII.md,
+    backgroundColor: PALETTE.infoBg,
+    borderWidth: 1,
+    borderColor: PALETTE.infoBorder,
   },
   intentBannerText: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: '600',
-    color: '#1f3a5c',
+    color: PALETTE.infoText,
   },
   errorBox: {
     padding: 10,
-    borderRadius: 8,
-    backgroundColor: '#fdecec',
+    borderRadius: RADII.md,
+    backgroundColor: PALETTE.dangerBg,
+    borderWidth: 1,
+    borderColor: PALETTE.dangerBorder,
   },
   errorText: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: '600',
-    color: '#8a1f1f',
+    color: PALETTE.dangerText,
   },
-  tabRow: {
+  tabWell: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    padding: 4,
+    borderRadius: RADII.md,
+    backgroundColor: PALETTE.bgRecessed,
+    borderWidth: 1,
+    borderColor: PALETTE.borderSubtle,
+    gap: 4,
   },
   tabButton: {
+    flex: 1,
     minHeight: MIN_TOUCH_TARGET_DP,
     minWidth: MIN_TOUCH_TARGET_DP,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#b7c7be',
-    backgroundColor: '#f9fbfa',
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    borderRadius: RADII.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
   tabButtonActive: {
-    borderColor: '#1f6f4a',
-    backgroundColor: '#e6f2ec',
+    backgroundColor: PALETTE.bgSurface,
+    borderWidth: 1,
+    borderColor: PALETTE.borderStrong,
   },
   tabButtonLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#34473e',
+    color: PALETTE.inkSecondary,
   },
   tabButtonLabelActive: {
-    color: '#134c31',
+    color: PALETTE.inkPrimary,
     fontWeight: '700',
   },
   formSection: {
     gap: 10,
   },
   privacyHint: {
-    fontSize: 12,
+    fontSize: 12.5,
     lineHeight: 18,
-    color: '#3c4a42',
+    color: PALETTE.inkSecondary,
+  },
+  fieldGroup: {
+    gap: 4,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: PALETTE.inkPrimary,
   },
   inputField: {
     minHeight: MIN_TOUCH_TARGET_DP,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: RADII.md,
     borderWidth: 1,
-    borderColor: '#b7c7be',
-    backgroundColor: '#ffffff',
+    borderColor: PALETTE.borderStrong,
+    backgroundColor: PALETTE.bgSurface,
     fontSize: 14,
-    color: '#1b2a22',
+    color: PALETTE.inkPrimary,
   },
-  recoveryCodeBox: {
+  monoInputField: {
+    ...TABULAR_NUMS_STYLE,
+    fontFamily: MONO_FONT_FAMILY,
+    fontSize: 13,
+  },
+  recoveryCodeVault: {
     padding: 12,
-    borderRadius: 8,
-    backgroundColor: '#f1f5f3',
+    borderRadius: RADII.md,
+    backgroundColor: PALETTE.bgSubtle,
     borderWidth: 1,
-    borderColor: '#9ab5a8',
+    borderColor: PALETTE.positiveBorder,
+    gap: 10,
     alignItems: 'center',
   },
   recoveryCodeValue: {
-    fontSize: 15,
+    ...TABULAR_NUMS_STYLE,
+    fontFamily: MONO_FONT_FAMILY,
+    fontSize: 14,
     fontWeight: '700',
-    letterSpacing: 0.8,
-    color: '#133b27',
+    letterSpacing: 0.6,
+    lineHeight: 21,
+    textAlign: 'center',
+    color: PALETTE.positiveText,
+  },
+  copyCodeButton: {
+    minHeight: MIN_TOUCH_TARGET_DP,
+    minWidth: MIN_TOUCH_TARGET_DP,
+    alignSelf: 'stretch',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: RADII.sm,
+    backgroundColor: PALETTE.bgSurface,
+    borderWidth: 1,
+    borderColor: PALETTE.borderStrong,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  copyCodeButtonLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: PALETTE.inkPrimary,
   },
   checkboxRow: {
     minHeight: MIN_TOUCH_TARGET_DP,
@@ -729,81 +866,86 @@ const styles = StyleSheet.create({
   checkboxIndicator: {
     width: 24,
     height: 24,
-    borderRadius: 5,
+    borderRadius: 6,
     borderWidth: 2,
-    borderColor: '#1f6f4a',
-    backgroundColor: '#ffffff',
+    borderColor: PALETTE.accentPrimary,
+    backgroundColor: PALETTE.bgSurface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   checkboxIndicatorChecked: {
-    backgroundColor: '#1f6f4a',
+    backgroundColor: PALETTE.accentPrimary,
   },
   checkboxMark: {
-    color: '#ffffff',
+    color: PALETTE.inkOnAccent,
     fontSize: 14,
     fontWeight: '700',
   },
   checkboxLabel: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 13.5,
     fontWeight: '600',
-    color: '#1b2a22',
+    color: PALETTE.inkPrimary,
   },
   blockedReasonText: {
     fontSize: 12,
-    color: '#7a4f00',
+    color: PALETTE.neutralText,
   },
   touchButton: {
     minHeight: MIN_TOUCH_TARGET_DP,
     minWidth: MIN_TOUCH_TARGET_DP,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: RADII.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
   primaryButton: {
-    backgroundColor: '#1f6f4a',
+    backgroundColor: PALETTE.accentPrimary,
+    borderWidth: 1,
+    borderColor: PALETTE.accentPrimaryStrong,
   },
   primaryButtonDisabled: {
-    backgroundColor: '#9ab5a8',
+    backgroundColor: PALETTE.accentDisabled,
+    borderColor: PALETTE.accentDisabled,
   },
   primaryButtonLabel: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#ffffff',
+    fontWeight: '700',
+    color: PALETTE.inkOnAccent,
   },
   secondaryButton: {
-    backgroundColor: '#ffffff',
+    backgroundColor: PALETTE.bgSurface,
     borderWidth: 1,
-    borderColor: '#b7c7be',
+    borderColor: PALETTE.borderStrong,
   },
   secondaryButtonLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1b2a22',
+    color: PALETTE.inkPrimary,
   },
   dangerOutlineButton: {
-    backgroundColor: '#ffffff',
+    backgroundColor: PALETTE.bgSurface,
     borderWidth: 1,
-    borderColor: '#b53838',
+    borderColor: PALETTE.dangerBorder,
   },
   dangerOutlineLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#9c2222',
+    color: PALETTE.dangerText,
   },
   deleteWarningBox: {
     padding: 12,
-    borderRadius: 8,
-    backgroundColor: '#fdecec',
+    borderRadius: RADII.md,
+    backgroundColor: PALETTE.dangerBg,
+    borderWidth: 1,
+    borderColor: PALETTE.dangerBorder,
     gap: 10,
   },
   deleteWarningText: {
-    fontSize: 12,
+    fontSize: 12.5,
     lineHeight: 18,
-    color: '#7a1c1c',
+    color: PALETTE.dangerText,
   },
   confirmRow: {
     flexDirection: 'row',
@@ -812,6 +954,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   dangerButton: {
-    backgroundColor: '#a62626',
+    backgroundColor: PALETTE.dangerSolid,
   },
 });
