@@ -1,8 +1,11 @@
 /**
  * Entsiegelungskartierung mobile and web root application shell.
  *
- * Workspace configuration, E2E verification, and operator deployment are
- * defined in root `package.json`, `tsconfig.e2e.json`, and `README.md`.
+ * Workspace configuration, licensing, container packaging, E2E verification,
+ * and operator deployment are defined in `README.md`, `package.json`,
+ * `tsconfig.base.json`, `tsconfig.e2e.json`, `app.json`, `LICENSE`,
+ * `Dockerfile`, `docker-compose.yml`, `.env.example`, `.gitignore`,
+ * `.dockerignore`, and `001_initial_schema.sql`.
  */
 import {
   ApiError,
