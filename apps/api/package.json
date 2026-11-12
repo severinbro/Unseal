@@ -19,6 +19,7 @@
     "pretest": "node -e \"import('node:child_process').then(({execSync})=>{if(process.env.SKIP_DOCKER_PRETEST!=='1')execSync('docker compose -f ../../docker-compose.yml up -d --wait postgis',{stdio:'inherit'})})\"",
     "test": "node --import tsx --test --test-concurrency=1",
     "migrate": "node dist/db/migrate.js",
+    "admin": "node dist/cli/admin.js",
     "start": "node dist/server.js"
   },
   "dependencies": {

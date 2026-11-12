@@ -9,6 +9,7 @@ import { ApiError, type ErrorCode } from '@entsiegelung/shared';
 
 import { generateRecoveryCode, generateSessionToken, hashOpaqueToken, hashPassword, hashPseudonymTombstone, verifyPassword } from './auth/crypto.js';
 import { createSession, optionalAuth, requireAuth } from './auth/session.js';
+import { runAdminCommand, type AdminCommandResult } from './cli/admin.js';
 import { type EnvConfig } from './config.js';
 import { deleteOrBanUserAccount, lockUserForWrite, recomputePolygonScores } from './db/integrity.js';
 import { resetTestDb, setupTestDb } from './db/testHarness.js';
@@ -17,8 +18,10 @@ import { PolygonRepository } from './polygons/repository.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerPolygonRoutes } from './routes/polygons.js';
 import { registerSystemRoutes } from './routes/system.js';
+import { registerVoteRoutes } from './routes/votes.js';
 import { normalizeRateLimitIp } from './util/rateLimit.js';
 import { BoundedSemaphore } from './util/semaphore.js';
+import { VoteRepository } from './votes/repository.js';
 
 import type pg from 'pg';
 
@@ -56,6 +59,7 @@ declare module 'fastify' {
     authSemaphore: BoundedSemaphore;
     exportSemaphore: BoundedSemaphore;
     rateLimitOverrides: RateLimitOverrides;
+    runAdminCommand: (argv: string[]) => Promise<AdminCommandResult>;
   }
 }
 
@@ -103,6 +107,9 @@ export async function buildApp(
   app.decorate('authSemaphore', authSemaphore);
   app.decorate('exportSemaphore', exportSemaphore);
   app.decorate('rateLimitOverrides', options.rateLimits ?? {});
+  app.decorate('runAdminCommand', (argv: string[]) =>
+    runAdminCommand(pool, argv),
+  );
 
   app.addHook('onSend', async (request, reply, payload) => {
     reply.header('x-request-id', String(request.id));
@@ -257,12 +264,15 @@ export async function buildApp(
       ? { exportStreamTimeoutMs: options.exportStreamTimeoutMs }
       : {}),
   });
+  const voteRepository = new VoteRepository(pool);
+  registerVoteRoutes(app, voteRepository);
 
   return app;
 }
 
 export {
   PolygonRepository,
+  VoteRepository,
   createSession,
   deleteOrBanUserAccount,
   generateRecoveryCode,
@@ -275,9 +285,12 @@ export {
   recomputePolygonScores,
   registerAuthRoutes,
   registerPolygonRoutes,
+  registerVoteRoutes,
   requireAuth,
   resetTestDb,
+  runAdminCommand,
   setupTestDb,
   verifyPassword,
+  type AdminCommandResult,
   type EnvConfig,
 };
