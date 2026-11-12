@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 
 import { PpgisApiClient } from './src/api/client';
+import { MapCanvas, type MapCanvasProps } from './src/map';
 import {
   appReducer,
   initialAppState,
@@ -210,6 +211,38 @@ export function App(props: AppProps = {}): React.JSX.Element {
   const authModal = deriveAuthModalModel(state);
   const drawingToolbar = deriveDrawingToolbarModel(state);
 
+  const handleViewportChange = useCallback<MapCanvasProps['onViewportChange']>(
+    ({ bbox, zoom }) => {
+      dispatch({ type: 'SET_VIEWPORT', bbox, zoom });
+    },
+    [],
+  );
+
+  const handleMapTap = useCallback<MapCanvasProps['onMapTap']>(
+    (point) => {
+      if (state.mode === 'drawing') {
+        dispatch({ type: 'ADD_VERTEX', point });
+      } else {
+        dispatch({ type: 'SELECT_FEATURES_AT_TAP', featureIds: [] });
+      }
+    },
+    [state.mode],
+  );
+
+  const handleFeaturePress = useCallback<MapCanvasProps['onFeaturePress']>(
+    (featureIds) => {
+      dispatch({ type: 'SELECT_FEATURES_AT_TAP', featureIds });
+    },
+    [],
+  );
+
+  const handleTileError = useCallback<MapCanvasProps['onTileError']>(
+    (reason) => {
+      dispatch({ type: 'TILE_LOAD_ERROR', reason });
+    },
+    [],
+  );
+
   if (state.configStatus === 'loading') {
     return (
       <SafeAreaView style={styles.centeredScreen}>
@@ -326,6 +359,23 @@ export function App(props: AppProps = {}): React.JSX.Element {
           >
             <Text style={styles.touchButtonText}>{mapControls.accountLabel}</Text>
           </Pressable>
+        </View>
+
+        <View style={styles.mapViewport}>
+          <MapCanvas
+            config={state.config}
+            mode={state.mode}
+            basemapMode={state.basemapMode}
+            features={state.features}
+            draftVertices={state.draftVertices}
+            isRingClosed={state.isRingClosed}
+            selectedFeatureId={state.selectedFeatureId}
+            cameraTarget={state.cameraTarget}
+            onViewportChange={handleViewportChange}
+            onMapTap={handleMapTap}
+            onFeaturePress={handleFeaturePress}
+            onTileError={handleTileError}
+          />
         </View>
 
         {drawingToolbar.visible ? (
@@ -491,6 +541,13 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 8,
     backgroundColor: '#ffffff',
+  },
+  mapViewport: {
+    flex: 1,
+    minHeight: 260,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#dfe7e2',
   },
   modalCard: {
     padding: 16,
