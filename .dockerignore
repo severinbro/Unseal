@@ -1,0 +1,8 @@
+node_modules
+**/node_modules
+**/dist
+.git
+.swarm
+.env
+.expo
+web-build

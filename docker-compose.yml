@@ -1,0 +1,61 @@
+services:
+  postgis:
+    image: postgis/postgis:16-3.4-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ppgis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ppgis}
+      POSTGRES_DB: ${POSTGRES_DB:-ppgis}
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ppgis} -d ${POSTGRES_DB:-ppgis}"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "3000"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-ppgis}:${POSTGRES_PASSWORD:-ppgis}@postgis:5432/${POSTGRES_DB:-ppgis}"
+      TRUST_PROXY: "${TRUST_PROXY:-false}"
+      CORS_ORIGIN: "${CORS_ORIGIN:-*}"
+      OSM_STYLE_URL: "${OSM_STYLE_URL:-https://tiles.openfreemap.org/styles/liberty}"
+      ORTHOPHOTO_URL_TEMPLATE: "${ORTHOPHOTO_URL_TEMPLATE:-}"
+      ORTHOPHOTO_TILE_SIZE: "${ORTHOPHOTO_TILE_SIZE:-256}"
+      ORTHOPHOTO_ATTRIBUTION: "${ORTHOPHOTO_ATTRIBUTION:-}"
+      ORTHOPHOTO_BOUNDS: "${ORTHOPHOTO_BOUNDS:-}"
+      ORTHOPHOTO_MAX_ZOOM: "${ORTHOPHOTO_MAX_ZOOM:-20}"
+      INITIAL_LNG: "${INITIAL_LNG:-9.9937}"
+      INITIAL_LAT: "${INITIAL_LAT:-53.5511}"
+      INITIAL_ZOOM: "${INITIAL_ZOOM:-15}"
+      MAX_DAILY_POLYGONS_PER_USER: "${MAX_DAILY_POLYGONS_PER_USER:-25}"
+      SESSION_TTL_DAYS: "${SESSION_TTL_DAYS:-30}"
+      DISCLAIMER_TEXT: "${DISCLAIMER_TEXT:-Community unsealing suggestions — non-binding public input, regardless of property ownership.}"
+      ABUSE_CONTACT: "${ABUSE_CONTACT:-}"
+    depends_on:
+      postgis:
+        condition: service_healthy
+    mem_limit: 512m
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  pgdata:
