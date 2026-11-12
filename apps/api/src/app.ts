@@ -13,7 +13,9 @@ import { type EnvConfig } from './config.js';
 import { deleteOrBanUserAccount, lockUserForWrite, recomputePolygonScores } from './db/integrity.js';
 import { resetTestDb, setupTestDb } from './db/testHarness.js';
 import { createLogger } from './logger.js';
+import { PolygonRepository } from './polygons/repository.js';
 import { registerAuthRoutes } from './routes/auth.js';
+import { registerPolygonRoutes } from './routes/polygons.js';
 import { registerSystemRoutes } from './routes/system.js';
 import { normalizeRateLimitIp } from './util/rateLimit.js';
 import { BoundedSemaphore } from './util/semaphore.js';
@@ -42,6 +44,8 @@ export interface BuildAppOptions {
   migrationsDir?: string;
   argon2Semaphore?: BoundedSemaphore;
   exportSemaphore?: BoundedSemaphore;
+  exportBatchSize?: number;
+  exportStreamTimeoutMs?: number;
   rateLimits?: RateLimitOverrides;
 }
 
@@ -244,11 +248,21 @@ export async function buildApp(
       : {}),
   });
   registerAuthRoutes(app);
+  const polygonRepository = new PolygonRepository(pool);
+  registerPolygonRoutes(app, polygonRepository, {
+    ...(options.exportBatchSize !== undefined
+      ? { exportBatchSize: options.exportBatchSize }
+      : {}),
+    ...(options.exportStreamTimeoutMs !== undefined
+      ? { exportStreamTimeoutMs: options.exportStreamTimeoutMs }
+      : {}),
+  });
 
   return app;
 }
 
 export {
+  PolygonRepository,
   createSession,
   deleteOrBanUserAccount,
   generateRecoveryCode,
@@ -260,6 +274,7 @@ export {
   optionalAuth,
   recomputePolygonScores,
   registerAuthRoutes,
+  registerPolygonRoutes,
   requireAuth,
   resetTestDb,
   setupTestDb,
