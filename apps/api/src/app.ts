@@ -7,9 +7,13 @@ import { ZodError } from 'zod';
 
 import { ApiError, type ErrorCode } from '@entsiegelung/shared';
 
+import { generateRecoveryCode, generateSessionToken, hashOpaqueToken, hashPassword, hashPseudonymTombstone, verifyPassword } from './auth/crypto.js';
+import { createSession, optionalAuth, requireAuth } from './auth/session.js';
 import { type EnvConfig } from './config.js';
+import { deleteOrBanUserAccount, lockUserForWrite, recomputePolygonScores } from './db/integrity.js';
 import { resetTestDb, setupTestDb } from './db/testHarness.js';
 import { createLogger } from './logger.js';
+import { registerAuthRoutes } from './routes/auth.js';
 import { registerSystemRoutes } from './routes/system.js';
 import { normalizeRateLimitIp } from './util/rateLimit.js';
 import { BoundedSemaphore } from './util/semaphore.js';
@@ -107,6 +111,8 @@ export async function buildApp(
 
   await app.register(fastifyCors, {
     origin: resolveCorsOrigin(config.corsOrigin),
+    methods: ['GET', 'HEAD', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-request-id'],
     exposedHeaders: ['x-request-id'],
   });
 
@@ -237,8 +243,26 @@ export async function buildApp(
       ? { migrationsDir: options.migrationsDir }
       : {}),
   });
+  registerAuthRoutes(app);
 
   return app;
 }
 
-export { resetTestDb, setupTestDb, type EnvConfig };
+export {
+  createSession,
+  deleteOrBanUserAccount,
+  generateRecoveryCode,
+  generateSessionToken,
+  hashOpaqueToken,
+  hashPassword,
+  hashPseudonymTombstone,
+  lockUserForWrite,
+  optionalAuth,
+  recomputePolygonScores,
+  registerAuthRoutes,
+  requireAuth,
+  resetTestDb,
+  setupTestDb,
+  verifyPassword,
+  type EnvConfig,
+};
