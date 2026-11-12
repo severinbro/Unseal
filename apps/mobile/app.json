@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "Entsiegelungskartierung",
+    "slug": "entsiegelungskartierung",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": false,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "org.entsiegelung.ppgis",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Allow Entsiegelungskartierung to center the map on your current location when inspecting or mapping sealed surfaces."
+      }
+    },
+    "android": {
+      "package": "org.entsiegelung.ppgis",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "@maplibre/maplibre-react-native",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow Entsiegelungskartierung to center the map on your current location when inspecting or mapping sealed surfaces."
+        }
+      ],
+      "expo-secure-store"
+    ]
+  }
+}

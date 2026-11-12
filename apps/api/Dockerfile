@@ -4,10 +4,11 @@ WORKDIR /app
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY packages/shared ./packages/shared
 COPY apps/api ./apps/api
+COPY apps/mobile/package.json ./apps/mobile/package.json
 
-RUN npm ci
+RUN npm ci --workspace=@entsiegelung/shared --workspace=@entsiegelung/api --include-workspace-root
 RUN npm --workspace @entsiegelung/shared run build && npm --workspace @entsiegelung/api run build
-RUN npm prune --omit=dev
+RUN npm prune --omit=dev --workspace=@entsiegelung/shared --workspace=@entsiegelung/api --include-workspace-root
 
 FROM node:24-bookworm-slim
 WORKDIR /app
