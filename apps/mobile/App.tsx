@@ -1,16 +1,56 @@
-import { ApiError } from '@entsiegelung/shared';
-import React, { useCallback, useEffect, useMemo, useReducer } from 'react';
+/**
+ * Entsiegelungskartierung mobile and web root application shell.
+ *
+ * Workspace configuration, E2E verification, and operator deployment are
+ * defined in root `package.json`, `tsconfig.e2e.json`, and `README.md`.
+ */
+import {
+  ApiError,
+  type LoginRequest,
+  type PatchPolygonRequest,
+  type PolygonFeature,
+  type RecoverRequest,
+  type RegisterRequest,
+} from '@entsiegelung/shared';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useState,
+} from 'react';
 import {
   ActivityIndicator,
   Pressable,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 
 import { PpgisApiClient } from './src/api/client';
-import { INTERACTIVE_PROPOSAL_LAYER_IDS, MapCanvas, ORTHOPHOTO_LAYER_ID, ORTHOPHOTO_SOURCE_ID, buildDraftGeoJson, buildDraftLayerSpecs, buildOrthophotoLayerSpec, buildOrthophotoSourceSpec, buildPolygonLayerSpecs, buildProposalGeoJson, dedupeFeatureIdsPreservingOrder, type MapCanvasProps } from './src/map';
+import { AuthAndAccountModal } from './src/components/AuthAndAccountModal';
+import { DisclaimerBanner } from './src/components/DisclaimerBanner';
+import { DrawingToolbar } from './src/components/DrawingToolbar';
+import { MapControlsBar } from './src/components/MapControlsBar';
+import { PolygonInspectorSheet } from './src/components/PolygonInspectorSheet';
+import { requestCurrentCoordinates } from './src/location/locateMe';
+import type { LocateMeResult } from './src/location/locateMe.types';
+import {
+  INTERACTIVE_PROPOSAL_LAYER_IDS,
+  MapCanvas,
+  ORTHOPHOTO_LAYER_ID,
+  ORTHOPHOTO_SOURCE_ID,
+  buildDraftGeoJson,
+  buildDraftLayerSpecs,
+  buildOrthophotoLayerSpec,
+  buildOrthophotoSourceSpec,
+  buildPolygonLayerSpecs,
+  buildProposalGeoJson,
+  dedupeFeatureIdsPreservingOrder,
+  type MapCanvasProps,
+} from './src/map';
 import {
   appReducer,
   initialAppState,
@@ -30,6 +70,7 @@ import {
 } from './src/storage/tokenStorage';
 
 const DEFAULT_API_BASE_URL = 'http://127.0.0.1:3000';
+const LOCATE_ME_TARGET_ZOOM = 17;
 
 export const mapStylePrimitives = {
   ORTHOPHOTO_SOURCE_ID,
@@ -67,6 +108,8 @@ export function App(props: AppProps = {}): React.JSX.Element {
     appReducer,
     initialAppState,
   );
+  const [isLocating, setIsLocating] = useState<boolean>(false);
+  const [locationNotice, setLocationNotice] = useState<string | null>(null);
 
   const storage = useMemo<SessionStorage>(() => {
     if (props.sessionStorage) {
@@ -83,6 +126,18 @@ export function App(props: AppProps = {}): React.JSX.Element {
   const apiClient = useMemo<PpgisApiClient>(
     () => props.apiClient ?? new PpgisApiClient(resolvedBaseUrl, storage),
     [props.apiClient, resolvedBaseUrl, storage],
+  );
+
+  const handleSessionExpiredError = useCallback(
+    async (err: unknown): Promise<boolean> => {
+      if (err instanceof ApiError && err.statusCode === 401) {
+        await storage.clearToken();
+        dispatch({ type: 'SESSION_EXPIRED' });
+        return true;
+      }
+      return false;
+    },
+    [storage],
   );
 
   const bootstrapApp = useCallback(async (): Promise<void> => {
@@ -200,7 +255,9 @@ export function App(props: AppProps = {}): React.JSX.Element {
           return;
         }
         const message =
-          err instanceof Error ? err.message : 'Request could not be completed.';
+          err instanceof Error
+            ? err.message
+            : 'Request could not be completed.';
         dispatch({ type: 'CLEAR_PENDING_INTENT' });
         if (activeIntent.type === 'SUBMIT_DRAFT') {
           dispatch({ type: 'SUBMIT_ERROR_PRESERVE_DRAFT', message });
@@ -223,6 +280,15 @@ export function App(props: AppProps = {}): React.JSX.Element {
   const mapControls = deriveMapControlsModel(state);
   const authModal = deriveAuthModalModel(state);
   const drawingToolbar = deriveDrawingToolbarModel(state);
+
+  const selectedFeature = useMemo<PolygonFeature | null>(() => {
+    if (state.mode !== 'browse' || state.selectedFeatureId === null) {
+      return null;
+    }
+    return (
+      state.features.find((item) => item.id === state.selectedFeatureId) ?? null
+    );
+  }, [state.features, state.mode, state.selectedFeatureId]);
 
   const handleViewportChange = useCallback<MapCanvasProps['onViewportChange']>(
     ({ bbox, zoom }) => {
@@ -256,6 +322,147 @@ export function App(props: AppProps = {}): React.JSX.Element {
     [],
   );
 
+  const handleLocateMe = useCallback((): void => {
+    setIsLocating(true);
+    setLocationNotice(null);
+
+    void requestCurrentCoordinates()
+      .then((gpsResult: LocateMeResult) => {
+        if (gpsResult.ok) {
+          dispatch({
+            type: 'SET_CAMERA_TARGET',
+            lng: gpsResult.lng,
+            lat: gpsResult.lat,
+            zoom: LOCATE_ME_TARGET_ZOOM,
+          });
+        } else {
+          setLocationNotice(gpsResult.reason);
+        }
+      })
+      .finally(() => {
+        setIsLocating(false);
+      });
+  }, []);
+
+  const handleRegister = useCallback(
+    async (input: RegisterRequest): Promise<void> => {
+      const registered = await apiClient.register(input);
+      dispatch({
+        type: 'AUTH_SUCCEEDED',
+        user: registered.user,
+        recoveryCode: registered.recoveryCode,
+      });
+    },
+    [apiClient],
+  );
+
+  const handleLogin = useCallback(
+    async (input: LoginRequest): Promise<void> => {
+      const session = await apiClient.login(input);
+      dispatch({
+        type: 'AUTH_SUCCEEDED',
+        user: session.user,
+      });
+    },
+    [apiClient],
+  );
+
+  const handleRecover = useCallback(
+    async (input: RecoverRequest): Promise<void> => {
+      const recovered = await apiClient.recover(input);
+      dispatch({
+        type: 'AUTH_SUCCEEDED',
+        user: recovered.user,
+        recoveryCode: recovered.recoveryCode,
+      });
+    },
+    [apiClient],
+  );
+
+  const handleLogout = useCallback(async (): Promise<void> => {
+    try {
+      await apiClient.logout();
+    } catch (err: unknown) {
+      if (!(err instanceof ApiError && err.statusCode === 401)) {
+        throw err;
+      }
+    }
+    dispatch({ type: 'LOGOUT_SUCCEEDED' });
+  }, [apiClient]);
+
+  const handleDeleteAccount = useCallback(async (): Promise<void> => {
+    try {
+      await apiClient.deleteMe();
+      dispatch({ type: 'ACCOUNT_DELETED' });
+    } catch (err: unknown) {
+      if (await handleSessionExpiredError(err)) {
+        return;
+      }
+      throw err;
+    }
+  }, [apiClient, handleSessionExpiredError]);
+
+  const handleCastVote = useCallback(
+    async (polygonId: string, value: 1 | -1): Promise<void> => {
+      try {
+        const vote = await apiClient.putVote(polygonId, value);
+        dispatch({ type: 'VOTE_UPDATED', vote });
+      } catch (err: unknown) {
+        if (await handleSessionExpiredError(err)) {
+          dispatch({ type: 'CAST_VOTE', polygonId, value });
+          return;
+        }
+        throw err;
+      }
+    },
+    [apiClient, handleSessionExpiredError],
+  );
+
+  const handleClearVote = useCallback(
+    async (polygonId: string): Promise<void> => {
+      try {
+        const vote = await apiClient.deleteVote(polygonId);
+        dispatch({ type: 'VOTE_UPDATED', vote });
+      } catch (err: unknown) {
+        if (await handleSessionExpiredError(err)) {
+          return;
+        }
+        throw err;
+      }
+    },
+    [apiClient, handleSessionExpiredError],
+  );
+
+  const handlePatchPolygon = useCallback(
+    async (polygonId: string, patch: PatchPolygonRequest): Promise<void> => {
+      try {
+        const updated = await apiClient.patchPolygon(polygonId, patch);
+        dispatch({ type: 'POLYGON_UPDATED', feature: updated });
+      } catch (err: unknown) {
+        if (await handleSessionExpiredError(err)) {
+          return;
+        }
+        throw err;
+      }
+    },
+    [apiClient, handleSessionExpiredError],
+  );
+
+  const handleDeletePolygon = useCallback(
+    async (polygonId: string): Promise<void> => {
+      try {
+        await apiClient.deletePolygon(polygonId);
+        dispatch({ type: 'POLYGON_DELETED', polygonId });
+      } catch (err: unknown) {
+        if (await handleSessionExpiredError(err)) {
+          return;
+        }
+        throw err;
+      }
+    },
+    [apiClient, handleSessionExpiredError],
+  );
+
   if (state.configStatus === 'loading') {
     return (
       <SafeAreaView style={styles.centeredScreen}>
@@ -270,7 +477,8 @@ export function App(props: AppProps = {}): React.JSX.Element {
       <SafeAreaView style={styles.centeredScreen}>
         <Text style={styles.errorTitle}>Could not connect to map service</Text>
         <Text style={styles.errorBody}>
-          {state.configError ?? 'Please verify your network connection and retry.'}
+          {state.configError ??
+            'Please verify your network connection and retry.'}
         </Text>
         <Pressable
           accessibilityRole="button"
@@ -291,88 +499,35 @@ export function App(props: AppProps = {}): React.JSX.Element {
       style={styles.appContainer}
       accessibilityHint={SESSION_TOKEN_KEY}
     >
-      {mapControls.showFirstVisitDisclaimer && mapControls.disclaimerText ? (
-        <View style={styles.banner}>
-          <Text style={styles.bannerText}>{mapControls.disclaimerText}</Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Dismiss disclaimer"
-            onPress={() => dispatch({ type: 'DISMISS_FIRST_VISIT_DISCLAIMER' })}
-            style={styles.touchButton}
-          >
-            <Text style={styles.touchButtonText}>Dismiss</Text>
-          </Pressable>
-        </View>
-      ) : null}
+      <DisclaimerBanner
+        controls={mapControls}
+        bboxFeatureLimit={state.config.limits.bboxFeatureLimit}
+        locationNotice={locationNotice}
+        onDismissDisclaimer={() =>
+          dispatch({ type: 'DISMISS_FIRST_VISIT_DISCLAIMER' })
+        }
+        onDismissTileWarning={() => dispatch({ type: 'DISMISS_TILE_WARNING' })}
+        onDismissLocationNotice={() => setLocationNotice(null)}
+      />
 
-      {mapControls.tileWarning ? (
-        <View style={styles.warningBanner}>
-          <Text style={styles.warningText}>{mapControls.tileWarning}</Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Dismiss tile warning"
-            onPress={() => dispatch({ type: 'DISMISS_TILE_WARNING' })}
-            style={styles.touchButton}
-          >
-            <Text style={styles.touchButtonText}>OK</Text>
-          </Pressable>
-        </View>
-      ) : null}
-
-      {mapControls.showZoomInPrompt ? (
-        <View style={styles.infoBanner}>
-          <Text style={styles.infoText}>{mapControls.zoomInPromptText}</Text>
-        </View>
-      ) : null}
-
-      <View style={styles.workspaceBody}>
-        <Text style={styles.readyTitle}>Entsiegelungskartierung</Text>
-        <Text style={styles.readySubtitle}>
-          Basemap: {mapControls.basemapMode.toUpperCase()} · Proposals loaded:{' '}
-          {state.features.length}
-        </Text>
-
-        <View style={styles.controlsRow}>
-          {mapControls.showOrthophotoToggle ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() =>
-                dispatch({
-                  type: 'SET_BASEMAP_MODE',
-                  mode:
-                    mapControls.basemapMode === 'osm' ? 'orthophoto' : 'osm',
-                })
-              }
-              style={styles.touchButton}
-            >
-              <Text style={styles.touchButtonText}>
-                {mapControls.basemapMode === 'osm'
-                  ? 'Show Orthophoto'
-                  : 'Show Street Map'}
-              </Text>
-            </Pressable>
-          ) : null}
-
-          <Pressable
-            accessibilityRole="button"
-            disabled={!mapControls.canStartDraw}
-            onPress={() => dispatch({ type: 'START_DRAW' })}
-            style={[
-              styles.touchButton,
-              !mapControls.canStartDraw ? styles.touchButtonDisabled : null,
-            ]}
-          >
-            <Text style={styles.touchButtonText}>Draw Proposal</Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => dispatch({ type: 'OPEN_AUTH_MODAL' })}
-            style={styles.touchButton}
-          >
-            <Text style={styles.touchButtonText}>{mapControls.accountLabel}</Text>
-          </Pressable>
-        </View>
+      <ScrollView
+        style={styles.workspaceScroll}
+        contentContainerStyle={styles.workspaceBody}
+        keyboardShouldPersistTaps="handled"
+      >
+        <MapControlsBar
+          controls={mapControls}
+          proposalCount={state.features.length}
+          exportGeoJsonUrl={apiClient.getExportGeoJsonUrl()}
+          isLocating={isLocating}
+          onSetBasemapMode={(mode) =>
+            dispatch({ type: 'SET_BASEMAP_MODE', mode })
+          }
+          onLocateMe={handleLocateMe}
+          onStartDraw={() => dispatch({ type: 'START_DRAW' })}
+          onOpenAccount={() => dispatch({ type: 'OPEN_AUTH_MODAL' })}
+          onExportError={(message) => setLocationNotice(message)}
+        />
 
         <View style={styles.mapViewport}>
           <MapCanvas
@@ -391,38 +546,56 @@ export function App(props: AppProps = {}): React.JSX.Element {
           />
         </View>
 
-        {drawingToolbar.visible ? (
-          <View style={styles.toolbarCard}>
-            <Text style={styles.bannerText}>
-              Vertices: {drawingToolbar.distinctVertexCount} /{' '}
-              {drawingToolbar.maxVertices} · Area:{' '}
-              {drawingToolbar.areaM2.toFixed(1)} m²
-            </Text>
-          </View>
-        ) : null}
+        <DrawingToolbar
+          toolbar={drawingToolbar}
+          onUndoVertex={() => dispatch({ type: 'UNDO_VERTEX' })}
+          onCloseRing={() => dispatch({ type: 'CLOSE_RING' })}
+          onSelectSurfaceType={(surfaceType) =>
+            dispatch({ type: 'SET_DRAFT_META', surfaceType })
+          }
+          onChangeNote={(note) => dispatch({ type: 'SET_DRAFT_META', note })}
+          onRequestDiscard={() => dispatch({ type: 'REQUEST_DISCARD_DRAFT' })}
+          onCancelDiscard={() => dispatch({ type: 'CANCEL_DISCARD_DRAFT' })}
+          onConfirmDiscard={() => dispatch({ type: 'CONFIRM_DISCARD_DRAFT' })}
+          onSubmit={() => dispatch({ type: 'SUBMIT_DRAFT' })}
+        />
 
-        {authModal.visible ? (
-          <View style={styles.modalCard}>
-            <Text style={styles.readySubtitle}>
-              Account ({authModal.view})
-            </Text>
-            {authModal.isPostSignupRecoveryDisplay && authModal.recoveryCode ? (
-              <Text style={styles.bannerText}>{authModal.recoveryCode}</Text>
-            ) : null}
-            <Pressable
-              accessibilityRole="button"
-              disabled={!authModal.canClose}
-              onPress={() => dispatch({ type: 'CLOSE_AUTH_MODAL' })}
-              style={[
-                styles.touchButton,
-                !authModal.canClose ? styles.touchButtonDisabled : null,
-              ]}
-            >
-              <Text style={styles.touchButtonText}>Close</Text>
-            </Pressable>
-          </View>
-        ) : null}
-      </View>
+        <PolygonInspectorSheet
+          feature={selectedFeature}
+          overlapIndex={state.overlapIndex}
+          overlapCount={state.overlappingFeatureIds.length}
+          disclaimerText={state.config.disclaimerText}
+          abuseContact={state.config.abuseContact}
+          isAuthenticated={mapControls.isAuthenticated}
+          onCycleOverlap={() => dispatch({ type: 'CYCLE_OVERLAP_FEATURE' })}
+          onClose={() =>
+            dispatch({ type: 'SELECT_FEATURES_AT_TAP', featureIds: [] })
+          }
+          onVoteIntent={(polygonId, value) =>
+            dispatch({ type: 'CAST_VOTE', polygonId, value })
+          }
+          onCastVote={handleCastVote}
+          onClearVote={handleClearVote}
+          onPatchPolygon={handlePatchPolygon}
+          onDeletePolygon={handleDeletePolygon}
+        />
+
+        <AuthAndAccountModal
+          modal={authModal}
+          onSelectView={(view) =>
+            dispatch({ type: 'SET_AUTH_MODAL_VIEW', view })
+          }
+          onToggleRecoveryCodeSaved={(checked) =>
+            dispatch({ type: 'SET_RECOVERY_CODE_SAVED_CHECKED', checked })
+          }
+          onClose={() => dispatch({ type: 'CLOSE_AUTH_MODAL' })}
+          onRegister={handleRegister}
+          onLogin={handleLogin}
+          onRecover={handleRecover}
+          onLogout={handleLogout}
+          onDeleteAccount={handleDeleteAccount}
+        />
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -475,97 +648,19 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-  banner: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: '#e6f2ec',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  bannerText: {
+  workspaceScroll: {
     flex: 1,
-    fontSize: 13,
-    color: '#1b2a22',
-  },
-  warningBanner: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: '#fff4df',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  warningText: {
-    flex: 1,
-    fontSize: 13,
-    color: '#6e4700',
-  },
-  infoBanner: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: '#e8eef5',
-  },
-  infoText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#1f3a5c',
   },
   workspaceBody: {
-    flex: 1,
-    padding: 16,
+    flexGrow: 1,
+    padding: 14,
     gap: 12,
-  },
-  readyTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1b2a22',
-  },
-  readySubtitle: {
-    fontSize: 14,
-    color: '#3c4a42',
-  },
-  controlsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  touchButton: {
-    minHeight: 44,
-    minWidth: 44,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: '#1f6f4a',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  touchButtonDisabled: {
-    backgroundColor: '#9ab5a8',
-  },
-  touchButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  toolbarCard: {
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: '#ffffff',
   },
   mapViewport: {
     flex: 1,
-    minHeight: 260,
+    minHeight: 320,
     borderRadius: 10,
     overflow: 'hidden',
     backgroundColor: '#dfe7e2',
-  },
-  modalCard: {
-    padding: 16,
-    borderRadius: 10,
-    backgroundColor: '#ffffff',
-    gap: 10,
   },
 });

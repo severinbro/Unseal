@@ -13,8 +13,9 @@
   ],
   "scripts": {
     "build": "npm --workspace packages/shared run build && npm --workspaces --if-present run build",
-    "typecheck": "npm --workspace packages/shared run build && npm --workspaces --if-present run typecheck",
-    "test": "npm --workspace packages/shared run build && npm --workspaces --if-present test"
+    "typecheck": "npm --workspace packages/shared run build && npm --workspaces --if-present run typecheck && tsc -p tsconfig.e2e.json --noEmit",
+    "pretest": "node -e \"import('node:child_process').then(({execSync})=>{if(process.env.SKIP_DOCKER_PRETEST!=='1')execSync('docker compose up -d --wait postgis',{stdio:'inherit'})})\"",
+    "test": "npm --workspace packages/shared run build && npm --workspaces --if-present test && node --import tsx --test --test-concurrency=1 'test/*.test.ts'"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
