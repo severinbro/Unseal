@@ -1,9 +1,21 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { PolygonFeature, RuntimeConfig } from '@entsiegelung/shared';
+import {
+  ApiError,
+  type PolygonFeature,
+  type RuntimeConfig,
+} from '@entsiegelung/shared';
 
 import { PpgisApiClient, type FetchLike } from '../src/api/client';
+import {
+  BUILTIN_DISCLAIMER_DE,
+  DEFAULT_LOCALE,
+  getTranslations,
+  localizeDisclaimerText,
+  localizeError,
+  localizeSystemNotice,
+} from '../src/i18n/translations';
 import type { LocateMeResult } from '../src/location/locateMe.types';
 import { createMemorySessionStorage } from '../src/storage/tokenStorage';
 import {
@@ -120,7 +132,7 @@ describe('locateMe.web requestCurrentCoordinates adapter', () => {
     }
   });
 
-  it('returns { ok: false, reason } without throwing on permission denied (code 1)', async () => {
+  it('returns { ok: false, reason } without throwing on permission denied (code 1) in default German and optional English', async () => {
     const deniedNav: WebNavigatorLike = {
       geolocation: {
         getCurrentPosition(_onSuccess, onError) {
@@ -129,10 +141,16 @@ describe('locateMe.web requestCurrentCoordinates adapter', () => {
       },
     };
 
-    const result = await requestCurrentCoordinates(deniedNav, true);
-    assert.equal(result.ok, false);
-    if (!result.ok) {
-      assert.match(result.reason, /permission/i);
+    const resultDe = await requestCurrentCoordinates(deniedNav, true);
+    assert.equal(resultDe.ok, false);
+    if (!resultDe.ok) {
+      assert.match(resultDe.reason, /Standortberechtigung/i);
+    }
+
+    const resultEn = await requestCurrentCoordinates(deniedNav, true, 'en');
+    assert.equal(resultEn.ok, false);
+    if (!resultEn.ok) {
+      assert.match(resultEn.reason, /permission/i);
     }
   });
 
@@ -151,7 +169,17 @@ describe('locateMe.web requestCurrentCoordinates adapter', () => {
     );
     assert.equal(unavailableResult.ok, false);
     if (!unavailableResult.ok) {
-      assert.match(unavailableResult.reason, /unavailable/i);
+      assert.match(unavailableResult.reason, /nicht verfügbar/i);
+    }
+
+    const unavailableResultEn = await requestCurrentCoordinates(
+      unavailableNav,
+      true,
+      'en',
+    );
+    assert.equal(unavailableResultEn.ok, false);
+    if (!unavailableResultEn.ok) {
+      assert.match(unavailableResultEn.reason, /unavailable/i);
     }
 
     const timeoutNav: WebNavigatorLike = {
@@ -165,7 +193,17 @@ describe('locateMe.web requestCurrentCoordinates adapter', () => {
     const timeoutResult = await requestCurrentCoordinates(timeoutNav, true);
     assert.equal(timeoutResult.ok, false);
     if (!timeoutResult.ok) {
-      assert.match(timeoutResult.reason, /time/i);
+      assert.match(timeoutResult.reason, /Zeitüberschreitung/i);
+    }
+
+    const timeoutResultEn = await requestCurrentCoordinates(
+      timeoutNav,
+      true,
+      'en',
+    );
+    assert.equal(timeoutResultEn.ok, false);
+    if (!timeoutResultEn.ok) {
+      assert.match(timeoutResultEn.reason, /time/i);
     }
   });
 
@@ -181,7 +219,7 @@ describe('locateMe.web requestCurrentCoordinates adapter', () => {
     const thrownResult = await requestCurrentCoordinates(throwingNav, true);
     assert.equal(thrownResult.ok, false);
     if (!thrownResult.ok) {
-      assert.match(thrownResult.reason, /SecurityError|location/i);
+      assert.match(thrownResult.reason, /SecurityError|Standort/i);
     }
 
     const invalidCoordNav: WebNavigatorLike = {
@@ -367,5 +405,116 @@ describe('UI sheet, banner, and GPS camera state transitions', () => {
     );
     const loadedConfig = await client.getConfig();
     assert.equal(loadedConfig.osmStyleUrl, SAMPLE_CONFIG.osmStyleUrl);
+  });
+});
+
+describe('German default localization and DE <-> EN switching', () => {
+  it('defaults to German (de) across controls, disclaimers, drawing validation, auth modal, and API errors, and switches cleanly to English (en)', () => {
+    assert.equal(DEFAULT_LOCALE, 'de');
+    assert.equal(initialAppState.locale, 'de');
+
+    let state: AppState = appReducer(initialAppState, {
+      type: 'CONFIG_LOADED',
+      config: SAMPLE_CONFIG,
+    });
+
+    const controlsDe = deriveMapControlsModel(state);
+    assert.equal(controlsDe.locale, 'de');
+    assert.equal(controlsDe.accountLabel, 'Anmelden');
+    assert.match(controlsDe.zoomInPromptText, /heranzoomen/);
+
+    // Built-in English server disclaimer translates to German in 'de', while custom operator overrides stay verbatim
+    assert.equal(
+      localizeDisclaimerText(SAMPLE_CONFIG.disclaimerText, 'de'),
+      BUILTIN_DISCLAIMER_DE,
+    );
+    assert.equal(
+      localizeDisclaimerText(SAMPLE_CONFIG.disclaimerText, 'en'),
+      SAMPLE_CONFIG.disclaimerText,
+    );
+    assert.equal(
+      localizeDisclaimerText('Bezirksamt Altona — Bürgerbeteiligung 2026', 'de'),
+      'Bezirksamt Altona — Bürgerbeteiligung 2026',
+    );
+    assert.equal(
+      localizeDisclaimerText('Custom Municipal Notice', 'en'),
+      'Custom Municipal Notice',
+    );
+
+    // Orthophoto fallback system notice localization
+    assert.match(
+      localizeSystemNotice(
+        'Aerial orthophoto tiles failed to load (HTTP 503); reverted to OpenStreetMap basemap.',
+        'de',
+      ) ?? '',
+      /Luftbild-Kacheln konnten nicht geladen werden \(HTTP 503\)/,
+    );
+
+    // Drawing toolbar labels & geometry validation messages in German vs English
+    state = appReducer(state, { type: 'START_DRAW' });
+    state = appReducer(state, { type: 'ADD_VERTEX', point: [9.993, 53.551] });
+    state = appReducer(state, { type: 'ADD_VERTEX', point: [9.994, 53.552] });
+    state = appReducer(state, { type: 'ADD_VERTEX', point: [9.994, 53.551] });
+    state = appReducer(state, { type: 'ADD_VERTEX', point: [9.993, 53.552] });
+
+    const toolbarDe = deriveDrawingToolbarModel(state);
+    assert.equal(toolbarDe.undoLabel, 'Punkt zurück');
+    assert.ok(
+      toolbarDe.validationErrors.some((msg) =>
+        msg.includes('Polygonkanten dürfen sich nicht kreuzen'),
+      ),
+    );
+
+    state = appReducer(state, { type: 'SET_LOCALE', locale: 'en' });
+    assert.equal(deriveMapControlsModel(state).accountLabel, 'Sign in');
+    const toolbarEn = deriveDrawingToolbarModel(state);
+    assert.equal(toolbarEn.undoLabel, 'Undo vertex');
+    assert.ok(
+      toolbarEn.validationErrors.some((msg) =>
+        msg.includes('Polygon edges must not cross'),
+      ),
+    );
+
+    // Switch back to German and test closed-ring undo label + session expiry message switching
+    state = appReducer(state, { type: 'SET_LOCALE', locale: 'de' });
+    state = appReducer(state, { type: 'START_DRAW' });
+    state = appReducer(state, { type: 'ADD_VERTEX', point: [9.9935, 53.551] });
+    state = appReducer(state, { type: 'ADD_VERTEX', point: [9.9937, 53.551] });
+    state = appReducer(state, {
+      type: 'ADD_VERTEX',
+      point: [9.9937, 53.55115],
+    });
+    state = appReducer(state, { type: 'CLOSE_RING' });
+    assert.equal(deriveDrawingToolbarModel(state).undoLabel, 'Ring öffnen');
+
+    state = appReducer(state, { type: 'SUBMIT_DRAFT' });
+    assert.match(
+      deriveAuthModalModel(state).pendingIntentSummary ?? '',
+      /Flächenentwurf bleibt gespeichert/,
+    );
+
+    state = appReducer(state, { type: 'SESSION_EXPIRED' });
+    assert.match(deriveAuthModalModel(state).errorMessage ?? '', /Sitzung ist abgelaufen/);
+
+    state = appReducer(state, { type: 'SET_LOCALE', locale: 'en' });
+    assert.match(deriveAuthModalModel(state).errorMessage ?? '', /session expired/i);
+
+    // Surface type taxonomy and structured ApiError localization
+    assert.equal(getTranslations('de').surfaces.pavers.label, 'Pflaster');
+    assert.equal(getTranslations('en').surfaces.pavers.label, 'Pavers');
+
+    const credErr = new ApiError(
+      401,
+      'AUTH_INVALID_CREDENTIALS',
+      'Invalid pseudonym or password.',
+    );
+    assert.equal(
+      localizeError(credErr, 'Fallback', 'de'),
+      'Ungültiges Pseudonym oder Passwort.',
+    );
+    assert.equal(
+      localizeError(credErr, 'Fallback', 'en'),
+      'Invalid pseudonym or password.',
+    );
   });
 });

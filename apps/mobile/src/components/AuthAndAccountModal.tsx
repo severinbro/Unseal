@@ -13,6 +13,12 @@ import {
   View,
 } from 'react-native';
 
+import {
+  DEFAULT_LOCALE,
+  getTranslations,
+  localizeError,
+  type Locale,
+} from '../i18n/translations';
 import type { AuthModalView } from '../state/appState';
 import {
   MIN_TOUCH_TARGET_DP,
@@ -34,6 +40,7 @@ interface ClipboardNavigatorLike {
 
 export interface AuthAndAccountModalProps {
   modal: AuthModalModel;
+  locale?: Locale;
   compact?: boolean;
   onSelectView: (view: Exclude<AuthModalView, 'recovery_code'>) => void;
   onToggleRecoveryCodeSaved: (checked: boolean) => void;
@@ -47,6 +54,7 @@ export interface AuthAndAccountModalProps {
 
 export function AuthAndAccountModal({
   modal,
+  locale = DEFAULT_LOCALE,
   compact = false,
   onSelectView,
   onToggleRecoveryCodeSaved,
@@ -76,12 +84,13 @@ export function AuthAndAccountModal({
       setRecoveryCodeInput('');
       setNewPassword('');
     }
-  }, [modal.visible, modal.view]);
+  }, [modal.visible, modal.view, locale]);
 
   if (!modal.visible) {
     return null;
   }
 
+  const t = getTranslations(locale).auth;
   const displayedError = localError ?? modal.errorMessage;
   const formattedRecoveryCode = modal.recoveryCode
     ? formatRecoveryCodeBlocks(modal.recoveryCode)
@@ -91,7 +100,8 @@ export function AuthAndAccountModal({
     if (!modal.recoveryCode) {
       return;
     }
-    const nav = (globalThis as { navigator?: ClipboardNavigatorLike }).navigator;
+    const nav = (globalThis as { navigator?: ClipboardNavigatorLike })
+      .navigator;
     if (nav?.clipboard && typeof nav.clipboard.writeText === 'function') {
       void nav.clipboard
         .writeText(formattedRecoveryCode)
@@ -99,9 +109,7 @@ export function AuthAndAccountModal({
           setCopiedCode(true);
         })
         .catch(() => {
-          setLocalError(
-            'Automatic clipboard copy was blocked; select and copy the code manually above.',
-          );
+          setLocalError(t.clipboardBlocked);
         });
     }
   };
@@ -110,15 +118,11 @@ export function AuthAndAccountModal({
     setLocalError(null);
     const trimmedPseudonym = pseudonym.trim();
     if (!AUTH_LIMITS.PSEUDONYM_REGEX.test(trimmedPseudonym)) {
-      setLocalError(
-        'Pseudonym must be 3–32 characters using letters, digits, underscores (_), or hyphens (-).',
-      );
+      setLocalError(t.invalidPseudonym);
       return;
     }
     if (password.length < AUTH_LIMITS.MIN_PASSWORD_LENGTH) {
-      setLocalError(
-        `Password must be at least ${AUTH_LIMITS.MIN_PASSWORD_LENGTH} characters.`,
-      );
+      setLocalError(t.shortPassword(AUTH_LIMITS.MIN_PASSWORD_LENGTH));
       return;
     }
 
@@ -131,9 +135,7 @@ export function AuthAndAccountModal({
         setPassword('');
       })
       .catch((err: unknown) => {
-        setLocalError(
-          err instanceof Error ? err.message : 'Registration failed.',
-        );
+        setLocalError(localizeError(err, t.registerFailed, locale));
       })
       .finally(() => {
         setIsSubmitting(false);
@@ -144,7 +146,7 @@ export function AuthAndAccountModal({
     setLocalError(null);
     const trimmedPseudonym = pseudonym.trim();
     if (trimmedPseudonym.length === 0 || password.length === 0) {
-      setLocalError('Enter your pseudonym and password.');
+      setLocalError(t.missingCredentials);
       return;
     }
 
@@ -157,7 +159,7 @@ export function AuthAndAccountModal({
         setPassword('');
       })
       .catch((err: unknown) => {
-        setLocalError(err instanceof Error ? err.message : 'Sign-in failed.');
+        setLocalError(localizeError(err, t.loginFailed, locale));
       })
       .finally(() => {
         setIsSubmitting(false);
@@ -173,9 +175,7 @@ export function AuthAndAccountModal({
       trimmedCode.length === 0 ||
       newPassword.length < AUTH_LIMITS.MIN_PASSWORD_LENGTH
     ) {
-      setLocalError(
-        `Enter your pseudonym, 32-character recovery code, and a new password (at least ${AUTH_LIMITS.MIN_PASSWORD_LENGTH} characters).`,
-      );
+      setLocalError(t.missingRecoveryFields(AUTH_LIMITS.MIN_PASSWORD_LENGTH));
       return;
     }
 
@@ -190,9 +190,7 @@ export function AuthAndAccountModal({
         setNewPassword('');
       })
       .catch((err: unknown) => {
-        setLocalError(
-          err instanceof Error ? err.message : 'Password recovery failed.',
-        );
+        setLocalError(localizeError(err, t.recoverFailed, locale));
       })
       .finally(() => {
         setIsSubmitting(false);
@@ -204,7 +202,7 @@ export function AuthAndAccountModal({
     setIsSubmitting(true);
     void onLogout()
       .catch((err: unknown) => {
-        setLocalError(err instanceof Error ? err.message : 'Logout failed.');
+        setLocalError(localizeError(err, t.logoutFailed, locale));
       })
       .finally(() => {
         setIsSubmitting(false);
@@ -216,9 +214,7 @@ export function AuthAndAccountModal({
     setIsSubmitting(true);
     void onDeleteAccount()
       .catch((err: unknown) => {
-        setLocalError(
-          err instanceof Error ? err.message : 'Account deletion failed.',
-        );
+        setLocalError(localizeError(err, t.deleteAccountFailed, locale));
       })
       .finally(() => {
         setIsSubmitting(false);
@@ -233,29 +229,27 @@ export function AuthAndAccountModal({
   return (
     <View
       style={[styles.modalCard, compact ? styles.modalCardCompact : null]}
-      accessibilityLabel="Pseudonymous account modal"
+      accessibilityLabel={t.modalA11y}
     >
       <View style={styles.headerRow}>
         <View style={styles.headerTitleCol}>
           <Text style={styles.modalTitle}>
             {modal.view === 'recovery_code'
-              ? 'Save One-Time Recovery Code'
+              ? t.titleRecovery
               : modal.view === 'account'
                 ? `@${modal.currentUser?.pseudonym ?? ''}`
                 : modal.view === 'register'
-                  ? 'Create Pseudonym'
+                  ? t.titleRegister
                   : modal.view === 'recover'
-                    ? 'Recover Password'
-                    : 'Contributor Sign In'}
+                    ? t.titleRecover
+                    : t.titleLogin}
           </Text>
-          <Text style={styles.zeroPiiSubtitle}>
-            Zero email · Zero phone · Open civic mapping
-          </Text>
+          <Text style={styles.zeroPiiSubtitle}>{t.zeroPiiSubtitle}</Text>
         </View>
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Close account modal"
+          accessibilityLabel={t.closeA11y}
           accessibilityState={{ disabled: !modal.canClose }}
           disabled={!modal.canClose}
           onPress={onClose}
@@ -264,7 +258,7 @@ export function AuthAndAccountModal({
             !modal.canClose ? styles.disabledButton : null,
           ]}
         >
-          <Text style={styles.closeButtonLabel}>Close</Text>
+          <Text style={styles.closeButtonLabel}>{t.close}</Text>
         </Pressable>
       </View>
 
@@ -286,7 +280,7 @@ export function AuthAndAccountModal({
         <View style={styles.tabWell} accessibilityRole="tablist">
           <Pressable
             accessibilityRole="tab"
-            accessibilityLabel="Sign In tab"
+            accessibilityLabel={t.tabSignInA11y}
             accessibilityState={{ selected: modal.view === 'login' }}
             onPress={() => onSelectView('login')}
             style={[
@@ -295,18 +289,20 @@ export function AuthAndAccountModal({
             ]}
           >
             <Text
+              numberOfLines={1}
               style={[
                 styles.tabButtonLabel,
+                compact ? styles.tabButtonLabelCompact : null,
                 modal.view === 'login' ? styles.tabButtonLabelActive : null,
               ]}
             >
-              Sign In
+              {t.tabSignIn}
             </Text>
           </Pressable>
 
           <Pressable
             accessibilityRole="tab"
-            accessibilityLabel="Register tab"
+            accessibilityLabel={t.tabRegisterA11y}
             accessibilityState={{ selected: modal.view === 'register' }}
             onPress={() => onSelectView('register')}
             style={[
@@ -315,18 +311,20 @@ export function AuthAndAccountModal({
             ]}
           >
             <Text
+              numberOfLines={1}
               style={[
                 styles.tabButtonLabel,
+                compact ? styles.tabButtonLabelCompact : null,
                 modal.view === 'register' ? styles.tabButtonLabelActive : null,
               ]}
             >
-              Register
+              {t.tabRegister}
             </Text>
           </Pressable>
 
           <Pressable
             accessibilityRole="tab"
-            accessibilityLabel="Recover password tab"
+            accessibilityLabel={t.tabRecoverA11y}
             accessibilityState={{ selected: modal.view === 'recover' }}
             onPress={() => onSelectView('recover')}
             style={[
@@ -335,12 +333,14 @@ export function AuthAndAccountModal({
             ]}
           >
             <Text
+              numberOfLines={1}
               style={[
                 styles.tabButtonLabel,
+                compact ? styles.tabButtonLabelCompact : null,
                 modal.view === 'recover' ? styles.tabButtonLabelActive : null,
               ]}
             >
-              Recover
+              {t.tabRecover}
             </Text>
           </Pressable>
         </View>
@@ -348,11 +348,7 @@ export function AuthAndAccountModal({
 
       {modal.view === 'recovery_code' && modal.recoveryCode ? (
         <View style={styles.formSection}>
-          <Text style={styles.privacyHint}>
-            Store this 32-character hexadecimal recovery code in your password
-            manager now. Because no email or phone number is collected, losing
-            both your password and this code permanently locks this pseudonym.
-          </Text>
+          <Text style={styles.privacyHint}>{t.recoveryVaultHint}</Text>
 
           <View style={styles.recoveryCodeVault}>
             <Text selectable style={styles.recoveryCodeValue}>
@@ -361,12 +357,12 @@ export function AuthAndAccountModal({
             {hasClipboardApi ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Copy recovery code to clipboard"
+                accessibilityLabel={t.copyCodeA11y}
                 onPress={handleCopyRecoveryCode}
                 style={styles.copyCodeButton}
               >
                 <Text style={styles.copyCodeButtonLabel}>
-                  {copiedCode ? 'Copied ✓' : 'Copy Code'}
+                  {copiedCode ? t.copiedCode : t.copyCode}
                 </Text>
               </Pressable>
             ) : null}
@@ -374,7 +370,7 @@ export function AuthAndAccountModal({
 
           <Pressable
             accessibilityRole="checkbox"
-            accessibilityLabel="I have saved my recovery code"
+            accessibilityLabel={t.savedCheckboxA11y}
             accessibilityState={{ checked: modal.recoveryCodeSavedChecked }}
             onPress={() =>
               onToggleRecoveryCodeSaved(!modal.recoveryCodeSavedChecked)
@@ -393,9 +389,7 @@ export function AuthAndAccountModal({
                 {modal.recoveryCodeSavedChecked ? '✓' : ''}
               </Text>
             </View>
-            <Text style={styles.checkboxLabel}>
-              I have saved my recovery code in a safe place
-            </Text>
+            <Text style={styles.checkboxLabel}>{t.savedCheckboxLabel}</Text>
           </Pressable>
 
           {!modal.canClose && modal.closeBlockedReason ? (
@@ -406,7 +400,7 @@ export function AuthAndAccountModal({
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Continue after saving recovery code"
+            accessibilityLabel={t.continueA11y}
             accessibilityState={{ disabled: !modal.canClose }}
             disabled={!modal.canClose}
             onPress={onClose}
@@ -416,38 +410,35 @@ export function AuthAndAccountModal({
               !modal.canClose ? styles.primaryButtonDisabled : null,
             ]}
           >
-            <Text style={styles.primaryButtonLabel}>Continue to Map</Text>
+            <Text style={styles.primaryButtonLabel}>{t.continueToMap}</Text>
           </Pressable>
         </View>
       ) : null}
 
       {modal.view === 'register' ? (
         <View style={styles.formSection}>
-          <Text style={styles.privacyHint}>
-            Choose a public pseudonym (3–32 letters, digits, _ or -) and a
-            password (8+ characters). Your recovery code is generated next.
-          </Text>
+          <Text style={styles.privacyHint}>{t.registerHint}</Text>
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Public Pseudonym</Text>
+            <Text style={styles.fieldLabel}>{t.publicPseudonymLabel}</Text>
             <TextInput
-              accessibilityLabel="Pseudonym"
+              accessibilityLabel={t.pseudonymA11y}
               value={pseudonym}
               onChangeText={setPseudonym}
               autoCapitalize="none"
               autoCorrect={false}
               autoComplete="username-new"
               textContentType="username"
-              placeholder="e.g. courtyard_mapper"
+              placeholder={t.pseudonymPlaceholderRegister}
               placeholderTextColor={PALETTE.inkMuted}
               style={styles.inputField}
             />
           </View>
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Password</Text>
+            <Text style={styles.fieldLabel}>{t.passwordLabel}</Text>
             <TextInput
-              accessibilityLabel="Password"
+              accessibilityLabel={t.passwordA11y}
               value={password}
               onChangeText={setPassword}
               secureTextEntry
@@ -455,7 +446,7 @@ export function AuthAndAccountModal({
               autoCorrect={false}
               autoComplete="new-password"
               textContentType="newPassword"
-              placeholder="At least 8 characters"
+              placeholder={t.passwordPlaceholderMin}
               placeholderTextColor={PALETTE.inkMuted}
               style={styles.inputField}
             />
@@ -463,7 +454,7 @@ export function AuthAndAccountModal({
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Create pseudonymous account"
+            accessibilityLabel={t.createAccountA11y}
             disabled={isSubmitting}
             onPress={handleRegisterSubmit}
             style={[
@@ -473,7 +464,7 @@ export function AuthAndAccountModal({
             ]}
           >
             <Text style={styles.primaryButtonLabel}>
-              {isSubmitting ? 'Creating Account…' : 'Create Account'}
+              {isSubmitting ? t.creatingAccount : t.createAccount}
             </Text>
           </Pressable>
         </View>
@@ -482,25 +473,25 @@ export function AuthAndAccountModal({
       {modal.view === 'login' ? (
         <View style={styles.formSection}>
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Pseudonym</Text>
+            <Text style={styles.fieldLabel}>{t.pseudonymLabel}</Text>
             <TextInput
-              accessibilityLabel="Pseudonym"
+              accessibilityLabel={t.pseudonymA11y}
               value={pseudonym}
               onChangeText={setPseudonym}
               autoCapitalize="none"
               autoCorrect={false}
               autoComplete="username"
               textContentType="username"
-              placeholder="Your pseudonym"
+              placeholder={t.pseudonymPlaceholderLogin}
               placeholderTextColor={PALETTE.inkMuted}
               style={styles.inputField}
             />
           </View>
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Password</Text>
+            <Text style={styles.fieldLabel}>{t.passwordLabel}</Text>
             <TextInput
-              accessibilityLabel="Password"
+              accessibilityLabel={t.passwordA11y}
               value={password}
               onChangeText={setPassword}
               secureTextEntry
@@ -508,7 +499,7 @@ export function AuthAndAccountModal({
               autoCorrect={false}
               autoComplete="current-password"
               textContentType="password"
-              placeholder="Your password"
+              placeholder={t.passwordPlaceholderLogin}
               placeholderTextColor={PALETTE.inkMuted}
               style={styles.inputField}
             />
@@ -516,7 +507,7 @@ export function AuthAndAccountModal({
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Sign in with pseudonym and password"
+            accessibilityLabel={t.signInButtonA11y}
             disabled={isSubmitting}
             onPress={handleLoginSubmit}
             style={[
@@ -526,7 +517,7 @@ export function AuthAndAccountModal({
             ]}
           >
             <Text style={styles.primaryButtonLabel}>
-              {isSubmitting ? 'Signing In…' : 'Sign In'}
+              {isSubmitting ? t.signingIn : t.signInButton}
             </Text>
           </Pressable>
         </View>
@@ -534,31 +525,28 @@ export function AuthAndAccountModal({
 
       {modal.view === 'recover' ? (
         <View style={styles.formSection}>
-          <Text style={styles.privacyHint}>
-            Enter your pseudonym, saved 32-hex recovery code, and a new
-            password. Your recovery code and active sessions rotate immediately.
-          </Text>
+          <Text style={styles.privacyHint}>{t.recoverHint}</Text>
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Pseudonym</Text>
+            <Text style={styles.fieldLabel}>{t.pseudonymLabel}</Text>
             <TextInput
-              accessibilityLabel="Pseudonym"
+              accessibilityLabel={t.pseudonymA11y}
               value={pseudonym}
               onChangeText={setPseudonym}
               autoCapitalize="none"
               autoCorrect={false}
               autoComplete="username"
               textContentType="username"
-              placeholder="Your pseudonym"
+              placeholder={t.pseudonymPlaceholderLogin}
               placeholderTextColor={PALETTE.inkMuted}
               style={styles.inputField}
             />
           </View>
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>32-Hex Recovery Code</Text>
+            <Text style={styles.fieldLabel}>{t.recoveryCodeLabel}</Text>
             <TextInput
-              accessibilityLabel="32-hex recovery code"
+              accessibilityLabel={t.recoveryCodeA11y}
               value={recoveryCodeInput}
               onChangeText={setRecoveryCodeInput}
               autoCapitalize="characters"
@@ -572,9 +560,9 @@ export function AuthAndAccountModal({
           </View>
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>New Password</Text>
+            <Text style={styles.fieldLabel}>{t.newPasswordLabel}</Text>
             <TextInput
-              accessibilityLabel="New password"
+              accessibilityLabel={t.newPasswordA11y}
               value={newPassword}
               onChangeText={setNewPassword}
               secureTextEntry
@@ -582,7 +570,7 @@ export function AuthAndAccountModal({
               autoCorrect={false}
               autoComplete="new-password"
               textContentType="newPassword"
-              placeholder="At least 8 characters"
+              placeholder={t.passwordPlaceholderMin}
               placeholderTextColor={PALETTE.inkMuted}
               style={styles.inputField}
             />
@@ -590,7 +578,7 @@ export function AuthAndAccountModal({
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Reset password using recovery code"
+            accessibilityLabel={t.resetPasswordA11y}
             disabled={isSubmitting}
             onPress={handleRecoverSubmit}
             style={[
@@ -600,7 +588,7 @@ export function AuthAndAccountModal({
             ]}
           >
             <Text style={styles.primaryButtonLabel}>
-              {isSubmitting ? 'Resetting Password…' : 'Reset Password'}
+              {isSubmitting ? t.resettingPassword : t.resetPassword}
             </Text>
           </Pressable>
         </View>
@@ -609,53 +597,47 @@ export function AuthAndAccountModal({
       {modal.view === 'account' && modal.currentUser ? (
         <View style={styles.formSection}>
           <Text style={styles.privacyHint}>
-            Signed in as pseudonymous contributor @
-            {modal.currentUser.pseudonym}. Zero personal contact information is
-            stored on this server.
+            {t.accountSignedInHint(modal.currentUser.pseudonym)}
           </Text>
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Log out of current session"
+            accessibilityLabel={t.logoutA11y}
             disabled={isSubmitting}
             onPress={handleLogoutPress}
             style={[styles.touchButton, styles.secondaryButton]}
           >
             <Text style={styles.secondaryButtonLabel}>
-              {isSubmitting ? 'Signing Out…' : 'Log Out'}
+              {isSubmitting ? t.loggingOut : t.logout}
             </Text>
           </Pressable>
 
           {confirmingAccountDelete ? (
             <View style={styles.deleteWarningBox} accessibilityRole="alert">
               <Text style={styles.deleteWarningText}>
-                Deleting your account permanently erases your credentials,
-                active sessions, and votes (recomputing affected proposal
-                scores), reserves a cryptographic tombstone of your pseudonym to
-                prevent impersonation, and keeps your authored proposals public
-                under &ldquo;deleted&rdquo;.
+                {t.deleteAccountWarning}
               </Text>
 
               <View style={styles.confirmRow}>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Cancel account deletion"
+                  accessibilityLabel={t.cancelDeleteAccountA11y}
                   disabled={isSubmitting}
                   onPress={() => setConfirmingAccountDelete(false)}
                   style={[styles.touchButton, styles.secondaryButton]}
                 >
-                  <Text style={styles.secondaryButtonLabel}>Cancel</Text>
+                  <Text style={styles.secondaryButtonLabel}>{t.cancel}</Text>
                 </Pressable>
 
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Confirm permanent account deletion"
+                  accessibilityLabel={t.confirmDeleteAccountA11y}
                   disabled={isSubmitting}
                   onPress={handleDeleteAccountConfirm}
                   style={[styles.touchButton, styles.dangerButton]}
                 >
                   <Text style={styles.primaryButtonLabel}>
-                    {isSubmitting ? 'Deleting…' : 'Confirm Delete Account'}
+                    {isSubmitting ? t.deletingAccount : t.confirmDeleteAccount}
                   </Text>
                 </Pressable>
               </View>
@@ -663,12 +645,12 @@ export function AuthAndAccountModal({
           ) : (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Delete account"
+              accessibilityLabel={t.deleteAccountA11y}
               disabled={isSubmitting}
               onPress={() => setConfirmingAccountDelete(true)}
               style={[styles.touchButton, styles.dangerOutlineButton]}
             >
-              <Text style={styles.dangerOutlineLabel}>Delete Account</Text>
+              <Text style={styles.dangerOutlineLabel}>{t.deleteAccount}</Text>
             </Pressable>
           )}
         </View>
@@ -763,7 +745,9 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   tabButton: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 'auto',
     minHeight: MIN_TOUCH_TARGET_DP,
     minWidth: MIN_TOUCH_TARGET_DP,
     paddingHorizontal: 8,
@@ -781,6 +765,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: PALETTE.inkSecondary,
+  },
+  tabButtonLabelCompact: {
+    fontSize: 12,
   },
   tabButtonLabelActive: {
     color: PALETTE.inkPrimary,

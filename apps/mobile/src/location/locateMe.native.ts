@@ -1,5 +1,10 @@
 import * as Location from 'expo-location';
 
+import {
+  DEFAULT_LOCALE,
+  getTranslations,
+  type Locale,
+} from '../i18n/translations';
 import type { LocateMeResult } from './locateMe.types';
 
 export type { LocateMeResult } from './locateMe.types';
@@ -13,14 +18,19 @@ function isValidCoordinatePair(lng: number, lat: number): boolean {
   );
 }
 
-export async function requestCurrentCoordinates(): Promise<LocateMeResult> {
+export async function requestCurrentCoordinates(
+  _nav?: unknown,
+  _isSecureContext?: boolean,
+  locale: Locale = DEFAULT_LOCALE,
+): Promise<LocateMeResult> {
+  const t = getTranslations(locale).location;
   try {
     const permission = await Location.requestForegroundPermissionsAsync();
     if (!permission.granted) {
       const reason =
         permission.canAskAgain === false
-          ? 'Location permission was denied. Enable foreground location access for Entsiegelungskartierung in your device settings to center the map on your GPS position.'
-          : 'Location permission was denied. Grant foreground location access to center the map on your current GPS position.';
+          ? t.nativePermissionDeniedSettings
+          : t.nativePermissionDeniedPrompt;
       return {
         ok: false,
         reason,
@@ -35,7 +45,7 @@ export async function requestCurrentCoordinates(): Promise<LocateMeResult> {
     if (!isValidCoordinatePair(longitude, latitude)) {
       return {
         ok: false,
-        reason: 'Device location provider returned invalid GPS coordinates.',
+        reason: t.nativeInvalidCoords,
       };
     }
 
@@ -49,7 +59,7 @@ export async function requestCurrentCoordinates(): Promise<LocateMeResult> {
     const suffix = detail.length > 0 ? ` (${detail})` : '';
     return {
       ok: false,
-      reason: `Unable to determine your current GPS position. Ensure device location services are enabled and try again.${suffix}`,
+      reason: t.nativeGenericError(suffix),
     };
   }
 }

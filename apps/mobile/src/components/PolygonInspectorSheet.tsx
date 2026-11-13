@@ -14,6 +14,13 @@ import {
   View,
 } from 'react-native';
 
+import {
+  DEFAULT_LOCALE,
+  getTranslations,
+  localizeDisclaimerText,
+  localizeError,
+  type Locale,
+} from '../i18n/translations';
 import { MIN_TOUCH_TARGET_DP } from '../state/viewModels';
 import {
   MONO_FONT_FAMILY,
@@ -23,13 +30,6 @@ import {
   TABULAR_NUMS_STYLE,
 } from '../theme/tokens';
 
-const SURFACE_LABELS: Record<SurfaceType, string> = {
-  asphalt: 'Asphalt',
-  concrete: 'Concrete',
-  pavers: 'Pavers',
-  other: 'Other Sealed',
-};
-
 export interface PolygonInspectorSheetProps {
   feature: PolygonFeature | null;
   overlapIndex: number;
@@ -37,6 +37,7 @@ export interface PolygonInspectorSheetProps {
   disclaimerText: string;
   abuseContact: string | null;
   isAuthenticated: boolean;
+  locale?: Locale;
   compact?: boolean;
   onCycleOverlap: () => void;
   onClose: () => void;
@@ -57,6 +58,7 @@ export function PolygonInspectorSheet({
   disclaimerText,
   abuseContact,
   isAuthenticated,
+  locale = DEFAULT_LOCALE,
   compact = false,
   onCycleOverlap,
   onClose,
@@ -89,6 +91,12 @@ export function PolygonInspectorSheet({
   if (feature === null) {
     return null;
   }
+
+  const dict = getTranslations(locale);
+  const t = dict.inspector;
+  const surfaceCopy = dict.surfaces;
+  const localizedDisclaimer =
+    localizeDisclaimerText(disclaimerText, locale) ?? disclaimerText;
 
   const { properties } = feature;
   const swatch = SURFACE_SWATCHES[properties.surfaceType];
@@ -126,11 +134,7 @@ export function PolygonInspectorSheet({
 
     void task
       .catch((err: unknown) => {
-        const message =
-          err instanceof Error
-            ? err.message
-            : 'Unable to update vote right now.';
-        setActionError(message);
+        setActionError(localizeError(err, t.voteErrorFallback, locale));
       })
       .finally(() => {
         setIsBusy(false);
@@ -151,11 +155,7 @@ export function PolygonInspectorSheet({
         setIsEditing(false);
       })
       .catch((err: unknown) => {
-        const message =
-          err instanceof Error
-            ? err.message
-            : 'Unable to save proposal metadata.';
-        setActionError(message);
+        setActionError(localizeError(err, t.patchErrorFallback, locale));
       })
       .finally(() => {
         setIsBusy(false);
@@ -168,9 +168,7 @@ export function PolygonInspectorSheet({
 
     void onDeletePolygon(feature.id)
       .catch((err: unknown) => {
-        const message =
-          err instanceof Error ? err.message : 'Unable to delete proposal.';
-        setActionError(message);
+        setActionError(localizeError(err, t.deleteErrorFallback, locale));
       })
       .finally(() => {
         setIsBusy(false);
@@ -180,7 +178,7 @@ export function PolygonInspectorSheet({
   return (
     <View
       style={[styles.sheet, compact ? styles.sheetCompact : null]}
-      accessibilityLabel="Selected unsealing proposal inspector"
+      accessibilityLabel={t.sheetA11y}
     >
       <View style={styles.headerRow}>
         <View style={styles.headerTitleGroup}>
@@ -189,7 +187,7 @@ export function PolygonInspectorSheet({
               style={[styles.materialSwatch, { backgroundColor: swatch.color }]}
             />
             <Text style={styles.sheetTitle}>
-              {SURFACE_LABELS[properties.surfaceType]}
+              {surfaceCopy[properties.surfaceType].label}
             </Text>
             <View style={styles.areaPill}>
               <Text style={styles.areaPillText}>
@@ -198,8 +196,7 @@ export function PolygonInspectorSheet({
             </View>
           </View>
           <Text style={styles.authorMeta}>
-            Proposed by @{properties.authorPseudonym}
-            {properties.isAuthor ? ' · You' : ''}
+            {t.proposedBy(properties.authorPseudonym, properties.isAuthor)}
           </Text>
         </View>
 
@@ -207,12 +204,15 @@ export function PolygonInspectorSheet({
           {effectiveOverlapCount > 1 ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Overlapping proposal ${displayOverlapPosition} of ${effectiveOverlapCount}. Activate to inspect next overlapping proposal.`}
+              accessibilityLabel={t.overlapA11y(
+                displayOverlapPosition,
+                effectiveOverlapCount,
+              )}
               onPress={onCycleOverlap}
               style={styles.overlapButton}
             >
               <Text style={styles.overlapButtonLabel}>
-                {displayOverlapPosition}/{effectiveOverlapCount} · Next
+                {t.overlapNext(displayOverlapPosition, effectiveOverlapCount)}
               </Text>
             </Pressable>
           ) : (
@@ -223,11 +223,11 @@ export function PolygonInspectorSheet({
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Close proposal inspector"
+            accessibilityLabel={t.closeA11y}
             onPress={onClose}
             style={styles.closeButton}
           >
-            <Text style={styles.closeButtonLabel}>Close</Text>
+            <Text style={styles.closeButtonLabel}>{t.close}</Text>
           </Pressable>
         </View>
       </View>
@@ -240,20 +240,17 @@ export function PolygonInspectorSheet({
 
       {isEditing && properties.isAuthor ? (
         <View style={styles.editSection}>
-          <Text style={styles.immutableNotice}>
-            Polygon coordinates are locked after publication so community votes
-            remain anchored to the exact site. Delete and redraw to adjust
-            boundaries.
-          </Text>
+          <Text style={styles.immutableNotice}>{t.immutableNotice}</Text>
 
           <View style={styles.surfaceChoiceRow} accessibilityRole="radiogroup">
             {SURFACE_TYPES.map((st) => {
               const selected = editSurfaceType === st;
+              const label = surfaceCopy[st].label;
               return (
                 <Pressable
                   key={st}
                   accessibilityRole="radio"
-                  accessibilityLabel={SURFACE_LABELS[st]}
+                  accessibilityLabel={label}
                   accessibilityState={{ checked: selected }}
                   onPress={() => setEditSurfaceType(st)}
                   style={[
@@ -267,7 +264,7 @@ export function PolygonInspectorSheet({
                       selected ? styles.surfaceChipLabelSelected : null,
                     ]}
                   >
-                    {SURFACE_LABELS[st]}
+                    {label}
                   </Text>
                 </Pressable>
               );
@@ -275,12 +272,12 @@ export function PolygonInspectorSheet({
           </View>
 
           <TextInput
-            accessibilityLabel="Edit proposal note"
+            accessibilityLabel={t.editNoteA11y}
             value={editNote}
             onChangeText={setEditNote}
             maxLength={GEOMETRY_LIMITS.MAX_NOTE_LENGTH}
             multiline
-            placeholder="Optional site note (leave blank to clear)"
+            placeholder={t.editNotePlaceholder}
             placeholderTextColor={PALETTE.inkMuted}
             style={styles.editNoteInput}
           />
@@ -288,7 +285,7 @@ export function PolygonInspectorSheet({
           <View style={styles.buttonRow}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Cancel metadata edit"
+              accessibilityLabel={t.cancelEditA11y}
               disabled={isBusy}
               onPress={() => {
                 setIsEditing(false);
@@ -297,18 +294,18 @@ export function PolygonInspectorSheet({
               }}
               style={[styles.touchButton, styles.secondaryButton]}
             >
-              <Text style={styles.secondaryButtonLabel}>Cancel</Text>
+              <Text style={styles.secondaryButtonLabel}>{t.cancel}</Text>
             </Pressable>
 
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Save proposal metadata changes"
+              accessibilityLabel={t.saveEditA11y}
               disabled={isBusy}
               onPress={handleSavePatch}
               style={[styles.touchButton, styles.primaryButton]}
             >
               <Text style={styles.primaryButtonLabel}>
-                {isBusy ? 'Saving…' : 'Save Changes'}
+                {isBusy ? t.saving : t.saveChanges}
               </Text>
             </Pressable>
           </View>
@@ -318,7 +315,7 @@ export function PolygonInspectorSheet({
           <Text style={styles.noteBody}>
             {properties.note && properties.note.trim().length > 0
               ? properties.note
-              : 'No additional site note provided by the author.'}
+              : t.emptyNote}
           </Text>
         </View>
       )}
@@ -331,14 +328,14 @@ export function PolygonInspectorSheet({
               : `${properties.score}`}
           </Text>
           <Text style={[styles.scoreBadgeCaption, scoreTextToneStyle]}>
-            net score
+            {t.netScore}
           </Text>
         </View>
 
         <View style={styles.voteButtonsGroup}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Upvote proposal (+1), current upvotes ${properties.upvotes}`}
+            accessibilityLabel={t.upvoteA11y(properties.upvotes)}
             accessibilityState={{
               selected: properties.myVote === 1,
               disabled: isBusy,
@@ -363,7 +360,7 @@ export function PolygonInspectorSheet({
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Downvote proposal (-1), current downvotes ${properties.downvotes}`}
+            accessibilityLabel={t.downvoteA11y(properties.downvotes)}
             accessibilityState={{
               selected: properties.myVote === -1,
               disabled: isBusy,
@@ -390,9 +387,11 @@ export function PolygonInspectorSheet({
 
       <View
         style={styles.permanentDisclaimerBox}
-        accessibilityLabel="Permanent civic proposal disclaimer"
+        accessibilityLabel={t.permanentDisclaimerA11y}
       >
-        <Text style={styles.permanentDisclaimerText}>{disclaimerText}</Text>
+        <Text style={styles.permanentDisclaimerText}>
+          {localizedDisclaimer}
+        </Text>
       </View>
 
       {properties.isAuthor && !isEditing ? (
@@ -400,27 +399,29 @@ export function PolygonInspectorSheet({
           {confirmingDelete ? (
             <View style={styles.deleteConfirmBox} accessibilityRole="alert">
               <Text style={styles.deleteConfirmText}>
-                Permanently delete this unsealing proposal and its votes?
+                {t.deleteConfirmPrompt}
               </Text>
               <View style={styles.buttonRow}>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Keep proposal"
+                  accessibilityLabel={t.keepProposalA11y}
                   disabled={isBusy}
                   onPress={() => setConfirmingDelete(false)}
                   style={[styles.touchButton, styles.secondaryButton]}
                 >
-                  <Text style={styles.secondaryButtonLabel}>Keep Proposal</Text>
+                  <Text style={styles.secondaryButtonLabel}>
+                    {t.keepProposal}
+                  </Text>
                 </Pressable>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Confirm delete proposal"
+                  accessibilityLabel={t.confirmDeleteA11y}
                   disabled={isBusy}
                   onPress={handleConfirmDelete}
                   style={[styles.touchButton, styles.dangerButton]}
                 >
                   <Text style={styles.primaryButtonLabel}>
-                    {isBusy ? 'Deleting…' : 'Confirm Delete'}
+                    {isBusy ? t.deleting : t.confirmDelete}
                   </Text>
                 </Pressable>
               </View>
@@ -429,22 +430,24 @@ export function PolygonInspectorSheet({
             <View style={styles.buttonRow}>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Edit proposal surface type or note"
+                accessibilityLabel={t.editDetailsA11y}
                 disabled={isBusy}
                 onPress={() => setIsEditing(true)}
                 style={[styles.touchButton, styles.secondaryButton]}
               >
-                <Text style={styles.secondaryButtonLabel}>Edit Details</Text>
+                <Text style={styles.secondaryButtonLabel}>{t.editDetails}</Text>
               </Pressable>
 
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Delete proposal"
+                accessibilityLabel={t.deleteProposalA11y}
                 disabled={isBusy}
                 onPress={() => setConfirmingDelete(true)}
                 style={[styles.touchButton, styles.dangerOutlineButton]}
               >
-                <Text style={styles.dangerOutlineLabel}>Delete Proposal</Text>
+                <Text style={styles.dangerOutlineLabel}>
+                  {t.deleteProposal}
+                </Text>
               </Pressable>
             </View>
           )}
@@ -453,7 +456,7 @@ export function PolygonInspectorSheet({
 
       {abuseContact && abuseContact.trim().length > 0 ? (
         <Text style={styles.abuseContactText}>
-          Report abuse or personal data in notes: {abuseContact}
+          {t.abuseContactPrefix} {abuseContact}
         </Text>
       ) : null}
     </View>

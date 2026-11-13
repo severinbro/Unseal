@@ -1,5 +1,10 @@
 import { Platform } from 'react-native';
 
+import {
+  DEFAULT_LOCALE,
+  getTranslations,
+  type Locale,
+} from '../i18n/translations';
 import { PALETTE } from './tokens';
 
 const STYLE_ELEMENT_ID = 'entsiegelung-craft-styles';
@@ -14,6 +19,7 @@ interface WebStyleElementLike {
 }
 
 interface WebHtmlElementLike {
+  lang?: string;
   dataset?: Record<string, string>;
 }
 
@@ -102,7 +108,7 @@ table, .tabular, [data-metric], [data-num] {
 }
 `;
 
-export function injectWebCraftStyles(): void {
+export function syncWebDocumentLocale(locale: Locale = DEFAULT_LOCALE): void {
   if (Platform.OS !== 'web') {
     return;
   }
@@ -112,13 +118,31 @@ export function injectWebCraftStyles(): void {
     return;
   }
 
-  if (doc.documentElement?.dataset) {
-    doc.documentElement.dataset['mode'] = 'operate';
+  if (doc.documentElement) {
+    doc.documentElement.lang = locale;
   }
 
-  if (!doc.title || doc.title.trim().length === 0 || doc.title === 'mobile') {
-    doc.title = 'Entsiegelungskartierung — Civic Unsealing Map';
+  doc.title = getTranslations(locale).app.documentTitle;
+}
+
+export function injectWebCraftStyles(locale: Locale = DEFAULT_LOCALE): void {
+  if (Platform.OS !== 'web') {
+    return;
   }
+
+  const doc = (globalThis as { document?: WebCraftDocumentLike }).document;
+  if (!doc) {
+    return;
+  }
+
+  if (doc.documentElement) {
+    doc.documentElement.lang = locale;
+    if (doc.documentElement.dataset) {
+      doc.documentElement.dataset['mode'] = 'operate';
+    }
+  }
+
+  doc.title = getTranslations(locale).app.documentTitle;
 
   if (typeof doc.getElementById === 'function' && doc.getElementById(STYLE_ELEMENT_ID)) {
     return;

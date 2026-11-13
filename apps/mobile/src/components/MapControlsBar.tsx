@@ -8,6 +8,11 @@ import {
   View,
 } from 'react-native';
 
+import {
+  getTranslations,
+  localizeError,
+  type Locale,
+} from '../i18n/translations';
 import type { BasemapMode } from '../state/appState';
 import {
   MIN_TOUCH_TARGET_DP,
@@ -17,7 +22,7 @@ import {
   PALETTE,
   RADII,
   TABULAR_NUMS_STYLE,
-   type ViewportTier,
+  type ViewportTier,
 } from '../theme/tokens';
 
 interface WebAnchorElementLike {
@@ -71,6 +76,7 @@ export interface MapControlsBarProps {
   exportGeoJsonUrl: string;
   isLocating: boolean;
   tier?: ViewportTier;
+  onToggleLocale?: () => void;
   onSetBasemapMode: (mode: BasemapMode) => void;
   onLocateMe: () => void;
   onStartDraw: () => void;
@@ -78,13 +84,63 @@ export interface MapControlsBarProps {
   onExportError: (message: string) => void;
 }
 
-function ParcelUnsealMark(): React.JSX.Element {
+function ParcelUnsealMark({
+  compact,
+}: {
+  compact: boolean;
+}): React.JSX.Element {
   return (
-    <View style={styles.brandMark} accessible={false}>
+    <View
+      style={[styles.brandMark, compact ? styles.brandMarkCompact : null]}
+      accessible={false}
+    >
       <View style={styles.brandMarkSealedQuad} />
       <View style={styles.brandMarkPermeableQuad} />
       <View style={styles.brandMarkCornerNode} />
     </View>
+  );
+}
+
+function LocaleTogglePill({
+  locale,
+  compact,
+  accessibilityLabel,
+  onPress,
+}: {
+  locale: Locale;
+  compact: boolean;
+  accessibilityLabel: string;
+  onPress?: () => void;
+}): React.JSX.Element {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.localePill,
+        compact ? styles.localePillCompact : null,
+        pressed ? styles.buttonPressed : null,
+      ]}
+    >
+      <Text
+        style={[
+          styles.localeCodeLabel,
+          locale === 'de' ? styles.localeCodeActive : styles.localeCodeInactive,
+        ]}
+      >
+        DE
+      </Text>
+      <Text style={styles.localeDivider}>|</Text>
+      <Text
+        style={[
+          styles.localeCodeLabel,
+          locale === 'en' ? styles.localeCodeActive : styles.localeCodeInactive,
+        ]}
+      >
+        EN
+      </Text>
+    </Pressable>
   );
 }
 
@@ -94,6 +150,7 @@ export function MapControlsBar({
   exportGeoJsonUrl,
   isLocating,
   tier = 'expanded',
+  onToggleLocale,
   onSetBasemapMode,
   onLocateMe,
   onStartDraw,
@@ -102,20 +159,24 @@ export function MapControlsBar({
 }: MapControlsBarProps): React.JSX.Element {
   const isCompact = tier === 'compact';
   const isExpanded = tier === 'expanded';
+  const locale = controls.locale;
+  const t = getTranslations(locale).controls;
+
   const nextBasemapMode: BasemapMode =
     controls.basemapMode === 'osm' ? 'orthophoto' : 'osm';
 
   const handleExportPress = (): void => {
     void triggerGeoJsonExportDownload(exportGeoJsonUrl).catch(
       (err: unknown) => {
-        const detail =
-          err instanceof Error && err.message.trim().length > 0
-            ? err.message.trim()
-            : 'Unable to open GeoJSON export URL.';
+        const detail = localizeError(err, t.exportErrorFallback, locale);
         onExportError(detail);
       },
     );
   };
+
+  const accountButtonA11y = controls.isAuthenticated
+    ? t.accountSettingsA11y(controls.accountLabel)
+    : t.signInOrRegisterA11y;
 
   return (
     <View
@@ -132,7 +193,7 @@ export function MapControlsBar({
             isCompact ? styles.brandGroupCompact : null,
           ]}
         >
-          <ParcelUnsealMark />
+          <ParcelUnsealMark compact={isCompact} />
           <View style={styles.titleBlock}>
             <View style={styles.titleInlineRow}>
               {Platform.OS === 'web' ? (
@@ -142,9 +203,9 @@ export function MapControlsBar({
                     style: {
                       margin: 0,
                       padding: 0,
-                      fontSize: isCompact ? '14px' : '17px',
+                      fontSize: isCompact ? '12.5px' : '17px',
                       fontWeight: 700,
-                      letterSpacing: '-0.35px',
+                      letterSpacing: isCompact ? '-0.4px' : '-0.35px',
                       lineHeight: '20px',
                       color: PALETTE.inkPrimary,
                       whiteSpace: 'nowrap',
@@ -174,65 +235,74 @@ export function MapControlsBar({
               >
                 <View style={styles.countBadgeDot} />
                 <Text style={styles.countBadgeLabel}>
-                  {isCompact ? `${proposalCount}` : `${proposalCount} in view`}
+                  {isCompact
+                    ? `${proposalCount}`
+                    : `${proposalCount} ${t.inViewSuffix}`}
                 </Text>
               </View>
             </View>
             {!isCompact ? (
               <Text numberOfLines={1} style={styles.subtitle}>
                 {controls.basemapMode === 'orthophoto'
-                  ? 'Aerial Orthophoto'
-                  : 'OpenStreetMap Street Layer'}
+                  ? t.subtitleOrthophoto
+                  : t.subtitleOsm}
                 {controls.basemapMode === 'orthophoto' &&
                 controls.orthophotoAttribution &&
                 controls.orthophotoAttribution.length > 0
                   ? ` · ${controls.orthophotoAttribution}`
-                  : ' · Open civic unsealing registry'}
+                  : ` · ${t.subtitleRegistry}`}
               </Text>
             ) : controls.basemapMode === 'orthophoto' &&
               controls.orthophotoAttribution &&
               controls.orthophotoAttribution.length > 0 ? (
               <Text numberOfLines={1} style={styles.attributionText}>
-                Imagery: {controls.orthophotoAttribution}
+                {t.imageryPrefix} {controls.orthophotoAttribution}
               </Text>
             ) : null}
           </View>
         </View>
 
         {!isExpanded ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={
-              controls.isAuthenticated
-                ? `Account settings for ${controls.accountLabel}`
-                : 'Sign in or register pseudonymous account'
-            }
-            onPress={onOpenAccount}
-            style={({ pressed }) => [
-              styles.accountChip,
-              isCompact ? styles.accountChipCompact : null,
-              controls.isAuthenticated ? styles.accountChipActive : null,
-              pressed ? styles.buttonPressed : null,
-            ]}
-          >
-            <View
-              style={[
-                styles.accountStatusDot,
-                controls.isAuthenticated
-                  ? styles.accountStatusDotOnline
-                  : styles.accountStatusDotGuest,
-              ]}
+          <View style={styles.rightHeaderCluster}>
+            <LocaleTogglePill
+              locale={locale}
+              compact={isCompact}
+              accessibilityLabel={t.switchLocaleA11y}
+              {...(onToggleLocale ? { onPress: onToggleLocale } : {})}
             />
-            <Text
-              numberOfLines={1}
-              style={[
-                styles.accountChipLabel,
-                controls.isAuthenticated ? styles.accountChipLabelActive : null,
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={accountButtonA11y}
+              onPress={onOpenAccount}
+              style={({ pressed }) => [
+                styles.accountChip,
+                isCompact ? styles.accountChipCompact : null,
+                controls.isAuthenticated ? styles.accountChipActive : null,
+                pressed ? styles.buttonPressed : null,
               ]}
             >
-              {controls.accountLabel}
-            </Text>
-          </Pressable>
+              <View
+                style={[
+                  styles.accountStatusDot,
+                  controls.isAuthenticated
+                    ? styles.accountStatusDotOnline
+                    : styles.accountStatusDotGuest,
+                ]}
+              />
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.accountChipLabel,
+                  isCompact ? styles.accountChipLabelCompact : null,
+                  controls.isAuthenticated
+                    ? styles.accountChipLabelActive
+                    : null,
+                ]}
+              >
+                {controls.accountLabel}
+              </Text>
+            </Pressable>
+          </View>
         ) : null}
       </View>
 
@@ -248,8 +318,8 @@ export function MapControlsBar({
             accessibilityRole="button"
             accessibilityLabel={
               controls.basemapMode === 'osm'
-                ? 'Switch to aerial orthophoto layer'
-                : 'Switch to OpenStreetMap street layer'
+                ? t.switchToOrthoA11y
+                : t.switchToOsmA11y
             }
             accessibilityState={{
               selected: controls.basemapMode === 'orthophoto',
@@ -277,24 +347,24 @@ export function MapControlsBar({
             >
               {isCompact
                 ? controls.basemapMode === 'osm'
-                  ? 'Aerial'
-                  : 'Street'
+                  ? t.aerialCompact
+                  : t.streetCompact
                 : controls.basemapMode === 'osm'
-                  ? 'Aerial View'
-                  : 'Street Map'}
+                  ? t.aerialFull
+                  : t.streetFull}
             </Text>
           </Pressable>
         ) : null}
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Locate me using device GPS"
+          accessibilityLabel={t.locateA11y}
           accessibilityState={{ disabled: isLocating, busy: isLocating }}
           disabled={isLocating}
           onPress={onLocateMe}
           style={({ pressed }) => [
             styles.controlButton,
-            isCompact ? styles.controlButtonCompact : null,
+            isCompact ? styles.controlButtonCompactGps : null,
             styles.secondaryButton,
             isLocating ? styles.buttonDisabled : null,
             pressed && !isLocating ? styles.buttonPressed : null,
@@ -307,13 +377,17 @@ export function MapControlsBar({
               isCompact ? styles.compactButtonLabel : null,
             ]}
           >
-            {isLocating ? 'GPS…' : isCompact ? 'GPS' : 'Locate Me'}
+            {isLocating
+              ? t.locateBusy
+              : isCompact
+                ? t.locateCompact
+                : t.locateFull}
           </Text>
         </Pressable>
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Export all proposals as GeoJSON"
+          accessibilityLabel={t.exportA11y}
           onPress={handleExportPress}
           style={({ pressed }) => [
             styles.controlButton,
@@ -329,13 +403,13 @@ export function MapControlsBar({
               isCompact ? styles.compactButtonLabel : null,
             ]}
           >
-            {isCompact ? 'GeoJSON' : 'Export GeoJSON'}
+            {isCompact ? t.exportCompact : t.exportFull}
           </Text>
         </Pressable>
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Draw unsealing proposal polygon"
+          accessibilityLabel={t.proposeA11y}
           accessibilityState={{ disabled: !controls.canStartDraw }}
           disabled={!controls.canStartDraw}
           onPress={onStartDraw}
@@ -344,7 +418,9 @@ export function MapControlsBar({
             isCompact ? styles.controlButtonCompactPrimary : null,
             styles.primaryButton,
             !controls.canStartDraw ? styles.primaryButtonDisabled : null,
-            pressed && controls.canStartDraw ? styles.primaryButtonPressed : null,
+            pressed && controls.canStartDraw
+              ? styles.primaryButtonPressed
+              : null,
           ]}
         >
           <Text
@@ -354,43 +430,49 @@ export function MapControlsBar({
               isCompact ? styles.compactButtonLabel : null,
             ]}
           >
-            {isCompact ? '+ Propose' : '+ Propose Unsealing'}
+            {isCompact ? t.proposeCompact : t.proposeFull}
           </Text>
         </Pressable>
 
         {isExpanded ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={
-              controls.isAuthenticated
-                ? `Account settings for ${controls.accountLabel}`
-                : 'Sign in or register pseudonymous account'
-            }
-            onPress={onOpenAccount}
-            style={({ pressed }) => [
-              styles.accountChip,
-              controls.isAuthenticated ? styles.accountChipActive : null,
-              pressed ? styles.buttonPressed : null,
-            ]}
-          >
-            <View
-              style={[
-                styles.accountStatusDot,
-                controls.isAuthenticated
-                  ? styles.accountStatusDotOnline
-                  : styles.accountStatusDotGuest,
-              ]}
+          <>
+            <LocaleTogglePill
+              locale={locale}
+              compact={false}
+              accessibilityLabel={t.switchLocaleA11y}
+              {...(onToggleLocale ? { onPress: onToggleLocale } : {})}
             />
-            <Text
-              numberOfLines={1}
-              style={[
-                styles.accountChipLabel,
-                controls.isAuthenticated ? styles.accountChipLabelActive : null,
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={accountButtonA11y}
+              onPress={onOpenAccount}
+              style={({ pressed }) => [
+                styles.accountChip,
+                controls.isAuthenticated ? styles.accountChipActive : null,
+                pressed ? styles.buttonPressed : null,
               ]}
             >
-              {controls.accountLabel}
-            </Text>
-          </Pressable>
+              <View
+                style={[
+                  styles.accountStatusDot,
+                  controls.isAuthenticated
+                    ? styles.accountStatusDotOnline
+                    : styles.accountStatusDotGuest,
+                ]}
+              />
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.accountChipLabel,
+                  controls.isAuthenticated
+                    ? styles.accountChipLabelActive
+                    : null,
+                ]}
+              >
+                {controls.accountLabel}
+              </Text>
+            </Pressable>
+          </>
         ) : null}
       </View>
     </View>
@@ -423,8 +505,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
+    gap: 5,
     flexShrink: 1,
+  },
+  rightHeaderCluster: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 0,
   },
   brandGroup: {
     flexDirection: 'row',
@@ -434,7 +522,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   brandGroupCompact: {
-    gap: 7,
+    gap: 5,
   },
   brandMark: {
     width: 24,
@@ -445,6 +533,10 @@ const styles = StyleSheet.create({
     backgroundColor: PALETTE.bgSubtle,
     overflow: 'hidden',
     position: 'relative',
+  },
+  brandMarkCompact: {
+    width: 20,
+    height: 20,
   },
   brandMarkSealedQuad: {
     position: 'absolute',
@@ -481,7 +573,7 @@ const styles = StyleSheet.create({
   titleInlineRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     minWidth: 0,
   },
   title: {
@@ -492,7 +584,8 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   titleCompact: {
-    fontSize: 14,
+    fontSize: 12.5,
+    letterSpacing: -0.4,
   },
   countBadge: {
     flexDirection: 'row',
@@ -506,9 +599,9 @@ const styles = StyleSheet.create({
     borderColor: PALETTE.positiveBorder,
   },
   countBadgeCompact: {
-    paddingHorizontal: 6,
+    paddingHorizontal: 5,
     paddingVertical: 2,
-    gap: 4,
+    gap: 3,
   },
   countBadgeDot: {
     width: 6,
@@ -530,6 +623,40 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: PALETTE.inkMuted,
   },
+  localePill: {
+    minHeight: MIN_TOUCH_TARGET_DP,
+    minWidth: MIN_TOUCH_TARGET_DP,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: RADII.pill,
+    borderWidth: 1,
+    borderColor: PALETTE.borderStrong,
+    backgroundColor: PALETTE.bgSurface,
+  },
+  localePillCompact: {
+    paddingHorizontal: 6,
+    gap: 2,
+  },
+  localeCodeLabel: {
+    fontSize: 11,
+    letterSpacing: 0.2,
+  },
+  localeCodeActive: {
+    fontWeight: '800',
+    color: PALETTE.positiveText,
+  },
+  localeCodeInactive: {
+    fontWeight: '600',
+    color: PALETTE.inkMuted,
+  },
+  localeDivider: {
+    fontSize: 11,
+    color: PALETTE.borderStrong,
+  },
   accountChip: {
     minHeight: MIN_TOUCH_TARGET_DP,
     minWidth: MIN_TOUCH_TARGET_DP,
@@ -546,8 +673,9 @@ const styles = StyleSheet.create({
     backgroundColor: PALETTE.bgSubtle,
   },
   accountChipCompact: {
-    paddingHorizontal: 10,
-    maxWidth: 124,
+    paddingHorizontal: 8,
+    gap: 4,
+    maxWidth: 96,
   },
   accountChipActive: {
     backgroundColor: PALETTE.bgTinted,
@@ -569,6 +697,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: PALETTE.inkPrimary,
     flexShrink: 1,
+  },
+  accountChipLabelCompact: {
+    fontSize: 11.5,
   },
   accountChipLabelActive: {
     color: PALETTE.positiveText,
@@ -598,12 +729,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   controlButtonCompact: {
-    flex: 1,
-    paddingHorizontal: 8,
+    flex: 0.95,
+    paddingHorizontal: 7,
+  },
+  controlButtonCompactGps: {
+    flex: 0.72,
+    paddingHorizontal: 6,
   },
   controlButtonCompactPrimary: {
-    flex: 1.25,
-    paddingHorizontal: 10,
+    flex: 1.38,
+    paddingHorizontal: 9,
   },
   primaryButton: {
     backgroundColor: PALETTE.accentPrimary,

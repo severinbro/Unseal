@@ -20,6 +20,7 @@ import React, {
   useEffect,
   useMemo,
   useReducer,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -41,6 +42,13 @@ import { DisclaimerBanner } from './src/components/DisclaimerBanner';
 import { DrawingToolbar } from './src/components/DrawingToolbar';
 import { MapControlsBar } from './src/components/MapControlsBar';
 import { PolygonInspectorSheet } from './src/components/PolygonInspectorSheet';
+import {
+  getTranslations,
+  localizeError,
+  readPersistedLocale,
+  writePersistedLocale,
+  type Locale,
+} from './src/i18n/translations';
 import { requestCurrentCoordinates } from './src/location/locateMe';
 import type { LocateMeResult } from './src/location/locateMe.types';
 import {
@@ -75,7 +83,10 @@ import {
   type SessionStorage,
 } from './src/storage/tokenStorage';
 import { deriveResponsiveLayout, PALETTE, RADII } from './src/theme/tokens';
-import { injectWebCraftStyles } from './src/theme/webStyles';
+import {
+  injectWebCraftStyles,
+  syncWebDocumentLocale,
+} from './src/theme/webStyles';
 
 const DEFAULT_API_BASE_URL = 'http://127.0.0.1:3000';
 const LOCATE_ME_TARGET_ZOOM = 17;
@@ -112,16 +123,26 @@ export interface AppProps {
   sessionStorage?: SessionStorage;
   ephemeralSession?: boolean;
   apiClient?: PpgisApiClient;
+  initialLocale?: Locale;
   exp?: Record<string, unknown>;
 }
 
 export function App(props: AppProps = {}): React.JSX.Element {
-  const [state, dispatch] = useReducer<React.Reducer<AppState, AppAction>>(
-    appReducer,
-    initialAppState,
-  );
+  const [state, dispatch] = useReducer<
+    React.Reducer<AppState, AppAction>,
+    Locale | undefined
+  >(appReducer, props.initialLocale, (explicitLocale): AppState => {
+    const startLocale = explicitLocale ?? readPersistedLocale();
+    return {
+      ...initialAppState,
+      locale: startLocale,
+    };
+  });
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [locationNotice, setLocationNotice] = useState<string | null>(null);
+
+  const localeRef = useRef<Locale>(state.locale);
+  localeRef.current = state.locale;
 
   const windowDimensions = useWindowDimensions();
   const layout = useMemo(
@@ -131,8 +152,19 @@ export function App(props: AppProps = {}): React.JSX.Element {
   );
 
   useEffect(() => {
-    injectWebCraftStyles();
+    injectWebCraftStyles(localeRef.current);
   }, []);
+
+  useEffect(() => {
+    syncWebDocumentLocale(state.locale);
+  }, [state.locale]);
+
+  const handleToggleLocale = useCallback((): void => {
+    const nextLocale: Locale = state.locale === 'de' ? 'en' : 'de';
+    writePersistedLocale(nextLocale);
+    setLocationNotice(null);
+    dispatch({ type: 'SET_LOCALE', locale: nextLocale });
+  }, [state.locale]);
 
   const storage = useMemo<SessionStorage>(() => {
     if (props.sessionStorage) {
@@ -181,10 +213,9 @@ export function App(props: AppProps = {}): React.JSX.Element {
         }
       }
     } catch (err: unknown) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : 'Unable to load map configuration.';
+      const activeLocale = localeRef.current;
+      const fallback = getTranslations(activeLocale).app.configLoadFallback;
+      const message = localizeError(err, fallback, activeLocale);
       dispatch({ type: 'CONFIG_ERROR', message });
     }
   }, [apiClient, storage]);
@@ -277,10 +308,10 @@ export function App(props: AppProps = {}): React.JSX.Element {
           dispatch({ type: 'SESSION_EXPIRED' });
           return;
         }
-        const message =
-          err instanceof Error
-            ? err.message
-            : 'Request could not be completed.';
+        const activeLocale = localeRef.current;
+        const fallback =
+          getTranslations(activeLocale).app.requestFailedFallback;
+        const message = localizeError(err, fallback, activeLocale);
         dispatch({ type: 'CLEAR_PENDING_INTENT' });
         if (activeIntent.type === 'SUBMIT_DRAFT') {
           dispatch({ type: 'SUBMIT_ERROR_PRESERVE_DRAFT', message });
@@ -300,6 +331,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
     state.pendingIntent,
   ]);
 
+  const tApp = getTranslations(state.locale).app;
   const mapControls = deriveMapControlsModel(state);
   const authModal = deriveAuthModalModel(state);
   const drawingToolbar = deriveDrawingToolbarModel(state);
@@ -349,7 +381,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
     setIsLocating(true);
     setLocationNotice(null);
 
-    void requestCurrentCoordinates()
+    void requestCurrentCoordinates(undefined, undefined, state.locale)
       .then((gpsResult: LocateMeResult) => {
         if (gpsResult.ok) {
           dispatch({
@@ -365,7 +397,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
       .finally(() => {
         setIsLocating(false);
       });
-  }, []);
+  }, [state.locale]);
 
   const handleRegister = useCallback(
     async (input: RegisterRequest): Promise<void> => {
@@ -490,7 +522,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
     return (
       <SafeAreaView style={styles.centeredScreen}>
         <ActivityIndicator size="large" color={PALETTE.accentPrimary} />
-        <Text style={styles.statusTitle}>Loading civic unsealing map…</Text>
+        <Text style={styles.statusTitle}>{tApp.loadingTitle}</Text>
       </SafeAreaView>
     );
   }
@@ -499,22 +531,19 @@ export function App(props: AppProps = {}): React.JSX.Element {
     return (
       <SafeAreaView style={styles.centeredScreen}>
         <View style={styles.errorCard}>
-          <Text style={styles.errorTitle}>
-            Could not connect to map service
-          </Text>
+          <Text style={styles.errorTitle}>{tApp.errorTitle}</Text>
           <Text style={styles.errorBody}>
-            {state.configError ??
-              'Please verify your network connection and retry.'}
+            {state.configError ?? tApp.errorFallback}
           </Text>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Retry loading map configuration"
+            accessibilityLabel={tApp.retryA11y}
             onPress={() => {
               void bootstrapApp();
             }}
             style={styles.retryButton}
           >
-            <Text style={styles.retryButtonLabel}>Retry Connection</Text>
+            <Text style={styles.retryButtonLabel}>{tApp.retryButton}</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -542,6 +571,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
     >
       <DrawingToolbar
         toolbar={drawingToolbar}
+        locale={state.locale}
         compact={layout.isCompact}
         onUndoVertex={() => dispatch({ type: 'UNDO_VERTEX' })}
         onCloseRing={() => dispatch({ type: 'CLOSE_RING' })}
@@ -562,6 +592,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
         disclaimerText={state.config.disclaimerText}
         abuseContact={state.config.abuseContact}
         isAuthenticated={mapControls.isAuthenticated}
+        locale={state.locale}
         compact={layout.isCompact}
         onCycleOverlap={() => dispatch({ type: 'CYCLE_OVERLAP_FEATURE' })}
         onClose={() =>
@@ -589,6 +620,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
         exportGeoJsonUrl={apiClient.getExportGeoJsonUrl()}
         isLocating={isLocating}
         tier={layout.tier}
+        onToggleLocale={handleToggleLocale}
         onSetBasemapMode={(mode) =>
           dispatch({ type: 'SET_BASEMAP_MODE', mode })
         }
@@ -657,7 +689,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
                   { backgroundColor: PALETTE.positiveDot },
                 ]}
               />
-              <Text style={styles.legendLabel}>+ Backed</Text>
+              <Text style={styles.legendLabel}>{tApp.legendBacked}</Text>
             </View>
             <View style={styles.legendItem}>
               <View
@@ -666,7 +698,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
                   { backgroundColor: PALETTE.neutralDot },
                 ]}
               />
-              <Text style={styles.legendLabel}>0 New</Text>
+              <Text style={styles.legendLabel}>{tApp.legendNew}</Text>
             </View>
             <View style={styles.legendItem}>
               <View
@@ -675,7 +707,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
                   { backgroundColor: PALETTE.dangerDot },
                 ]}
               />
-              <Text style={styles.legendLabel}>− Contested</Text>
+              <Text style={styles.legendLabel}>{tApp.legendContested}</Text>
             </View>
           </View>
         )}
@@ -738,6 +770,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
             >
               <AuthAndAccountModal
                 modal={authModal}
+                locale={state.locale}
                 compact={layout.isCompact}
                 onSelectView={(view) =>
                   dispatch({ type: 'SET_AUTH_MODAL_VIEW', view })

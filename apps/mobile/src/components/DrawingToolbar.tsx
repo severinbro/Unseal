@@ -1,5 +1,6 @@
 import {
   GEOMETRY_LIMITS,
+  SURFACE_TYPES,
   type SurfaceType,
 } from '@entsiegelung/shared';
 import React, { useEffect, useState } from 'react';
@@ -11,6 +12,11 @@ import {
   View,
 } from 'react-native';
 
+import {
+  DEFAULT_LOCALE,
+  getTranslations,
+  type Locale,
+} from '../i18n/translations';
 import {
   MIN_TOUCH_TARGET_DP,
   type DrawingToolbarModel,
@@ -29,31 +35,23 @@ export interface SurfaceTypeOption {
   readonly examples: string;
 }
 
-export const SURFACE_TYPE_OPTIONS: readonly SurfaceTypeOption[] = [
-  {
-    value: 'asphalt',
-    label: 'Asphalt',
-    examples: 'Road margins, parking strips, lanes',
-  },
-  {
-    value: 'concrete',
-    label: 'Concrete',
-    examples: 'Poured slabs, courtyards, forecourts',
-  },
-  {
-    value: 'pavers',
-    label: 'Pavers',
-    examples: 'Brick, cobble, interlocking stones',
-  },
-  {
-    value: 'other',
-    label: 'Other Sealed',
-    examples: 'Compacted gravel, bitumen, mixed cover',
-  },
-] as const;
+export function getSurfaceTypeOptions(
+  locale: Locale = DEFAULT_LOCALE,
+): readonly SurfaceTypeOption[] {
+  const copy = getTranslations(locale).surfaces;
+  return SURFACE_TYPES.map((value) => ({
+    value,
+    label: copy[value].label,
+    examples: copy[value].examples,
+  }));
+}
+
+export const SURFACE_TYPE_OPTIONS: readonly SurfaceTypeOption[] =
+  getSurfaceTypeOptions(DEFAULT_LOCALE);
 
 export interface DrawingToolbarProps {
   toolbar: DrawingToolbarModel;
+  locale?: Locale;
   compact?: boolean;
   onUndoVertex: () => void;
   onCloseRing: () => void;
@@ -67,6 +65,7 @@ export interface DrawingToolbarProps {
 
 export function DrawingToolbar({
   toolbar,
+  locale = DEFAULT_LOCALE,
   compact = false,
   onUndoVertex,
   onCloseRing,
@@ -95,18 +94,20 @@ export function DrawingToolbar({
     return null;
   }
 
+  const t = getTranslations(locale).drawing;
+  const surfaceOptions = getSurfaceTypeOptions(locale);
   const isCollapsed = compact && minimizedOnMobile;
 
   return (
     <View
       style={[styles.card, compact ? styles.cardCompact : null]}
-      accessibilityLabel="Polygon proposal drawing toolbar"
+      accessibilityLabel={t.toolbarA11y}
     >
       <View style={styles.headerRow}>
         <View style={styles.metricsStack}>
           <View style={styles.telemetryPillsRow}>
             <View style={styles.metricPill}>
-              <Text style={styles.metricPillLabel}>Vertices</Text>
+              <Text style={styles.metricPillLabel}>{t.verticesLabel}</Text>
               <Text style={styles.metricPillValue}>
                 {toolbar.distinctVertexCount}/{toolbar.maxVertices}
               </Text>
@@ -119,16 +120,14 @@ export function DrawingToolbar({
                   : null,
               ]}
             >
-              <Text style={styles.metricPillLabel}>Area</Text>
+              <Text style={styles.metricPillLabel}>{t.areaLabel}</Text>
               <Text style={styles.metricPillValue}>
                 {toolbar.areaM2.toFixed(1)} m²
               </Text>
             </View>
           </View>
           <Text style={styles.metricsStatus}>
-            {toolbar.isRingClosed
-              ? 'Shape closed — review surface type & publish'
-              : 'Tap corners on the map to outline sealed ground'}
+            {toolbar.isRingClosed ? t.statusClosed : t.statusOpen}
           </Text>
         </View>
 
@@ -136,15 +135,13 @@ export function DrawingToolbar({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={
-              isCollapsed
-                ? 'Expand proposal details sheet'
-                : 'Minimize sheet to view more map'
+              isCollapsed ? t.expandSheetA11y : t.minimizeSheetA11y
             }
             onPress={() => setMinimizedOnMobile((prev) => !prev)}
             style={styles.collapseToggleBtn}
           >
             <Text style={styles.collapseToggleLabel}>
-              {isCollapsed ? 'Details' : 'Map View'}
+              {isCollapsed ? t.detailsToggle : t.mapViewToggle}
             </Text>
           </Pressable>
         ) : null}
@@ -153,9 +150,11 @@ export function DrawingToolbar({
       {toolbar.crossingPoint !== null ? (
         <View style={styles.errorBox} accessibilityRole="alert">
           <Text style={styles.errorText}>
-            Edges cross near [{toolbar.crossingPoint[0].toFixed(5)},{' '}
-            {toolbar.crossingPoint[1].toFixed(5)}]. Tap &ldquo;
-            {toolbar.undoLabel}&rdquo; to uncross the boundary.
+            {t.crossingError(
+              toolbar.crossingPoint[0].toFixed(5),
+              toolbar.crossingPoint[1].toFixed(5),
+              toolbar.undoLabel,
+            )}
           </Text>
         </View>
       ) : null}
@@ -185,7 +184,7 @@ export function DrawingToolbar({
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Close shape"
+          accessibilityLabel={t.closeShapeA11y}
           accessibilityState={{ disabled: !toolbar.canCloseRing }}
           disabled={!toolbar.canCloseRing}
           onPress={onCloseRing}
@@ -203,7 +202,7 @@ export function DrawingToolbar({
               toolbar.canCloseRing ? styles.closeShapeReadyLabel : null,
             ]}
           >
-            {toolbar.isRingClosed ? 'Ring Closed ✓' : 'Close Shape'}
+            {toolbar.isRingClosed ? t.ringClosed : t.closeShape}
           </Text>
         </Pressable>
       </View>
@@ -212,10 +211,7 @@ export function DrawingToolbar({
         <>
           {toolbar.nearAreaBound ? (
             <View style={styles.nearBoundNotice}>
-              <Text style={styles.nearBoundText}>
-                Estimated area is close to the allowed range (2–500,000 m²);
-                exact PostGIS ellipsoid area is verified on submit.
-              </Text>
+              <Text style={styles.nearBoundText}>{t.nearBoundNotice}</Text>
             </View>
           ) : null}
 
@@ -230,9 +226,9 @@ export function DrawingToolbar({
           ) : null}
 
           <View style={styles.sectionBlock}>
-            <Text style={styles.sectionTitle}>Sealed Surface Material</Text>
+            <Text style={styles.sectionTitle}>{t.surfaceSectionTitle}</Text>
             <View style={styles.surfaceGrid} accessibilityRole="radiogroup">
-              {SURFACE_TYPE_OPTIONS.map((option) => {
+              {surfaceOptions.map((option) => {
                 const selected = toolbar.surfaceType === option.value;
                 const swatch = SURFACE_SWATCHES[option.value];
                 return (
@@ -281,7 +277,7 @@ export function DrawingToolbar({
 
           <View style={styles.sectionBlock}>
             <View style={styles.noteHeaderRow}>
-              <Text style={styles.sectionTitle}>Site Context (Optional)</Text>
+              <Text style={styles.sectionTitle}>{t.noteSectionTitle}</Text>
               <Text
                 style={[
                   styles.charCounter,
@@ -294,12 +290,12 @@ export function DrawingToolbar({
               </Text>
             </View>
             <TextInput
-              accessibilityLabel="Optional site context note"
+              accessibilityLabel={t.noteInputA11y}
               value={toolbar.note}
               onChangeText={onChangeNote}
               maxLength={GEOMETRY_LIMITS.MAX_NOTE_LENGTH}
               multiline
-              placeholder="Unused paved corner, heat island, or drainage potential (no personal names or contact data)"
+              placeholder={t.notePlaceholder}
               placeholderTextColor={PALETTE.inkMuted}
               style={styles.noteInput}
             />
@@ -310,12 +306,12 @@ export function DrawingToolbar({
       {toolbar.confirmingDiscard ? (
         <View style={styles.discardConfirmBox} accessibilityRole="alert">
           <Text style={styles.discardConfirmTitle}>
-            Discard your unsubmitted polygon draft?
+            {t.discardConfirmTitle}
           </Text>
           <View style={styles.footerActionsRow}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Keep editing polygon draft"
+              accessibilityLabel={t.keepEditingA11y}
               onPress={onCancelDiscard}
               style={[
                 styles.touchButton,
@@ -323,11 +319,11 @@ export function DrawingToolbar({
                 styles.secondaryButton,
               ]}
             >
-              <Text style={styles.secondaryButtonLabel}>Keep Editing</Text>
+              <Text style={styles.secondaryButtonLabel}>{t.keepEditing}</Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Confirm discard polygon draft"
+              accessibilityLabel={t.confirmDiscardA11y}
               onPress={onConfirmDiscard}
               style={[
                 styles.touchButton,
@@ -335,7 +331,7 @@ export function DrawingToolbar({
                 styles.dangerButton,
               ]}
             >
-              <Text style={styles.primaryButtonLabel}>Discard Draft</Text>
+              <Text style={styles.primaryButtonLabel}>{t.confirmDiscard}</Text>
             </Pressable>
           </View>
         </View>
@@ -343,16 +339,16 @@ export function DrawingToolbar({
         <View style={styles.footerActionsRow}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Cancel or discard draft"
+            accessibilityLabel={t.cancelA11y}
             onPress={onRequestDiscard}
             style={[styles.touchButton, styles.secondaryButton]}
           >
-            <Text style={styles.secondaryButtonLabel}>Cancel</Text>
+            <Text style={styles.secondaryButtonLabel}>{t.cancel}</Text>
           </Pressable>
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Submit unsealing proposal"
+            accessibilityLabel={t.submitA11y}
             accessibilityState={{
               disabled: !toolbar.canSubmit,
               busy: toolbar.isSubmitting,
@@ -367,7 +363,7 @@ export function DrawingToolbar({
             ]}
           >
             <Text style={styles.primaryButtonLabel}>
-              {toolbar.isSubmitting ? 'Publishing…' : 'Submit Proposal'}
+              {toolbar.isSubmitting ? t.submitting : t.submit}
             </Text>
           </Pressable>
         </View>
@@ -555,9 +551,10 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   surfaceOptionTitle: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '700',
     color: PALETTE.inkPrimary,
+    flexShrink: 1,
   },
   surfaceOptionTitleSelected: {
     color: PALETTE.positiveText,

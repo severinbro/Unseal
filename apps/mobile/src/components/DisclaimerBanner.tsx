@@ -2,6 +2,11 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import {
+  getTranslations,
+  localizeDisclaimerText,
+  localizeSystemNotice,
+} from '../i18n/translations';
+import {
   MIN_TOUCH_TARGET_DP,
   type MapControlsModel,
 } from '../state/viewModels';
@@ -26,12 +31,24 @@ export function DisclaimerBanner({
   onDismissTileWarning,
   onDismissLocationNotice,
 }: DisclaimerBannerProps): React.JSX.Element | null {
+  const locale = controls.locale;
+  const t = getTranslations(locale).banners;
+
+  const localizedDisclaimer = localizeDisclaimerText(
+    controls.disclaimerText,
+    locale,
+  );
+  const localizedTileWarning = localizeSystemNotice(
+    controls.tileWarning,
+    locale,
+  );
+
   const showDisclaimer =
     controls.showFirstVisitDisclaimer &&
-    controls.disclaimerText !== null &&
-    controls.disclaimerText.length > 0;
+    localizedDisclaimer !== null &&
+    localizedDisclaimer.length > 0;
   const showTileWarning =
-    controls.tileWarning !== null && controls.tileWarning.length > 0;
+    localizedTileWarning !== null && localizedTileWarning.length > 0;
   const showLocationNotice =
     locationNotice !== null && locationNotice.length > 0;
   const showZoomPrompt = controls.showZoomInPrompt;
@@ -53,22 +70,22 @@ export function DisclaimerBanner({
         <View
           style={styles.disclaimerBanner}
           accessibilityRole="alert"
-          accessibilityLabel="Public participation disclaimer"
+          accessibilityLabel={t.disclaimerA11y}
         >
           <View style={styles.bannerCopyRow}>
             <View style={styles.positiveDot} />
-            <Text style={styles.disclaimerText}>{controls.disclaimerText}</Text>
+            <Text style={styles.disclaimerText}>{localizedDisclaimer}</Text>
           </View>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Dismiss disclaimer"
+            accessibilityLabel={t.dismissDisclaimerA11y}
             onPress={onDismissDisclaimer}
             style={({ pressed }) => [
               styles.dismissButton,
               pressed ? styles.dismissButtonPressed : null,
             ]}
           >
-            <Text style={styles.dismissButtonLabel}>Got it</Text>
+            <Text style={styles.dismissButtonLabel}>{t.gotIt}</Text>
           </Pressable>
         </View>
       ) : null}
@@ -77,19 +94,19 @@ export function DisclaimerBanner({
         <View
           style={styles.warningBanner}
           accessibilityRole="alert"
-          accessibilityLabel="Orthophoto tile warning"
+          accessibilityLabel={t.tileWarningA11y}
         >
           <View style={styles.bannerCopyRow}>
             <View style={styles.warningDot} />
-            <Text style={styles.warningText}>{controls.tileWarning}</Text>
+            <Text style={styles.warningText}>{localizedTileWarning}</Text>
           </View>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Dismiss tile warning"
+            accessibilityLabel={t.dismissTileWarningA11y}
             onPress={onDismissTileWarning}
             style={styles.warningDismissButton}
           >
-            <Text style={styles.warningDismissLabel}>OK</Text>
+            <Text style={styles.warningDismissLabel}>{t.ok}</Text>
           </Pressable>
         </View>
       ) : null}
@@ -98,7 +115,7 @@ export function DisclaimerBanner({
         <View
           style={styles.warningBanner}
           accessibilityRole="alert"
-          accessibilityLabel="GPS location notice"
+          accessibilityLabel={t.locationNoticeA11y}
         >
           <View style={styles.bannerCopyRow}>
             <View style={styles.warningDot} />
@@ -106,11 +123,11 @@ export function DisclaimerBanner({
           </View>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Dismiss location notice"
+            accessibilityLabel={t.dismissLocationA11y}
             onPress={onDismissLocationNotice}
             style={styles.warningDismissButton}
           >
-            <Text style={styles.warningDismissLabel}>OK</Text>
+            <Text style={styles.warningDismissLabel}>{t.ok}</Text>
           </Pressable>
         </View>
       ) : null}
@@ -130,11 +147,10 @@ export function DisclaimerBanner({
         <View
           style={styles.truncatedBanner}
           accessibilityRole="summary"
-          accessibilityLabel="Viewport proposal limit notice"
+          accessibilityLabel={t.truncatedA11y}
         >
           <Text style={styles.truncatedText}>
-            Showing top {bboxFeatureLimit} highest-rated proposals in this map
-            view. Zoom in further to inspect additional proposals.
+            {t.truncatedMessage(bboxFeatureLimit)}
           </Text>
         </View>
       ) : null}

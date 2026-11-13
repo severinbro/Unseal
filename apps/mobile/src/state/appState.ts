@@ -13,6 +13,15 @@ import {
   type VoteResponse,
 } from '@entsiegelung/shared';
 
+import {
+  DEFAULT_LOCALE,
+  getTranslations,
+  translateValidationMessage,
+  type Locale,
+} from '../i18n/translations';
+
+export { DEFAULT_LOCALE, type Locale } from '../i18n/translations';
+
 export type ConfigStatus = 'loading' | 'ready' | 'error';
 export type InteractionMode = 'browse' | 'drawing';
 export type BasemapMode = 'osm' | 'orthophoto';
@@ -47,6 +56,7 @@ export type PendingIntent =
     };
 
 export interface AppState {
+  locale: Locale;
   configStatus: ConfigStatus;
   config: RuntimeConfig | null;
   configError: string | null;
@@ -80,6 +90,7 @@ export interface AppState {
 }
 
 export type AppAction =
+  | { type: 'SET_LOCALE'; locale: Locale }
   | { type: 'CONFIG_LOADING' }
   | { type: 'CONFIG_LOADED'; config: RuntimeConfig }
   | { type: 'CONFIG_ERROR'; message: string }
@@ -129,6 +140,7 @@ export type AppAction =
   | { type: 'CLEAR_PENDING_INTENT' };
 
 export const initialAppState: AppState = {
+  locale: DEFAULT_LOCALE,
   configStatus: 'loading',
   config: null,
   configError: null,
@@ -228,6 +240,20 @@ function buildDraftPolygonPayload(state: AppState): CreatePolygonRequest {
 
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
+    case 'SET_LOCALE': {
+      if (action.locale === state.locale) {
+        return state;
+      }
+      const prevExpiredMsg = getTranslations(state.locale).auth.sessionExpired;
+      const nextExpiredMsg = getTranslations(action.locale).auth.sessionExpired;
+      return {
+        ...state,
+        locale: action.locale,
+        authError:
+          state.authError === prevExpiredMsg ? nextExpiredMsg : state.authError,
+      };
+    }
+
     case 'CONFIG_LOADING': {
       return {
         ...state,
@@ -297,12 +323,14 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'TILE_LOAD_ERROR': {
+      const defaultFallback =
+        state.locale === 'de'
+          ? 'Luftbild-Kacheln konnten nicht geladen werden; zurück zur OpenStreetMap-Straßenkarte gewechselt.'
+          : 'Aerial orthophoto tiles failed to load; reverted to OpenStreetMap basemap.';
       return {
         ...state,
         basemapMode: 'osm',
-        tileWarning:
-          action.reason ??
-          'Aerial orthophoto tiles failed to load; reverted to OpenStreetMap basemap.',
+        tileWarning: action.reason ?? defaultFallback,
       };
     }
 
@@ -419,7 +447,10 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       if (distinct.length < GEOMETRY_LIMITS.MIN_VERTICES) {
         return {
           ...state,
-          draftSubmitError: `Polygon requires at least ${GEOMETRY_LIMITS.MIN_VERTICES} distinct vertices.`,
+          draftSubmitError: translateValidationMessage(
+            `Polygon requires at least ${GEOMETRY_LIMITS.MIN_VERTICES} distinct vertices.`,
+            state.locale,
+          ),
         };
       }
       return {
@@ -757,7 +788,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         viewportRefreshSeq: state.viewportRefreshSeq + 1,
         authModalOpen: true,
         authModalView: 'login',
-        authError: 'Your session expired. Please sign in to continue.',
+        authError: getTranslations(state.locale).auth.sessionExpired,
       };
     }
 

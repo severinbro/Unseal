@@ -5,11 +5,17 @@ import {
   type SurfaceType,
 } from '@entsiegelung/shared';
 
+import {
+  getTranslations,
+  translateValidationMessage,
+  type Locale,
+} from '../i18n/translations';
 import type { AppState, AuthModalView, BasemapMode } from './appState';
 
 export const MIN_TOUCH_TARGET_DP = 44;
 
 export interface MapControlsModel {
+  locale: Locale;
   showOrthophotoToggle: boolean;
   basemapMode: BasemapMode;
   orthophotoAttribution: string | null;
@@ -64,14 +70,16 @@ export interface DrawingToolbarModel {
 }
 
 export function deriveMapControlsModel(state: AppState): MapControlsModel {
+  const t = getTranslations(state.locale);
   const showOrthophotoToggle =
     state.config !== null && state.config.orthophoto !== null;
   const effectiveBasemapMode: BasemapMode = showOrthophotoToggle
     ? state.basemapMode
     : 'osm';
-  const zoomInPromptText = 'Zoom in to view and add proposals';
+  const zoomInPromptText = t.controls.zoomInPrompt;
 
   return {
+    locale: state.locale,
     showOrthophotoToggle,
     basemapMode: effectiveBasemapMode,
     orthophotoAttribution: state.config?.orthophoto?.attribution ?? null,
@@ -88,26 +96,25 @@ export function deriveMapControlsModel(state: AppState): MapControlsModel {
     showTruncatedNotice: !state.spanTooWide && state.truncated,
     tileWarning: state.tileWarning,
     isAuthenticated: state.currentUser !== null,
-    accountLabel: state.currentUser ? state.currentUser.pseudonym : 'Sign in',
+    accountLabel: state.currentUser
+      ? state.currentUser.pseudonym
+      : t.controls.signInShort,
     minTouchTargetDp: MIN_TOUCH_TARGET_DP,
   };
 }
 
 export function deriveAuthModalModel(state: AppState): AuthModalModel {
+  const t = getTranslations(state.locale);
   const isPostSignupRecoveryDisplay = state.pendingRecoveryCode !== null;
   const canClose =
     !isPostSignupRecoveryDisplay || state.recoveryCodeSavedChecked === true;
-  const closeBlockedReason = canClose
-    ? null
-    : 'Please confirm "I have saved my recovery code" before closing.';
+  const closeBlockedReason = canClose ? null : t.auth.closeBlockedReason;
 
   let pendingIntentSummary: string | null = null;
   if (state.pendingIntent?.type === 'SUBMIT_DRAFT') {
-    pendingIntentSummary =
-      'Your polygon draft is preserved and will be submitted once you sign in.';
+    pendingIntentSummary = t.auth.pendingDraftSummary;
   } else if (state.pendingIntent?.type === 'CAST_VOTE') {
-    pendingIntentSummary =
-      'Your vote will be submitted automatically once you sign in.';
+    pendingIntentSummary = t.auth.pendingVoteSummary;
   }
 
   return {
@@ -128,6 +135,7 @@ export function deriveAuthModalModel(state: AppState): AuthModalModel {
 export function deriveDrawingToolbarModel(
   state: AppState,
 ): DrawingToolbarModel {
+  const t = getTranslations(state.locale);
   const maxVertices =
     state.config?.limits.maxVertices ?? GEOMETRY_LIMITS.MAX_VERTICES;
   const minAreaM2 =
@@ -136,12 +144,12 @@ export function deriveDrawingToolbarModel(
     state.config?.limits.maxAreaM2 ?? GEOMETRY_LIMITS.MAX_AREA_M2;
 
   const draftValidation = validateDraftPolygon(state.draftVertices);
-  const errors = [...draftValidation.errors];
+  const rawErrors = [...draftValidation.errors];
 
   if (draftValidation.vertexCount > maxVertices) {
     const customMaxMsg = `Polygon must have at most ${maxVertices} distinct vertices.`;
-    if (!errors.includes(customMaxMsg)) {
-      errors.push(customMaxMsg);
+    if (!rawErrors.includes(customMaxMsg)) {
+      rawErrors.push(customMaxMsg);
     }
   }
 
@@ -150,7 +158,7 @@ export function deriveDrawingToolbarModel(
     draftValidation.areaM2 < minAreaM2 &&
     minAreaM2 !== GEOMETRY_LIMITS.MIN_AREA_M2
   ) {
-    errors.push(
+    rawErrors.push(
       `Polygon area (${draftValidation.areaM2.toFixed(1)} m²) is below minimum of ${minAreaM2} m².`,
     );
   }
@@ -160,7 +168,7 @@ export function deriveDrawingToolbarModel(
     draftValidation.areaM2 > maxAreaM2 &&
     maxAreaM2 !== GEOMETRY_LIMITS.MAX_AREA_M2
   ) {
-    errors.push(
+    rawErrors.push(
       `Polygon area (${draftValidation.areaM2.toFixed(1)} m²) exceeds maximum of ${maxAreaM2.toLocaleString('en-US')} m².`,
     );
   }
@@ -168,10 +176,14 @@ export function deriveDrawingToolbarModel(
   const noteRemainingChars =
     GEOMETRY_LIMITS.MAX_NOTE_LENGTH - state.draftNote.length;
   if (noteRemainingChars < 0) {
-    errors.push(
+    rawErrors.push(
       `Note must be at most ${GEOMETRY_LIMITS.MAX_NOTE_LENGTH} characters.`,
     );
   }
+
+  const errors = rawErrors.map((msg) =>
+    translateValidationMessage(msg, state.locale),
+  );
 
   const canAddVertex =
     state.mode === 'drawing' &&
@@ -203,7 +215,7 @@ export function deriveDrawingToolbarModel(
     validationErrors: errors,
     canAddVertex,
     canUndo,
-    undoLabel: state.isRingClosed ? 'Reopen ring' : 'Undo vertex',
+    undoLabel: state.isRingClosed ? t.drawing.reopenRing : t.drawing.undoVertex,
     canCloseRing,
     canSubmit,
     isSubmitting: state.isSubmittingDraft,

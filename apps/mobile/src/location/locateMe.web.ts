@@ -1,3 +1,8 @@
+import {
+  DEFAULT_LOCALE,
+  getTranslations,
+  type Locale,
+} from '../i18n/translations';
 import type { LocateMeResult } from './locateMe.types';
 
 export type { LocateMeResult } from './locateMe.types';
@@ -81,19 +86,21 @@ function isValidCoordinatePair(lng: number, lat: number): boolean {
   );
 }
 
-function mapGeolocationError(error: GeolocationPositionErrorLike): string {
+function mapGeolocationError(
+  error: GeolocationPositionErrorLike,
+  locale: Locale,
+): string {
+  const t = getTranslations(locale).location;
   switch (error.code) {
     case 1:
-      return 'Location permission was denied. Allow location access in your browser site permissions (and ensure HTTPS) to center the map on your position.';
+      return t.webPermissionDenied;
     case 2:
-      return 'Your current position is unavailable. Check that device location services are enabled and try again.';
+      return t.webPositionUnavailable;
     case 3:
-      return 'Timed out while waiting for GPS coordinates. Move to an area with a clearer view or try again.';
+      return t.webTimeout;
     default: {
       const detail = error.message?.trim() ?? '';
-      return detail.length > 0
-        ? `Unable to retrieve your current location: ${detail}`
-        : 'Unable to retrieve your current location.';
+      return t.webGenericError(detail);
     }
   }
 }
@@ -101,13 +108,14 @@ function mapGeolocationError(error: GeolocationPositionErrorLike): string {
 export async function requestCurrentCoordinates(
   nav?: WebNavigatorLike | null,
   isSecureContext?: boolean,
+  locale: Locale = DEFAULT_LOCALE,
 ): Promise<LocateMeResult> {
+  const t = getTranslations(locale).location;
   const secure = isSecureContext ?? resolveDefaultIsSecureContext();
   if (!secure) {
     return {
       ok: false,
-      reason:
-        'Browser geolocation requires a secure HTTPS connection (or localhost). Open Entsiegelungskartierung over https:// to use "Locate me".',
+      reason: t.webHttpsRequired,
     };
   }
 
@@ -119,7 +127,7 @@ export async function requestCurrentCoordinates(
   ) {
     return {
       ok: false,
-      reason: 'Geolocation is not supported or available in this browser.',
+      reason: t.webUnsupported,
     };
   }
 
@@ -143,8 +151,7 @@ export async function requestCurrentCoordinates(
           if (!isValidCoordinatePair(lng, lat)) {
             finish({
               ok: false,
-              reason:
-                'Browser geolocation returned invalid GPS coordinates.',
+              reason: t.webInvalidCoords,
             });
             return;
           }
@@ -157,7 +164,7 @@ export async function requestCurrentCoordinates(
         (error) => {
           finish({
             ok: false,
-            reason: mapGeolocationError(error),
+            reason: mapGeolocationError(error, locale),
           });
         },
         GEOLOCATION_OPTIONS,
@@ -169,7 +176,7 @@ export async function requestCurrentCoordinates(
           : '.';
       finish({
         ok: false,
-        reason: `Unable to request browser geolocation${detail}`,
+        reason: t.webRequestFailed(detail),
       });
     }
   });

@@ -128,10 +128,18 @@ describe('Full-stack HTTP E2E flow (PpgisApiClient + appReducer + Fastify + Post
     assert.equal(state.configStatus, 'ready');
 
     const initialControls = deriveMapControlsModel(state);
+    assert.equal(state.locale, 'de');
+    assert.equal(initialControls.locale, 'de');
     assert.equal(initialControls.showFirstVisitDisclaimer, true);
     assert.equal(initialControls.showOrthophotoToggle, true);
     assert.equal(initialControls.isAuthenticated, false);
-    assert.equal(initialControls.accountLabel, 'Sign in');
+    assert.equal(initialControls.accountLabel, 'Anmelden');
+
+    const englishControls = deriveMapControlsModel(
+      appReducer(state, { type: 'SET_LOCALE', locale: 'en' }),
+    );
+    assert.equal(englishControls.locale, 'en');
+    assert.equal(englishControls.accountLabel, 'Sign in');
 
     // Verify raw anonymous HTTP headers on GET /api/v1/polygons?bbox=...
     const rawAnonBboxRes = await fetch(
