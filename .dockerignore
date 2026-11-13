@@ -1,8 +1,13 @@
 node_modules
 **/node_modules
 **/dist
+dist-web
+uploads
 .git
 .swarm
 .env
+.env.vps
 .expo
 web-build
+apps/mobile/android
+apps/mobile/ios

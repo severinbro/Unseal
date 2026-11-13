@@ -41,10 +41,10 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
     }
   });
 
-  it('applies 001_initial_schema.sql idempotently and resetTestDb truncates all application tables', async () => {
+  it('applies 001_initial_schema.sql + 002_v2_features.sql idempotently and resetTestDb truncates all application tables', async () => {
     const secondRun = await runMigrations(pool);
     assert.equal(secondRun.applied.length, 0);
-    assert.equal(secondRun.totalApplied, 1);
+    assert.equal(secondRun.totalApplied, 2);
 
     const indexRes = await pool.query<{ indexname: string }>(
       `SELECT indexname FROM pg_indexes WHERE schemaname = 'public'`,
@@ -126,7 +126,7 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
     assert.equal(counts.polygons_cnt, 0);
     assert.equal(counts.creations_cnt, 0);
     assert.equal(counts.votes_cnt, 0);
-    assert.equal(counts.migrations_cnt, 1);
+    assert.equal(counts.migrations_cnt, 2);
   });
 
   it('GET /api/v1/health returns 200 against live PostGIS and 503 SERVICE_UNAVAILABLE when DB fails or migrations are incomplete', async () => {
@@ -144,7 +144,7 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
       assert.ok(okRes.headers['x-request-id']);
       const health = HealthResponseSchema.parse(okRes.json());
       assert.equal(health.status, 'ok');
-      assert.equal(health.migrationsApplied, 1);
+      assert.equal(health.migrationsApplied, 2);
       assert.match(health.postgisVersion, /^3\./);
     } finally {
       await app.close();
@@ -176,11 +176,15 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
     // Pending unapplied migration file -> 503 SERVICE_UNAVAILABLE
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ppgis-mig-'));
     try {
-      const realMigrationPath = fileURLToPath(
+      const mig1Path = fileURLToPath(
         new URL('../migrations/001_initial_schema.sql', import.meta.url),
       );
-      await fs.copyFile(realMigrationPath, path.join(tmpDir, '001_initial_schema.sql'));
-      await fs.writeFile(path.join(tmpDir, '002_pending.sql'), 'SELECT 1;\n', 'utf8');
+      const mig2Path = fileURLToPath(
+        new URL('../migrations/002_v2_features.sql', import.meta.url),
+      );
+      await fs.copyFile(mig1Path, path.join(tmpDir, '001_initial_schema.sql'));
+      await fs.copyFile(mig2Path, path.join(tmpDir, '002_v2_features.sql'));
+      await fs.writeFile(path.join(tmpDir, '003_pending.sql'), 'SELECT 1;\n', 'utf8');
 
       const unmigratedApp = await buildApp(config, pool, {
         logger: createLogger({ enabled: false }),

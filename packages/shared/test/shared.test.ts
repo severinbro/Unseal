@@ -16,8 +16,11 @@ import {
   type ErrorCode,
   GEOMETRY_LIMITS,
   HealthResponseSchema,
+  ImportPolygonsResponseSchema,
   LoginRequestSchema,
   PatchPolygonRequestSchema,
+  PatchPolygonStatusRequestSchema,
+  PolygonPhotoSchema,
   type PolygonFeature,
   PolygonCollectionResponseSchema,
   PolygonFeatureSchema,
@@ -36,6 +39,7 @@ import {
   checkBboxSpan,
   checkPolygonRingStructure,
   closeRingIfNeeded,
+  computeMunicipalityNormalizedScore,
   dedupeConsecutivePoints,
   normalizeRecoveryCode,
   validateDraftPolygon,
@@ -541,17 +545,38 @@ describe('Review Focus 2: PatchPolygonRequestSchema, TextEncoder password bounds
     assert.deepEqual(PatchPolygonRequestSchema.parse({ note: '' }), { note: '' });
   });
 
-  it('RegisterRequestSchema, LoginRequestSchema, and RecoverRequestSchema enforce TextEncoder UTF-8 byte & char limits', () => {
-    // Valid registration
+  it('RegisterRequestSchema, LoginRequestSchema, and ResetPasswordRequestSchema enforce email, privacy consent, and TextEncoder UTF-8 byte & char limits', () => {
+    // Valid v2 email registration
     const validReg = RegisterRequestSchema.parse({
       pseudonym: 'kiez_mapper-42',
+      email: 'Kiez.Mapper@Example.ORG',
       password: 'correct-horse-battery-staple',
+      acceptedPrivacyPolicy: true,
     });
     assert.equal(validReg.pseudonym, 'kiez_mapper-42');
+    assert.equal(validReg.email, 'kiez.mapper@example.org');
+
+    // Missing privacy policy consent rejected
+    assert.throws(
+      () =>
+        RegisterRequestSchema.parse({
+          pseudonym: 'mapper1',
+          email: 'mapper1@example.org',
+          password: 'correct-horse-battery-staple',
+          acceptedPrivacyPolicy: false,
+        }),
+      ZodError,
+    );
 
     // < 8-char password rejected
     assert.throws(
-      () => RegisterRequestSchema.parse({ pseudonym: 'mapper1', password: 'short7!' }),
+      () =>
+        RegisterRequestSchema.parse({
+          pseudonym: 'mapper1',
+          email: 'mapper1@example.org',
+          password: 'short7!',
+          acceptedPrivacyPolicy: true,
+        }),
       ZodError,
     );
 
@@ -560,7 +585,9 @@ describe('Review Focus 2: PatchPolygonRequestSchema, TextEncoder password bounds
     assert.ok(new TextEncoder().encode(over1024Bytes).byteLength > 1024);
     const overBytesRes = RegisterRequestSchema.safeParse({
       pseudonym: 'mapper1',
+      email: 'mapper1@example.org',
       password: over1024Bytes,
+      acceptedPrivacyPolicy: true,
     });
     assert.equal(overBytesRes.success, false);
     assert.ok(
@@ -570,21 +597,46 @@ describe('Review Focus 2: PatchPolygonRequestSchema, TextEncoder password bounds
 
     // > 128-char ASCII password rejected
     assert.throws(
-      () => RegisterRequestSchema.parse({ pseudonym: 'mapper1', password: 'a'.repeat(129) }),
+      () =>
+        RegisterRequestSchema.parse({
+          pseudonym: 'mapper1',
+          email: 'mapper1@example.org',
+          password: 'a'.repeat(129),
+          acceptedPrivacyPolicy: true,
+        }),
       ZodError,
     );
 
-    // Invalid pseudonym rejected
+    // Login accepts both pseudonym and email via identifier (or legacy pseudonym field)
+    assert.equal(
+      LoginRequestSchema.parse({ identifier: 'mapper1', password: 'valid-password-123' }).identifier,
+      'mapper1',
+    );
+    assert.equal(
+      LoginRequestSchema.parse({ identifier: 'mapper1@example.org', password: 'valid-password-123' })
+        .identifier,
+      'mapper1@example.org',
+    );
+    assert.equal(
+      LoginRequestSchema.parse({ pseudonym: 'mapper1', password: 'valid-password-123' }).identifier,
+      'mapper1',
+    );
+
+    // Invalid pseudonym / malformed email rejected
     assert.throws(
       () => LoginRequestSchema.parse({ pseudonym: 'ab', password: 'valid-password-123' }),
       ZodError,
     );
     assert.throws(
-      () => LoginRequestSchema.parse({ pseudonym: 'bad space', password: 'valid-password-123' }),
+      () => LoginRequestSchema.parse({ identifier: 'bad space', password: 'valid-password-123' }),
+      ZodError,
+    );
+    assert.throws(
+      () => LoginRequestSchema.parse({ identifier: 'not-an-email@', password: 'valid-password-123' }),
       ZodError,
     );
 
-    // Recovery code normalization & RecoverRequestSchema
+    // Legacy recovery code helper remains deterministic
     assert.equal(
       normalizeRecoveryCode('abcd-ef01 2345-6789-abcd-ef01-2345-6789'),
       'ABCDEF0123456789ABCDEF0123456789',
@@ -784,9 +836,50 @@ describe('Review Focus 3: BboxQuerySchema vs checkBboxSpan and remaining wire sc
     assert.equal(sessionRes.user.pseudonym, 'kiez_mapper');
 
     const regRes = RegisterResponseSchema.parse({
-      ...sessionRes,
-      recoveryCode: 'ABCD-EF01-2345-6789-ABCD-EF01-2345-6789',
+      status: 'verification_email_sent',
+      pseudonym: 'kiez_mapper',
+      email: 'kiez@example.org',
     });
-    assert.equal(regRes.recoveryCode.length, 39);
+    assert.equal(regRes.status, 'verification_email_sent');
+
+    // Municipality-bounded score normalization
+    assert.equal(computeMunicipalityNormalizedScore(12, 'proposed', '07315000', 12), 1);
+    assert.equal(computeMunicipalityNormalizedScore(6, 'proposed', '07315000', 12), 0.5);
+    assert.equal(computeMunicipalityNormalizedScore(12, 'proposed', '02000000', 120), 0.1);
+    assert.equal(computeMunicipalityNormalizedScore(12, 'finished', '07315000', 12), 0);
+    assert.equal(computeMunicipalityNormalizedScore(-2, 'proposed', '07315000', 12), 0);
+    assert.equal(computeMunicipalityNormalizedScore(1, 'proposed', '07315000', 1), 0.3333);
+
+    assert.equal(
+      PatchPolygonStatusRequestSchema.parse({ status: 'finished' }).status,
+      'finished',
+    );
+
+    const parsedPhoto = PolygonPhotoSchema.parse({
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      polygonId: '550e8400-e29b-41d4-a716-446655440001',
+      url: '/uploads/550e8400-e29b-41d4-a716-446655440000.webp',
+      thumbUrl: '/uploads/550e8400-e29b-41d4-a716-446655440000_thumb.webp',
+      width: 1200,
+      height: 900,
+      gpsVerified: true,
+      uploaderPseudonym: 'kiez_mapper',
+      isUploader: true,
+      realVotes: 4,
+      fakeVotes: 0,
+      credibilityScore: 4,
+      myVote: 1,
+      isFlaggedFake: false,
+      createdAt: '2026-11-13T10:00:00.000Z',
+    });
+    assert.equal(parsedPhoto.gpsVerified, true);
+
+    const parsedImport = ImportPolygonsResponseSchema.parse({
+      format: 'gpkg',
+      importedCount: 15,
+      skippedCount: 1,
+      errors: [{ featureIndex: 7, reason: 'Area below 2 m²' }],
+    });
+    assert.equal(parsedImport.importedCount, 15);
   });
 });

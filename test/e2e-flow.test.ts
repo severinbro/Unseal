@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
+
+import sharp from 'sharp';
 
 import {
   ApiError,
@@ -21,7 +26,12 @@ import {
   deriveMapControlsModel,
 } from '@entsiegelung/mobile/viewModels';
 
-import { buildApp } from '../apps/api/src/app.js';
+import {
+  buildApp,
+  createMemoryMailer,
+  upsertMunicipalitiesAndBackfill,
+  type MemoryMailer,
+} from '../apps/api/src/app.js';
 import { loadEnvConfig } from '../apps/api/src/config.js';
 import { resetTestDb, setupTestDb } from '../apps/api/src/db/testHarness.js';
 import { createLogger } from '../apps/api/src/logger.js';
@@ -36,6 +46,13 @@ const HAMBURG_BBOX: BboxBounds = {
   maxLat: 53.56,
 };
 
+const MAINZ_BBOX: BboxBounds = {
+  minLng: 8.26,
+  minLat: 49.99,
+  maxLng: 8.28,
+  maxLat: 50.01,
+};
+
 const COURTYARD_VERTICES: [number, number][] = [
   [9.9937, 53.5511],
   [9.99385, 53.5511],
@@ -43,7 +60,31 @@ const COURTYARD_VERTICES: [number, number][] = [
   [9.9937, 53.551208],
 ];
 
-const RECOVERY_CODE_FORMAT_RE = /^[0-9A-F]{4}(?:-[0-9A-F]{4}){7}$/;
+const HAMBURG_MUNICIPALITY_GEOJSON = JSON.stringify({
+  type: 'Polygon',
+  coordinates: [
+    [
+      [9.8, 53.45],
+      [10.15, 53.45],
+      [10.15, 53.65],
+      [9.8, 53.65],
+      [9.8, 53.45],
+    ],
+  ],
+});
+
+const MAINZ_MUNICIPALITY_GEOJSON = JSON.stringify({
+  type: 'Polygon',
+  coordinates: [
+    [
+      [8.15, 49.92],
+      [8.35, 49.92],
+      [8.35, 50.05],
+      [8.15, 50.05],
+      [8.15, 49.92],
+    ],
+  ],
+});
 
 interface StreamedGeoJsonCollection {
   type: 'FeatureCollection';
@@ -63,17 +104,58 @@ function parseStreamedGeoJson(raw: string): StreamedGeoJsonCollection {
   };
 }
 
-describe('Full-stack HTTP E2E flow (PpgisApiClient + appReducer + Fastify + PostGIS)', () => {
+function extractTokenFromUrl(actionUrl: string): string {
+  const parsed = new URL(actionUrl);
+  const token = parsed.searchParams.get('token');
+  assert.ok(token && token.length >= 32, `Expected token in ${actionUrl}`);
+  return token;
+}
+
+async function confirmEmailViaHostedWebPage(
+  baseUrl: string,
+  actionUrl: string,
+): Promise<void> {
+  const token = extractTokenFromUrl(actionUrl);
+  const getPageRes = await fetch(
+    `${baseUrl}/auth/verify-email?token=${encodeURIComponent(token)}`,
+  );
+  assert.equal(getPageRes.status, 200);
+  const getHtml = await getPageRes.text();
+  assert.match(getHtml, /E-Mail-Adresse jetzt bestätigen/);
+
+  const postFormRes = await fetch(`${baseUrl}/auth/verify-email`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({ token }).toString(),
+  });
+  assert.equal(postFormRes.status, 200);
+  const postHtml = await postFormRes.text();
+  assert.match(postHtml, /erfolgreich bestätigt/);
+}
+
+describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + PostGIS + Photos + VG250)', () => {
   let pool: pg.Pool;
   let app: FastifyInstance;
+  let mailer: MemoryMailer;
+  let uploadsDir = '';
   let baseUrl = '';
 
   before(async () => {
     pool = await setupTestDb();
+    uploadsDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'entsiegelung-e2e-uploads-'),
+    );
+    mailer = createMemoryMailer();
+
     const config = loadEnvConfig({
       ...process.env,
       HOST: '127.0.0.1',
       PORT: '0',
+      PUBLIC_BASE_URL: 'https://entsiegelung.example.org',
+      UPLOADS_DIR: uploadsDir,
+      AUTO_SEED_VG250: 'false',
       ABUSE_CONTACT: 'moderation@entsiegelung.example.org',
       ORTHOPHOTO_URL_TEMPLATE:
         'https://ortho.entsiegelung.example.org/dop/{z}/{x}/{y}.jpg',
@@ -84,12 +166,28 @@ describe('Full-stack HTTP E2E flow (PpgisApiClient + appReducer + Fastify + Post
     });
     app = await buildApp(config, pool, {
       logger: createLogger({ level: 'silent' }),
+      mailer,
     });
     baseUrl = await app.listen({ port: 0, host: '127.0.0.1' });
   });
 
   beforeEach(async () => {
     await resetTestDb(pool);
+    mailer.clear();
+    await upsertMunicipalitiesAndBackfill(pool, [
+      {
+        ags: '02000000',
+        name: 'Hamburg',
+        stateCode: '02',
+        geoJsonGeometry: HAMBURG_MUNICIPALITY_GEOJSON,
+      },
+      {
+        ags: '07315000',
+        name: 'Mainz',
+        stateCode: '07',
+        geoJsonGeometry: MAINZ_MUNICIPALITY_GEOJSON,
+      },
+    ]);
   });
 
   after(async () => {
@@ -99,16 +197,25 @@ describe('Full-stack HTTP E2E flow (PpgisApiClient + appReducer + Fastify + Post
     if (pool) {
       await pool.end();
     }
+    if (uploadsDir) {
+      await fs.rm(uploadsDir, { recursive: true, force: true });
+    }
   });
 
-  it('completes anonymous config & viewport read, inline signup + asphalt polygon submit, +1/-1 voting & voter deletion, author PATCH & streamed export, and author tombstoned deletion', async () => {
-    // 0. Live health check over HTTP
+  it('completes anonymous config & privacy page, 2-step drawing wizard + draft photo, email confirmation link signup, GPS-verified EXIF-stripped photo upload & rating, municipality-bounded scoring, admin finished/import, and GDPR deletion', async () => {
+    // 0. Live health check & hosted privacy policy page over HTTP
     const healthRes = await fetch(`${baseUrl}/api/v1/health`);
     assert.equal(healthRes.status, 200);
     assert.ok(healthRes.headers.get('x-request-id'));
     const healthBody = HealthResponseSchema.parse(await healthRes.json());
     assert.equal(healthBody.status, 'ok');
-    assert.ok(healthBody.migrationsApplied >= 1);
+    assert.ok(healthBody.migrationsApplied >= 2);
+
+    const privacyRes = await fetch(`${baseUrl}/auth/privacy`);
+    assert.equal(privacyRes.status, 200);
+    const privacyHtml = await privacyRes.text();
+    assert.match(privacyHtml, /Datenschutzerklärung/);
+    assert.match(privacyHtml, /GPS verified/);
 
     // 1. Anonymous cold-start: /api/v1/config + /api/v1/polygons?bbox=... (Vary: Authorization)
     const anonStorage = createMemorySessionStorage();
@@ -133,6 +240,7 @@ describe('Full-stack HTTP E2E flow (PpgisApiClient + appReducer + Fastify + Post
     assert.equal(initialControls.showFirstVisitDisclaimer, true);
     assert.equal(initialControls.showOrthophotoToggle, true);
     assert.equal(initialControls.isAuthenticated, false);
+    assert.equal(initialControls.isAdmin, false);
     assert.equal(initialControls.accountLabel, 'Anmelden');
 
     const englishControls = deriveMapControlsModel(
@@ -141,28 +249,18 @@ describe('Full-stack HTTP E2E flow (PpgisApiClient + appReducer + Fastify + Post
     assert.equal(englishControls.locale, 'en');
     assert.equal(englishControls.accountLabel, 'Sign in');
 
-    // Verify raw anonymous HTTP headers on GET /api/v1/polygons?bbox=...
+    // Raw anonymous HTTP headers on GET /api/v1/polygons?bbox=...
     const rawAnonBboxRes = await fetch(
       `${baseUrl}/api/v1/polygons?bbox=${HAMBURG_BBOX.minLng},${HAMBURG_BBOX.minLat},${HAMBURG_BBOX.maxLng},${HAMBURG_BBOX.maxLat}`,
     );
     assert.equal(rawAnonBboxRes.status, 200);
-    const varyHeader = rawAnonBboxRes.headers.get('vary') ?? '';
-    assert.match(varyHeader, /Authorization/i);
+    assert.match(rawAnonBboxRes.headers.get('vary') ?? '', /Authorization/i);
     assert.equal(
       rawAnonBboxRes.headers.get('cache-control'),
       'public, max-age=5',
     );
 
-    // Wide viewport gates fetching via spanTooWide (> 0.15 deg)
-    state = appReducer(state, {
-      type: 'SET_VIEWPORT',
-      bbox: { minLng: 9.8, minLat: 53.4, maxLng: 10.1, maxLat: 53.6 },
-      zoom: 10,
-    });
-    assert.equal(state.spanTooWide, true);
-    assert.equal(deriveMapControlsModel(state).showZoomInPrompt, true);
-
-    // Zoom into district (<= 0.15 deg) and fetch initial empty feature collection
+    // Zoom into Hamburg district and fetch initial empty collection
     state = appReducer(state, {
       type: 'SET_VIEWPORT',
       bbox: HAMBURG_BBOX,
@@ -172,15 +270,16 @@ describe('Full-stack HTTP E2E flow (PpgisApiClient + appReducer + Fastify + Post
 
     const emptyCollection = await anonClient.listPolygons(HAMBURG_BBOX);
     assert.equal(emptyCollection.features.length, 0);
-    assert.equal(emptyCollection.meta.truncated, false);
     state = appReducer(state, {
       type: 'VIEWPORT_FEATURES_LOADED',
       features: emptyCollection.features,
       truncated: emptyCollection.meta.truncated,
     });
 
-    // 2. Anonymous draft creation + inline signup (32-hex recovery code) + asphalt polygon submission
+    // 2. Two-step progressive drawing wizard + onsite GPS-tagged photo attachment
     state = appReducer(state, { type: 'START_DRAW' });
+    assert.equal(state.drawingStep, 'geometry');
+
     for (const vertex of COURTYARD_VERTICES) {
       state = appReducer(state, { type: 'ADD_VERTEX', point: vertex });
     }
@@ -191,257 +290,390 @@ describe('Full-stack HTTP E2E flow (PpgisApiClient + appReducer + Fastify + Post
     });
 
     let toolbar = deriveDrawingToolbarModel(state);
+    assert.equal(toolbar.step, 'geometry');
     assert.equal(toolbar.distinctVertexCount, 4);
     assert.ok(toolbar.areaM2 >= 2 && toolbar.areaM2 <= 500_000);
-    assert.equal(toolbar.canCloseRing, true);
-    assert.equal(toolbar.canSubmit, false);
+    assert.equal(toolbar.canAdvanceToDetails, true);
 
-    state = appReducer(state, { type: 'CLOSE_RING' });
+    // Advance to Step 2 ('details') — automatically closes the polygon ring
+    state = appReducer(state, { type: 'ADVANCE_TO_DETAILS' });
     state = appReducer(state, {
       type: 'SET_DRAFT_META',
       surfaceType: 'asphalt',
       note: 'Impervious asphalt parking strip next to schoolyard',
     });
 
+    // Synthesize a real JPEG carrying camera EXIF + GPS ~15 m from (9.9937, 53.5511)
+    const onsiteJpegBuffer = await sharp({
+      create: {
+        width: 640,
+        height: 480,
+        channels: 3,
+        background: { r: 85, g: 115, b: 95 },
+      },
+    })
+      .withExif({
+        IFD0: {
+          Make: 'PrivatePhoneVendor',
+          Model: 'FieldMapperPhone',
+        },
+        IFD3: {
+          GPSLatitudeRef: 'N',
+          GPSLatitude: '53 33 4.00',
+          GPSLongitudeRef: 'E',
+          GPSLongitude: '9 59 37.40',
+        },
+      })
+      .jpeg({ quality: 86 })
+      .toBuffer();
+
+    state = appReducer(state, {
+      type: 'ADD_DRAFT_PHOTO',
+      photo: {
+        id: 'draft-onsite-1',
+        previewUri: 'blob:onsite-courtyard',
+        file: {
+          uri: 'blob:onsite-courtyard',
+          name: 'courtyard-onsite.jpg',
+          mimeType: 'image/jpeg',
+          webFile: new Blob([new Uint8Array(onsiteJpegBuffer)], {
+            type: 'image/jpeg',
+          }),
+        },
+      },
+    });
+
     toolbar = deriveDrawingToolbarModel(state);
+    assert.equal(toolbar.step, 'details');
     assert.equal(toolbar.isRingClosed, true);
-    assert.equal(toolbar.surfaceType, 'asphalt');
+    assert.equal(toolbar.draftPhotos.length, 1);
     assert.equal(toolbar.canSubmit, true);
 
-    // Tapping Submit while unauthenticated preserves draft & opens inline registration modal
+    // Submitting while unauthenticated queues draft + photo and opens email registration modal
     state = appReducer(state, { type: 'SUBMIT_DRAFT' });
     assert.equal(state.authModalOpen, true);
     assert.equal(state.authModalView, 'register');
     assert.equal(state.pendingIntent?.type, 'SUBMIT_DRAFT');
-    assert.equal(state.draftVertices.length, 5);
 
     const authorStorage = createMemorySessionStorage();
     const authorClient = new PpgisApiClient(baseUrl, authorStorage);
     const regAuthor = await authorClient.register({
       pseudonym: 'courtyard_author',
+      email: 'courtyard_author@example.org',
+      password: 'correct-horse-battery-staple',
+      acceptedPrivacyPolicy: true,
+    });
+    assert.equal(regAuthor.status, 'verification_email_sent');
+    assert.equal(mailer.outbox.length, 1);
+    assert.equal(mailer.outbox[0]?.purpose, 'verify_email');
+
+    state = appReducer(state, {
+      type: 'REGISTRATION_VERIFICATION_SENT',
+      email: regAuthor.email,
+      pseudonym: regAuthor.pseudonym,
+    });
+    const verifyPendingModal = deriveAuthModalModel(state);
+    assert.equal(verifyPendingModal.view, 'verify_pending');
+    assert.equal(
+      verifyPendingModal.pendingVerificationEmail,
+      'courtyard_author@example.org',
+    );
+
+    // Login before confirming email fails with 403 AUTH_EMAIL_UNVERIFIED
+    await assert.rejects(
+      () =>
+        authorClient.login({
+          identifier: 'courtyard_author',
+          password: 'correct-horse-battery-staple',
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof ApiError);
+        assert.equal(err.statusCode, 403);
+        assert.equal(err.code, 'AUTH_EMAIL_UNVERIFIED');
+        return true;
+      },
+    );
+
+    // User clicks confirmation link on the hosted VPS page (GET + POST /auth/verify-email)
+    await confirmEmailViaHostedWebPage(baseUrl, mailer.outbox[0]!.actionUrl);
+
+    // Sign in and resume queued SUBMIT_DRAFT + photo upload!
+    const authorSession = await authorClient.login({
+      identifier: 'courtyard_author',
       password: 'correct-horse-battery-staple',
     });
-
-    assert.equal(regAuthor.user.pseudonym, 'courtyard_author');
-    assert.match(regAuthor.recoveryCode, RECOVERY_CODE_FORMAT_RE);
-    assert.equal(regAuthor.recoveryCode.replace(/-/g, '').length, 32);
-
     state = appReducer(state, {
       type: 'AUTH_SUCCEEDED',
-      user: regAuthor.user,
-      recoveryCode: regAuthor.recoveryCode,
+      user: authorSession.user,
     });
-
-    // Post-signup modal cannot close before confirming recovery code saved
-    let authModal = deriveAuthModalModel(state);
-    assert.equal(authModal.visible, true);
-    assert.equal(authModal.isPostSignupRecoveryDisplay, true);
-    assert.equal(authModal.canClose, false);
-
-    state = appReducer(state, { type: 'CLOSE_AUTH_MODAL' });
-    assert.equal(state.authModalOpen, true);
-
-    // Confirm saving 32-hex recovery code and close modal
-    state = appReducer(state, {
-      type: 'SET_RECOVERY_CODE_SAVED_CHECKED',
-      checked: true,
-    });
-    authModal = deriveAuthModalModel(state);
-    assert.equal(authModal.canClose, true);
-
-    state = appReducer(state, { type: 'CLOSE_AUTH_MODAL' });
     assert.equal(state.authModalOpen, false);
-    assert.equal(state.pendingRecoveryCode, null);
-    assert.equal(state.pendingIntent?.type, 'SUBMIT_DRAFT');
+    assert.ok(
+      state.pendingIntent && state.pendingIntent.type === 'SUBMIT_DRAFT',
+    );
 
-    // Resume queued pendingIntent over real HTTP
-    assert.ok(state.pendingIntent && state.pendingIntent.type === 'SUBMIT_DRAFT');
     const createdPolygon = await authorClient.createPolygon(
       state.pendingIntent.payload,
     );
+    const uploadedPhoto = await authorClient.uploadPolygonPhoto(
+      createdPolygon.id,
+      state.pendingIntent.photos[0]!,
+    );
+    assert.equal(uploadedPhoto.gpsVerified, true);
+    assert.equal(uploadedPhoto.uploaderPseudonym, 'courtyard_author');
+
+    // Verify served WebP photo has 100% of EXIF camera & GPS tags stripped
+    const servedWebpRes = await fetch(
+      authorClient.resolveUploadUrl(uploadedPhoto.url),
+    );
+    assert.equal(servedWebpRes.status, 200);
+    assert.equal(servedWebpRes.headers.get('content-type'), 'image/webp');
+    const servedWebpBuf = Buffer.from(await servedWebpRes.arrayBuffer());
+    const servedMeta = await sharp(servedWebpBuf).metadata();
+    assert.equal(servedMeta.format, 'webp');
+    assert.equal(servedMeta.exif, undefined);
+    assert.equal(
+      servedWebpBuf.includes(Buffer.from('PrivatePhoneVendor', 'utf8')),
+      false,
+    );
+
     state = appReducer(state, {
       type: 'POLYGON_CREATED',
-      feature: createdPolygon,
+      feature: {
+        ...createdPolygon,
+        properties: {
+          ...createdPolygon.properties,
+          photoCount: 1,
+        },
+      },
     });
 
     assert.equal(state.mode, 'browse');
     assert.equal(state.pendingIntent, null);
-    assert.equal(createdPolygon.properties.surfaceType, 'asphalt');
-    assert.equal(
-      createdPolygon.properties.note,
-      'Impervious asphalt parking strip next to schoolyard',
-    );
-    assert.equal(createdPolygon.properties.authorPseudonym, 'courtyard_author');
+    assert.equal(createdPolygon.properties.municipalityAgs, '02000000');
+    assert.equal(createdPolygon.properties.municipalityName, 'Hamburg');
+    assert.equal(createdPolygon.properties.status, 'proposed');
     assert.equal(createdPolygon.properties.isAuthor, true);
-    assert.equal(createdPolygon.properties.myVote, 0);
-    assert.equal(createdPolygon.properties.score, 0);
-
-    // Authenticated viewport read sets Vary: Authorization + Cache-Control: no-store
-    const authorToken = await authorStorage.getToken();
-    assert.ok(authorToken);
-    const rawAuthBboxRes = await fetch(
-      `${baseUrl}/api/v1/polygons?bbox=${HAMBURG_BBOX.minLng},${HAMBURG_BBOX.minLat},${HAMBURG_BBOX.maxLng},${HAMBURG_BBOX.maxLat}`,
-      {
-        headers: {
-          Authorization: `Bearer ${authorToken}`,
-        },
-      },
-    );
-    assert.equal(rawAuthBboxRes.status, 200);
-    assert.match(rawAuthBboxRes.headers.get('vary') ?? '', /Authorization/i);
-    assert.equal(rawAuthBboxRes.headers.get('cache-control'), 'no-store');
 
     const polygonId = createdPolygon.id;
 
-    // 3. Second user registers, casts +1, flips to -1, then deletes their account
+    // 3. Second user registers, rates photo as "real" (+1), votes +1 on Hamburg polygon, and verifies municipality isolation against Mainz
     const voterStorage = createMemorySessionStorage();
     const voterClient = new PpgisApiClient(baseUrl, voterStorage);
-    const regVoter = await voterClient.register({
+    await voterClient.register({
       pseudonym: 'district_voter',
+      email: 'district_voter@example.org',
+      password: 'second-user-strong-pass',
+      acceptedPrivacyPolicy: true,
+    });
+    await confirmEmailViaHostedWebPage(
+      baseUrl,
+      mailer.outbox[mailer.outbox.length - 1]!.actionUrl,
+    );
+    await voterClient.login({
+      identifier: 'district_voter@example.org',
       password: 'second-user-strong-pass',
     });
-    assert.match(regVoter.recoveryCode, RECOVERY_CODE_FORMAT_RE);
 
-    const upvoteRes = await voterClient.putVote(polygonId, 1);
-    assert.deepEqual(upvoteRes, {
-      polygonId,
-      upvotes: 1,
-      downvotes: 0,
-      score: 1,
-      myVote: 1,
+    const photoVoteRes = await voterClient.putPhotoVote(uploadedPhoto.id, 1);
+    assert.equal(photoVoteRes.realVotes, 1);
+    assert.equal(photoVoteRes.fakeVotes, 0);
+    assert.equal(photoVoteRes.credibilityScore, 1);
+    assert.equal(photoVoteRes.myVote, 1);
+
+    // Non-author cannot delete author's polygon (403 FORBIDDEN_NOT_AUTHOR)
+    await assert.rejects(
+      () => voterClient.deletePolygon(polygonId),
+      (err: unknown) => {
+        assert.ok(err instanceof ApiError);
+        assert.equal(err.statusCode, 403);
+        assert.equal(err.code, 'FORBIDDEN_NOT_AUTHOR');
+        return true;
+      },
+    );
+
+    // Create a Mainz polygon with many upvotes and ensure Hamburg's normalized score is NOT crushed by Mainz
+    const mainzPoly = await voterClient.createPolygon({
+      geometry: {
+        type: 'Polygon',
+        coordinates: [
+          [
+            [8.271, 49.998],
+            [8.2712, 49.998],
+            [8.2712, 49.99815],
+            [8.271, 49.99815],
+            [8.271, 49.998],
+          ],
+        ],
+      },
+      surfaceType: 'concrete',
+      note: 'Mainz station square',
     });
-    state = appReducer(state, { type: 'VOTE_UPDATED', vote: upvoteRes });
-    assert.equal(state.features[0]?.properties.score, 1);
+    assert.equal(mainzPoly.properties.municipalityName, 'Mainz');
 
-    const flipDownvoteRes = await voterClient.putVote(polygonId, -1);
-    assert.deepEqual(flipDownvoteRes, {
-      polygonId,
-      upvotes: 0,
-      downvotes: 1,
-      score: -1,
-      myVote: -1,
-    });
-    state = appReducer(state, { type: 'VOTE_UPDATED', vote: flipDownvoteRes });
-    assert.equal(state.features[0]?.properties.score, -1);
+    await authorClient.putVote(mainzPoly.id, 1);
+    await voterClient.putVote(mainzPoly.id, 1);
+    const upvoteHamburg = await voterClient.putVote(polygonId, 1);
+    assert.equal(upvoteHamburg.score, 1);
 
-    // Voter self-deletes account -> score recomputes back to 0 and pseudonym is tombstoned
+    // Hamburg score=1 -> smoothed against Hamburg's own floor (min floor = 3 -> 1/3 = 0.3333), independent of Mainz
+    const hamburgList = await anonClient.listPolygons(HAMBURG_BBOX);
+    assert.equal(hamburgList.features.length, 1);
+    assert.ok(
+      Math.abs(
+        (hamburgList.features[0]?.properties.municipalityNormalizedScore ?? 0) -
+          1 / 3,
+      ) < 0.01,
+    );
+
+    // Voter self-deletes account -> polygon & photo votes recompute cleanly, email & pseudonym tombstoned
     await voterClient.deleteMe();
-
     const afterVoterDeleted = await anonClient.getPolygon(polygonId);
-    assert.equal(afterVoterDeleted.properties.upvotes, 0);
-    assert.equal(afterVoterDeleted.properties.downvotes, 0);
     assert.equal(afterVoterDeleted.properties.score, 0);
-    assert.equal(
-      afterVoterDeleted.properties.authorPseudonym,
-      'courtyard_author',
+
+    // 4. Promote an admin user, import GeoJSON polygons in Mainz, and mark Hamburg polygon as "finished"
+    const adminStorage = createMemorySessionStorage();
+    const adminClient = new PpgisApiClient(baseUrl, adminStorage);
+    await adminClient.register({
+      pseudonym: 'umweltamt_hh',
+      email: 'umweltamt@example.org',
+      password: 'municipal-admin-pass-123',
+      acceptedPrivacyPolicy: true,
+    });
+    await confirmEmailViaHostedWebPage(
+      baseUrl,
+      mailer.outbox[mailer.outbox.length - 1]!.actionUrl,
     );
 
-    // Self-deleted pseudonym cannot be re-registered (case-insensitively)
+    // Before grant-admin, regular user cannot mark polygon finished (403 FORBIDDEN_ADMIN_ONLY)
+    await adminClient.login({
+      identifier: 'umweltamt_hh',
+      password: 'municipal-admin-pass-123',
+    });
     await assert.rejects(
-      () =>
-        anonClient.register({
-          pseudonym: 'District_Voter',
-          password: 'impersonation-attempt-pass',
-        }),
+      () => adminClient.patchPolygonStatus(polygonId, 'finished'),
       (err: unknown) => {
         assert.ok(err instanceof ApiError);
-        assert.equal(err.statusCode, 409);
-        assert.equal(err.code, 'AUTH_PSEUDONYM_TAKEN');
+        assert.equal(err.statusCode, 403);
+        assert.equal(err.code, 'FORBIDDEN_ADMIN_ONLY');
         return true;
       },
     );
 
-    // 4. Original author updates note via PATCH and streams /api/v1/polygons/export.geojson
-    const updatedNote =
-      'Updated note: courtyard drains directly toward street tree pit';
-    const patchedPolygon = await authorClient.patchPolygon(polygonId, {
-      note: updatedNote,
-    });
-    assert.equal(patchedPolygon.properties.note, updatedNote);
-    assert.equal(patchedPolygon.properties.surfaceType, 'asphalt');
-    assert.equal(patchedPolygon.properties.isAuthor, true);
+    await app.runAdminCommand(['grant-admin', 'umweltamt_hh']);
+    const adminMe = await adminClient.getMe();
+    assert.equal(adminMe.role, 'admin');
 
-    state = appReducer(state, {
-      type: 'POLYGON_UPDATED',
-      feature: patchedPolygon,
-    });
-    assert.equal(state.features[0]?.properties.note, updatedNote);
+    const markedFinished = await adminClient.patchPolygonStatus(
+      polygonId,
+      'finished',
+    );
+    assert.equal(markedFinished.properties.status, 'finished');
+    assert.ok(markedFinished.properties.finishedAt);
 
-    const exportUrl = authorClient.getExportGeoJsonUrl();
-    const exportRes = await fetch(exportUrl);
+    const importGeoJson = JSON.stringify({
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: {
+            surfaceType: 'pavers',
+            note: 'Imported municipal candidate',
+          },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [
+              [
+                [8.272, 49.999],
+                [8.2722, 49.999],
+                [8.2722, 49.99915],
+                [8.272, 49.99915],
+                [8.272, 49.999],
+              ],
+            ],
+          },
+        },
+      ],
+    });
+    const importResult = await adminClient.importPolygonsFile({
+      uri: 'blob:import-geojson',
+      name: 'candidates.geojson',
+      mimeType: 'application/geo+json',
+      webFile: new Blob([importGeoJson], { type: 'application/geo+json' }),
+    });
+    assert.equal(importResult.importedCount, 1);
+
+    const mainzAfterImport = await anonClient.listPolygons(MAINZ_BBOX);
+    assert.equal(mainzAfterImport.features.length, 2);
+
+    // 5. Public streamed GeoJSON export never exposes user emails and includes status + municipality
+    const exportRes = await fetch(authorClient.getExportGeoJsonUrl());
     assert.equal(exportRes.status, 200);
-    assert.match(
-      exportRes.headers.get('content-type') ?? '',
-      /^application\/geo\+json/i,
+    const exportRaw = await exportRes.text();
+    assert.equal(exportRaw.includes('courtyard_author@example.org'), false);
+    assert.equal(exportRaw.includes('umweltamt@example.org'), false);
+    const exportedCollection = parseStreamedGeoJson(exportRaw);
+    const exportedHamburg = exportedCollection.features.find(
+      (f) => f.id === polygonId,
     );
-    assert.match(
-      exportRes.headers.get('content-disposition') ?? '',
-      /attachment;\s*filename="entsiegelung-proposals\.geojson"/i,
-    );
+    assert.ok(exportedHamburg);
+    assert.equal(exportedHamburg.properties.status, 'finished');
+    assert.equal(exportedHamburg.properties.municipalityName, 'Hamburg');
 
-    const exportedCollection = parseStreamedGeoJson(await exportRes.text());
-    assert.equal(exportedCollection.features.length, 1);
-    const exportedFeature = exportedCollection.features[0]!;
-    assert.equal(exportedFeature.id, polygonId);
-    assert.equal(exportedFeature.properties.id, polygonId);
-    assert.equal(exportedFeature.properties.note, updatedNote);
-    assert.equal(exportedFeature.properties.authorPseudonym, 'courtyard_author');
-    assert.equal(exportedFeature.properties.myVote, 0);
-    assert.equal(exportedFeature.properties.isAuthor, false);
-
-    // 5. Original author deletes their account via DELETE /api/v1/auth/me -> polygon stays public under "deleted"
+    // 6. Original author deletes their account -> polygon & photo stay public under "deleted"
     await authorClient.deleteMe();
-    state = appReducer(state, { type: 'ACCOUNT_DELETED' });
-    assert.equal(state.currentUser, null);
-    assert.equal(state.features[0]?.properties.authorPseudonym, 'deleted');
-    assert.equal(state.features[0]?.properties.isAuthor, false);
-
-    const finalViewport = await anonClient.listPolygons(HAMBURG_BBOX);
-    assert.equal(finalViewport.features.length, 1);
-    const survivingFeature = finalViewport.features[0]!;
-    assert.equal(survivingFeature.id, polygonId);
+    const survivingFeature = await anonClient.getPolygon(polygonId);
     assert.equal(survivingFeature.properties.authorPseudonym, 'deleted');
-    assert.equal(survivingFeature.properties.surfaceType, 'asphalt');
-    assert.equal(survivingFeature.properties.note, updatedNote);
-    assert.equal(survivingFeature.properties.score, 0);
-    assert.equal(survivingFeature.properties.isAuthor, false);
-    assert.equal(survivingFeature.properties.myVote, 0);
-
-    // Author's tombstoned pseudonym also cannot be re-registered
-    await assert.rejects(
-      () =>
-        anonClient.register({
-          pseudonym: 'courtyard_author',
-          password: 'another-valid-password-123',
-        }),
-      (err: unknown) => {
-        assert.ok(err instanceof ApiError);
-        assert.equal(err.statusCode, 409);
-        assert.equal(err.code, 'AUTH_PSEUDONYM_TAKEN');
-        return true;
-      },
-    );
+    assert.equal(survivingFeature.properties.photoCount, 1);
   });
 
-  it('verifies recovery-code password rotation, draft preservation on 422 geometry rejection, inline vote auth continuation, and admin CLI moderation', async () => {
+  it('verifies hosted email link password recovery + session revocation, 422 draft preservation, inline vote continuation, and admin CLI moderation', async () => {
     const userStorage = createMemorySessionStorage();
     const userClient = new PpgisApiClient(baseUrl, userStorage);
 
-    const reg = await userClient.register({
+    await userClient.register({
       pseudonym: 'recovery_tester',
+      email: 'recovery_tester@example.org',
+      password: 'initial-password-123',
+      acceptedPrivacyPolicy: true,
+    });
+    await confirmEmailViaHostedWebPage(baseUrl, mailer.outbox[0]!.actionUrl);
+
+    const initialLogin = await userClient.login({
+      identifier: 'recovery_tester',
       password: 'initial-password-123',
     });
-    const oldToken = reg.sessionToken;
+    const oldToken = initialLogin.sessionToken;
 
-    // Submit lowercase unhyphenated 32-hex recovery code to rotate password + recovery code
-    const normalizedLowerCode = reg.recoveryCode.replace(/-/g, '').toLowerCase();
-    const recovered = await userClient.recover({
-      pseudonym: 'recovery_tester',
-      recoveryCode: normalizedLowerCode,
-      newPassword: 'rotated-password-456',
+    // Request password reset link via forgotPassword
+    mailer.clear();
+    const forgotRes = await userClient.forgotPassword(
+      'recovery_tester@example.org',
+    );
+    assert.equal(forgotRes.status, 'ok');
+    assert.equal(mailer.outbox.length, 1);
+    assert.equal(mailer.outbox[0]?.purpose, 'reset_password');
+
+    // Open hosted VPS password recovery page (GET + POST /auth/reset-password)
+    const resetToken = extractTokenFromUrl(mailer.outbox[0]!.actionUrl);
+    const resetGetRes = await fetch(
+      `${baseUrl}/auth/reset-password?token=${encodeURIComponent(resetToken)}`,
+    );
+    assert.equal(resetGetRes.status, 200);
+    assert.match(await resetGetRes.text(), /Neues Passwort festlegen/);
+
+    const resetPostRes = await fetch(`${baseUrl}/auth/reset-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        token: resetToken,
+        newPassword: 'rotated-password-456',
+        confirmPassword: 'rotated-password-456',
+      }).toString(),
     });
-    assert.match(recovered.recoveryCode, RECOVERY_CODE_FORMAT_RE);
-    assert.notEqual(recovered.recoveryCode, reg.recoveryCode);
+    assert.equal(resetPostRes.status, 200);
+    assert.match(await resetPostRes.text(), /erfolgreich geändert/);
 
     // Prior session token is revoked immediately (401 AUTH_REQUIRED)
     const staleStorage = createMemorySessionStorage();
@@ -457,6 +689,12 @@ describe('Full-stack HTTP E2E flow (PpgisApiClient + appReducer + Fastify + Post
       },
     );
 
+    // Login with new password succeeds
+    const relogin = await userClient.login({
+      identifier: 'recovery_tester',
+      password: 'rotated-password-456',
+    });
+
     // Server 422 (< 2 m2 tiny polygon) preserves client draft vertices & note
     let state: AppState = appReducer(initialAppState, {
       type: 'CONFIG_LOADED',
@@ -464,7 +702,7 @@ describe('Full-stack HTTP E2E flow (PpgisApiClient + appReducer + Fastify + Post
     });
     state = appReducer(state, {
       type: 'AUTH_SUCCEEDED',
-      user: recovered.user,
+      user: relogin.user,
     });
     state = appReducer(state, { type: 'START_DRAW' });
     state = appReducer(state, { type: 'ADD_VERTEX', point: [9.9937, 53.5511] });
@@ -476,14 +714,16 @@ describe('Full-stack HTTP E2E flow (PpgisApiClient + appReducer + Fastify + Post
       type: 'ADD_VERTEX',
       point: [9.993705, 53.551105],
     });
-    state = appReducer(state, { type: 'CLOSE_RING' });
+    state = appReducer(state, { type: 'ADVANCE_TO_DETAILS' });
     state = appReducer(state, {
       type: 'SET_DRAFT_META',
       surfaceType: 'concrete',
       note: 'Tiny sub-meter patch',
     });
     state = appReducer(state, { type: 'SUBMIT_DRAFT' });
-    assert.ok(state.pendingIntent && state.pendingIntent.type === 'SUBMIT_DRAFT');
+    assert.ok(
+      state.pendingIntent && state.pendingIntent.type === 'SUBMIT_DRAFT',
+    );
 
     await assert.rejects(
       () =>
@@ -508,11 +748,10 @@ describe('Full-stack HTTP E2E flow (PpgisApiClient + appReducer + Fastify + Post
       },
     );
     assert.equal(state.mode, 'drawing');
-    assert.equal(state.draftVertices.length, 3);
     assert.equal(state.draftNote, 'Tiny sub-meter patch');
     assert.ok(state.draftSubmitError && state.draftSubmitError.length > 0);
 
-    // Create valid polygon and redact note via admin CLI + preemptively ban abusive handle
+    // Create valid polygon, test inline CAST_VOTE auth continuation, and run admin CLI commands
     const validPolygon = await userClient.createPolygon({
       geometry: {
         type: 'Polygon',
@@ -522,7 +761,6 @@ describe('Full-stack HTTP E2E flow (PpgisApiClient + appReducer + Fastify + Post
       note: 'Contains accidental phone number 555-0199',
     });
 
-    // Anonymous CAST_VOTE intent continuation after login
     let anonState = appReducer(initialAppState, {
       type: 'CONFIG_LOADED',
       config: await userClient.getConfig(),
@@ -540,10 +778,6 @@ describe('Full-stack HTTP E2E flow (PpgisApiClient + appReducer + Fastify + Post
     assert.equal(anonState.authModalOpen, true);
     assert.equal(anonState.authModalView, 'login');
 
-    const relogin = await userClient.login({
-      pseudonym: 'recovery_tester',
-      password: 'rotated-password-456',
-    });
     anonState = appReducer(anonState, {
       type: 'AUTH_SUCCEEDED',
       user: relogin.user,
@@ -565,14 +799,15 @@ describe('Full-stack HTTP E2E flow (PpgisApiClient + appReducer + Fastify + Post
     assert.equal(redactRes.redactedNote, true);
     const afterRedact = await userClient.getPolygon(validPolygon.id);
     assert.equal(afterRedact.properties.note, null);
-    assert.equal(afterRedact.properties.score, 1);
 
     await app.runAdminCommand(['ban-user', 'brigade_bot', 'automated spam']);
     await assert.rejects(
       () =>
         userClient.register({
           pseudonym: 'Brigade_Bot',
+          email: 'brigade@example.org',
           password: 'valid-password-1234',
+          acceptedPrivacyPolicy: true,
         }),
       (err: unknown) => {
         assert.ok(err instanceof ApiError);

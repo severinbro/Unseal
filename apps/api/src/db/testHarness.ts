@@ -6,7 +6,7 @@ import type pg from 'pg';
 
 export async function resetTestDb(pool: pg.Pool): Promise<void> {
   await pool.query(
-    'TRUNCATE TABLE votes, polygon_creations, polygons, sessions, reserved_pseudonyms, users RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE polygon_photo_votes, polygon_photos, votes, polygon_creations, polygons, email_tokens, sessions, reserved_emails, reserved_pseudonyms, users, municipalities RESTART IDENTITY CASCADE',
   );
 }
 

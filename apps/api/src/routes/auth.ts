@@ -2,19 +2,25 @@ import {
   AUTH_LIMITS,
   ApiError,
   AuthUserSchema,
+  EmailActionRequestSchema,
+  EmailActionResponseSchema,
   LoginRequestSchema,
+  PasswordSchema,
   RESERVED_PSEUDONYMS,
-  RecoverRequestSchema,
   RegisterRequestSchema,
   RegisterResponseSchema,
+  ResetPasswordRequestSchema,
+  ResetPasswordResponseSchema,
   SessionResponseSchema,
-  normalizeRecoveryCode,
+  VerifyEmailRequestSchema,
+  VerifyEmailResponseSchema,
 } from '@entsiegelung/shared';
 
 import {
   TIMING_GUARD_OPAQUE_TOKEN_HASH,
   TIMING_GUARD_PASSWORD_HASH,
-  generateRecoveryCode,
+  generateEmailActionToken,
+  hashEmailTombstone,
   hashOpaqueToken,
   hashPassword,
   hashPseudonymTombstone,
@@ -24,16 +30,14 @@ import {
 import { createSession, requireAuth } from '../auth/session.js';
 import { deleteOrBanUserAccount } from '../db/integrity.js';
 import { normalizeRateLimitIp } from '../util/rateLimit.js';
+import { BoundedSemaphore } from '../util/semaphore.js';
 
-import type { FastifyInstance, FastifyBaseLogger } from 'fastify';
+import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import type pg from 'pg';
 
 const MAX_FAILED_LOGIN_CACHE_ENTRIES = 10_000;
 const DEFAULT_LOGIN_ACCOUNT_MAX = 5;
 const DEFAULT_LOGIN_ACCOUNT_WINDOW_MS = 15 * 60 * 1000;
-const RECOVERY_HEX_RE = new RegExp(
-  `^[0-9A-F]{${AUTH_LIMITS.RECOVERY_CODE_HEX_LENGTH}}$`,
-);
 
 interface FailedLoginBucket {
   count: number;
@@ -46,7 +50,11 @@ class BoundedFailedLoginTracker {
   private readonly maxFailures: number;
   private readonly windowMs: number;
 
-  constructor(maxFailures: number, windowMs: number, maxEntries = MAX_FAILED_LOGIN_CACHE_ENTRIES) {
+  constructor(
+    maxFailures: number,
+    windowMs: number,
+    maxEntries = MAX_FAILED_LOGIN_CACHE_ENTRIES,
+  ) {
     this.maxFailures = maxFailures;
     this.windowMs = windowMs;
     this.maxEntries = maxEntries;
@@ -114,29 +122,34 @@ class BoundedFailedLoginTracker {
 interface UserAuthRow {
   id: string;
   pseudonym: string;
+  email: string | null;
+  email_verified_at: Date | null;
+  role: string;
   password_hash: string;
   created_at: Date;
 }
 
-interface UserRecoverRow {
-  id: string;
-  pseudonym: string;
-  recovery_code_hash: Buffer;
-  created_at: Date;
+interface ReservedRow {
+  reason: string;
 }
 
-interface ReservedPseudonymRow {
-  reason: string;
+interface EmailTokenLookupRow {
+  id: string;
+  user_id: string;
+  pseudonym: string;
+  token_hash: Buffer;
+  expires_at: Date;
+  consumed_at: Date | null;
 }
 
 async function rollbackQuietly(
   client: pg.PoolClient,
-  log: FastifyBaseLogger,
+  log?: FastifyBaseLogger,
 ): Promise<void> {
   try {
     await client.query('ROLLBACK');
   } catch (rollbackErr: unknown) {
-    log.warn({ err: rollbackErr }, 'Database transaction rollback failed');
+    log?.warn({ err: rollbackErr }, 'Database transaction rollback failed');
   }
 }
 
@@ -145,7 +158,7 @@ async function checkReservedPseudonymTable(
   pseudonymLower: string,
 ): Promise<void> {
   const tombstoneHash = hashPseudonymTombstone(pseudonymLower);
-  const reservedRes = await db.query<ReservedPseudonymRow>(
+  const reservedRes = await db.query<ReservedRow>(
     'SELECT reason FROM reserved_pseudonyms WHERE pseudonym_hash = $1 LIMIT 1',
     [tombstoneHash],
   );
@@ -165,6 +178,254 @@ async function checkReservedPseudonymTable(
     'AUTH_PSEUDONYM_TAKEN',
     'This pseudonym is unavailable.',
   );
+}
+
+async function checkReservedEmailTable(
+  db: pg.Pool | pg.PoolClient,
+  emailLower: string,
+): Promise<void> {
+  const emailHash = hashEmailTombstone(emailLower);
+  const reservedRes = await db.query<ReservedRow>(
+    'SELECT reason FROM reserved_emails WHERE email_hash = $1 LIMIT 1',
+    [emailHash],
+  );
+  if ((reservedRes.rowCount ?? 0) > 0) {
+    throw new ApiError(
+      403,
+      'FORBIDDEN_PSEUDONYM_BANNED',
+      'Registration with this email address is not permitted.',
+    );
+  }
+}
+
+export async function inspectEmailActionToken(
+  pool: pg.Pool,
+  rawToken: string,
+  purpose: 'verify_email' | 'reset_password',
+): Promise<{ valid: boolean; pseudonym?: string }> {
+  const trimmed = rawToken.trim();
+  if (trimmed.length < 16 || trimmed.length > 256) {
+    verifyOpaqueToken(trimmed || 'invalid', TIMING_GUARD_OPAQUE_TOKEN_HASH);
+    return { valid: false };
+  }
+
+  const tokenHash = hashOpaqueToken(trimmed);
+  const res = await pool.query<EmailTokenLookupRow>(
+    `SELECT
+       et.id,
+       et.user_id,
+       u.pseudonym,
+       et.token_hash,
+       et.expires_at,
+       et.consumed_at
+     FROM email_tokens et
+     INNER JOIN users u ON u.id = et.user_id
+     WHERE et.token_hash = $1
+       AND et.purpose = $2
+       AND et.consumed_at IS NULL
+       AND et.expires_at > clock_timestamp()
+     LIMIT 1`,
+    [tokenHash, purpose],
+  );
+  const row = res.rows[0];
+  if (!row || !verifyOpaqueToken(trimmed, row.token_hash)) {
+    return { valid: false };
+  }
+  return { valid: true, pseudonym: row.pseudonym };
+}
+
+export async function consumeVerifyEmailToken(
+  pool: pg.Pool,
+  rawToken: string,
+  log?: FastifyBaseLogger,
+): Promise<{ pseudonym: string }> {
+  const trimmed = rawToken.trim();
+  if (trimmed.length < 16 || trimmed.length > 256) {
+    verifyOpaqueToken(trimmed || 'invalid', TIMING_GUARD_OPAQUE_TOKEN_HASH);
+    throw new ApiError(
+      400,
+      'AUTH_TOKEN_INVALID',
+      'Invalid or expired email confirmation link.',
+    );
+  }
+
+  const tokenHash = hashOpaqueToken(trimmed);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const tokenRes = await client.query<{
+      id: string;
+      user_id: string;
+      token_hash: Buffer;
+      consumed_at: Date | null;
+      is_valid_time: boolean;
+    }>(
+      `SELECT
+         id,
+         user_id,
+         token_hash,
+         consumed_at,
+         (expires_at > clock_timestamp()) AS is_valid_time
+       FROM email_tokens
+       WHERE token_hash = $1
+         AND purpose = 'verify_email'
+       FOR UPDATE`,
+      [tokenHash],
+    );
+    const tokenRow = tokenRes.rows[0];
+    if (
+      !tokenRow ||
+      !verifyOpaqueToken(trimmed, tokenRow.token_hash) ||
+      tokenRow.consumed_at !== null ||
+      !tokenRow.is_valid_time
+    ) {
+      throw new ApiError(
+        400,
+        'AUTH_TOKEN_INVALID',
+        'Invalid or expired email confirmation link.',
+      );
+    }
+
+    await client.query(
+      'UPDATE email_tokens SET consumed_at = clock_timestamp() WHERE id = $1',
+      [tokenRow.id],
+    );
+
+    const userRes = await client.query<{ pseudonym: string }>(
+      `UPDATE users
+       SET email_verified_at = COALESCE(email_verified_at, clock_timestamp())
+       WHERE id = $1
+       RETURNING pseudonym`,
+      [tokenRow.user_id],
+    );
+    const updatedUser = userRes.rows[0];
+    if (!updatedUser) {
+      throw new ApiError(
+        400,
+        'AUTH_TOKEN_INVALID',
+        'Account for this confirmation link no longer exists.',
+      );
+    }
+
+    await client.query('COMMIT');
+    return { pseudonym: updatedUser.pseudonym };
+  } catch (err: unknown) {
+    await rollbackQuietly(client, log);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+export async function consumePasswordResetToken(
+  pool: pg.Pool,
+  authSemaphore: BoundedSemaphore,
+  rawToken: string,
+  newPassword: string,
+  log?: FastifyBaseLogger,
+): Promise<void> {
+  const parsedPassword = PasswordSchema.parse(newPassword);
+  const trimmed = rawToken.trim();
+  if (trimmed.length < 16 || trimmed.length > 256) {
+    verifyOpaqueToken(trimmed || 'invalid', TIMING_GUARD_OPAQUE_TOKEN_HASH);
+    throw new ApiError(
+      400,
+      'AUTH_TOKEN_INVALID',
+      'Invalid or expired password reset link.',
+    );
+  }
+
+  const precheck = await inspectEmailActionToken(pool, trimmed, 'reset_password');
+  if (!precheck.valid) {
+    throw new ApiError(
+      400,
+      'AUTH_TOKEN_INVALID',
+      'Invalid or expired password reset link.',
+    );
+  }
+
+  const nextPasswordHash = await hashPassword(parsedPassword, authSemaphore);
+  const tokenHash = hashOpaqueToken(trimmed);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const tokenRes = await client.query<{
+      id: string;
+      user_id: string;
+      token_hash: Buffer;
+      consumed_at: Date | null;
+      is_valid_time: boolean;
+    }>(
+      `SELECT
+         id,
+         user_id,
+         token_hash,
+         consumed_at,
+         (expires_at > clock_timestamp()) AS is_valid_time
+       FROM email_tokens
+       WHERE token_hash = $1
+         AND purpose = 'reset_password'
+       FOR UPDATE`,
+      [tokenHash],
+    );
+    const tokenRow = tokenRes.rows[0];
+    if (
+      !tokenRow ||
+      !verifyOpaqueToken(trimmed, tokenRow.token_hash) ||
+      tokenRow.consumed_at !== null ||
+      !tokenRow.is_valid_time
+    ) {
+      throw new ApiError(
+        400,
+        'AUTH_TOKEN_INVALID',
+        'Invalid or expired password reset link.',
+      );
+    }
+
+    const lockedUserRes = await client.query<{ id: string }>(
+      'SELECT id FROM users WHERE id = $1 FOR UPDATE',
+      [tokenRow.user_id],
+    );
+    if (lockedUserRes.rowCount === 0) {
+      throw new ApiError(
+        400,
+        'AUTH_TOKEN_INVALID',
+        'Account for this password reset link no longer exists.',
+      );
+    }
+
+    await client.query(
+      `UPDATE email_tokens
+       SET consumed_at = clock_timestamp()
+       WHERE user_id = $1
+         AND purpose = 'reset_password'
+         AND consumed_at IS NULL`,
+      [tokenRow.user_id],
+    );
+
+    await client.query(
+      `UPDATE users
+       SET
+         password_hash = $2,
+         email_verified_at = COALESCE(email_verified_at, clock_timestamp())
+       WHERE id = $1`,
+      [tokenRow.user_id, nextPasswordHash],
+    );
+
+    await client.query('DELETE FROM sessions WHERE user_id = $1', [
+      tokenRow.user_id,
+    ]);
+
+    await client.query('COMMIT');
+  } catch (err: unknown) {
+    await rollbackQuietly(client, log);
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export function registerAuthRoutes(app: FastifyInstance): void {
@@ -187,7 +448,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     timeWindow: '15 minutes',
   };
   const recoverLimit = app.rateLimitOverrides.recover ?? {
-    max: 10,
+    max: 8,
     timeWindow: '15 minutes',
   };
   const deleteAccountLimit = app.rateLimitOverrides.deleteAccount ?? {
@@ -205,6 +466,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     async (request, reply) => {
       const body = RegisterRequestSchema.parse(request.body);
       const pseudonymLower = body.pseudonym.toLowerCase();
+      const emailLower = body.email.toLowerCase();
 
       if ((RESERVED_PSEUDONYMS as readonly string[]).includes(pseudonymLower)) {
         throw new ApiError(
@@ -215,12 +477,13 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       }
 
       await checkReservedPseudonymTable(app.pool, pseudonymLower);
+      await checkReservedEmailTable(app.pool, emailLower);
 
-      const existingRes = await app.pool.query<{ exists: number }>(
+      const existingPseudonymRes = await app.pool.query<{ exists: number }>(
         'SELECT 1 AS exists FROM users WHERE LOWER(pseudonym) = $1 LIMIT 1',
         [pseudonymLower],
       );
-      if ((existingRes.rowCount ?? 0) > 0) {
+      if ((existingPseudonymRes.rowCount ?? 0) > 0) {
         throw new ApiError(
           409,
           'AUTH_PSEUDONYM_TAKEN',
@@ -228,36 +491,65 @@ export function registerAuthRoutes(app: FastifyInstance): void {
         );
       }
 
-      const passwordHash = await hashPassword(body.password, app.authSemaphore);
-      const recoveryCode = generateRecoveryCode();
-      const recoveryCodeHash = hashOpaqueToken(
-        normalizeRecoveryCode(recoveryCode),
+      const existingEmailRes = await app.pool.query<{ exists: number }>(
+        'SELECT 1 AS exists FROM users WHERE LOWER(email) = $1 LIMIT 1',
+        [emailLower],
       );
+      if ((existingEmailRes.rowCount ?? 0) > 0) {
+        throw new ApiError(
+          409,
+          'AUTH_EMAIL_TAKEN',
+          'This email address is already registered.',
+        );
+      }
+
+      const passwordHash = await hashPassword(body.password, app.authSemaphore);
+      const verifyToken = generateEmailActionToken();
+      const verifyTokenHash = hashOpaqueToken(verifyToken);
 
       const client = await app.pool.connect();
+      let createdUser:
+        | { id: string; pseudonym: string; email: string }
+        | undefined;
       try {
         await client.query('BEGIN');
         await checkReservedPseudonymTable(client, pseudonymLower);
+        await checkReservedEmailTable(client, emailLower);
 
-        let createdUser: { id: string; pseudonym: string; created_at: Date } | undefined;
         try {
           const insertRes = await client.query<{
             id: string;
             pseudonym: string;
-            created_at: Date;
+            email: string;
           }>(
-            `INSERT INTO users (pseudonym, password_hash, recovery_code_hash)
-             VALUES ($1, $2, $3)
-             RETURNING id, pseudonym, created_at`,
-            [body.pseudonym, passwordHash, recoveryCodeHash],
+            `INSERT INTO users (
+               pseudonym,
+               email,
+               password_hash,
+               privacy_accepted_at,
+               role
+             )
+             VALUES ($1, $2, $3, clock_timestamp(), 'user')
+             RETURNING id, pseudonym, email`,
+            [body.pseudonym, emailLower, passwordHash],
           );
           createdUser = insertRes.rows[0];
         } catch (err: unknown) {
-          const pgCode =
-            typeof err === 'object' && err !== null && 'code' in err
-              ? (err as { code?: unknown }).code
-              : undefined;
-          if (pgCode === '23505') {
+          const errRec =
+            typeof err === 'object' && err !== null
+              ? (err as { code?: unknown; constraint?: unknown })
+              : {};
+          if (errRec.code === '23505') {
+            if (
+              typeof errRec.constraint === 'string' &&
+              errRec.constraint.includes('email')
+            ) {
+              throw new ApiError(
+                409,
+                'AUTH_EMAIL_TAKEN',
+                'This email address is already registered.',
+              );
+            }
             throw new ApiError(
               409,
               'AUTH_PSEUDONYM_TAKEN',
@@ -271,32 +563,147 @@ export function registerAuthRoutes(app: FastifyInstance): void {
           throw new ApiError(500, 'INTERNAL_ERROR', 'Failed to create user.');
         }
 
-        const session = await createSession(
-          client,
-          createdUser.id,
-          app.config.sessionTtlDays,
+        await client.query(
+          `INSERT INTO email_tokens (user_id, purpose, token_hash, expires_at)
+           VALUES (
+             $1,
+             'verify_email',
+             $2,
+             clock_timestamp() + make_interval(hours => $3)
+           )`,
+          [createdUser.id, verifyTokenHash, AUTH_LIMITS.EMAIL_VERIFY_TTL_HOURS],
         );
 
         await client.query('COMMIT');
-
-        const payload = RegisterResponseSchema.parse({
-          user: {
-            id: createdUser.id,
-            pseudonym: createdUser.pseudonym,
-            createdAt: createdUser.created_at.toISOString(),
-          },
-          sessionToken: session.sessionToken,
-          expiresAt: session.expiresAt,
-          recoveryCode,
-        });
-
-        return reply.status(201).send(payload);
       } catch (err: unknown) {
         await rollbackQuietly(client, request.log);
         throw err;
       } finally {
         client.release();
       }
+
+      const verifyUrl = `${app.config.publicBaseUrl}/auth/verify-email?token=${encodeURIComponent(verifyToken)}`;
+      try {
+        await app.mailer.sendActionEmail({
+          to: createdUser.email,
+          pseudonym: createdUser.pseudonym,
+          purpose: 'verify_email',
+          actionUrl: verifyUrl,
+        });
+      } catch (mailErr: unknown) {
+        request.log.error(
+          { err: mailErr, userId: createdUser.id },
+          'Failed to dispatch initial registration verification email',
+        );
+      }
+
+      const payload = RegisterResponseSchema.parse({
+        status: 'verification_email_sent',
+        pseudonym: createdUser.pseudonym,
+        email: createdUser.email,
+      });
+
+      return reply.status(201).send(payload);
+    },
+  );
+
+  app.post(
+    '/api/v1/auth/resend-verification',
+    {
+      config: {
+        rateLimit: recoverLimit,
+      },
+    },
+    async (request, reply) => {
+      const body = EmailActionRequestSchema.parse(request.body);
+      const emailLower = body.email.toLowerCase();
+
+      const userRes = await app.pool.query<{
+        id: string;
+        pseudonym: string;
+        email: string;
+        email_verified_at: Date | null;
+      }>(
+        `SELECT id, pseudonym, email, email_verified_at
+         FROM users
+         WHERE LOWER(email) = $1
+         LIMIT 1`,
+        [emailLower],
+      );
+      const userRow = userRes.rows[0];
+
+      if (userRow && userRow.email_verified_at === null) {
+        const verifyToken = generateEmailActionToken();
+        const verifyTokenHash = hashOpaqueToken(verifyToken);
+
+        const client = await app.pool.connect();
+        try {
+          await client.query('BEGIN');
+          await client.query(
+            `DELETE FROM email_tokens
+             WHERE user_id = $1
+               AND purpose = 'verify_email'
+               AND consumed_at IS NULL`,
+            [userRow.id],
+          );
+          await client.query(
+            `INSERT INTO email_tokens (user_id, purpose, token_hash, expires_at)
+             VALUES (
+               $1,
+               'verify_email',
+               $2,
+               clock_timestamp() + make_interval(hours => $3)
+             )`,
+            [userRow.id, verifyTokenHash, AUTH_LIMITS.EMAIL_VERIFY_TTL_HOURS],
+          );
+          await client.query('COMMIT');
+
+          const verifyUrl = `${app.config.publicBaseUrl}/auth/verify-email?token=${encodeURIComponent(verifyToken)}`;
+          await app.mailer.sendActionEmail({
+            to: userRow.email,
+            pseudonym: userRow.pseudonym,
+            purpose: 'verify_email',
+            actionUrl: verifyUrl,
+          });
+        } catch (err: unknown) {
+          await rollbackQuietly(client, request.log);
+          request.log.error(
+            { err },
+            'Failed to resend verification email link',
+          );
+        } finally {
+          client.release();
+        }
+      }
+
+      return reply.status(202).send(
+        EmailActionResponseSchema.parse({
+          status: 'ok',
+          message:
+            'If an unverified account exists for this email address, a new confirmation link has been sent.',
+        }),
+      );
+    },
+  );
+
+  app.post(
+    '/api/v1/auth/verify-email',
+    {
+      config: {
+        rateLimit: recoverLimit,
+      },
+    },
+    async (request) => {
+      const body = VerifyEmailRequestSchema.parse(request.body);
+      const verified = await consumeVerifyEmailToken(
+        app.pool,
+        body.token,
+        request.log,
+      );
+      return VerifyEmailResponseSchema.parse({
+        status: 'verified',
+        pseudonym: verified.pseudonym,
+      });
     },
   );
 
@@ -309,18 +716,26 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     },
     async (request) => {
       const body = LoginRequestSchema.parse(request.body);
-      const pseudonymLower = body.pseudonym.toLowerCase();
-      const compositeKey = `${normalizeRateLimitIp(request.ip)}:${pseudonymLower}`;
+      const identifierLower = body.identifier.toLowerCase();
+      const compositeKey = `${normalizeRateLimitIp(request.ip)}:${identifierLower}`;
       const nowMs = Date.now();
 
       failedLoginTracker.assertAllowed(compositeKey, nowMs);
 
       const userRes = await app.pool.query<UserAuthRow>(
-        `SELECT id, pseudonym, password_hash, created_at
+        `SELECT
+           id,
+           pseudonym,
+           email,
+           email_verified_at,
+           role,
+           password_hash,
+           created_at
          FROM users
          WHERE LOWER(pseudonym) = $1
+            OR LOWER(email) = $1
          LIMIT 1`,
-        [pseudonymLower],
+        [identifierLower],
       );
       const userRow = userRes.rows[0];
 
@@ -334,7 +749,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
         throw new ApiError(
           401,
           'AUTH_INVALID_CREDENTIALS',
-          'Invalid pseudonym or password.',
+          'Invalid username/email or password.',
         );
       }
 
@@ -348,9 +763,20 @@ export function registerAuthRoutes(app: FastifyInstance): void {
         throw new ApiError(
           401,
           'AUTH_INVALID_CREDENTIALS',
-          'Invalid pseudonym or password.',
+          'Invalid username/email or password.',
         );
       }
+
+      if (userRow.email !== null && userRow.email_verified_at === null) {
+        throw new ApiError(
+          403,
+          'AUTH_EMAIL_UNVERIFIED',
+          'Please confirm your email address via the link sent to your inbox before signing in.',
+          { email: userRow.email },
+        );
+      }
+
+      failedLoginTracker.clear(compositeKey);
 
       const session = await createSession(
         app.pool,
@@ -362,6 +788,8 @@ export function registerAuthRoutes(app: FastifyInstance): void {
         user: {
           id: userRow.id,
           pseudonym: userRow.pseudonym,
+          email: userRow.email,
+          role: userRow.role === 'admin' ? 'admin' : 'user',
           createdAt: userRow.created_at.toISOString(),
         },
         sessionToken: session.sessionToken,
@@ -371,121 +799,106 @@ export function registerAuthRoutes(app: FastifyInstance): void {
   );
 
   app.post(
-    '/api/v1/auth/recover',
+    '/api/v1/auth/forgot-password',
+    {
+      config: {
+        rateLimit: recoverLimit,
+      },
+    },
+    async (request, reply) => {
+      const body = EmailActionRequestSchema.parse(request.body);
+      const emailLower = body.email.toLowerCase();
+
+      const userRes = await app.pool.query<{
+        id: string;
+        pseudonym: string;
+        email: string;
+      }>(
+        `SELECT id, pseudonym, email
+         FROM users
+         WHERE LOWER(email) = $1
+         LIMIT 1`,
+        [emailLower],
+      );
+      const userRow = userRes.rows[0];
+
+      if (userRow) {
+        const resetToken = generateEmailActionToken();
+        const resetTokenHash = hashOpaqueToken(resetToken);
+
+        const client = await app.pool.connect();
+        try {
+          await client.query('BEGIN');
+          await client.query(
+            `DELETE FROM email_tokens
+             WHERE user_id = $1
+               AND purpose = 'reset_password'
+               AND consumed_at IS NULL`,
+            [userRow.id],
+          );
+          await client.query(
+            `INSERT INTO email_tokens (user_id, purpose, token_hash, expires_at)
+             VALUES (
+               $1,
+               'reset_password',
+               $2,
+               clock_timestamp() + make_interval(mins => $3)
+             )`,
+            [
+              userRow.id,
+              resetTokenHash,
+              AUTH_LIMITS.PASSWORD_RESET_TTL_MINUTES,
+            ],
+          );
+          await client.query('COMMIT');
+
+          const resetUrl = `${app.config.publicBaseUrl}/auth/reset-password?token=${encodeURIComponent(resetToken)}`;
+          await app.mailer.sendActionEmail({
+            to: userRow.email,
+            pseudonym: userRow.pseudonym,
+            purpose: 'reset_password',
+            actionUrl: resetUrl,
+          });
+        } catch (err: unknown) {
+          await rollbackQuietly(client, request.log);
+          request.log.error(
+            { err },
+            'Failed to dispatch password reset email link',
+          );
+        } finally {
+          client.release();
+        }
+      }
+
+      return reply.status(202).send(
+        EmailActionResponseSchema.parse({
+          status: 'ok',
+          message:
+            'If an account exists for this email address, a password recovery link has been sent.',
+        }),
+      );
+    },
+  );
+
+  app.post(
+    '/api/v1/auth/reset-password',
     {
       config: {
         rateLimit: recoverLimit,
       },
     },
     async (request) => {
-      const body = RecoverRequestSchema.parse(request.body);
-      const pseudonymLower = body.pseudonym.toLowerCase();
-      const normalizedCode = normalizeRecoveryCode(body.recoveryCode);
-      const isValidHexFormat = RECOVERY_HEX_RE.test(normalizedCode);
-
-      const userRes = await app.pool.query<UserRecoverRow>(
-        `SELECT id, pseudonym, recovery_code_hash, created_at
-         FROM users
-         WHERE LOWER(pseudonym) = $1
-         LIMIT 1`,
-        [pseudonymLower],
-      );
-      const userRow = userRes.rows[0];
-
-      if (!userRow) {
-        verifyOpaqueToken(normalizedCode, TIMING_GUARD_OPAQUE_TOKEN_HASH);
-        throw new ApiError(
-          401,
-          'AUTH_RECOVERY_INVALID',
-          'Invalid pseudonym or recovery code.',
-        );
-      }
-
-      const precheckMatches = verifyOpaqueToken(
-        normalizedCode,
-        userRow.recovery_code_hash,
-      );
-      if (!isValidHexFormat || !precheckMatches) {
-        throw new ApiError(
-          401,
-          'AUTH_RECOVERY_INVALID',
-          'Invalid pseudonym or recovery code.',
-        );
-      }
-
-      const newPasswordHash = await hashPassword(
-        body.newPassword,
+      const body = ResetPasswordRequestSchema.parse(request.body);
+      await consumePasswordResetToken(
+        app.pool,
         app.authSemaphore,
+        body.token,
+        body.newPassword,
+        request.log,
       );
-
-      const client = await app.pool.connect();
-      try {
-        await client.query('BEGIN');
-
-        const lockedRes = await client.query<UserRecoverRow>(
-          `SELECT id, pseudonym, recovery_code_hash, created_at
-           FROM users
-           WHERE id = $1
-           FOR UPDATE`,
-          [userRow.id],
-        );
-        const lockedUser = lockedRes.rows[0];
-
-        if (
-          !lockedUser ||
-          !verifyOpaqueToken(normalizedCode, lockedUser.recovery_code_hash)
-        ) {
-          throw new ApiError(
-            401,
-            'AUTH_RECOVERY_INVALID',
-            'Invalid pseudonym or recovery code.',
-          );
-        }
-
-        const nextRecoveryCode = generateRecoveryCode();
-        const nextRecoveryCodeHash = hashOpaqueToken(
-          normalizeRecoveryCode(nextRecoveryCode),
-        );
-
-        await client.query(
-          `UPDATE users
-           SET password_hash = $2,
-               recovery_code_hash = $3
-           WHERE id = $1`,
-          [lockedUser.id, newPasswordHash, nextRecoveryCodeHash],
-        );
-
-        await client.query('DELETE FROM sessions WHERE user_id = $1', [
-          lockedUser.id,
-        ]);
-
-        const session = await createSession(
-          client,
-          lockedUser.id,
-          app.config.sessionTtlDays,
-        );
-
-        await client.query('COMMIT');
-
-        const compositeKey = `${normalizeRateLimitIp(request.ip)}:${pseudonymLower}`;
-        failedLoginTracker.clear(compositeKey);
-
-        return RegisterResponseSchema.parse({
-          user: {
-            id: lockedUser.id,
-            pseudonym: lockedUser.pseudonym,
-            createdAt: lockedUser.created_at.toISOString(),
-          },
-          sessionToken: session.sessionToken,
-          expiresAt: session.expiresAt,
-          recoveryCode: nextRecoveryCode,
-        });
-      } catch (err: unknown) {
-        await rollbackQuietly(client, request.log);
-        throw err;
-      } finally {
-        client.release();
-      }
+      return ResetPasswordResponseSchema.parse({
+        status: 'password_reset',
+      });
     },
   );
 
@@ -495,14 +908,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       preHandler: requireAuth,
     },
     async (request, reply) => {
-      const auth = request.auth;
-      if (!auth) {
-        throw new ApiError(
-          401,
-          'AUTH_REQUIRED',
-          'Valid bearer session token is required.',
-        );
-      }
+      const auth = request.auth!;
       await app.pool.query('DELETE FROM sessions WHERE id = $1', [
         auth.sessionId,
       ]);
@@ -516,36 +922,20 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       preHandler: requireAuth,
     },
     async (request) => {
-      const auth = request.auth;
-      if (!auth) {
-        throw new ApiError(
-          401,
-          'AUTH_REQUIRED',
-          'Valid bearer session token is required.',
-        );
-      }
-      return AuthUserSchema.parse(auth.user);
+      return AuthUserSchema.parse(request.auth!.user);
     },
   );
 
   app.delete(
     '/api/v1/auth/me',
     {
+      preHandler: requireAuth,
       config: {
         rateLimit: deleteAccountLimit,
       },
-      preHandler: requireAuth,
     },
     async (request, reply) => {
-      const auth = request.auth;
-      if (!auth) {
-        throw new ApiError(
-          401,
-          'AUTH_REQUIRED',
-          'Valid bearer session token is required.',
-        );
-      }
-
+      const auth = request.auth!;
       const client = await app.pool.connect();
       try {
         await client.query('BEGIN');
@@ -555,14 +945,13 @@ export function registerAuthRoutes(app: FastifyInstance): void {
           mode: 'self_delete',
         });
         await client.query('COMMIT');
+        return reply.status(204).send();
       } catch (err: unknown) {
         await rollbackQuietly(client, request.log);
         throw err;
       } finally {
         client.release();
       }
-
-      return reply.status(204).send();
     },
   );
 }

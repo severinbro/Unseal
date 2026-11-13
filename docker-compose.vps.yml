@@ -1,0 +1,115 @@
+# Production VPS Docker Compose Stack for Entsiegelungskartierung
+# Usage:
+#   cp .env.vps.example .env.vps
+#   nano .env.vps
+#   mkdir -p dist-web
+#   docker compose --env-file .env.vps -f docker-compose.vps.yml up -d --build
+#
+# Full guide: docs/vps-setup.md
+
+services:
+  postgis:
+    image: postgis/postgis:16-3.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ppgis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a strong POSTGRES_PASSWORD in .env.vps}
+      POSTGRES_DB: ${POSTGRES_DB:-ppgis}
+    networks:
+      - db_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ppgis} -d ${POSTGRES_DB:-ppgis}"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "3000"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-ppgis}:${POSTGRES_PASSWORD}@postgis:5432/${POSTGRES_DB:-ppgis}"
+      PUBLIC_BASE_URL: "https://${DOMAIN:?Set DOMAIN in .env.vps (e.g. map.example.org)}"
+      UPLOADS_DIR: "/var/lib/entsiegelung/uploads"
+      AUTO_SEED_VG250: "${AUTO_SEED_VG250:-true}"
+      SMTP_HOST: "${SMTP_HOST:?Set SMTP_HOST in .env.vps}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_SECURE: "${SMTP_SECURE:-false}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_PASS: "${SMTP_PASS:-}"
+      SMTP_FROM: "${SMTP_FROM:?Set SMTP_FROM in .env.vps}"
+      TRUST_PROXY: "true"
+      CORS_ORIGIN: "${CORS_ORIGIN:-https://${DOMAIN}}"
+      OSM_STYLE_URL: "${OSM_STYLE_URL:-https://tiles.openfreemap.org/styles/liberty}"
+      ORTHOPHOTO_URL_TEMPLATE: "${ORTHOPHOTO_URL_TEMPLATE:-}"
+      ORTHOPHOTO_TILE_SIZE: "${ORTHOPHOTO_TILE_SIZE:-256}"
+      ORTHOPHOTO_ATTRIBUTION: "${ORTHOPHOTO_ATTRIBUTION:-}"
+      ORTHOPHOTO_BOUNDS: "${ORTHOPHOTO_BOUNDS:-}"
+      ORTHOPHOTO_MAX_ZOOM: "${ORTHOPHOTO_MAX_ZOOM:-20}"
+      INITIAL_LNG: "${INITIAL_LNG:-9.9937}"
+      INITIAL_LAT: "${INITIAL_LAT:-53.5511}"
+      INITIAL_ZOOM: "${INITIAL_ZOOM:-15}"
+      MAX_DAILY_POLYGONS_PER_USER: "${MAX_DAILY_POLYGONS_PER_USER:-25}"
+      SESSION_TTL_DAYS: "${SESSION_TTL_DAYS:-30}"
+      DISCLAIMER_TEXT: "${DISCLAIMER_TEXT:-Community unsealing suggestions — non-binding public input, regardless of property ownership.}"
+      ABUSE_CONTACT: "${ABUSE_CONTACT:-}"
+    networks:
+      - db_internal
+      - edge_net
+    volumes:
+      - uploads_data:/var/lib/entsiegelung/uploads
+    depends_on:
+      postgis:
+        condition: service_healthy
+    mem_limit: 1024m
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: "${DOMAIN:?Set DOMAIN in .env.vps}"
+      ACME_EMAIL: "${ACME_EMAIL:-}"
+    networks:
+      - edge_net
+    volumes:
+      - ./Caddyfile.vps:/etc/caddy/Caddyfile:ro
+      - ./dist-web:/srv/www:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
+networks:
+  db_internal:
+    driver: bridge
+    internal: true
+  edge_net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  uploads_data:
+  caddy_data:
+  caddy_config:

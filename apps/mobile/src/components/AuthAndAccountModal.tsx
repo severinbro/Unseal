@@ -1,11 +1,12 @@
 import {
+  ApiError,
   AUTH_LIMITS,
   type LoginRequest,
-  type RecoverRequest,
   type RegisterRequest,
 } from '@entsiegelung/shared';
 import React, { useEffect, useState } from 'react';
 import {
+  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -24,67 +25,72 @@ import {
   MIN_TOUCH_TARGET_DP,
   type AuthModalModel,
 } from '../state/viewModels';
-import {
-  formatRecoveryCodeBlocks,
-  MONO_FONT_FAMILY,
-  PALETTE,
-  RADII,
-  TABULAR_NUMS_STYLE,
-} from '../theme/tokens';
+import { PALETTE, RADII } from '../theme/tokens';
 
-interface ClipboardNavigatorLike {
-  clipboard?: {
-    writeText?(text: string): Promise<void>;
-  };
-}
+const SIMPLE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export interface AuthAndAccountModalProps {
   modal: AuthModalModel;
+  privacyPolicyUrl?: string;
   locale?: Locale;
   compact?: boolean;
-  onSelectView: (view: Exclude<AuthModalView, 'recovery_code'>) => void;
-  onToggleRecoveryCodeSaved: (checked: boolean) => void;
+  onSelectView: (view: AuthModalView) => void;
   onClose: () => void;
   onRegister: (input: RegisterRequest) => Promise<void>;
+  onResendVerification: (email: string) => Promise<void>;
   onLogin: (input: LoginRequest) => Promise<void>;
-  onRecover: (input: RecoverRequest) => Promise<void>;
+  onForgotPassword: (email: string) => Promise<void>;
   onLogout: () => Promise<void>;
   onDeleteAccount: () => Promise<void>;
 }
 
 export function AuthAndAccountModal({
   modal,
+  privacyPolicyUrl,
   locale = DEFAULT_LOCALE,
   compact = false,
   onSelectView,
-  onToggleRecoveryCodeSaved,
   onClose,
   onRegister,
+  onResendVerification,
   onLogin,
-  onRecover,
+  onForgotPassword,
   onLogout,
   onDeleteAccount,
 }: AuthAndAccountModalProps): React.JSX.Element | null {
+  const [identifier, setIdentifier] = useState<string>('');
   const [pseudonym, setPseudonym] = useState<string>('');
+  const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
-  const [recoveryCodeInput, setRecoveryCodeInput] = useState<string>('');
-  const [newPassword, setNewPassword] = useState<string>('');
+  const [privacyConsent, setPrivacyConsent] = useState<boolean>(false);
   const [confirmingAccountDelete, setConfirmingAccountDelete] =
     useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [localError, setLocalError] = useState<string | null>(null);
-  const [copiedCode, setCopiedCode] = useState<boolean>(false);
+  const [unverifiedIdentifier, setUnverifiedIdentifier] = useState<
+    string | null
+  >(null);
+  const [infoBanner, setInfoBanner] = useState<string | null>(null);
 
   useEffect(() => {
     setLocalError(null);
+    setInfoBanner(null);
+    setUnverifiedIdentifier(null);
     setConfirmingAccountDelete(false);
-    setCopiedCode(false);
     if (!modal.visible) {
       setPassword('');
-      setRecoveryCodeInput('');
-      setNewPassword('');
     }
   }, [modal.visible, modal.view, locale]);
+
+  useEffect(() => {
+    if (
+      modal.view === 'login' &&
+      identifier.trim().length === 0 &&
+      modal.pendingVerificationPseudonym
+    ) {
+      setIdentifier(modal.pendingVerificationPseudonym);
+    }
+  }, [identifier, modal.pendingVerificationPseudonym, modal.view]);
 
   if (!modal.visible) {
     return null;
@@ -92,47 +98,68 @@ export function AuthAndAccountModal({
 
   const t = getTranslations(locale).auth;
   const displayedError = localError ?? modal.errorMessage;
-  const formattedRecoveryCode = modal.recoveryCode
-    ? formatRecoveryCodeBlocks(modal.recoveryCode)
-    : '';
 
-  const handleCopyRecoveryCode = (): void => {
-    if (!modal.recoveryCode) {
-      return;
-    }
-    const nav = (globalThis as { navigator?: ClipboardNavigatorLike })
-      .navigator;
-    if (nav?.clipboard && typeof nav.clipboard.writeText === 'function') {
-      void nav.clipboard
-        .writeText(formattedRecoveryCode)
-        .then(() => {
-          setCopiedCode(true);
-        })
-        .catch(() => {
-          setLocalError(t.clipboardBlocked);
-        });
+  const handleOpenPrivacyPolicy = (): void => {
+    if (privacyPolicyUrl) {
+      void Linking.openURL(privacyPolicyUrl);
     }
   };
 
   const handleRegisterSubmit = (): void => {
     setLocalError(null);
+    setInfoBanner(null);
     const trimmedPseudonym = pseudonym.trim();
+    const trimmedEmail = email.trim().toLowerCase();
+
     if (!AUTH_LIMITS.PSEUDONYM_REGEX.test(trimmedPseudonym)) {
       setLocalError(t.invalidPseudonym);
+      return;
+    }
+    if (!SIMPLE_EMAIL_RE.test(trimmedEmail)) {
+      setLocalError(t.invalidEmail);
       return;
     }
     if (password.length < AUTH_LIMITS.MIN_PASSWORD_LENGTH) {
       setLocalError(t.shortPassword(AUTH_LIMITS.MIN_PASSWORD_LENGTH));
       return;
     }
+    if (!privacyConsent) {
+      setLocalError(t.privacyConsentRequired);
+      return;
+    }
 
     setIsSubmitting(true);
     void onRegister({
       pseudonym: trimmedPseudonym,
+      email: trimmedEmail,
       password,
+      acceptedPrivacyPolicy: true,
     })
       .then(() => {
-        setPassword('');
+        setIdentifier(trimmedPseudonym);
+      })
+      .catch((err: unknown) => {
+        setLocalError(localizeError(err, t.registerFailed, locale));
+      })
+      .finally(() => {
+        setIsSubmitting(false);
+      });
+  };
+
+  const handleResendVerificationPress = (targetEmail: string): void => {
+    const cleaned = targetEmail.trim().toLowerCase();
+    if (!SIMPLE_EMAIL_RE.test(cleaned)) {
+      setLocalError(t.invalidEmail);
+      return;
+    }
+    setLocalError(null);
+    setInfoBanner(null);
+    setIsSubmitting(true);
+
+    void onResendVerification(cleaned)
+      .then(() => {
+        setInfoBanner(t.resendVerificationSent);
+        setUnverifiedIdentifier(null);
       })
       .catch((err: unknown) => {
         setLocalError(localizeError(err, t.registerFailed, locale));
@@ -144,21 +171,32 @@ export function AuthAndAccountModal({
 
   const handleLoginSubmit = (): void => {
     setLocalError(null);
-    const trimmedPseudonym = pseudonym.trim();
-    if (trimmedPseudonym.length === 0 || password.length === 0) {
+    setInfoBanner(null);
+    setUnverifiedIdentifier(null);
+    const trimmedIdentifier = identifier.trim();
+    if (trimmedIdentifier.length === 0 || password.length === 0) {
       setLocalError(t.missingCredentials);
       return;
     }
 
     setIsSubmitting(true);
     void onLogin({
-      pseudonym: trimmedPseudonym,
+      identifier: trimmedIdentifier,
       password,
     })
       .then(() => {
         setPassword('');
       })
       .catch((err: unknown) => {
+        if (err instanceof ApiError && err.code === 'AUTH_EMAIL_UNVERIFIED') {
+          const fallbackEmail =
+            modal.pendingVerificationEmail ?? email.trim().toLowerCase();
+          if (SIMPLE_EMAIL_RE.test(trimmedIdentifier)) {
+            setUnverifiedIdentifier(trimmedIdentifier.toLowerCase());
+          } else if (SIMPLE_EMAIL_RE.test(fallbackEmail)) {
+            setUnverifiedIdentifier(fallbackEmail);
+          }
+        }
         setLocalError(localizeError(err, t.loginFailed, locale));
       })
       .finally(() => {
@@ -166,28 +204,19 @@ export function AuthAndAccountModal({
       });
   };
 
-  const handleRecoverSubmit = (): void => {
+  const handleForgotPasswordSubmit = (): void => {
     setLocalError(null);
-    const trimmedPseudonym = pseudonym.trim();
-    const trimmedCode = recoveryCodeInput.trim();
-    if (
-      trimmedPseudonym.length === 0 ||
-      trimmedCode.length === 0 ||
-      newPassword.length < AUTH_LIMITS.MIN_PASSWORD_LENGTH
-    ) {
-      setLocalError(t.missingRecoveryFields(AUTH_LIMITS.MIN_PASSWORD_LENGTH));
+    setInfoBanner(null);
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!SIMPLE_EMAIL_RE.test(trimmedEmail)) {
+      setLocalError(t.invalidEmail);
       return;
     }
 
     setIsSubmitting(true);
-    void onRecover({
-      pseudonym: trimmedPseudonym,
-      recoveryCode: trimmedCode,
-      newPassword,
-    })
+    void onForgotPassword(trimmedEmail)
       .then(() => {
-        setRecoveryCodeInput('');
-        setNewPassword('');
+        setInfoBanner(t.resetLinkSentBanner(trimmedEmail));
       })
       .catch((err: unknown) => {
         setLocalError(localizeError(err, t.recoverFailed, locale));
@@ -221,10 +250,8 @@ export function AuthAndAccountModal({
       });
   };
 
-  const hasClipboardApi = Boolean(
-    (globalThis as { navigator?: ClipboardNavigatorLike }).navigator?.clipboard
-      ?.writeText,
-  );
+  const pendingEmailDisplay =
+    modal.pendingVerificationEmail ?? email.trim().toLowerCase();
 
   return (
     <View
@@ -233,30 +260,32 @@ export function AuthAndAccountModal({
     >
       <View style={styles.headerRow}>
         <View style={styles.headerTitleCol}>
-          <Text style={styles.modalTitle}>
-            {modal.view === 'recovery_code'
-              ? t.titleRecovery
-              : modal.view === 'account'
-                ? `@${modal.currentUser?.pseudonym ?? ''}`
-                : modal.view === 'register'
-                  ? t.titleRegister
-                  : modal.view === 'recover'
-                    ? t.titleRecover
-                    : t.titleLogin}
-          </Text>
-          <Text style={styles.zeroPiiSubtitle}>{t.zeroPiiSubtitle}</Text>
+          <View style={styles.titleWithRoleRow}>
+            <Text style={styles.modalTitle}>
+              {modal.view === 'verify_pending'
+                ? t.titleVerifyPending
+                : modal.view === 'account'
+                  ? `@${modal.currentUser?.pseudonym ?? ''}`
+                  : modal.view === 'register'
+                    ? t.titleRegister
+                    : modal.view === 'recover'
+                      ? t.titleRecover
+                      : t.titleLogin}
+            </Text>
+            {modal.view === 'account' && modal.currentUser?.role === 'admin' ? (
+              <View style={styles.adminBadge}>
+                <Text style={styles.adminBadgeLabel}>{t.adminRoleBadge}</Text>
+              </View>
+            ) : null}
+          </View>
+          <Text style={styles.zeroPiiSubtitle}>{t.privacySubtitle}</Text>
         </View>
 
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t.closeA11y}
-          accessibilityState={{ disabled: !modal.canClose }}
-          disabled={!modal.canClose}
           onPress={onClose}
-          style={[
-            styles.closeButton,
-            !modal.canClose ? styles.disabledButton : null,
-          ]}
+          style={styles.closeButton}
         >
           <Text style={styles.closeButtonLabel}>{t.close}</Text>
         </Pressable>
@@ -270,13 +299,35 @@ export function AuthAndAccountModal({
         </View>
       ) : null}
 
-      {displayedError ? (
-        <View style={styles.errorBox} accessibilityRole="alert">
-          <Text style={styles.errorText}>{displayedError}</Text>
+      {infoBanner ? (
+        <View style={styles.successBox} accessibilityRole="alert">
+          <Text style={styles.successText}>{infoBanner}</Text>
         </View>
       ) : null}
 
-      {modal.view !== 'recovery_code' && modal.view !== 'account' ? (
+      {displayedError ? (
+        <View style={styles.errorBox} accessibilityRole="alert">
+          <Text style={styles.errorText}>{displayedError}</Text>
+          {unverifiedIdentifier ? (
+            <Pressable
+              accessibilityRole="button"
+              disabled={isSubmitting}
+              onPress={() =>
+                handleResendVerificationPress(unverifiedIdentifier)
+              }
+              style={styles.inlineResendButton}
+            >
+              <Text style={styles.inlineResendButtonLabel}>
+                {isSubmitting
+                  ? t.resendingVerification
+                  : t.resendVerificationButton}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+
+      {modal.view !== 'verify_pending' && modal.view !== 'account' ? (
         <View style={styles.tabWell} accessibilityRole="tablist">
           <Pressable
             accessibilityRole="tab"
@@ -346,71 +397,33 @@ export function AuthAndAccountModal({
         </View>
       ) : null}
 
-      {modal.view === 'recovery_code' && modal.recoveryCode ? (
+      {modal.view === 'verify_pending' ? (
         <View style={styles.formSection}>
-          <Text style={styles.privacyHint}>{t.recoveryVaultHint}</Text>
-
-          <View style={styles.recoveryCodeVault}>
-            <Text selectable style={styles.recoveryCodeValue}>
-              {formattedRecoveryCode}
+          <View style={styles.verifyInfoCard}>
+            <Text style={styles.verifyInfoText}>
+              {t.verifyPendingBody(pendingEmailDisplay || '—')}
             </Text>
-            {hasClipboardApi ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={t.copyCodeA11y}
-                onPress={handleCopyRecoveryCode}
-                style={styles.copyCodeButton}
-              >
-                <Text style={styles.copyCodeButtonLabel}>
-                  {copiedCode ? t.copiedCode : t.copyCode}
-                </Text>
-              </Pressable>
-            ) : null}
           </View>
 
           <Pressable
-            accessibilityRole="checkbox"
-            accessibilityLabel={t.savedCheckboxA11y}
-            accessibilityState={{ checked: modal.recoveryCodeSavedChecked }}
-            onPress={() =>
-              onToggleRecoveryCodeSaved(!modal.recoveryCodeSavedChecked)
-            }
-            style={styles.checkboxRow}
+            accessibilityRole="button"
+            disabled={isSubmitting || !pendingEmailDisplay}
+            onPress={() => handleResendVerificationPress(pendingEmailDisplay)}
+            style={[styles.touchButton, styles.secondaryButton]}
           >
-            <View
-              style={[
-                styles.checkboxIndicator,
-                modal.recoveryCodeSavedChecked
-                  ? styles.checkboxIndicatorChecked
-                  : null,
-              ]}
-            >
-              <Text style={styles.checkboxMark}>
-                {modal.recoveryCodeSavedChecked ? '✓' : ''}
-              </Text>
-            </View>
-            <Text style={styles.checkboxLabel}>{t.savedCheckboxLabel}</Text>
-          </Pressable>
-
-          {!modal.canClose && modal.closeBlockedReason ? (
-            <Text style={styles.blockedReasonText}>
-              {modal.closeBlockedReason}
+            <Text style={styles.secondaryButtonLabel}>
+              {isSubmitting
+                ? t.resendingVerification
+                : t.resendVerificationButton}
             </Text>
-          ) : null}
+          </Pressable>
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={t.continueA11y}
-            accessibilityState={{ disabled: !modal.canClose }}
-            disabled={!modal.canClose}
-            onPress={onClose}
-            style={[
-              styles.touchButton,
-              styles.primaryButton,
-              !modal.canClose ? styles.primaryButtonDisabled : null,
-            ]}
+            onPress={() => onSelectView('login')}
+            style={[styles.touchButton, styles.primaryButton]}
           >
-            <Text style={styles.primaryButtonLabel}>{t.continueToMap}</Text>
+            <Text style={styles.primaryButtonLabel}>{t.backToSignIn}</Text>
           </Pressable>
         </View>
       ) : null}
@@ -436,6 +449,23 @@ export function AuthAndAccountModal({
           </View>
 
           <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>{t.emailLabel}</Text>
+            <TextInput
+              accessibilityLabel={t.emailA11y}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="email"
+              textContentType="emailAddress"
+              placeholder={t.emailPlaceholder}
+              placeholderTextColor={PALETTE.inkMuted}
+              style={styles.inputField}
+            />
+          </View>
+
+          <View style={styles.fieldGroup}>
             <Text style={styles.fieldLabel}>{t.passwordLabel}</Text>
             <TextInput
               accessibilityLabel={t.passwordA11y}
@@ -450,6 +480,39 @@ export function AuthAndAccountModal({
               placeholderTextColor={PALETTE.inkMuted}
               style={styles.inputField}
             />
+          </View>
+
+          <View style={styles.checkboxRow}>
+            <Pressable
+              accessibilityRole="checkbox"
+              accessibilityLabel={t.privacyConsentA11y}
+              accessibilityState={{ checked: privacyConsent }}
+              onPress={() => setPrivacyConsent((prev) => !prev)}
+              style={styles.checkboxHitArea}
+            >
+              <View
+                style={[
+                  styles.checkboxIndicator,
+                  privacyConsent ? styles.checkboxIndicatorChecked : null,
+                ]}
+              >
+                <Text style={styles.checkboxMark}>
+                  {privacyConsent ? '✓' : ''}
+                </Text>
+              </View>
+            </Pressable>
+
+            <Text style={styles.checkboxLabel}>
+              {t.privacyConsentPrefix}
+              <Text
+                accessibilityRole="link"
+                onPress={handleOpenPrivacyPolicy}
+                style={styles.privacyLinkText}
+              >
+                {t.privacyPolicyLinkText}
+              </Text>
+              .
+            </Text>
           </View>
 
           <Pressable
@@ -473,23 +536,33 @@ export function AuthAndAccountModal({
       {modal.view === 'login' ? (
         <View style={styles.formSection}>
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>{t.pseudonymLabel}</Text>
+            <Text style={styles.fieldLabel}>{t.identifierLabel}</Text>
             <TextInput
-              accessibilityLabel={t.pseudonymA11y}
-              value={pseudonym}
-              onChangeText={setPseudonym}
+              accessibilityLabel={t.identifierA11y}
+              value={identifier}
+              onChangeText={setIdentifier}
               autoCapitalize="none"
               autoCorrect={false}
               autoComplete="username"
               textContentType="username"
-              placeholder={t.pseudonymPlaceholderLogin}
+              placeholder={t.identifierPlaceholder}
               placeholderTextColor={PALETTE.inkMuted}
               style={styles.inputField}
             />
           </View>
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>{t.passwordLabel}</Text>
+            <View style={styles.passwordLabelRow}>
+              <Text style={styles.fieldLabel}>{t.passwordLabel}</Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => onSelectView('recover')}
+              >
+                <Text style={styles.forgotPasswordLink}>
+                  {t.forgotPasswordLink}
+                </Text>
+              </Pressable>
+            </View>
             <TextInput
               accessibilityLabel={t.passwordA11y}
               value={password}
@@ -525,52 +598,20 @@ export function AuthAndAccountModal({
 
       {modal.view === 'recover' ? (
         <View style={styles.formSection}>
-          <Text style={styles.privacyHint}>{t.recoverHint}</Text>
+          <Text style={styles.privacyHint}>{t.forgotPasswordHint}</Text>
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>{t.pseudonymLabel}</Text>
+            <Text style={styles.fieldLabel}>{t.emailLabel}</Text>
             <TextInput
-              accessibilityLabel={t.pseudonymA11y}
-              value={pseudonym}
-              onChangeText={setPseudonym}
+              accessibilityLabel={t.emailA11y}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
-              autoComplete="username"
-              textContentType="username"
-              placeholder={t.pseudonymPlaceholderLogin}
-              placeholderTextColor={PALETTE.inkMuted}
-              style={styles.inputField}
-            />
-          </View>
-
-          <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>{t.recoveryCodeLabel}</Text>
-            <TextInput
-              accessibilityLabel={t.recoveryCodeA11y}
-              value={recoveryCodeInput}
-              onChangeText={setRecoveryCodeInput}
-              autoCapitalize="characters"
-              autoCorrect={false}
-              autoComplete="off"
-              textContentType="oneTimeCode"
-              placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
-              placeholderTextColor={PALETTE.inkMuted}
-              style={[styles.inputField, styles.monoInputField]}
-            />
-          </View>
-
-          <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>{t.newPasswordLabel}</Text>
-            <TextInput
-              accessibilityLabel={t.newPasswordA11y}
-              value={newPassword}
-              onChangeText={setNewPassword}
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="new-password"
-              textContentType="newPassword"
-              placeholder={t.passwordPlaceholderMin}
+              autoComplete="email"
+              textContentType="emailAddress"
+              placeholder={t.emailPlaceholder}
               placeholderTextColor={PALETTE.inkMuted}
               style={styles.inputField}
             />
@@ -580,7 +621,7 @@ export function AuthAndAccountModal({
             accessibilityRole="button"
             accessibilityLabel={t.resetPasswordA11y}
             disabled={isSubmitting}
-            onPress={handleRecoverSubmit}
+            onPress={handleForgotPasswordSubmit}
             style={[
               styles.touchButton,
               styles.primaryButton,
@@ -588,7 +629,7 @@ export function AuthAndAccountModal({
             ]}
           >
             <Text style={styles.primaryButtonLabel}>
-              {isSubmitting ? t.resettingPassword : t.resetPassword}
+              {isSubmitting ? t.sendingResetLink : t.sendResetLinkButton}
             </Text>
           </Pressable>
         </View>
@@ -599,6 +640,17 @@ export function AuthAndAccountModal({
           <Text style={styles.privacyHint}>
             {t.accountSignedInHint(modal.currentUser.pseudonym)}
           </Text>
+
+          {modal.currentUser.email ? (
+            <View style={styles.accountEmailBox}>
+              <Text style={styles.accountEmailLabel}>
+                {t.accountEmailLabel}
+              </Text>
+              <Text style={styles.accountEmailValue}>
+                {modal.currentUser.email}
+              </Text>
+            </View>
+          ) : null}
 
           <Pressable
             accessibilityRole="button"
@@ -680,12 +732,33 @@ const styles = StyleSheet.create({
   headerTitleCol: {
     flex: 1,
     gap: 2,
+    minWidth: 0,
+  },
+  titleWithRoleRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
   },
   modalTitle: {
     fontSize: 17,
     fontWeight: '700',
     letterSpacing: -0.25,
     color: PALETTE.inkPrimary,
+    flexShrink: 1,
+  },
+  adminBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: RADII.pill,
+    backgroundColor: PALETTE.finishedBg,
+    borderWidth: 1,
+    borderColor: PALETTE.finishedBorder,
+  },
+  adminBadgeLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: PALETTE.finishedText,
   },
   zeroPiiSubtitle: {
     fontSize: 11.5,
@@ -708,9 +781,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: PALETTE.inkPrimary,
   },
-  disabledButton: {
-    opacity: 0.42,
-  },
   intentBanner: {
     padding: 10,
     borderRadius: RADII.md,
@@ -723,16 +793,43 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: PALETTE.infoText,
   },
+  successBox: {
+    padding: 10,
+    borderRadius: RADII.md,
+    backgroundColor: PALETTE.positiveBg,
+    borderWidth: 1,
+    borderColor: PALETTE.positiveBorder,
+  },
+  successText: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: PALETTE.positiveText,
+  },
   errorBox: {
     padding: 10,
     borderRadius: RADII.md,
     backgroundColor: PALETTE.dangerBg,
     borderWidth: 1,
     borderColor: PALETTE.dangerBorder,
+    gap: 8,
   },
   errorText: {
     fontSize: 12.5,
     fontWeight: '600',
+    color: PALETTE.dangerText,
+  },
+  inlineResendButton: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: RADII.sm,
+    backgroundColor: PALETTE.bgSurface,
+    borderWidth: 1,
+    borderColor: PALETTE.dangerBorder,
+  },
+  inlineResendButtonLabel: {
+    fontSize: 12,
+    fontWeight: '700',
     color: PALETTE.dangerText,
   },
   tabWell: {
@@ -776,6 +873,19 @@ const styles = StyleSheet.create({
   formSection: {
     gap: 10,
   },
+  verifyInfoCard: {
+    padding: 12,
+    borderRadius: RADII.md,
+    backgroundColor: PALETTE.positiveBg,
+    borderWidth: 1,
+    borderColor: PALETTE.positiveBorder,
+  },
+  verifyInfoText: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: PALETTE.positiveText,
+    fontWeight: '600',
+  },
   privacyHint: {
     fontSize: 12.5,
     lineHeight: 18,
@@ -783,6 +893,17 @@ const styles = StyleSheet.create({
   },
   fieldGroup: {
     gap: 4,
+  },
+  passwordLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  forgotPasswordLink: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: PALETTE.accentPrimary,
   },
   fieldLabel: {
     fontSize: 12,
@@ -800,101 +921,80 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: PALETTE.inkPrimary,
   },
-  monoInputField: {
-    ...TABULAR_NUMS_STYLE,
-    fontFamily: MONO_FONT_FAMILY,
-    fontSize: 13,
-  },
-  recoveryCodeVault: {
-    padding: 12,
-    borderRadius: RADII.md,
-    backgroundColor: PALETTE.bgSubtle,
-    borderWidth: 1,
-    borderColor: PALETTE.positiveBorder,
-    gap: 10,
+  checkboxRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
+    paddingVertical: 4,
   },
-  recoveryCodeValue: {
-    ...TABULAR_NUMS_STYLE,
-    fontFamily: MONO_FONT_FAMILY,
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 0.6,
-    lineHeight: 21,
-    textAlign: 'center',
-    color: PALETTE.positiveText,
-  },
-  copyCodeButton: {
-    minHeight: MIN_TOUCH_TARGET_DP,
+  checkboxHitArea: {
     minWidth: MIN_TOUCH_TARGET_DP,
-    alignSelf: 'stretch',
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: RADII.sm,
-    backgroundColor: PALETTE.bgSurface,
-    borderWidth: 1,
-    borderColor: PALETTE.borderStrong,
+    minHeight: MIN_TOUCH_TARGET_DP,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  copyCodeButtonLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: PALETTE.inkPrimary,
-  },
-  checkboxRow: {
-    minHeight: MIN_TOUCH_TARGET_DP,
-    minWidth: MIN_TOUCH_TARGET_DP,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 6,
-  },
   checkboxIndicator: {
-    width: 24,
-    height: 24,
+    width: 22,
+    height: 22,
     borderRadius: 6,
-    borderWidth: 2,
-    borderColor: PALETTE.accentPrimary,
+    borderWidth: 1.5,
+    borderColor: PALETTE.borderStrong,
     backgroundColor: PALETTE.bgSurface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   checkboxIndicatorChecked: {
     backgroundColor: PALETTE.accentPrimary,
+    borderColor: PALETTE.accentPrimaryStrong,
   },
   checkboxMark: {
     color: PALETTE.inkOnAccent,
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '800',
   },
   checkboxLabel: {
     flex: 1,
-    fontSize: 13.5,
-    fontWeight: '600',
-    color: PALETTE.inkPrimary,
-  },
-  blockedReasonText: {
     fontSize: 12,
-    color: PALETTE.neutralText,
+    lineHeight: 17,
+    color: PALETTE.inkSecondary,
+  },
+  privacyLinkText: {
+    color: PALETTE.accentPrimary,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
+  },
+  accountEmailBox: {
+    padding: 10,
+    borderRadius: RADII.md,
+    backgroundColor: PALETTE.bgSubtle,
+    borderWidth: 1,
+    borderColor: PALETTE.borderSubtle,
+    gap: 2,
+  },
+  accountEmailLabel: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: PALETTE.inkMuted,
+  },
+  accountEmailValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: PALETTE.inkPrimary,
   },
   touchButton: {
     minHeight: MIN_TOUCH_TARGET_DP,
     minWidth: MIN_TOUCH_TARGET_DP,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
     borderRadius: RADII.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
   primaryButton: {
     backgroundColor: PALETTE.accentPrimary,
-    borderWidth: 1,
-    borderColor: PALETTE.accentPrimaryStrong,
   },
   primaryButtonDisabled: {
     backgroundColor: PALETTE.accentDisabled,
-    borderColor: PALETTE.accentDisabled,
   },
   primaryButtonLabel: {
     fontSize: 14,
@@ -910,16 +1010,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: PALETTE.inkPrimary,
-  },
-  dangerOutlineButton: {
-    backgroundColor: PALETTE.bgSurface,
-    borderWidth: 1,
-    borderColor: PALETTE.dangerBorder,
-  },
-  dangerOutlineLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: PALETTE.dangerText,
   },
   deleteWarningBox: {
     padding: 12,
@@ -942,5 +1032,15 @@ const styles = StyleSheet.create({
   },
   dangerButton: {
     backgroundColor: PALETTE.dangerSolid,
+  },
+  dangerOutlineButton: {
+    backgroundColor: PALETTE.dangerBg,
+    borderWidth: 1,
+    borderColor: PALETTE.dangerBorder,
+  },
+  dangerOutlineLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: PALETTE.dangerText,
   },
 });

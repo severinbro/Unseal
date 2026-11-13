@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  Image,
   Linking,
   Platform,
   Pressable,
@@ -74,29 +75,79 @@ export interface MapControlsBarProps {
   controls: MapControlsModel;
   proposalCount: number;
   exportGeoJsonUrl: string;
-  isLocating: boolean;
+  isImporting?: boolean;
   tier?: ViewportTier;
   onToggleLocale?: () => void;
   onSetBasemapMode: (mode: BasemapMode) => void;
-  onLocateMe: () => void;
   onStartDraw: () => void;
   onOpenAccount: () => void;
+  onImportPress?: () => void;
   onExportError: (message: string) => void;
 }
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const UNSEAL_HEADER_LOGO = require('../../assets/header-logo.png') as number;
 
 function ParcelUnsealMark({
   compact,
 }: {
   compact: boolean;
 }): React.JSX.Element {
+  const size = compact ? 24 : 28;
+  if (Platform.OS === 'web') {
+    return React.createElement(
+      'svg',
+      {
+        width: size,
+        height: size,
+        viewBox: '0 0 64 64',
+        fill: 'none',
+        'aria-hidden': 'true',
+        style: {
+          flexShrink: 0,
+          display: 'block',
+          borderRadius: compact ? '6px' : '7px',
+          boxShadow: 'inset 0 0 0 1px rgba(17, 29, 24, 0.14)',
+        },
+      },
+      React.createElement('rect', {
+        width: '64',
+        height: '64',
+        rx: '14',
+        fill: '#EFF3F0',
+      }),
+      React.createElement('path', {
+        d: 'M0 40H26L31 50L37 40H64V50C64 57.732 57.732 64 50 64H14C6.26801 64 0 57.732 0 50V40Z',
+        fill: '#5A6360',
+      }),
+      React.createElement('path', {
+        d: 'M31 49C31 38 32 30 37 22',
+        stroke: '#176642',
+        strokeWidth: '4',
+        strokeLinecap: 'round',
+      }),
+      React.createElement('path', {
+        d: 'M34 26C35 16 44 13 49 15C48 22 42 27 34 26Z',
+        fill: '#1F7A4C',
+      }),
+      React.createElement('path', {
+        d: 'M31 34C29 27 22 25 18 26C19 31 25 35 31 34Z',
+        fill: '#176642',
+      }),
+    );
+  }
+
   return (
     <View
       style={[styles.brandMark, compact ? styles.brandMarkCompact : null]}
       accessible={false}
     >
-      <View style={styles.brandMarkSealedQuad} />
-      <View style={styles.brandMarkPermeableQuad} />
-      <View style={styles.brandMarkCornerNode} />
+      <Image
+        source={UNSEAL_HEADER_LOGO}
+        style={styles.brandMarkImage}
+        resizeMode="contain"
+        accessibilityIgnoresInvertColors
+      />
     </View>
   );
 }
@@ -148,13 +199,13 @@ export function MapControlsBar({
   controls,
   proposalCount,
   exportGeoJsonUrl,
-  isLocating,
+  isImporting = false,
   tier = 'expanded',
   onToggleLocale,
   onSetBasemapMode,
-  onLocateMe,
   onStartDraw,
   onOpenAccount,
+  onImportPress,
   onExportError,
 }: MapControlsBarProps): React.JSX.Element {
   const isCompact = tier === 'compact';
@@ -203,28 +254,31 @@ export function MapControlsBar({
                     style: {
                       margin: 0,
                       padding: 0,
-                      fontSize: isCompact ? '12.5px' : '17px',
+                      fontSize: isCompact ? '16px' : '18px',
                       fontWeight: 700,
-                      letterSpacing: isCompact ? '-0.4px' : '-0.35px',
+                      letterSpacing: '-0.35px',
                       lineHeight: '20px',
                       color: PALETTE.inkPrimary,
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
+                      minWidth: 0,
+                      flexShrink: 1,
                       fontFamily:
                         'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                     },
                   },
-                  'Entsiegelungskartierung',
+                  'Unseal',
                 )
               ) : (
                 <Text
                   accessibilityRole="header"
                   aria-level={1}
                   numberOfLines={1}
+                  ellipsizeMode="tail"
                   style={[styles.title, isCompact ? styles.titleCompact : null]}
                 >
-                  Entsiegelungskartierung
+                  Unseal
                 </Text>
               )}
               <View
@@ -263,7 +317,12 @@ export function MapControlsBar({
         </View>
 
         {!isExpanded ? (
-          <View style={styles.rightHeaderCluster}>
+          <View
+            style={[
+              styles.rightHeaderCluster,
+              isCompact ? styles.rightHeaderClusterCompact : null,
+            ]}
+          >
             <LocaleTogglePill
               locale={locale}
               compact={isCompact}
@@ -291,6 +350,7 @@ export function MapControlsBar({
               />
               <Text
                 numberOfLines={1}
+                ellipsizeMode="tail"
                 style={[
                   styles.accountChipLabel,
                   isCompact ? styles.accountChipLabelCompact : null,
@@ -358,35 +418,6 @@ export function MapControlsBar({
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={t.locateA11y}
-          accessibilityState={{ disabled: isLocating, busy: isLocating }}
-          disabled={isLocating}
-          onPress={onLocateMe}
-          style={({ pressed }) => [
-            styles.controlButton,
-            isCompact ? styles.controlButtonCompactGps : null,
-            styles.secondaryButton,
-            isLocating ? styles.buttonDisabled : null,
-            pressed && !isLocating ? styles.buttonPressed : null,
-          ]}
-        >
-          <Text
-            numberOfLines={1}
-            style={[
-              styles.secondaryButtonLabel,
-              isCompact ? styles.compactButtonLabel : null,
-            ]}
-          >
-            {isLocating
-              ? t.locateBusy
-              : isCompact
-                ? t.locateCompact
-                : t.locateFull}
-          </Text>
-        </Pressable>
-
-        <Pressable
-          accessibilityRole="button"
           accessibilityLabel={t.exportA11y}
           onPress={handleExportPress}
           style={({ pressed }) => [
@@ -406,6 +437,37 @@ export function MapControlsBar({
             {isCompact ? t.exportCompact : t.exportFull}
           </Text>
         </Pressable>
+
+        {controls.isAdmin && onImportPress ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t.importA11y}
+            accessibilityState={{ disabled: isImporting, busy: isImporting }}
+            disabled={isImporting}
+            onPress={onImportPress}
+            style={({ pressed }) => [
+              styles.controlButton,
+              isCompact ? styles.controlButtonCompact : null,
+              styles.adminImportButton,
+              isImporting ? styles.buttonDisabled : null,
+              pressed && !isImporting ? styles.buttonPressed : null,
+            ]}
+          >
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.adminImportLabel,
+                isCompact ? styles.compactButtonLabel : null,
+              ]}
+            >
+              {isImporting
+                ? t.importingBusy
+                : isCompact
+                  ? t.importCompact
+                  : t.importFull}
+            </Text>
+          </Pressable>
+        ) : null}
 
         <Pressable
           accessibilityRole="button"
@@ -462,6 +524,7 @@ export function MapControlsBar({
               />
               <Text
                 numberOfLines={1}
+                ellipsizeMode="tail"
                 style={[
                   styles.accountChipLabel,
                   controls.isAuthenticated
@@ -505,14 +568,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 5,
+    gap: 6,
     flexShrink: 1,
+    minWidth: 0,
   },
   rightHeaderCluster: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     flexShrink: 0,
+    minWidth: 0,
+  },
+  rightHeaderClusterCompact: {
+    maxWidth: '48%',
   },
   brandGroup: {
     flexDirection: 'row',
@@ -522,48 +590,27 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   brandGroupCompact: {
-    gap: 5,
+    gap: 6,
   },
   brandMark: {
+    width: 28,
+    height: 28,
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: PALETTE.borderSubtle,
+    backgroundColor: '#EFF3F0',
+    overflow: 'hidden',
+    position: 'relative',
+    flexShrink: 0,
+  },
+  brandMarkCompact: {
     width: 24,
     height: 24,
     borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: PALETTE.inkPrimary,
-    backgroundColor: PALETTE.bgSubtle,
-    overflow: 'hidden',
-    position: 'relative',
   },
-  brandMarkCompact: {
-    width: 20,
-    height: 20,
-  },
-  brandMarkSealedQuad: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 10,
-    backgroundColor: '#3B4943',
-  },
-  brandMarkPermeableQuad: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 12,
-    backgroundColor: PALETTE.accentPrimary,
-  },
-  brandMarkCornerNode: {
-    position: 'absolute',
-    top: 7,
-    left: 7,
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    borderWidth: 1.5,
-    borderColor: PALETTE.bgSurface,
-    backgroundColor: PALETTE.positiveDot,
+  brandMarkImage: {
+    width: '100%',
+    height: '100%',
   },
   titleBlock: {
     flex: 1,
@@ -573,19 +620,20 @@ const styles = StyleSheet.create({
   titleInlineRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
     minWidth: 0,
   },
   title: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '700',
-    letterSpacing: -0.3,
+    letterSpacing: -0.35,
     color: PALETTE.inkPrimary,
     flexShrink: 1,
+    minWidth: 0,
   },
   titleCompact: {
-    fontSize: 12.5,
-    letterSpacing: -0.4,
+    fontSize: 16,
+    letterSpacing: -0.35,
   },
   countBadge: {
     flexDirection: 'row',
@@ -597,6 +645,7 @@ const styles = StyleSheet.create({
     backgroundColor: PALETTE.bgTinted,
     borderWidth: 1,
     borderColor: PALETTE.positiveBorder,
+    flexShrink: 0,
   },
   countBadgeCompact: {
     paddingHorizontal: 5,
@@ -636,6 +685,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: PALETTE.borderStrong,
     backgroundColor: PALETTE.bgSurface,
+    flexShrink: 0,
   },
   localePillCompact: {
     paddingHorizontal: 6,
@@ -660,7 +710,7 @@ const styles = StyleSheet.create({
   accountChip: {
     minHeight: MIN_TOUCH_TARGET_DP,
     minWidth: MIN_TOUCH_TARGET_DP,
-    maxWidth: 168,
+    maxWidth: 176,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -671,11 +721,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: PALETTE.borderStrong,
     backgroundColor: PALETTE.bgSubtle,
+    overflow: 'hidden',
+    flexShrink: 1,
   },
   accountChipCompact: {
     paddingHorizontal: 8,
     gap: 4,
-    maxWidth: 96,
+    maxWidth: 112,
   },
   accountChipActive: {
     backgroundColor: PALETTE.bgTinted,
@@ -685,6 +737,7 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 4,
+    flexShrink: 0,
   },
   accountStatusDotGuest: {
     backgroundColor: PALETTE.inkMuted,
@@ -697,6 +750,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: PALETTE.inkPrimary,
     flexShrink: 1,
+    minWidth: 0,
+    overflow: 'hidden',
   },
   accountChipLabelCompact: {
     fontSize: 11.5,
@@ -729,15 +784,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   controlButtonCompact: {
-    flex: 0.95,
+    flex: 0.9,
     paddingHorizontal: 7,
   },
-  controlButtonCompactGps: {
-    flex: 0.72,
-    paddingHorizontal: 6,
-  },
   controlButtonCompactPrimary: {
-    flex: 1.38,
+    flex: 1.35,
     paddingHorizontal: 9,
   },
   primaryButton: {
@@ -773,6 +824,16 @@ const styles = StyleSheet.create({
   },
   secondaryButtonLabelSelected: {
     color: PALETTE.inkOnAccent,
+  },
+  adminImportButton: {
+    backgroundColor: PALETTE.finishedBg,
+    borderWidth: 1,
+    borderColor: PALETTE.finishedBorder,
+  },
+  adminImportLabel: {
+    color: PALETTE.finishedText,
+    fontSize: 13,
+    fontWeight: '700',
   },
   compactButtonLabel: {
     fontSize: 12,

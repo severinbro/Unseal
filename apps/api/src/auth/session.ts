@@ -36,6 +36,9 @@ interface SessionLookupRow {
   token_hash: Buffer;
   user_id: string;
   pseudonym: string;
+  email: string | null;
+  email_verified_at: Date | null;
+  role: string;
   created_at: Date;
 }
 
@@ -166,6 +169,9 @@ async function resolveSessionFromRequest(
        s.token_hash,
        u.id AS user_id,
        u.pseudonym,
+       u.email,
+       u.email_verified_at,
+       u.role,
        u.created_at
      FROM sessions s
      INNER JOIN users u ON u.id = s.user_id
@@ -180,9 +186,15 @@ async function resolveSessionFromRequest(
     return null;
   }
 
+  if (row.email !== null && row.email_verified_at === null) {
+    return null;
+  }
+
   const user = AuthUserSchema.parse({
     id: row.user_id,
     pseudonym: row.pseudonym,
+    email: row.email,
+    role: row.role === 'admin' ? 'admin' : 'user',
     createdAt: row.created_at.toISOString(),
   });
 
@@ -212,4 +224,18 @@ export async function requireAuth(
     );
   }
   request.auth = authContext;
+}
+
+export async function requireAdmin(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<void> {
+  await requireAuth(request, reply);
+  if (request.auth?.user.role !== 'admin') {
+    throw new ApiError(
+      403,
+      'FORBIDDEN_ADMIN_ONLY',
+      'Administrator privileges are required for this action.',
+    );
+  }
 }

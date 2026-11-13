@@ -2,25 +2,40 @@ import {
   ApiError,
   ApiErrorEnvelopeSchema,
   AuthUserSchema,
+  EmailActionResponseSchema,
+  ImportPolygonsResponseSchema,
+  PhotoVoteResponseSchema,
   PolygonCollectionResponseSchema,
   PolygonFeatureSchema,
+  PolygonPhotoListResponseSchema,
+  PolygonPhotoSchema,
   RegisterResponseSchema,
+  ResetPasswordResponseSchema,
   RuntimeConfigSchema,
   SessionResponseSchema,
+  VerifyEmailResponseSchema,
   VoteResponseSchema,
   type AuthUser,
   type BboxBounds,
   type CreatePolygonRequest,
+  type EmailActionResponse,
   type ErrorCode,
+  type ImportPolygonsResponse,
   type LoginRequest,
   type PatchPolygonRequest,
+  type PhotoVoteResponse,
   type PolygonCollectionResponse,
   type PolygonFeature,
-  type RecoverRequest,
+  type PolygonPhoto,
+  type PolygonPhotoListResponse,
+  type PolygonStatus,
   type RegisterRequest,
   type RegisterResponse,
+  type ResetPasswordRequest,
+  type ResetPasswordResponse,
   type RuntimeConfig,
   type SessionResponse,
+  type VerifyEmailResponse,
   type VoteResponse,
 } from '@entsiegelung/shared';
 
@@ -33,10 +48,18 @@ export type BboxInput =
   | readonly [number, number, number, number]
   | string;
 
+export interface UploadableFileInput {
+  readonly uri?: string;
+  readonly name: string;
+  readonly mimeType: string;
+  readonly webFile?: Blob;
+}
+
 interface RequestOptions {
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   path: string;
   body?: unknown;
+  formData?: FormData;
   includeAuth?: boolean;
 }
 
@@ -66,6 +89,8 @@ function statusToFallbackErrorCode(status: number): ErrorCode {
       return 'NOT_FOUND';
     case 413:
       return 'PAYLOAD_TOO_LARGE';
+    case 415:
+      return 'UNSUPPORTED_MEDIA_TYPE';
     case 422:
       return 'VALIDATION_ERROR';
     case 429:
@@ -82,9 +107,38 @@ function statusToFallbackErrorCode(status: number): ErrorCode {
 function assertNonEmptyId(id: string): string {
   const trimmed = id.trim();
   if (trimmed.length === 0) {
-    throw new ApiError(422, 'VALIDATION_ERROR', 'Resource identifier must not be empty.');
+    throw new ApiError(
+      422,
+      'VALIDATION_ERROR',
+      'Resource identifier must not be empty.',
+    );
   }
   return encodeURIComponent(trimmed);
+}
+
+function buildUploadFormData(
+  fieldName: string,
+  file: UploadableFileInput,
+): FormData {
+  const form = new FormData();
+  if (file.webFile !== undefined) {
+    form.append(fieldName, file.webFile, file.name);
+    return form;
+  }
+  if (!file.uri || file.uri.trim().length === 0) {
+    throw new ApiError(
+      422,
+      'VALIDATION_ERROR',
+      'Selected file is missing a readable URI or Blob.',
+    );
+  }
+  const rnFilePart = {
+    uri: file.uri,
+    name: file.name,
+    type: file.mimeType,
+  };
+  form.append(fieldName, rnFilePart as unknown as Blob);
+  return form;
 }
 
 export class PpgisApiClient {
@@ -102,8 +156,24 @@ export class PpgisApiClient {
     this.fetchImpl = (input, init) => fetchImpl(input, init);
   }
 
+  public getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
   public getExportGeoJsonUrl(): string {
     return `${this.baseUrl}/api/v1/polygons/export.geojson`;
+  }
+
+  public getPrivacyPolicyUrl(): string {
+    return `${this.baseUrl}/auth/privacy`;
+  }
+
+  public resolveUploadUrl(relativeOrAbsoluteUrl: string): string {
+    if (/^https?:\/\//i.test(relativeOrAbsoluteUrl)) {
+      return relativeOrAbsoluteUrl;
+    }
+    const prefix = relativeOrAbsoluteUrl.startsWith('/') ? '' : '/';
+    return `${this.baseUrl}${prefix}${relativeOrAbsoluteUrl}`;
   }
 
   public async getConfig(): Promise<RuntimeConfig> {
@@ -115,7 +185,9 @@ export class PpgisApiClient {
     return RuntimeConfigSchema.parse(json);
   }
 
-  public async listPolygons(bbox: BboxInput): Promise<PolygonCollectionResponse> {
+  public async listPolygons(
+    bbox: BboxInput,
+  ): Promise<PolygonCollectionResponse> {
     const bboxParam = encodeURIComponent(formatBboxQueryParam(bbox));
     const json = await this.requestJson({
       method: 'GET',
@@ -135,7 +207,9 @@ export class PpgisApiClient {
     return PolygonFeatureSchema.parse(json);
   }
 
-  public async createPolygon(input: CreatePolygonRequest): Promise<PolygonFeature> {
+  public async createPolygon(
+    input: CreatePolygonRequest,
+  ): Promise<PolygonFeature> {
     const json = await this.requestJson({
       method: 'POST',
       path: '/api/v1/polygons',
@@ -157,6 +231,33 @@ export class PpgisApiClient {
       includeAuth: true,
     });
     return PolygonFeatureSchema.parse(json);
+  }
+
+  public async patchPolygonStatus(
+    id: string,
+    status: PolygonStatus,
+  ): Promise<PolygonFeature> {
+    const encodedId = assertNonEmptyId(id);
+    const json = await this.requestJson({
+      method: 'PATCH',
+      path: `/api/v1/polygons/${encodedId}/status`,
+      body: { status },
+      includeAuth: true,
+    });
+    return PolygonFeatureSchema.parse(json);
+  }
+
+  public async importPolygonsFile(
+    file: UploadableFileInput,
+  ): Promise<ImportPolygonsResponse> {
+    const formData = buildUploadFormData('file', file);
+    const json = await this.requestJson({
+      method: 'POST',
+      path: '/api/v1/polygons/import',
+      formData,
+      includeAuth: true,
+    });
+    return ImportPolygonsResponseSchema.parse(json);
   }
 
   public async deletePolygon(id: string): Promise<void> {
@@ -189,6 +290,66 @@ export class PpgisApiClient {
     return VoteResponseSchema.parse(json);
   }
 
+  public async listPolygonPhotos(
+    polygonId: string,
+  ): Promise<PolygonPhotoListResponse> {
+    const encodedId = assertNonEmptyId(polygonId);
+    const json = await this.requestJson({
+      method: 'GET',
+      path: `/api/v1/polygons/${encodedId}/photos`,
+      includeAuth: true,
+    });
+    return PolygonPhotoListResponseSchema.parse(json);
+  }
+
+  public async uploadPolygonPhoto(
+    polygonId: string,
+    file: UploadableFileInput,
+  ): Promise<PolygonPhoto> {
+    const encodedId = assertNonEmptyId(polygonId);
+    const formData = buildUploadFormData('photo', file);
+    const json = await this.requestJson({
+      method: 'POST',
+      path: `/api/v1/polygons/${encodedId}/photos`,
+      formData,
+      includeAuth: true,
+    });
+    return PolygonPhotoSchema.parse(json);
+  }
+
+  public async putPhotoVote(
+    photoId: string,
+    value: 1 | -1,
+  ): Promise<PhotoVoteResponse> {
+    const encodedId = assertNonEmptyId(photoId);
+    const json = await this.requestJson({
+      method: 'PUT',
+      path: `/api/v1/photos/${encodedId}/vote`,
+      body: { value },
+      includeAuth: true,
+    });
+    return PhotoVoteResponseSchema.parse(json);
+  }
+
+  public async deletePhotoVote(photoId: string): Promise<PhotoVoteResponse> {
+    const encodedId = assertNonEmptyId(photoId);
+    const json = await this.requestJson({
+      method: 'DELETE',
+      path: `/api/v1/photos/${encodedId}/vote`,
+      includeAuth: true,
+    });
+    return PhotoVoteResponseSchema.parse(json);
+  }
+
+  public async deletePhoto(photoId: string): Promise<void> {
+    const encodedId = assertNonEmptyId(photoId);
+    await this.requestVoid({
+      method: 'DELETE',
+      path: `/api/v1/photos/${encodedId}`,
+      includeAuth: true,
+    });
+  }
+
   public async register(input: RegisterRequest): Promise<RegisterResponse> {
     const json = await this.requestJson({
       method: 'POST',
@@ -196,9 +357,27 @@ export class PpgisApiClient {
       body: input,
       includeAuth: false,
     });
-    const parsed = RegisterResponseSchema.parse(json);
-    await this.sessionStorage.setToken(parsed.sessionToken);
-    return parsed;
+    return RegisterResponseSchema.parse(json);
+  }
+
+  public async resendVerification(email: string): Promise<EmailActionResponse> {
+    const json = await this.requestJson({
+      method: 'POST',
+      path: '/api/v1/auth/resend-verification',
+      body: { email },
+      includeAuth: false,
+    });
+    return EmailActionResponseSchema.parse(json);
+  }
+
+  public async verifyEmail(token: string): Promise<VerifyEmailResponse> {
+    const json = await this.requestJson({
+      method: 'POST',
+      path: '/api/v1/auth/verify-email',
+      body: { token },
+      includeAuth: false,
+    });
+    return VerifyEmailResponseSchema.parse(json);
   }
 
   public async login(input: LoginRequest): Promise<SessionResponse> {
@@ -213,16 +392,26 @@ export class PpgisApiClient {
     return parsed;
   }
 
-  public async recover(input: RecoverRequest): Promise<RegisterResponse> {
+  public async forgotPassword(email: string): Promise<EmailActionResponse> {
     const json = await this.requestJson({
       method: 'POST',
-      path: '/api/v1/auth/recover',
+      path: '/api/v1/auth/forgot-password',
+      body: { email },
+      includeAuth: false,
+    });
+    return EmailActionResponseSchema.parse(json);
+  }
+
+  public async resetPassword(
+    input: ResetPasswordRequest,
+  ): Promise<ResetPasswordResponse> {
+    const json = await this.requestJson({
+      method: 'POST',
+      path: '/api/v1/auth/reset-password',
       body: input,
       includeAuth: false,
     });
-    const parsed = RegisterResponseSchema.parse(json);
-    await this.sessionStorage.setToken(parsed.sessionToken);
-    return parsed;
+    return ResetPasswordResponseSchema.parse(json);
   }
 
   public async logout(): Promise<void> {
@@ -276,7 +465,9 @@ export class PpgisApiClient {
       headers,
     };
 
-    if (options.body !== undefined) {
+    if (options.formData !== undefined) {
+      init.body = options.formData;
+    } else if (options.body !== undefined) {
       headers['Content-Type'] = 'application/json';
       init.body = JSON.stringify(options.body);
     }
@@ -301,16 +492,13 @@ export class PpgisApiClient {
 
   private async requestJson(options: RequestOptions): Promise<unknown> {
     const response = await this.executeFetch(options);
-    const rawText = await response.text();
     try {
-      return JSON.parse(rawText) as unknown;
-    } catch (parseErr: unknown) {
-      const detail =
-        parseErr instanceof Error ? parseErr.message : 'Malformed JSON';
+      return await response.json();
+    } catch {
       throw new ApiError(
         502,
         'SERVICE_UNAVAILABLE',
-        `Invalid JSON response from server: ${detail}`,
+        'Invalid JSON response received from API server.',
       );
     }
   }
@@ -320,19 +508,17 @@ export class PpgisApiClient {
   }
 
   private async throwApiErrorFromResponse(response: Response): Promise<never> {
-    const rawText = await response.text();
-    if (rawText.length > 0) {
-      let parsedBody: unknown = null;
-      let isJson = false;
-      try {
-        parsedBody = JSON.parse(rawText) as unknown;
-        isJson = true;
-      } catch (jsonErr: unknown) {
-        isJson = Boolean(jsonErr) && false;
-      }
+    let rawBody = '';
+    try {
+      rawBody = await response.text();
+    } catch {
+      rawBody = '';
+    }
 
-      if (isJson) {
-        const envelope = ApiErrorEnvelopeSchema.safeParse(parsedBody);
+    if (rawBody.trim().length > 0) {
+      try {
+        const parsedJson: unknown = JSON.parse(rawBody);
+        const envelope = ApiErrorEnvelopeSchema.safeParse(parsedJson);
         if (envelope.success) {
           throw new ApiError(
             response.status,
@@ -341,12 +527,18 @@ export class PpgisApiClient {
             envelope.data.error.details,
           );
         }
+      } catch (err: unknown) {
+        if (err instanceof ApiError) {
+          throw err;
+        }
       }
     }
 
     const fallbackCode = statusToFallbackErrorCode(response.status);
     const fallbackMessage =
-      rawText.trim().slice(0, 300) || `HTTP ${response.status}`;
+      rawBody.trim().length > 0 && rawBody.length <= 240
+        ? rawBody.trim()
+        : `Request failed with HTTP ${response.status}.`;
     throw new ApiError(response.status, fallbackCode, fallbackMessage);
   }
 }

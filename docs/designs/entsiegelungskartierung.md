@@ -1,4 +1,4 @@
-# Entsiegelungskartierung — Open-Source Ground-Unsealing PPGIS
+# Unseal (Entsiegelungskartierung) — Open-Source Ground-Unsealing PPGIS
 
 *   **Author:** Unseal Contributors
 *   **Status:** Approved

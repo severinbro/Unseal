@@ -4,7 +4,10 @@ import {
   ApiError,
   BboxQuerySchema,
   CreatePolygonRequestSchema,
+  IMPORT_LIMITS,
+  ImportPolygonsResponseSchema,
   PatchPolygonRequestSchema,
+  PatchPolygonStatusRequestSchema,
   PolygonFeatureSchema,
   UuidParamSchema,
   checkBboxSpan,
@@ -12,7 +15,8 @@ import {
   type PolygonFeature,
 } from '@entsiegelung/shared';
 
-import { optionalAuth, requireAuth } from '../auth/session.js';
+import { optionalAuth, requireAdmin, requireAuth } from '../auth/session.js';
+import { extractImportDataset } from '../polygons/gpkgReader.js';
 import { PolygonRepository, type ExportCursor } from '../polygons/repository.js';
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -351,6 +355,83 @@ export function registerPolygonRoutes(
         userId: auth.user.id,
         surfaceType: body.surfaceType,
         note: body.note,
+      });
+
+      return PolygonFeatureSchema.parse(updated);
+    },
+  );
+
+  app.post(
+    '/api/v1/polygons/import',
+    {
+      bodyLimit: IMPORT_LIMITS.MAX_FILE_BYTES + 1024 * 1024,
+      preHandler: requireAdmin,
+    },
+    async (request) => {
+      const auth = request.auth!;
+      if (!request.isMultipart()) {
+        throw new ApiError(
+          415,
+          'UNSUPPORTED_MEDIA_TYPE',
+          'Multipart form-data upload is required for GeoJSON / GeoPackage import.',
+        );
+      }
+
+      const uploaded = await request.file({
+        limits: {
+          fileSize: IMPORT_LIMITS.MAX_FILE_BYTES,
+          files: 1,
+        },
+      });
+      if (!uploaded) {
+        throw new ApiError(
+          422,
+          'VALIDATION_ERROR',
+          'No file uploaded in multipart field.',
+        );
+      }
+
+      const buffer = await uploaded.toBuffer();
+      if (uploaded.file.truncated) {
+        throw new ApiError(
+          413,
+          'PAYLOAD_TOO_LARGE',
+          `Import file exceeds ${Math.round(IMPORT_LIMITS.MAX_FILE_BYTES / (1024 * 1024))} MB limit.`,
+        );
+      }
+
+      const dataset = await extractImportDataset(
+        buffer,
+        uploaded.filename || 'import.geojson',
+      );
+      const imported = await repository.importBatch({
+        adminUserId: auth.user.id,
+        dataset,
+        minAreaM2: app.config.runtimeConfig.limits.minAreaM2,
+        maxAreaM2: app.config.runtimeConfig.limits.maxAreaM2,
+      });
+
+      return ImportPolygonsResponseSchema.parse(imported);
+    },
+  );
+
+  app.patch(
+    '/api/v1/polygons/:id/status',
+    {
+      config: {
+        rateLimit: mutatePolygonLimit,
+      },
+      preHandler: requireAdmin,
+    },
+    async (request) => {
+      const auth = request.auth!;
+      const { id } = UuidParamSchema.parse(request.params);
+      const body = PatchPolygonStatusRequestSchema.parse(request.body);
+
+      const updated = await repository.setStatus({
+        polygonId: id,
+        adminUserId: auth.user.id,
+        status: body.status,
       });
 
       return PolygonFeatureSchema.parse(updated);

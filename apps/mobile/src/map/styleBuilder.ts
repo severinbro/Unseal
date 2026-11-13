@@ -2,6 +2,7 @@ import {
   closeRingIfNeeded,
   dedupeConsecutivePoints,
   type PolygonFeature,
+  type PolygonStatus,
   type RuntimeConfig,
   type SurfaceType,
 } from '@entsiegelung/shared';
@@ -54,8 +55,15 @@ export interface OrthophotoRasterLayerSpec {
 export interface ProposalFeatureProperties {
   id: string;
   surfaceType: SurfaceType;
+  status: PolygonStatus;
+  finishedAt: string | null;
   note: string | null;
   areaM2: number;
+  municipalityAgs: string | null;
+  municipalityName: string | null;
+  municipalityMaxScore: number;
+  municipalityNormalizedScore: number;
+  photoCount: number;
   authorPseudonym: string;
   upvotes: number;
   downvotes: number;
@@ -84,12 +92,36 @@ export interface ProposalGeoJsonCollections {
   };
 }
 
+export type NormalizedPositiveFillExpression = [
+  'interpolate',
+  ['linear'],
+  ['number', ['get', 'municipalityNormalizedScore'], number],
+  number,
+  string,
+  number,
+  string,
+  number,
+  string,
+];
+
+export type NormalizedPositiveOutlineExpression = [
+  'interpolate',
+  ['linear'],
+  ['number', ['get', 'municipalityNormalizedScore'], number],
+  number,
+  string,
+  number,
+  string,
+];
+
 export type ScoreColorCaseExpression = [
   'case',
+  ['==', ['get', 'status'], 'finished'],
+  string,
   ['<', ['get', 'score'], number],
   string,
   ['>', ['get', 'score'], number],
-  string,
+  NormalizedPositiveFillExpression,
   string,
 ];
 
@@ -97,16 +129,36 @@ export type SelectedOutlineColorExpression = [
   'case',
   ['boolean', ['get', 'selected'], boolean],
   string,
+  ['==', ['get', 'status'], 'finished'],
+  string,
   ['<', ['get', 'score'], number],
   string,
   ['>', ['get', 'score'], number],
+  NormalizedPositiveOutlineExpression,
   string,
-  string,
+];
+
+export type FillOpacityCaseExpression = [
+  'case',
+  ['boolean', ['get', 'selected'], boolean],
+  number,
+  ['==', ['get', 'status'], 'finished'],
+  number,
+  number,
 ];
 
 export type SelectedNumberCaseExpression = [
   'case',
   ['boolean', ['get', 'selected'], boolean],
+  number,
+  number,
+];
+
+export type OutlineWidthCaseExpression = [
+  'case',
+  ['boolean', ['get', 'selected'], boolean],
+  number,
+  ['==', ['get', 'status'], 'finished'],
   number,
   number,
 ];
@@ -144,7 +196,7 @@ export interface ProposalFillLayerSpec {
   source: typeof PROPOSALS_POLYGON_SOURCE_ID;
   paint: {
     'fill-color': ScoreColorCaseExpression;
-    'fill-opacity': SelectedNumberCaseExpression;
+    'fill-opacity': FillOpacityCaseExpression;
   };
 }
 
@@ -158,7 +210,7 @@ export interface ProposalOutlineLayerSpec {
   };
   paint: {
     'line-color': SelectedOutlineColorExpression;
-    'line-width': SelectedNumberCaseExpression;
+    'line-width': OutlineWidthCaseExpression;
   };
 }
 
@@ -424,12 +476,36 @@ export function buildProposalGeoJson(
 }
 
 export function buildPolygonLayerSpecs(): PolygonLayerSpecsTuple {
+  const positiveGradient: NormalizedPositiveFillExpression = [
+    'interpolate',
+    ['linear'],
+    ['number', ['get', 'municipalityNormalizedScore'], 0.5],
+    0,
+    '#6ee7b7',
+    0.4,
+    '#22c55e',
+    1,
+    '#14532d',
+  ];
+
+  const positiveOutlineGradient: NormalizedPositiveOutlineExpression = [
+    'interpolate',
+    ['linear'],
+    ['number', ['get', 'municipalityNormalizedScore'], 0.5],
+    0,
+    '#059669',
+    1,
+    '#052e16',
+  ];
+
   const scoreColor: ScoreColorCaseExpression = [
     'case',
+    ['==', ['get', 'status'], 'finished'],
+    '#0d9488',
     ['<', ['get', 'score'], 0],
     '#c44536',
     ['>', ['get', 'score'], 0],
-    '#1f7a4c',
+    positiveGradient,
     '#c87d1a',
   ];
 
@@ -439,7 +515,14 @@ export function buildPolygonLayerSpecs(): PolygonLayerSpecsTuple {
     source: PROPOSALS_POLYGON_SOURCE_ID,
     paint: {
       'fill-color': scoreColor,
-      'fill-opacity': ['case', ['boolean', ['get', 'selected'], false], 0.52, 0.3],
+      'fill-opacity': [
+        'case',
+        ['boolean', ['get', 'selected'], false],
+        0.58,
+        ['==', ['get', 'status'], 'finished'],
+        0.44,
+        0.32,
+      ],
     },
   };
 
@@ -456,13 +539,22 @@ export function buildPolygonLayerSpecs(): PolygonLayerSpecsTuple {
         'case',
         ['boolean', ['get', 'selected'], false],
         '#0b3d91',
+        ['==', ['get', 'status'], 'finished'],
+        '#0f766e',
         ['<', ['get', 'score'], 0],
         '#8f281d',
         ['>', ['get', 'score'], 0],
-        '#134e31',
+        positiveOutlineGradient,
         '#8a530b',
       ],
-      'line-width': ['case', ['boolean', ['get', 'selected'], false], 3.5, 2],
+      'line-width': [
+        'case',
+        ['boolean', ['get', 'selected'], false],
+        3.5,
+        ['==', ['get', 'status'], 'finished'],
+        2.75,
+        2,
+      ],
     },
   };
 
@@ -471,14 +563,7 @@ export function buildPolygonLayerSpecs(): PolygonLayerSpecsTuple {
     type: 'circle',
     source: PROPOSALS_CENTROID_SOURCE_ID,
     paint: {
-      'circle-color': [
-        'case',
-        ['<', ['get', 'score'], 0],
-        '#c44536',
-        ['>', ['get', 'score'], 0],
-        '#1f7a4c',
-        '#c87d1a',
-      ],
+      'circle-color': scoreColor,
       'circle-radius': ['case', ['boolean', ['get', 'selected'], false], 7, 5],
       'circle-stroke-color': [
         'case',

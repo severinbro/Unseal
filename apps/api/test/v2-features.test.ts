@@ -1,0 +1,788 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { after, before, beforeEach, describe, it } from 'node:test';
+
+import exifr from 'exifr';
+import sharp from 'sharp';
+
+import {
+  ApiErrorEnvelopeSchema,
+  ImportPolygonsResponseSchema,
+  PhotoVoteResponseSchema,
+  PolygonCollectionResponseSchema,
+  PolygonFeatureSchema,
+  PolygonPhotoListResponseSchema,
+  PolygonPhotoSchema,
+  RegisterResponseSchema,
+  SessionResponseSchema,
+  type PolygonFeature,
+} from '@entsiegelung/shared';
+
+import {
+  buildApp,
+  createMemoryMailer,
+  runAdminCommand,
+  upsertMunicipalitiesAndBackfill,
+} from '../src/app.js';
+import { loadEnvConfig } from '../src/config.js';
+import { resetTestDb, setupTestDb } from '../src/db/testHarness.js';
+import { createLogger } from '../src/logger.js';
+
+import type { FastifyInstance } from 'fastify';
+import type pg from 'pg';
+
+const HAMBURG_MUNICIPALITY_GEOJSON = JSON.stringify({
+  type: 'Polygon',
+  coordinates: [
+    [
+      [9.8, 53.45],
+      [10.15, 53.45],
+      [10.15, 53.65],
+      [9.8, 53.65],
+      [9.8, 53.45],
+    ],
+  ],
+});
+
+const MAINZ_MUNICIPALITY_GEOJSON = JSON.stringify({
+  type: 'Polygon',
+  coordinates: [
+    [
+      [8.15, 49.92],
+      [8.35, 49.92],
+      [8.35, 50.05],
+      [8.15, 50.05],
+      [8.15, 49.92],
+    ],
+  ],
+});
+
+function makeCourtyardRing(baseLng: number, baseLat: number): [number, number][] {
+  return [
+    [baseLng, baseLat],
+    [Number((baseLng + 0.00018).toFixed(6)), baseLat],
+    [
+      Number((baseLng + 0.00018).toFixed(6)),
+      Number((baseLat + 0.00012).toFixed(6)),
+    ],
+    [baseLng, Number((baseLat + 0.00012).toFixed(6))],
+    [baseLng, baseLat],
+  ];
+}
+
+function buildMultipartPayload(options: {
+  fieldName: string;
+  fileName: string;
+  contentType: string;
+  fileBuffer: Buffer;
+}): { body: Buffer; contentTypeHeader: string } {
+  const boundary = '----EntsiegelungV2TestBoundary987654321';
+  const preamble = Buffer.from(
+    `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="${options.fieldName}"; filename="${options.fileName}"\r\n` +
+      `Content-Type: ${options.contentType}\r\n\r\n`,
+    'utf8',
+  );
+  const epilogue = Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8');
+  return {
+    body: Buffer.concat([preamble, options.fileBuffer, epilogue]),
+    contentTypeHeader: `multipart/form-data; boundary=${boundary}`,
+  };
+}
+
+function buildGeoPackageBinaryHeader(srsId: number, wkb: Buffer): Buffer {
+  const header = Buffer.alloc(8);
+  header[0] = 0x47; // 'G'
+  header[1] = 0x50; // 'P'
+  header[2] = 0x00; // version 0
+  header[3] = 0x01; // little-endian, no envelope, standard GPB, non-empty
+  header.writeInt32LE(srsId, 4);
+  return Buffer.concat([header, wkb]);
+}
+
+async function registerTestUser(
+  app: FastifyInstance,
+  pseudonym: string,
+  remoteAddress = '198.51.100.10',
+): Promise<{ userId: string; pseudonym: string; sessionToken: string }> {
+  const email = `${pseudonym.toLowerCase()}@example.org`;
+  const regRes = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/register',
+    remoteAddress,
+    payload: {
+      pseudonym,
+      email,
+      password: 'valid-password-123',
+      acceptedPrivacyPolicy: true,
+    },
+  });
+  assert.equal(regRes.statusCode, 201);
+  RegisterResponseSchema.parse(regRes.json());
+
+  await app.pool.query(
+    'UPDATE users SET email_verified_at = clock_timestamp() WHERE LOWER(email) = $1',
+    [email],
+  );
+
+  const loginRes = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/login',
+    remoteAddress,
+    payload: {
+      identifier: pseudonym,
+      password: 'valid-password-123',
+    },
+  });
+  assert.equal(loginRes.statusCode, 200);
+  const parsed = SessionResponseSchema.parse(loginRes.json());
+  return {
+    userId: parsed.user.id,
+    pseudonym: parsed.user.pseudonym,
+    sessionToken: parsed.sessionToken,
+  };
+}
+
+async function createPolygon(
+  app: FastifyInstance,
+  sessionToken: string,
+  ring: [number, number][],
+  note = 'Test courtyard',
+): Promise<PolygonFeature> {
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/v1/polygons',
+    remoteAddress: '198.51.100.20',
+    headers: { authorization: `Bearer ${sessionToken}` },
+    payload: {
+      geometry: { type: 'Polygon', coordinates: [ring] },
+      surfaceType: 'asphalt',
+      note,
+    },
+  });
+  assert.equal(res.statusCode, 201);
+  return PolygonFeatureSchema.parse(res.json());
+}
+
+describe('V2 Features: Municipality-bounded score normalization, admin "finished" status, GeoJSON/.gpkg import, and EXIF-safe GPS-verified photos', () => {
+  let pool: pg.Pool;
+  let uploadsDir: string;
+
+  before(async () => {
+    pool = await setupTestDb();
+    uploadsDir = await fs.mkdtemp(path.join(os.tmpdir(), 'entsiegelung-uploads-'));
+  });
+
+  beforeEach(async () => {
+    await resetTestDb(pool);
+    const entries = await fs.readdir(uploadsDir);
+    await Promise.all(
+      entries.map((entry) =>
+        fs.rm(path.join(uploadsDir, entry), { force: true, recursive: true }),
+      ),
+    );
+  });
+
+  after(async () => {
+    if (pool) {
+      await pool.end();
+    }
+    if (uploadsDir) {
+      await fs.rm(uploadsDir, { force: true, recursive: true });
+    }
+  });
+
+  it('bounds positive score normalization independently per municipality (Hamburg vs. Mainz) and handles admin "finished" status transitions', async () => {
+    const config = loadEnvConfig({ UPLOADS_DIR: uploadsDir });
+    const app = await buildApp(config, pool, {
+      logger: createLogger({ enabled: false }),
+      mailer: createMemoryMailer(),
+      rateLimits: {
+        register: { max: 100, timeWindow: '1 hour' },
+        loginIp: { max: 100, timeWindow: '15 minutes' },
+        vote: { max: 500, timeWindow: '1 minute' },
+      },
+    });
+
+    try {
+      const mapper = await registerTestUser(app, 'CityMapper', '198.51.100.10');
+      const v1 = await registerTestUser(app, 'VoterOne', '198.51.100.11');
+      const v2 = await registerTestUser(app, 'VoterTwo', '198.51.100.12');
+      const v3 = await registerTestUser(app, 'VoterThree', '198.51.100.13');
+      const v4 = await registerTestUser(app, 'VoterFour', '198.51.100.14');
+
+      // Create Hamburg #1 BEFORE municipalities are loaded to also test backfill!
+      const hhLow = await createPolygon(
+        app,
+        mapper.sessionToken,
+        makeCourtyardRing(9.9937, 53.5511),
+        'Hamburg low-score courtyard',
+      );
+      assert.equal(hhLow.properties.municipalityAgs, null);
+
+      // Seed Hamburg (02000000) and Mainz (07315000) and backfill existing polygons
+      const seedStats = await upsertMunicipalitiesAndBackfill(pool, [
+        {
+          ags: '02000000',
+          name: 'Hamburg',
+          designation: 'Freie und Hansestadt',
+          stateCode: '02',
+          geoJsonGeometry: HAMBURG_MUNICIPALITY_GEOJSON,
+        },
+        {
+          ags: '07315000',
+          name: 'Mainz',
+          designation: 'Kreisfreie Stadt',
+          stateCode: '07',
+          geoJsonGeometry: MAINZ_MUNICIPALITY_GEOJSON,
+        },
+      ]);
+      assert.equal(seedStats.upsertedMunicipalities, 2);
+      assert.equal(seedStats.backfilledPolygons, 1);
+
+      // Create Hamburg #2 and Mainz #1 (auto-matched at insert time)
+      const hhHigh = await createPolygon(
+        app,
+        mapper.sessionToken,
+        makeCourtyardRing(9.9965, 53.5522),
+        'Hamburg top-voted schoolyard',
+      );
+      const mainzTop = await createPolygon(
+        app,
+        mapper.sessionToken,
+        makeCourtyardRing(8.2711, 49.9988),
+        'Mainz top-voted square',
+      );
+      assert.equal(hhHigh.properties.municipalityName, 'Hamburg');
+      assert.equal(mainzTop.properties.municipalityName, 'Mainz');
+
+      // Hamburg: hhHigh gets 4 upvotes (score=4), hhLow gets 3 upvotes (score=3)
+      for (const voter of [v1, v2, v3, v4]) {
+        await app.inject({
+          method: 'PUT',
+          url: `/api/v1/polygons/${hhHigh.id}/vote`,
+          headers: { authorization: `Bearer ${voter.sessionToken}` },
+          payload: { value: 1 },
+        });
+      }
+      for (const voter of [v1, v2, v3]) {
+        await app.inject({
+          method: 'PUT',
+          url: `/api/v1/polygons/${hhLow.id}/vote`,
+          headers: { authorization: `Bearer ${voter.sessionToken}` },
+          payload: { value: 1 },
+        });
+      }
+
+      // Mainz: mainzTop also gets 3 upvotes (score=3), which is #1 inside Mainz!
+      for (const voter of [v1, v2, v3]) {
+        await app.inject({
+          method: 'PUT',
+          url: `/api/v1/polygons/${mainzTop.id}/vote`,
+          headers: { authorization: `Bearer ${voter.sessionToken}` },
+          payload: { value: 1 },
+        });
+      }
+
+      const fetchedHhLow = PolygonFeatureSchema.parse(
+        (await app.inject({ method: 'GET', url: `/api/v1/polygons/${hhLow.id}` })).json(),
+      );
+      const fetchedHhHigh = PolygonFeatureSchema.parse(
+        (await app.inject({ method: 'GET', url: `/api/v1/polygons/${hhHigh.id}` })).json(),
+      );
+      const fetchedMainz = PolygonFeatureSchema.parse(
+        (await app.inject({ method: 'GET', url: `/api/v1/polygons/${mainzTop.id}` })).json(),
+      );
+
+      // Hamburg: score 3 / max(4, 3) => 0.75; score 4 / max(4, 3) => 1.0
+      assert.equal(fetchedHhLow.properties.municipalityMaxScore, 4);
+      assert.equal(fetchedHhLow.properties.municipalityNormalizedScore, 0.75);
+      assert.equal(fetchedHhHigh.properties.municipalityMaxScore, 4);
+      assert.equal(fetchedHhHigh.properties.municipalityNormalizedScore, 1);
+
+      // Mainz: same raw score (3), yet normalized = 1.0 inside Mainz (independent of Hamburg's max=4!)
+      assert.equal(fetchedMainz.properties.municipalityMaxScore, 3);
+      assert.equal(fetchedMainz.properties.municipalityNormalizedScore, 1);
+
+      // Standard user CANNOT mark hhHigh as "finished" -> 403 FORBIDDEN_ADMIN_ONLY
+      const nonAdminPatch = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/polygons/${hhHigh.id}/status`,
+        headers: { authorization: `Bearer ${mapper.sessionToken}` },
+        payload: { status: 'finished' },
+      });
+      assert.equal(nonAdminPatch.statusCode, 403);
+      assert.equal(
+        ApiErrorEnvelopeSchema.parse(nonAdminPatch.json()).error.code,
+        'FORBIDDEN_ADMIN_ONLY',
+      );
+
+      // Promote mapper via grant-admin CLI command
+      const grantRes = await runAdminCommand(pool, ['grant-admin', 'CityMapper']);
+      assert.equal(grantRes.role, 'admin');
+
+      const adminPatchFinished = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/polygons/${hhHigh.id}/status`,
+        headers: { authorization: `Bearer ${mapper.sessionToken}` },
+        payload: { status: 'finished' },
+      });
+      assert.equal(adminPatchFinished.statusCode, 200);
+      const finishedFeature = PolygonFeatureSchema.parse(adminPatchFinished.json());
+      assert.equal(finishedFeature.properties.status, 'finished');
+      assert.ok(finishedFeature.properties.finishedAt !== null);
+
+      // Once hhHigh is "finished", hhLow (score=3) becomes the top proposed polygon in Hamburg (normalized = 1.0)
+      const hhLowAfterFinish = PolygonFeatureSchema.parse(
+        (await app.inject({ method: 'GET', url: `/api/v1/polygons/${hhLow.id}` })).json(),
+      );
+      assert.equal(hhLowAfterFinish.properties.municipalityMaxScore, 3);
+      assert.equal(hhLowAfterFinish.properties.municipalityNormalizedScore, 1);
+
+      // Revoking admin blocks status updates again
+      const revokeRes = await runAdminCommand(pool, ['revoke-admin', 'CityMapper']);
+      assert.equal(revokeRes.role, 'user');
+
+      const afterRevokePatch = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/polygons/${hhHigh.id}/status`,
+        headers: { authorization: `Bearer ${mapper.sessionToken}` },
+        payload: { status: 'proposed' },
+      });
+      assert.equal(afterRevokePatch.statusCode, 403);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('restricts GeoJSON & .gpkg import to admins, splits MultiPolygons, and reprojects EPSG:25832 GeoPackages to EPSG:4326', async () => {
+    const config = loadEnvConfig({ UPLOADS_DIR: uploadsDir });
+    const app = await buildApp(config, pool, {
+      logger: createLogger({ enabled: false }),
+      mailer: createMemoryMailer(),
+    });
+
+    try {
+      await upsertMunicipalitiesAndBackfill(pool, [
+        {
+          ags: '02000000',
+          name: 'Hamburg',
+          geoJsonGeometry: HAMBURG_MUNICIPALITY_GEOJSON,
+        },
+      ]);
+
+      const regularUser = await registerTestUser(app, 'NormalUser', '198.51.100.30');
+      const adminUser = await registerTestUser(app, 'MunicipalAdmin', '198.51.100.31');
+      await runAdminCommand(pool, ['grant-admin', 'MunicipalAdmin']);
+
+      const geoJsonCollection = {
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            properties: { surfaceType: 'concrete', note: 'Imported lot A' },
+            geometry: {
+              type: 'Polygon',
+              coordinates: [makeCourtyardRing(9.991, 53.551)],
+            },
+          },
+          {
+            type: 'Feature',
+            properties: { belag: 'Pflaster', beschreibung: 'Split MultiPolygon' },
+            geometry: {
+              type: 'MultiPolygon',
+              coordinates: [
+                [makeCourtyardRing(9.993, 53.551)],
+                [makeCourtyardRing(9.995, 53.551)],
+              ],
+            },
+          },
+          {
+            type: 'Feature',
+            properties: { surfaceType: 'asphalt', note: 'Too tiny (<5m²)' },
+            geometry: {
+              type: 'Polygon',
+              coordinates: [
+                [
+                  [9.997, 53.551],
+                  [9.997005, 53.551],
+                  [9.997005, 53.551005],
+                  [9.997, 53.551005],
+                  [9.997, 53.551],
+                ],
+              ],
+            },
+          },
+        ],
+      };
+
+      const geoJsonMultipart = buildMultipartPayload({
+        fieldName: 'file',
+        fileName: 'hamburg-import.geojson',
+        contentType: 'application/geo+json',
+        fileBuffer: Buffer.from(JSON.stringify(geoJsonCollection), 'utf8'),
+      });
+
+      // Non-admin -> 403 FORBIDDEN_ADMIN_ONLY
+      const forbiddenImport = await app.inject({
+        method: 'POST',
+        url: '/api/v1/polygons/import',
+        headers: {
+          authorization: `Bearer ${regularUser.sessionToken}`,
+          'content-type': geoJsonMultipart.contentTypeHeader,
+        },
+        payload: geoJsonMultipart.body,
+      });
+      assert.equal(forbiddenImport.statusCode, 403);
+      assert.equal(
+        ApiErrorEnvelopeSchema.parse(forbiddenImport.json()).error.code,
+        'FORBIDDEN_ADMIN_ONLY',
+      );
+
+      // Admin GeoJSON import -> imports 3 valid polygons (1 Polygon + 2 from MultiPolygon) and skips 1 tiny polygon
+      const okGeoJsonImport = await app.inject({
+        method: 'POST',
+        url: '/api/v1/polygons/import',
+        headers: {
+          authorization: `Bearer ${adminUser.sessionToken}`,
+          'content-type': geoJsonMultipart.contentTypeHeader,
+        },
+        payload: geoJsonMultipart.body,
+      });
+      assert.equal(okGeoJsonImport.statusCode, 200);
+      const geoJsonRes = ImportPolygonsResponseSchema.parse(okGeoJsonImport.json());
+      assert.equal(geoJsonRes.format, 'geojson');
+      assert.equal(geoJsonRes.importedCount, 3);
+      assert.equal(geoJsonRes.skippedCount, 1);
+      assert.equal(geoJsonRes.errors.length, 1);
+
+      // Build a real SQLite GeoPackage (.gpkg) in EPSG:25832 (ETRS89 / UTM zone 32N)
+      const utmWkbRes = await pool.query<{ wkb: Buffer }>(
+        `SELECT ST_AsBinary(
+           ST_Transform(
+             ST_SetSRID(
+               ST_GeomFromGeoJSON($1),
+               4326
+             ),
+             25832
+           )
+         ) AS wkb`,
+        [
+          JSON.stringify({
+            type: 'Polygon',
+            coordinates: [makeCourtyardRing(9.998, 53.553)],
+          }),
+        ],
+      );
+      const gpbBlob = buildGeoPackageBinaryHeader(25832, utmWkbRes.rows[0]!.wkb);
+
+      const gpkgPath = path.join(uploadsDir, 'utm32n-sample.gpkg');
+      const sqlite = new DatabaseSync(gpkgPath);
+      try {
+        sqlite.exec(`
+          CREATE TABLE gpkg_spatial_ref_sys (
+            srs_name TEXT NOT NULL,
+            srs_id INTEGER NOT NULL PRIMARY KEY,
+            organization TEXT NOT NULL,
+            organization_coordsys_id INTEGER NOT NULL,
+            definition TEXT NOT NULL
+          );
+          INSERT INTO gpkg_spatial_ref_sys VALUES ('ETRS89 / UTM 32N', 25832, 'EPSG', 25832, '');
+          CREATE TABLE gpkg_contents (
+            table_name TEXT NOT NULL PRIMARY KEY,
+            data_type TEXT NOT NULL,
+            identifier TEXT,
+            srs_id INTEGER
+          );
+          INSERT INTO gpkg_contents VALUES ('sealed_lots', 'features', 'sealed_lots', 25832);
+          CREATE TABLE gpkg_geometry_columns (
+            table_name TEXT NOT NULL,
+            column_name TEXT NOT NULL,
+            geometry_type_name TEXT NOT NULL,
+            srs_id INTEGER NOT NULL,
+            z TINYINT NOT NULL,
+            m TINYINT NOT NULL
+          );
+          INSERT INTO gpkg_geometry_columns VALUES ('sealed_lots', 'geom', 'POLYGON', 25832, 0, 0);
+          CREATE TABLE sealed_lots (
+            fid INTEGER PRIMARY KEY AUTOINCREMENT,
+            geom BLOB NOT NULL,
+            belag TEXT,
+            notiz TEXT
+          );
+        `);
+        const insertStmt = sqlite.prepare(
+          'INSERT INTO sealed_lots (geom, belag, notiz) VALUES (?, ?, ?)',
+        );
+        insertStmt.run(gpbBlob, 'Beton', 'Reprojected from EPSG:25832 GPKG');
+      } finally {
+        sqlite.close();
+      }
+
+      const gpkgBuffer = await fs.readFile(gpkgPath);
+      await fs.rm(gpkgPath, { force: true });
+
+      const gpkgMultipart = buildMultipartPayload({
+        fieldName: 'file',
+        fileName: 'utm32n-sample.gpkg',
+        contentType: 'application/geopackage+sqlite3',
+        fileBuffer: gpkgBuffer,
+      });
+
+      const okGpkgImport = await app.inject({
+        method: 'POST',
+        url: '/api/v1/polygons/import',
+        headers: {
+          authorization: `Bearer ${adminUser.sessionToken}`,
+          'content-type': gpkgMultipart.contentTypeHeader,
+        },
+        payload: gpkgMultipart.body,
+      });
+      assert.equal(okGpkgImport.statusCode, 200);
+      const gpkgRes = ImportPolygonsResponseSchema.parse(okGpkgImport.json());
+      assert.equal(gpkgRes.format, 'gpkg');
+      assert.equal(gpkgRes.importedCount, 1);
+      assert.equal(gpkgRes.skippedCount, 0);
+
+      // Verify all 4 imported polygons appear in Hamburg bbox with EPSG:4326 coordinates & municipality assigned
+      const bboxRes = await app.inject({
+        method: 'GET',
+        url: '/api/v1/polygons?bbox=9.98,53.54,10.01,53.56',
+      });
+      assert.equal(bboxRes.statusCode, 200);
+      const collection = PolygonCollectionResponseSchema.parse(bboxRes.json());
+      assert.equal(collection.features.length, 4);
+      const reprojectedFeature = collection.features.find(
+        (f) => f.properties.note === 'Reprojected from EPSG:25832 GPKG',
+      );
+      assert.ok(reprojectedFeature, 'Expected GPKG feature in Hamburg WGS84 bbox');
+      assert.equal(reprojectedFeature.properties.surfaceType, 'concrete');
+      assert.equal(reprojectedFeature.properties.municipalityName, 'Hamburg');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('verifies EXIF GPS proximity ("GPS verified"), strips 100% of EXIF tags on WebP conversion, and supports photo real/fake voting & deletion', async () => {
+    const config = loadEnvConfig({ UPLOADS_DIR: uploadsDir });
+    const app = await buildApp(config, pool, {
+      logger: createLogger({ enabled: false }),
+      mailer: createMemoryMailer(),
+    });
+
+    try {
+      const uploader = await registerTestUser(app, 'PhotoMapper', '198.51.100.40');
+      const rater1 = await registerTestUser(app, 'PhotoRater1', '198.51.100.41');
+      const rater2 = await registerTestUser(app, 'PhotoRater2', '198.51.100.42');
+      const rater3 = await registerTestUser(app, 'PhotoRater3', '198.51.100.43');
+      const admin = await registerTestUser(app, 'PhotoAdmin', '198.51.100.44');
+      await runAdminCommand(pool, ['grant-admin', 'PhotoAdmin']);
+
+      const polygon = await createPolygon(
+        app,
+        uploader.sessionToken,
+        makeCourtyardRing(9.9937, 53.5511),
+        'Courtyard with photos',
+      );
+
+      // 1) Synthesize a JPEG with EXIF camera Make + GPS inside ~20m of (9.9937, 53.5511)
+      const nearJpeg = await sharp({
+        create: {
+          width: 800,
+          height: 600,
+          channels: 3,
+          background: { r: 90, g: 120, b: 100 },
+        },
+      })
+        .withExif({
+          IFD0: {
+            Make: 'SensitivePhoneVendor',
+            Model: 'TrackerCam Pro',
+          },
+          IFD3: {
+            GPSLatitudeRef: 'N',
+            GPSLatitude: '53 33 4.00',
+            GPSLongitudeRef: 'E',
+            GPSLongitude: '9 59 37.40',
+          },
+        })
+        .jpeg({ quality: 85 })
+        .toBuffer();
+
+      // Confirm input JPEG actually carries EXIF GPS & Make before upload
+      const inputExif = await exifr.parse(nearJpeg);
+      assert.equal(inputExif?.Make, 'SensitivePhoneVendor');
+      const inputGps = await exifr.gps(nearJpeg);
+      assert.ok(inputGps && Math.abs(inputGps.latitude - 53.5511) < 0.002);
+
+      const nearMultipart = buildMultipartPayload({
+        fieldName: 'photo',
+        fileName: 'courtyard-onsite.jpg',
+        contentType: 'image/jpeg',
+        fileBuffer: nearJpeg,
+      });
+
+      const uploadNearRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/polygons/${polygon.id}/photos`,
+        headers: {
+          authorization: `Bearer ${uploader.sessionToken}`,
+          'content-type': nearMultipart.contentTypeHeader,
+        },
+        payload: nearMultipart.body,
+      });
+      assert.equal(uploadNearRes.statusCode, 201);
+      const nearPhoto = PolygonPhotoSchema.parse(uploadNearRes.json());
+      assert.equal(nearPhoto.gpsVerified, true);
+      assert.equal(nearPhoto.uploaderPseudonym, 'PhotoMapper');
+
+      // 2) Synthesize a JPEG with GPS in Munich (>600 km away) -> gpsVerified: false
+      const farJpeg = await sharp({
+        create: {
+          width: 640,
+          height: 480,
+          channels: 3,
+          background: { r: 140, g: 100, b: 90 },
+        },
+      })
+        .withExif({
+          IFD3: {
+            GPSLatitudeRef: 'N',
+            GPSLatitude: '48 8 15.00',
+            GPSLongitudeRef: 'E',
+            GPSLongitude: '11 34 30.00',
+          },
+        })
+        .jpeg()
+        .toBuffer();
+
+      const farMultipart = buildMultipartPayload({
+        fieldName: 'photo',
+        fileName: 'munich-offsite.jpg',
+        contentType: 'image/jpeg',
+        fileBuffer: farJpeg,
+      });
+
+      const uploadFarRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/polygons/${polygon.id}/photos`,
+        headers: {
+          authorization: `Bearer ${rater1.sessionToken}`,
+          'content-type': farMultipart.contentTypeHeader,
+        },
+        payload: farMultipart.body,
+      });
+      assert.equal(uploadFarRes.statusCode, 201);
+      const farPhoto = PolygonPhotoSchema.parse(uploadFarRes.json());
+      assert.equal(farPhoto.gpsVerified, false);
+
+      // Verify polygon.properties.photoCount incremented to 2
+      const polyWithPhotos = PolygonFeatureSchema.parse(
+        (await app.inject({ method: 'GET', url: `/api/v1/polygons/${polygon.id}` })).json(),
+      );
+      assert.equal(polyWithPhotos.properties.photoCount, 2);
+
+      // 3) Serve stored WebP image & prove 100% EXIF stripping + path-traversal rejection
+      const servedImgRes = await app.inject({
+        method: 'GET',
+        url: nearPhoto.url,
+      });
+      assert.equal(servedImgRes.statusCode, 200);
+      assert.equal(servedImgRes.headers['content-type'], 'image/webp');
+      const servedMeta = await sharp(servedImgRes.rawPayload).metadata();
+      assert.equal(servedMeta.format, 'webp');
+      assert.equal(servedMeta.exif, undefined);
+      assert.equal(servedMeta.xmp, undefined);
+      assert.equal(servedMeta.iptc, undefined);
+      assert.equal(
+        servedImgRes.rawPayload.includes(Buffer.from('SensitivePhoneVendor', 'utf8')),
+        false,
+      );
+
+      const traversalRes = await app.inject({
+        method: 'GET',
+        url: '/uploads/..%2Fsecret.webp',
+      });
+      assert.equal(traversalRes.statusCode, 404);
+
+      // 4) Rate farPhoto as "fake" (-1) by 3 distinct users -> credibilityScore = -3, isFlaggedFake = true
+      for (const rater of [uploader, rater2, rater3]) {
+        const voteRes = await app.inject({
+          method: 'PUT',
+          url: `/api/v1/photos/${farPhoto.id}/vote`,
+          headers: { authorization: `Bearer ${rater.sessionToken}` },
+          payload: { value: -1 },
+        });
+        assert.equal(voteRes.statusCode, 200);
+        PhotoVoteResponseSchema.parse(voteRes.json());
+      }
+
+      // Rate nearPhoto as "real" (+1)
+      const realVoteRes = await app.inject({
+        method: 'PUT',
+        url: `/api/v1/photos/${nearPhoto.id}/vote`,
+        headers: { authorization: `Bearer ${rater1.sessionToken}` },
+        payload: { value: 1 },
+      });
+      assert.equal(realVoteRes.statusCode, 200);
+      assert.equal(PhotoVoteResponseSchema.parse(realVoteRes.json()).realVotes, 1);
+
+      const listPhotosRes = await app.inject({
+        method: 'GET',
+        url: `/api/v1/polygons/${polygon.id}/photos`,
+        headers: { authorization: `Bearer ${rater1.sessionToken}` },
+      });
+      assert.equal(listPhotosRes.statusCode, 200);
+      const photoList = PolygonPhotoListResponseSchema.parse(listPhotosRes.json());
+      assert.equal(photoList.photos.length, 2);
+      // Ordered by credibility_score DESC -> nearPhoto (+1) first, farPhoto (-3, flagged fake) second
+      assert.equal(photoList.photos[0]!.id, nearPhoto.id);
+      assert.equal(photoList.photos[0]!.myVote, 1);
+      assert.equal(photoList.photos[1]!.id, farPhoto.id);
+      assert.equal(photoList.photos[1]!.credibilityScore, -3);
+      assert.equal(photoList.photos[1]!.isFlaggedFake, true);
+
+      // Removing a photo vote works
+      const delVoteRes = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/photos/${nearPhoto.id}/vote`,
+        headers: { authorization: `Bearer ${rater1.sessionToken}` },
+      });
+      assert.equal(delVoteRes.statusCode, 200);
+      assert.equal(PhotoVoteResponseSchema.parse(delVoteRes.json()).realVotes, 0);
+
+      // 5) Deletion permissions: third-party non-admin -> 403; uploader -> 204; admin -> 204
+      const thirdPartyDel = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/photos/${nearPhoto.id}`,
+        headers: { authorization: `Bearer ${rater2.sessionToken}` },
+      });
+      assert.equal(thirdPartyDel.statusCode, 403);
+
+      const uploaderDel = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/photos/${nearPhoto.id}`,
+        headers: { authorization: `Bearer ${uploader.sessionToken}` },
+      });
+      assert.equal(uploaderDel.statusCode, 204);
+
+      const adminDel = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/photos/${farPhoto.id}`,
+        headers: { authorization: `Bearer ${admin.sessionToken}` },
+      });
+      assert.equal(adminDel.statusCode, 204);
+
+      const polyAfterDeletes = PolygonFeatureSchema.parse(
+        (await app.inject({ method: 'GET', url: `/api/v1/polygons/${polygon.id}` })).json(),
+      );
+      assert.equal(polyAfterDeletes.properties.photoCount, 0);
+      assert.equal((await fs.readdir(uploadsDir)).length, 0);
+    } finally {
+      await app.close();
+    }
+  });
+});

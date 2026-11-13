@@ -64,6 +64,7 @@ const SAMPLE_CONFIG: RuntimeConfig = {
   disclaimerText:
     'Community unsealing suggestions — non-binding public input, regardless of property ownership.',
   abuseContact: 'moderation@example.org',
+  privacyPolicyUrl: 'https://maps.example.org/auth/privacy',
 };
 
 function makeSampleFeature(id: string, score: number): PolygonFeature {
@@ -85,8 +86,15 @@ function makeSampleFeature(id: string, score: number): PolygonFeature {
     properties: {
       id,
       surfaceType: 'asphalt',
+      status: 'proposed',
+      finishedAt: null,
       note: 'Paved corner',
       areaM2: 220.4,
+      municipalityAgs: '02000000',
+      municipalityName: 'Hamburg',
+      municipalityMaxScore: Math.max(score, 3),
+      municipalityNormalizedScore: score > 0 ? 1 : 0,
+      photoCount: 0,
       authorPseudonym: 'citizen_a',
       upvotes: score > 0 ? score : 0,
       downvotes: score < 0 ? Math.abs(score) : 0,
@@ -499,9 +507,13 @@ describe('German default localization and DE <-> EN switching', () => {
     state = appReducer(state, { type: 'SET_LOCALE', locale: 'en' });
     assert.match(deriveAuthModalModel(state).errorMessage ?? '', /session expired/i);
 
-    // Surface type taxonomy and structured ApiError localization
+    // Surface type taxonomy, exact "GPS verified" badge parity, and structured ApiError localization
     assert.equal(getTranslations('de').surfaces.pavers.label, 'Pflaster');
     assert.equal(getTranslations('en').surfaces.pavers.label, 'Pavers');
+    assert.equal(getTranslations('de').inspector.gpsVerifiedBadge, 'GPS verified');
+    assert.equal(getTranslations('en').inspector.gpsVerifiedBadge, 'GPS verified');
+    assert.match(getTranslations('de').controls.gnssA11y, /GNSS/);
+    assert.match(getTranslations('en').controls.gnssA11y, /GNSS/);
 
     const credErr = new ApiError(
       401,
@@ -510,11 +522,18 @@ describe('German default localization and DE <-> EN switching', () => {
     );
     assert.equal(
       localizeError(credErr, 'Fallback', 'de'),
-      'Ungültiges Pseudonym oder Passwort.',
+      'Ungültiges Pseudonym, E-Mail oder Passwort.',
     );
     assert.equal(
       localizeError(credErr, 'Fallback', 'en'),
       'Invalid pseudonym or password.',
     );
+
+    const unverifiedErr = new ApiError(
+      403,
+      'AUTH_EMAIL_UNVERIFIED',
+      'Please confirm your email address first.',
+    );
+    assert.match(localizeError(unverifiedErr, 'Fallback', 'de'), /E-Mail-Adresse/);
   });
 });

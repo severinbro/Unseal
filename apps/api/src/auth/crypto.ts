@@ -85,6 +85,17 @@ export function hashPseudonymTombstone(pseudonymLower: string): Buffer {
     .digest();
 }
 
+export function hashEmailTombstone(emailLower: string): Buffer {
+  return crypto
+    .createHash('sha256')
+    .update(`email:${emailLower.trim().toLowerCase()}`, 'utf8')
+    .digest();
+}
+
+export function generateEmailActionToken(): string {
+  return crypto.randomBytes(32).toString('base64url');
+}
+
 export function generateSessionToken(): string {
   return crypto.randomBytes(32).toString('base64url');
 }

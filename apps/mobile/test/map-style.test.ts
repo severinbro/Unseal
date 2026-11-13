@@ -40,6 +40,8 @@ const FEATURE_C_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 function makeFeature(params: {
   id: string;
   score: number;
+  status?: 'proposed' | 'finished';
+  municipalityNormalizedScore?: number;
   upvotes?: number;
   downvotes?: number;
   createdAt?: string;
@@ -47,6 +49,7 @@ function makeFeature(params: {
   const upvotes = params.upvotes ?? Math.max(params.score, 0);
   const downvotes = params.downvotes ?? Math.max(-params.score, 0);
   const createdAt = params.createdAt ?? '2026-11-12T12:00:00.000Z';
+  const status = params.status ?? 'proposed';
 
   return {
     type: 'Feature',
@@ -66,8 +69,17 @@ function makeFeature(params: {
     properties: {
       id: params.id,
       surfaceType: 'asphalt',
+      status,
+      finishedAt: status === 'finished' ? createdAt : null,
       note: 'Courtyard lot',
       areaM2: 296.4,
+      municipalityAgs: '02000000',
+      municipalityName: 'Hamburg',
+      municipalityMaxScore: Math.max(params.score, 3),
+      municipalityNormalizedScore:
+        params.municipalityNormalizedScore ??
+        (status === 'finished' || params.score <= 0 ? 0 : 1),
+      photoCount: 0,
       authorPseudonym: 'mapper_one',
       upvotes,
       downvotes,
@@ -346,19 +358,37 @@ describe('styleBuilder and MapCanvas contract', () => {
     );
     assert.equal(lineWidthExpr.result, 'success');
 
-    const evalFillColor = (score: number): string =>
+    const evalFillColor = (
+      score: number,
+      status: 'proposed' | 'finished' = 'proposed',
+      municipalityNormalizedScore: number = 0.5,
+    ): string =>
       String(
         fillColorExpr.value.evaluate(
           { zoom: 16 },
-          { type: 'Polygon', properties: { score, selected: false } },
+          {
+            type: 'Polygon',
+            properties: {
+              score,
+              status,
+              municipalityNormalizedScore,
+              selected: false,
+            },
+          },
         ),
       );
     const negColor = evalFillColor(-3);
     const zeroColor = evalFillColor(0);
-    const posColor = evalFillColor(4);
+    const posLowNormColor = evalFillColor(1, 'proposed', 0.2);
+    const posHighNormColor = evalFillColor(8, 'proposed', 1.0);
+    const finishedColor = evalFillColor(8, 'finished', 0);
+
     assert.notEqual(negColor, zeroColor);
-    assert.notEqual(zeroColor, posColor);
-    assert.notEqual(negColor, posColor);
+    assert.notEqual(zeroColor, posLowNormColor);
+    assert.notEqual(posLowNormColor, posHighNormColor);
+    assert.notEqual(finishedColor, posHighNormColor);
+    assert.notEqual(finishedColor, zeroColor);
+    assert.notEqual(finishedColor, negColor);
 
     const unselectedOpacity = Number(
       fillOpacityExpr.value.evaluate(

@@ -76,6 +76,7 @@ export interface TranslationDictionary {
     readonly legendBacked: string;
     readonly legendNew: string;
     readonly legendContested: string;
+    readonly legendFinished: string;
   };
   readonly controls: {
     readonly signInShort: string;
@@ -94,6 +95,7 @@ export interface TranslationDictionary {
     readonly aerialFull: string;
     readonly streetFull: string;
     readonly locateA11y: string;
+    readonly gnssA11y: string;
     readonly locateCompact: string;
     readonly locateBusy: string;
     readonly locateFull: string;
@@ -101,6 +103,12 @@ export interface TranslationDictionary {
     readonly exportCompact: string;
     readonly exportFull: string;
     readonly exportErrorFallback: string;
+    readonly importA11y: string;
+    readonly importCompact: string;
+    readonly importFull: string;
+    readonly importingBusy: string;
+    readonly importSuccess: (imported: number, skipped: number) => string;
+    readonly importErrorFallback: string;
     readonly proposeA11y: string;
     readonly proposeCompact: string;
     readonly proposeFull: string;
@@ -154,6 +162,18 @@ export interface TranslationDictionary {
     readonly submitA11y: string;
     readonly submitting: string;
     readonly submit: string;
+    readonly stepGeometryLabel: string;
+    readonly stepDetailsLabel: string;
+    readonly nextStep: string;
+    readonly nextStepA11y: string;
+    readonly closeAndNext: string;
+    readonly backToGeometry: string;
+    readonly backToGeometryA11y: string;
+    readonly photosSectionTitle: string;
+    readonly takePhoto: string;
+    readonly pickPhoto: string;
+    readonly removeDraftPhotoA11y: string;
+    readonly photoPrivacyHint: string;
   };
   readonly inspector: {
     readonly sheetA11y: string;
@@ -162,6 +182,16 @@ export interface TranslationDictionary {
     readonly overlapNext: (pos: number, count: number) => string;
     readonly closeA11y: string;
     readonly close: string;
+    readonly tabOverview: string;
+    readonly tabPhotos: (count: number) => string;
+    readonly tabManage: string;
+    readonly statusProposedBadge: string;
+    readonly statusFinishedBadge: string;
+    readonly municipalityRankHint: (
+      score: number,
+      maxScore: number,
+      municipalityName: string,
+    ) => string;
     readonly immutableNotice: string;
     readonly editNoteA11y: string;
     readonly editNotePlaceholder: string;
@@ -189,14 +219,39 @@ export interface TranslationDictionary {
     readonly voteErrorFallback: string;
     readonly patchErrorFallback: string;
     readonly deleteErrorFallback: string;
+    readonly noPhotosYet: string;
+    readonly addPhotoCamera: string;
+    readonly addPhotoGallery: string;
+    readonly uploadingPhoto: string;
+    readonly gpsVerifiedBadge: string;
+    readonly rateReal: string;
+    readonly rateFake: string;
+    readonly rateRealA11y: (count: number) => string;
+    readonly rateFakeA11y: (count: number) => string;
+    readonly flaggedFakeWarning: string;
+    readonly revealFlaggedPhoto: string;
+    readonly hideFlaggedPhoto: string;
+    readonly deletePhoto: string;
+    readonly deletePhotoA11y: string;
+    readonly photoSignInPrompt: string;
+    readonly adminSectionTitle: string;
+    readonly markFinishedButton: string;
+    readonly markProposedButton: string;
+    readonly updatingStatus: string;
+    readonly authorSectionTitle: string;
+    readonly manageReadonlyHint: string;
+    readonly photoErrorFallback: string;
+    readonly statusErrorFallback: string;
   };
   readonly auth: {
     readonly modalA11y: string;
     readonly titleRecovery: string;
+    readonly titleVerifyPending: string;
     readonly titleRegister: string;
     readonly titleRecover: string;
     readonly titleLogin: string;
     readonly zeroPiiSubtitle: string;
+    readonly privacySubtitle: string;
     readonly closeA11y: string;
     readonly close: string;
     readonly tabSignInA11y: string;
@@ -224,6 +279,25 @@ export interface TranslationDictionary {
     readonly pseudonymA11y: string;
     readonly pseudonymPlaceholderRegister: string;
     readonly pseudonymPlaceholderLogin: string;
+    readonly emailLabel: string;
+    readonly emailA11y: string;
+    readonly emailPlaceholder: string;
+    readonly identifierLabel: string;
+    readonly identifierA11y: string;
+    readonly identifierPlaceholder: string;
+    readonly privacyConsentA11y: string;
+    readonly privacyConsentPrefix: string;
+    readonly privacyPolicyLinkText: string;
+    readonly verifyPendingBody: (email: string) => string;
+    readonly resendVerificationButton: string;
+    readonly resendingVerification: string;
+    readonly resendVerificationSent: string;
+    readonly backToSignIn: string;
+    readonly forgotPasswordLink: string;
+    readonly forgotPasswordHint: string;
+    readonly sendResetLinkButton: string;
+    readonly sendingResetLink: string;
+    readonly resetLinkSentBanner: (email: string) => string;
     readonly passwordLabel: string;
     readonly passwordA11y: string;
     readonly passwordPlaceholderMin: string;
@@ -243,6 +317,8 @@ export interface TranslationDictionary {
     readonly resettingPassword: string;
     readonly resetPassword: string;
     readonly accountSignedInHint: (pseudonym: string) => string;
+    readonly adminRoleBadge: string;
+    readonly accountEmailLabel: string;
     readonly logoutA11y: string;
     readonly loggingOut: string;
     readonly logout: string;
@@ -255,6 +331,8 @@ export interface TranslationDictionary {
     readonly deleteAccountA11y: string;
     readonly deleteAccount: string;
     readonly invalidPseudonym: string;
+    readonly invalidEmail: string;
+    readonly privacyConsentRequired: string;
     readonly shortPassword: (min: number) => string;
     readonly missingCredentials: string;
     readonly missingRecoveryFields: (min: number) => string;
@@ -283,8 +361,7 @@ export interface TranslationDictionary {
 export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
   de: {
     app: {
-      documentTitle:
-        'Entsiegelungskartierung — Gemeinschaftliche Entsiegelungskarte',
+      documentTitle: 'Unseal — Gemeinschaftliche Entsiegelungskarte',
       loadingTitle: 'Entsiegelungskarte wird geladen…',
       errorTitle: 'Verbindung zum Kartendienst fehlgeschlagen',
       errorFallback:
@@ -296,6 +373,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       legendBacked: '+ Unterstützt',
       legendNew: '0 Neu',
       legendContested: '− Umstritten',
+      legendFinished: '✓ Entsiegelt',
     },
     controls: {
       signInShort: 'Anmelden',
@@ -307,14 +385,15 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       switchLocaleA11y: 'Sprache auf Englisch (EN) umstellen',
       accountSettingsA11y: (pseudonym) =>
         `Kontoeinstellungen für ${pseudonym}`,
-      signInOrRegisterA11y: 'Anmelden oder pseudonymes Konto erstellen',
+      signInOrRegisterA11y: 'Anmelden oder Konto erstellen',
       switchToOrthoA11y: 'Zur Luftbildansicht wechseln',
       switchToOsmA11y: 'Zur OpenStreetMap-Straßenkarte wechseln',
       aerialCompact: 'Luftbild',
       streetCompact: 'Karte',
       aerialFull: 'Luftbildansicht',
       streetFull: 'Straßenkarte',
-      locateA11y: 'Eigenen Standort per GPS bestimmen',
+      locateA11y: 'Eigenen Standort per GNSS bestimmen',
+      gnssA11y: 'Auf meinen GNSS-Standort zentrieren',
       locateCompact: 'GPS',
       locateBusy: 'GPS…',
       locateFull: 'Standort',
@@ -322,6 +401,15 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       exportCompact: 'GeoJSON',
       exportFull: 'GeoJSON-Export',
       exportErrorFallback: 'GeoJSON-Export konnte nicht geöffnet werden.',
+      importA11y: 'Polygone aus GeoJSON oder GeoPackage importieren (Admin)',
+      importCompact: 'Import',
+      importFull: 'Import (.geojson/.gpkg)',
+      importingBusy: 'Import…',
+      importSuccess: (imported, skipped) =>
+        skipped > 0
+          ? `${imported} Flächen importiert (${skipped} übersprungen).`
+          : `${imported} Flächen erfolgreich importiert.`,
+      importErrorFallback: 'Import fehlgeschlagen.',
       proposeA11y: 'Entsiegelungsfläche auf der Karte einzeichnen',
       proposeCompact: '+ Vorschlag',
       proposeFull: '+ Fläche vorschlagen',
@@ -397,6 +485,19 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       submitA11y: 'Entsiegelungsvorschlag einreichen',
       submitting: 'Wird veröffentlicht…',
       submit: 'Vorschlag einreichen',
+      stepGeometryLabel: '1. Umriss',
+      stepDetailsLabel: '2. Details',
+      nextStep: 'Weiter →',
+      nextStepA11y: 'Weiter zu Material, Hinweis und Fotos',
+      closeAndNext: 'Schließen & Weiter →',
+      backToGeometry: '← Umriss ändern',
+      backToGeometryA11y: 'Zurück zur Umrissbearbeitung auf der Karte',
+      photosSectionTitle: 'Vor-Ort-Fotos (optional)',
+      takePhoto: 'Kamera',
+      pickPhoto: 'Galerie',
+      removeDraftPhotoA11y: 'Angehängtes Foto entfernen',
+      photoPrivacyHint:
+        'Alle EXIF-Metadaten werden beim Upload entfernt; bei Aufnahme vor Ort erscheint „GPS verified“.',
     },
     inspector: {
       sheetA11y: 'Details des ausgewählten Entsiegelungsvorschlags',
@@ -409,6 +510,13 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       overlapNext: (pos, count) => `${pos}/${count} · Weiter`,
       closeA11y: 'Vorschlagsansicht schließen',
       close: 'Schließen',
+      tabOverview: 'Übersicht',
+      tabPhotos: (count) => `Fotos (${count})`,
+      tabManage: 'Verwaltung',
+      statusProposedBadge: 'Vorgeschlagen',
+      statusFinishedBadge: '✓ Entsiegelt',
+      municipalityRankHint: (score, maxScore, municipalityName) =>
+        `Farbskala relativ zu ${municipalityName} (Score +${score} von max. +${maxScore} vor Ort)`,
       immutableNotice:
         'Polygonkoordinaten sind nach der Veröffentlichung gesperrt, damit Stimmen fest mit genau dieser Fläche verknüpft bleiben. Zum Anpassen der Grenzen bitte löschen und neu einzeichnen.',
       editNoteA11y: 'Standorthinweis bearbeiten',
@@ -443,25 +551,57 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       voteErrorFallback: 'Stimme konnte momentan nicht gespeichert werden.',
       patchErrorFallback: 'Änderungen konnten nicht gespeichert werden.',
       deleteErrorFallback: 'Vorschlag konnte nicht gelöscht werden.',
+      noPhotosYet:
+        'Noch keine Fotos zu dieser Fläche vorhanden. Hilf mit einer Aufnahme vor Ort!',
+      addPhotoCamera: 'Foto aufnehmen',
+      addPhotoGallery: 'Aus Galerie',
+      uploadingPhoto: 'Lädt hoch…',
+      gpsVerifiedBadge: 'GPS verified',
+      rateReal: 'Echt',
+      rateFake: 'Fake',
+      rateRealA11y: (count) =>
+        `Foto als echt bestätigen (+1), aktuell ${count} Echt-Stimmen`,
+      rateFakeA11y: (count) =>
+        `Foto als Fake melden (-1), aktuell ${count} Fake-Meldungen`,
+      flaggedFakeWarning:
+        'Von der Community als mutmaßlich unecht („Fake“) markiert.',
+      revealFlaggedPhoto: 'Trotzdem anzeigen',
+      hideFlaggedPhoto: 'Ausblenden',
+      deletePhoto: 'Löschen',
+      deletePhotoA11y: 'Foto löschen',
+      photoSignInPrompt:
+        'Melde dich an, um eigene Fotos hochzuladen oder Aufnahmen als „Echt“ / „Fake“ zu bewerten.',
+      adminSectionTitle: 'Kommunale / Admin-Verwaltung',
+      markFinishedButton: '✓ Als „Entsiegelt“ markieren',
+      markProposedButton: 'Auf „Vorgeschlagen“ zurücksetzen',
+      updatingStatus: 'Aktualisiert…',
+      authorSectionTitle: 'Dein Vorschlag',
+      manageReadonlyHint:
+        'Nur die erstellende Person kann diesen Vorschlag bearbeiten oder löschen. Administratoren können umgesetzte Flächen als „Entsiegelt“ markieren.',
+      photoErrorFallback: 'Fotoaktion fehlgeschlagen.',
+      statusErrorFallback: 'Status konnte nicht geändert werden.',
     },
     auth: {
-      modalA11y: 'Pseudonymes Konto',
+      modalA11y: 'Benutzerkonto',
       titleRecovery: 'Einmaligen Wiederherstellungscode sichern',
-      titleRegister: 'Pseudonym erstellen',
-      titleRecover: 'Passwort wiederherstellen',
+      titleVerifyPending: 'Bestätigungslink gesendet',
+      titleRegister: 'Konto registrieren',
+      titleRecover: 'Passwort zurücksetzen',
       titleLogin: 'Anmelden',
       zeroPiiSubtitle:
-        'Keine E-Mail · Keine Telefonnummer · Offene Stadtkartierung',
+        'Öffentliches Pseudonym · E-Mail nur für Bestätigung & Recovery',
+      privacySubtitle:
+        'Öffentliches Pseudonym · E-Mail niemals öffentlich sichtbar',
       closeA11y: 'Kontofenster schließen',
       close: 'Schließen',
       tabSignInA11y: 'Tab Anmelden',
       tabSignIn: 'Anmelden',
       tabRegisterA11y: 'Tab Registrieren',
       tabRegister: 'Registrieren',
-      tabRecoverA11y: 'Tab Passwort wiederherstellen',
-      tabRecover: 'Wiederherstellen',
+      tabRecoverA11y: 'Tab Passwort zurücksetzen',
+      tabRecover: 'Passwort',
       recoveryVaultHint:
-        'Speichere diesen 32-stelligen Hex-Wiederherstellungscode jetzt in deinem Passwort-Manager. Da weder E-Mail noch Telefonnummer erhoben werden, ist dieses Pseudonym bei Verlust von Passwort und Code dauerhaft gesperrt.',
+        'Speichere diesen Wiederherstellungscode sicher ab.',
       copyCodeA11y: 'Wiederherstellungscode in die Zwischenablage kopieren',
       copiedCode: 'Kopiert ✓',
       copyCode: 'Code kopieren',
@@ -472,7 +612,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         'Ich habe meinen Wiederherstellungscode sicher gespeichert',
       closeBlockedReason:
         'Bitte bestätige zuerst „Ich habe meinen Wiederherstellungscode sicher gespeichert“.',
-      continueA11y: 'Nach dem Speichern des Wiederherstellungscodes fortfahren',
+      continueA11y: 'Nach dem Speichern fortfahren',
       continueToMap: 'Weiter zur Karte',
       pendingDraftSummary:
         'Dein Flächenentwurf bleibt gespeichert und wird nach der Anmeldung automatisch eingereicht.',
@@ -481,38 +621,64 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       sessionExpired:
         'Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.',
       registerHint:
-        'Wähle ein öffentliches Pseudonym (3–32 Buchstaben, Ziffern, _ oder -) und ein Passwort (mind. 8 Zeichen). Dein Wiederherstellungscode wird im nächsten Schritt erzeugt.',
+        'Wähle ein öffentliches Pseudonym (3–32 Zeichen) und gib deine E-Mail-Adresse ein. Du erhältst einen Bestätigungslink per E-Mail; deine E-Mail wird niemals öffentlich angezeigt.',
       publicPseudonymLabel: 'Öffentliches Pseudonym',
       pseudonymLabel: 'Pseudonym',
       pseudonymA11y: 'Pseudonym',
       pseudonymPlaceholderRegister: 'z. B. innenhof_initiative',
-      pseudonymPlaceholderLogin: 'Dein Pseudonym',
+      pseudonymPlaceholderLogin: 'Pseudonym oder E-Mail',
+      emailLabel: 'E-Mail-Adresse (nur für Bestätigung & Recovery)',
+      emailA11y: 'E-Mail-Adresse',
+      emailPlaceholder: 'name@beispiel.de',
+      identifierLabel: 'Pseudonym oder E-Mail-Adresse',
+      identifierA11y: 'Pseudonym oder E-Mail-Adresse',
+      identifierPlaceholder: 'Pseudonym oder name@beispiel.de',
+      privacyConsentA11y: 'Ich stimme der Datenschutzerklärung zu',
+      privacyConsentPrefix:
+        'Ich stimme der Speicherung meiner E-Mail-Adresse zur Kontobestätigung und Passwortwiederherstellung gemäß ',
+      privacyPolicyLinkText: 'Datenschutzerklärung',
+      verifyPendingBody: (email) =>
+        `Wir haben einen Bestätigungslink an ${email} gesendet. Bitte klicke auf den Link in deiner E-Mail und melde dich anschließend hier an.`,
+      resendVerificationButton: 'Bestätigungslink erneut senden',
+      resendingVerification: 'Sendet Link…',
+      resendVerificationSent:
+        'Neuer Bestätigungslink wurde gesendet. Bitte prüfe auch deinen Spam-Ordner.',
+      backToSignIn: 'Zur Anmeldung',
+      forgotPasswordLink: 'Passwort vergessen?',
+      forgotPasswordHint:
+        'Gib deine registrierte E-Mail-Adresse ein. Wir senden dir einen Link, über den du ein neues Passwort vergeben kannst.',
+      sendResetLinkButton: 'Wiederherstellungslink senden',
+      sendingResetLink: 'Sendet Link…',
+      resetLinkSentBanner: (email) =>
+        `Falls ein Konto für ${email} existiert, wurde ein Link zum Zurücksetzen des Passworts gesendet.`,
       passwordLabel: 'Passwort',
       passwordA11y: 'Passwort',
       passwordPlaceholderMin: 'Mindestens 8 Zeichen',
       passwordPlaceholderLogin: 'Dein Passwort',
-      createAccountA11y: 'Pseudonymes Konto erstellen',
+      createAccountA11y: 'Konto erstellen und Bestätigungs-E-Mail anfordern',
       creatingAccount: 'Konto wird erstellt…',
-      createAccount: 'Konto erstellen',
-      signInButtonA11y: 'Mit Pseudonym und Passwort anmelden',
+      createAccount: 'Registrieren',
+      signInButtonA11y: 'Mit Pseudonym oder E-Mail und Passwort anmelden',
       signingIn: 'Anmeldung läuft…',
       signInButton: 'Anmelden',
       recoverHint:
-        'Gib dein Pseudonym, deinen gespeicherten 32-stelligen Hex-Wiederherstellungscode und ein neues Passwort ein. Dein Wiederherstellungscode und aktive Sitzungen werden sofort erneuert.',
+        'Gib deine registrierte E-Mail-Adresse ein, um einen Link zum Zurücksetzen deines Passworts zu erhalten.',
       recoveryCodeLabel: '32-stelliger Wiederherstellungscode',
       recoveryCodeA11y: '32-stelliger Wiederherstellungscode',
       newPasswordLabel: 'Neues Passwort',
       newPasswordA11y: 'Neues Passwort',
-      resetPasswordA11y: 'Passwort mit Wiederherstellungscode zurücksetzen',
-      resettingPassword: 'Passwort wird geändert…',
-      resetPassword: 'Passwort zurücksetzen',
+      resetPasswordA11y: 'Wiederherstellungslink per E-Mail anfordern',
+      resettingPassword: 'Sendet Link…',
+      resetPassword: 'Link zum Zurücksetzen senden',
       accountSignedInHint: (pseudonym) =>
-        `Angemeldet als pseudonymes Mitglied @${pseudonym}. Auf diesem Server werden keinerlei persönliche Kontaktdaten gespeichert.`,
+        `Angemeldet als @${pseudonym}. Auf der Karte und im GeoJSON-Export erscheint ausschließlich dein Pseudonym.`,
+      adminRoleBadge: 'Administrator',
+      accountEmailLabel: 'Bestätigte E-Mail:',
       logoutA11y: 'Aus aktueller Sitzung abmelden',
       loggingOut: 'Abmeldung läuft…',
       logout: 'Abmelden',
       deleteAccountWarning:
-        'Das Löschen deines Kontos entfernt dauerhaft deine Zugangsdaten, aktiven Sitzungen und Stimmen (betroffene Bewertungen werden neu berechnet), sperrt dein Pseudonym kryptografisch gegen Nachahmung und erhält deine eingereichten Flächen öffentlich unter „gelöscht“.',
+        'Das Löschen deines Kontos entfernt dauerhaft deine E-Mail-Adresse, Zugangsdaten, Sitzungen und Stimmen (Art. 17 DSGVO), sperrt dein Pseudonym gegen Nachahmung und erhält deine eingereichten Flächen anonym unter „gelöscht“.',
       cancelDeleteAccountA11y: 'Kontolöschung abbrechen',
       cancel: 'Abbrechen',
       confirmDeleteAccountA11y: 'Endgültige Kontolöschung bestätigen',
@@ -522,20 +688,24 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       deleteAccount: 'Konto löschen',
       invalidPseudonym:
         'Das Pseudonym muss 3–32 Zeichen lang sein (Buchstaben, Ziffern, Unterstrich _ oder Bindestrich -).',
+      invalidEmail: 'Bitte gib eine gültige E-Mail-Adresse ein.',
+      privacyConsentRequired:
+        'Bitte bestätige die Datenschutzerklärung, um fortzufahren.',
       shortPassword: (min) =>
         `Das Passwort muss mindestens ${min} Zeichen lang sein.`,
-      missingCredentials: 'Bitte Pseudonym und Passwort eingeben.',
+      missingCredentials:
+        'Bitte Pseudonym (oder E-Mail) und Passwort eingeben.',
       missingRecoveryFields: (min) =>
-        `Bitte Pseudonym, 32-stelligen Wiederherstellungscode und ein neues Passwort (mind. ${min} Zeichen) eingeben.`,
+        `Bitte gültige Eingaben machen (Passwort mind. ${min} Zeichen).`,
       registerFailed: 'Registrierung fehlgeschlagen.',
       loginFailed: 'Anmeldung fehlgeschlagen.',
-      recoverFailed: 'Passwort-Wiederherstellung fehlgeschlagen.',
+      recoverFailed: 'Anfrage zum Zurücksetzen fehlgeschlagen.',
       logoutFailed: 'Abmeldung fehlgeschlagen.',
       deleteAccountFailed: 'Kontolöschung fehlgeschlagen.',
     },
     location: {
       webHttpsRequired:
-        'Die Browser-Standortbestimmung erfordert eine sichere HTTPS-Verbindung (oder localhost). Öffne Entsiegelungskartierung über https://, um „Standort“ zu nutzen.',
+        'Die Browser-Standortbestimmung erfordert eine sichere HTTPS-Verbindung (oder localhost). Öffne Unseal über https://, um „Standort“ zu nutzen.',
       webUnsupported:
         'Geolocation wird in diesem Browser nicht unterstützt oder ist nicht verfügbar.',
       webInvalidCoords:
@@ -553,7 +723,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       webRequestFailed: (detail) =>
         `Standortabfrage im Browser fehlgeschlagen${detail}`,
       nativePermissionDeniedSettings:
-        'Standortberechtigung verweigert. Bitte aktiviere den Standortzugriff für Entsiegelungskartierung in den Geräteeinstellungen.',
+        'Standortberechtigung verweigert. Bitte aktiviere den Standortzugriff für Unseal in den Geräteeinstellungen.',
       nativePermissionDeniedPrompt:
         'Standortberechtigung verweigert. Bitte erlaube den Standortzugriff, um die Karte auf deine GPS-Position zu zentrieren.',
       nativeInvalidCoords:
@@ -564,7 +734,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
   },
   en: {
     app: {
-      documentTitle: 'Entsiegelungskartierung — Civic Unsealing Map',
+      documentTitle: 'Unseal — Civic Unsealing Map',
       loadingTitle: 'Loading civic unsealing map…',
       errorTitle: 'Could not connect to map service',
       errorFallback: 'Please verify your network connection and retry.',
@@ -575,6 +745,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       legendBacked: '+ Backed',
       legendNew: '0 New',
       legendContested: '− Contested',
+      legendFinished: '✓ Finished',
     },
     controls: {
       signInShort: 'Sign in',
@@ -585,14 +756,15 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       imageryPrefix: 'Imagery:',
       switchLocaleA11y: 'Switch language to German (DE)',
       accountSettingsA11y: (pseudonym) => `Account settings for ${pseudonym}`,
-      signInOrRegisterA11y: 'Sign in or register pseudonymous account',
+      signInOrRegisterA11y: 'Sign in or register account',
       switchToOrthoA11y: 'Switch to aerial orthophoto layer',
       switchToOsmA11y: 'Switch to OpenStreetMap street layer',
       aerialCompact: 'Aerial',
       streetCompact: 'Street',
       aerialFull: 'Aerial View',
       streetFull: 'Street Map',
-      locateA11y: 'Locate me using device GPS',
+      locateA11y: 'Locate me using device GNSS',
+      gnssA11y: 'Center map on my GNSS position',
       locateCompact: 'GPS',
       locateBusy: 'GPS…',
       locateFull: 'Locate Me',
@@ -600,6 +772,15 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       exportCompact: 'GeoJSON',
       exportFull: 'Export GeoJSON',
       exportErrorFallback: 'Unable to open GeoJSON export URL.',
+      importA11y: 'Import polygons from GeoJSON or GeoPackage (Admin)',
+      importCompact: 'Import',
+      importFull: 'Import (.geojson/.gpkg)',
+      importingBusy: 'Importing…',
+      importSuccess: (imported, skipped) =>
+        skipped > 0
+          ? `Imported ${imported} polygons (${skipped} skipped).`
+          : `Successfully imported ${imported} polygons.`,
+      importErrorFallback: 'Polygon import failed.',
       proposeA11y: 'Draw unsealing proposal polygon',
       proposeCompact: '+ Propose',
       proposeFull: '+ Propose Unsealing',
@@ -670,6 +851,19 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       submitA11y: 'Submit unsealing proposal',
       submitting: 'Publishing…',
       submit: 'Submit Proposal',
+      stepGeometryLabel: '1. Outline',
+      stepDetailsLabel: '2. Details',
+      nextStep: 'Next →',
+      nextStepA11y: 'Continue to surface material, note, and photos',
+      closeAndNext: 'Close & Next →',
+      backToGeometry: '← Edit Outline',
+      backToGeometryA11y: 'Return to outline editing on the map',
+      photosSectionTitle: 'Site Photos (Optional)',
+      takePhoto: 'Camera',
+      pickPhoto: 'Gallery',
+      removeDraftPhotoA11y: 'Remove attached photo',
+      photoPrivacyHint:
+        'All EXIF metadata is stripped on upload; on-site captures earn a “GPS verified” badge.',
     },
     inspector: {
       sheetA11y: 'Selected unsealing proposal inspector',
@@ -680,6 +874,13 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       overlapNext: (pos, count) => `${pos}/${count} · Next`,
       closeA11y: 'Close proposal inspector',
       close: 'Close',
+      tabOverview: 'Overview',
+      tabPhotos: (count) => `Photos (${count})`,
+      tabManage: 'Manage',
+      statusProposedBadge: 'Proposed',
+      statusFinishedBadge: '✓ Finished',
+      municipalityRankHint: (score, maxScore, municipalityName) =>
+        `Color scaled within ${municipalityName} (score +${score} of +${maxScore} local max)`,
       immutableNotice:
         'Polygon coordinates are locked after publication so community votes remain anchored to the exact site. Delete and redraw to adjust boundaries.',
       editNoteA11y: 'Edit proposal note',
@@ -711,14 +912,47 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       voteErrorFallback: 'Unable to update vote right now.',
       patchErrorFallback: 'Unable to save proposal metadata.',
       deleteErrorFallback: 'Unable to delete proposal.',
+      noPhotosYet:
+        'No photos uploaded for this polygon yet. Add an on-site photo to help verify it!',
+      addPhotoCamera: 'Take Photo',
+      addPhotoGallery: 'From Gallery',
+      uploadingPhoto: 'Uploading…',
+      gpsVerifiedBadge: 'GPS verified',
+      rateReal: 'Real',
+      rateFake: 'Fake',
+      rateRealA11y: (count) =>
+        `Mark photo as real (+1), current real votes ${count}`,
+      rateFakeA11y: (count) =>
+        `Flag photo as fake (-1), current fake flags ${count}`,
+      flaggedFakeWarning:
+        'Flagged by the community as likely inauthentic (“Fake”).',
+      revealFlaggedPhoto: 'Show anyway',
+      hideFlaggedPhoto: 'Hide photo',
+      deletePhoto: 'Delete',
+      deletePhotoA11y: 'Delete photo',
+      photoSignInPrompt:
+        'Sign in to upload photos or rate existing photos as “Real” or “Fake”.',
+      adminSectionTitle: 'Municipal / Admin Actions',
+      markFinishedButton: '✓ Mark as “Finished”',
+      markProposedButton: 'Reset to “Proposed”',
+      updatingStatus: 'Updating…',
+      authorSectionTitle: 'Your Proposal',
+      manageReadonlyHint:
+        'Only the creator can edit or delete this proposal. Administrators can mark completed unsealing sites as “Finished”.',
+      photoErrorFallback: 'Photo action failed.',
+      statusErrorFallback: 'Unable to update polygon status.',
     },
     auth: {
-      modalA11y: 'Pseudonymous account modal',
+      modalA11y: 'Contributor account modal',
       titleRecovery: 'Save One-Time Recovery Code',
-      titleRegister: 'Create Pseudonym',
-      titleRecover: 'Recover Password',
+      titleVerifyPending: 'Confirmation Link Sent',
+      titleRegister: 'Create Account',
+      titleRecover: 'Reset Password',
       titleLogin: 'Contributor Sign In',
-      zeroPiiSubtitle: 'Zero email · Zero phone · Open civic mapping',
+      zeroPiiSubtitle:
+        'Public pseudonym · Email used only for confirmation & recovery',
+      privacySubtitle:
+        'Public pseudonym · Email is never displayed publicly',
       closeA11y: 'Close account modal',
       close: 'Close',
       tabSignInA11y: 'Sign In tab',
@@ -726,9 +960,9 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       tabRegisterA11y: 'Register tab',
       tabRegister: 'Register',
       tabRecoverA11y: 'Recover password tab',
-      tabRecover: 'Recover',
+      tabRecover: 'Reset',
       recoveryVaultHint:
-        'Store this 32-character hexadecimal recovery code in your password manager now. Because no email or phone number is collected, losing both your password and this code permanently locks this pseudonym.',
+        'Store this recovery code in a safe place.',
       copyCodeA11y: 'Copy recovery code to clipboard',
       copiedCode: 'Copied ✓',
       copyCode: 'Copy Code',
@@ -746,38 +980,64 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         'Your vote will be submitted automatically once you sign in.',
       sessionExpired: 'Your session expired. Please sign in to continue.',
       registerHint:
-        'Choose a public pseudonym (3–32 letters, digits, _ or -) and a password (8+ characters). Your recovery code is generated next.',
+        'Choose a public pseudonym (3–32 characters) and enter your email address. We will send you a confirmation link; your email is never shown publicly.',
       publicPseudonymLabel: 'Public Pseudonym',
       pseudonymLabel: 'Pseudonym',
       pseudonymA11y: 'Pseudonym',
       pseudonymPlaceholderRegister: 'e.g. courtyard_mapper',
-      pseudonymPlaceholderLogin: 'Your pseudonym',
+      pseudonymPlaceholderLogin: 'Pseudonym or email',
+      emailLabel: 'Email Address (confirmation & recovery only)',
+      emailA11y: 'Email address',
+      emailPlaceholder: 'name@example.org',
+      identifierLabel: 'Pseudonym or Email Address',
+      identifierA11y: 'Pseudonym or email address',
+      identifierPlaceholder: 'Pseudonym or name@example.org',
+      privacyConsentA11y: 'I agree to the privacy policy',
+      privacyConsentPrefix:
+        'I consent to storing my email address for account confirmation and password recovery under the ',
+      privacyPolicyLinkText: 'Privacy Policy',
+      verifyPendingBody: (email) =>
+        `We sent a confirmation link to ${email}. Click the link in your email, then return here to sign in.`,
+      resendVerificationButton: 'Resend Confirmation Link',
+      resendingVerification: 'Sending…',
+      resendVerificationSent:
+        'A fresh confirmation link has been sent. Please check your inbox and spam folder.',
+      backToSignIn: 'Back to Sign In',
+      forgotPasswordLink: 'Forgot password?',
+      forgotPasswordHint:
+        'Enter your registered email address and we will send you a one-click password reset link.',
+      sendResetLinkButton: 'Send Recovery Link',
+      sendingResetLink: 'Sending…',
+      resetLinkSentBanner: (email) =>
+        `If an account exists for ${email}, a password reset link has been sent.`,
       passwordLabel: 'Password',
       passwordA11y: 'Password',
       passwordPlaceholderMin: 'At least 8 characters',
       passwordPlaceholderLogin: 'Your password',
-      createAccountA11y: 'Create pseudonymous account',
+      createAccountA11y: 'Create account and send confirmation email',
       creatingAccount: 'Creating Account…',
       createAccount: 'Create Account',
-      signInButtonA11y: 'Sign in with pseudonym and password',
+      signInButtonA11y: 'Sign in with pseudonym or email and password',
       signingIn: 'Signing In…',
       signInButton: 'Sign In',
       recoverHint:
-        'Enter your pseudonym, saved 32-hex recovery code, and a new password. Your recovery code and active sessions rotate immediately.',
+        'Enter your registered email address to receive a password recovery link.',
       recoveryCodeLabel: '32-Hex Recovery Code',
       recoveryCodeA11y: '32-hex recovery code',
       newPasswordLabel: 'New Password',
       newPasswordA11y: 'New password',
-      resetPasswordA11y: 'Reset password using recovery code',
-      resettingPassword: 'Resetting Password…',
-      resetPassword: 'Reset Password',
+      resetPasswordA11y: 'Send password recovery email link',
+      resettingPassword: 'Sending…',
+      resetPassword: 'Send Recovery Link',
       accountSignedInHint: (pseudonym) =>
-        `Signed in as pseudonymous contributor @${pseudonym}. Zero personal contact information is stored on this server.`,
+        `Signed in as @${pseudonym}. Only your pseudonym appears publicly on polygons, photos, and GeoJSON exports.`,
+      adminRoleBadge: 'Administrator',
+      accountEmailLabel: 'Verified email:',
       logoutA11y: 'Log out of current session',
       loggingOut: 'Signing Out…',
       logout: 'Log Out',
       deleteAccountWarning:
-        'Deleting your account permanently erases your credentials, active sessions, and votes (recomputing affected proposal scores), reserves a cryptographic tombstone of your pseudonym to prevent impersonation, and keeps your authored proposals public under “deleted”.',
+        'Deleting your account permanently erases your email address, credentials, active sessions, and votes (GDPR Art. 17), reserves a cryptographic tombstone of your pseudonym to prevent impersonation, and keeps your authored proposals public under “deleted”.',
       cancelDeleteAccountA11y: 'Cancel account deletion',
       cancel: 'Cancel',
       confirmDeleteAccountA11y: 'Confirm permanent account deletion',
@@ -787,19 +1047,22 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       deleteAccount: 'Delete Account',
       invalidPseudonym:
         'Pseudonym must be 3–32 characters using letters, digits, underscores (_), or hyphens (-).',
+      invalidEmail: 'Please enter a valid email address.',
+      privacyConsentRequired:
+        'Please accept the privacy policy to continue.',
       shortPassword: (min) => `Password must be at least ${min} characters.`,
-      missingCredentials: 'Enter your pseudonym and password.',
+      missingCredentials: 'Enter your pseudonym (or email) and password.',
       missingRecoveryFields: (min) =>
-        `Enter your pseudonym, 32-character recovery code, and a new password (at least ${min} characters).`,
+        `Please enter valid recovery details (password at least ${min} characters).`,
       registerFailed: 'Registration failed.',
       loginFailed: 'Sign-in failed.',
-      recoverFailed: 'Password recovery failed.',
+      recoverFailed: 'Password recovery request failed.',
       logoutFailed: 'Logout failed.',
       deleteAccountFailed: 'Account deletion failed.',
     },
     location: {
       webHttpsRequired:
-        'Browser geolocation requires a secure HTTPS connection (or localhost). Open Entsiegelungskartierung over https:// to use "Locate me".',
+        'Browser geolocation requires a secure HTTPS connection (or localhost). Open Unseal over https:// to use "Locate me".',
       webUnsupported:
         'Geolocation is not supported or available in this browser.',
       webInvalidCoords:
@@ -817,7 +1080,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       webRequestFailed: (detail) =>
         `Unable to request browser geolocation${detail}`,
       nativePermissionDeniedSettings:
-        'Location permission was denied. Enable foreground location access for Entsiegelungskartierung in your device settings to center the map on your GPS position.',
+        'Location permission was denied. Enable foreground location access for Unseal in your device settings to center the map on your GPS position.',
       nativePermissionDeniedPrompt:
         'Location permission was denied. Grant foreground location access to center the map on your current GPS position.',
       nativeInvalidCoords:
@@ -940,17 +1203,26 @@ export function translateValidationMessage(
 
 const GERMAN_API_ERROR_MESSAGES: Readonly<Record<ErrorCode, string>> = {
   AUTH_REQUIRED: 'Bitte melde dich an, um fortzufahren.',
-  AUTH_INVALID_CREDENTIALS: 'Ungültiges Pseudonym oder Passwort.',
+  AUTH_INVALID_CREDENTIALS: 'Ungültiges Pseudonym, E-Mail oder Passwort.',
   AUTH_PSEUDONYM_TAKEN: 'Dieses Pseudonym ist bereits vergeben oder reserviert.',
-  FORBIDDEN_PSEUDONYM_BANNED: 'Dieses Pseudonym ist gesperrt.',
+  AUTH_EMAIL_TAKEN: 'Diese E-Mail-Adresse ist bereits registriert.',
+  AUTH_EMAIL_UNVERIFIED:
+    'Bitte bestätige zuerst deine E-Mail-Adresse über den zugesandten Bestätigungslink.',
+  AUTH_TOKEN_INVALID:
+    'Dieser Bestätigungs- oder Wiederherstellungslink ist ungültig oder abgelaufen.',
+  FORBIDDEN_PSEUDONYM_BANNED: 'Dieses Pseudonym oder diese E-Mail ist gesperrt.',
   AUTH_RECOVERY_INVALID:
-    'Ungültiges Pseudonym oder ungültiger Wiederherstellungscode.',
+    'Ungültige Wiederherstellungsangaben.',
   AUTH_BUSY:
     'Anmeldedienst ist ausgelastet. Bitte kurz warten und erneut versuchen.',
   FORBIDDEN_NOT_AUTHOR:
-    'Nur die erstellende Person kann diesen Vorschlag bearbeiten oder löschen.',
+    'Nur die erstellende Person kann diesen Eintrag bearbeiten oder löschen.',
+  FORBIDDEN_ADMIN_ONLY:
+    'Diese Funktion steht nur Administrator-Konten zur Verfügung.',
   NOT_FOUND: 'Der angeforderte Eintrag wurde nicht gefunden.',
   VALIDATION_ERROR: 'Ungültige Eingabedaten.',
+  UNSUPPORTED_MEDIA_TYPE:
+    'Nicht unterstütztes Dateiformat (erlaubt: JPEG, PNG, WebP, HEIC bzw. .geojson/.gpkg).',
   GEOMETRY_INVALID:
     'Ungültige Polygongeometrie: Kanten dürfen sich nicht selbst schneiden.',
   AREA_OUT_OF_BOUNDS:

@@ -117,6 +117,12 @@ export const PALETTE = {
   infoBg: '#E9F1F8',
   infoBorder: '#B9CFE4',
   infoText: '#194064',
+
+  finishedBg: '#CCFBF1',
+  finishedBorder: '#5EEAD4',
+  finishedSolid: '#0D9488',
+  finishedText: '#0F766E',
+  finishedDot: '#0D9488',
 } as const;
 
 export const SURFACE_SWATCHES: Record<

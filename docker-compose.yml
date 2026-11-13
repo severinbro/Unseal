@@ -15,6 +15,15 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  mailpit:
+    image: axllent/mailpit:v1.21
+    ports:
+      - "127.0.0.1:8025:8025"
+    environment:
+      MP_MAX_MESSAGES: "500"
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+
   api:
     build:
       context: .
@@ -25,6 +34,15 @@ services:
       HOST: "0.0.0.0"
       PORT: "3000"
       DATABASE_URL: "postgresql://${POSTGRES_USER:-ppgis}:${POSTGRES_PASSWORD:-ppgis}@postgis:5432/${POSTGRES_DB:-ppgis}"
+      PUBLIC_BASE_URL: "${PUBLIC_BASE_URL:-http://127.0.0.1:3000}"
+      UPLOADS_DIR: "/var/lib/entsiegelung/uploads"
+      AUTO_SEED_VG250: "${AUTO_SEED_VG250:-true}"
+      SMTP_HOST: "${SMTP_HOST:-mailpit}"
+      SMTP_PORT: "${SMTP_PORT:-1025}"
+      SMTP_SECURE: "${SMTP_SECURE:-false}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_PASS: "${SMTP_PASS:-}"
+      SMTP_FROM: "${SMTP_FROM:-Entsiegelungskartierung <noreply@localhost>}"
       TRUST_PROXY: "${TRUST_PROXY:-false}"
       CORS_ORIGIN: "${CORS_ORIGIN:-*}"
       OSM_STYLE_URL: "${OSM_STYLE_URL:-https://tiles.openfreemap.org/styles/liberty}"
@@ -40,10 +58,14 @@ services:
       SESSION_TTL_DAYS: "${SESSION_TTL_DAYS:-30}"
       DISCLAIMER_TEXT: "${DISCLAIMER_TEXT:-Community unsealing suggestions — non-binding public input, regardless of property ownership.}"
       ABUSE_CONTACT: "${ABUSE_CONTACT:-}"
+    volumes:
+      - uploads_data:/var/lib/entsiegelung/uploads
     depends_on:
       postgis:
         condition: service_healthy
-    mem_limit: 512m
+      mailpit:
+        condition: service_started
+    mem_limit: 768m
     healthcheck:
       test:
         [
@@ -55,7 +77,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 15s
 
 volumes:
   pgdata:
+  uploads_data:

@@ -7,6 +7,7 @@ import {
   PolygonCollectionResponseSchema,
   PolygonFeatureSchema,
   RegisterResponseSchema,
+  SessionResponseSchema,
   type PolygonFeature,
 } from '@entsiegelung/shared';
 
@@ -73,17 +74,37 @@ async function registerTestUser(
   pseudonym: string,
   remoteAddress = '198.51.100.10',
 ): Promise<{ userId: string; pseudonym: string; sessionToken: string }> {
+  const email = `${pseudonym.toLowerCase()}@example.org`;
   const res = await app.inject({
     method: 'POST',
     url: '/api/v1/auth/register',
     remoteAddress,
     payload: {
       pseudonym,
+      email,
       password: 'valid-password-123',
+      acceptedPrivacyPolicy: true,
     },
   });
   assert.equal(res.statusCode, 201);
-  const parsed = RegisterResponseSchema.parse(res.json());
+  RegisterResponseSchema.parse(res.json());
+
+  await app.pool.query(
+    'UPDATE users SET email_verified_at = clock_timestamp() WHERE LOWER(email) = $1',
+    [email],
+  );
+
+  const loginRes = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/login',
+    remoteAddress,
+    payload: {
+      identifier: pseudonym,
+      password: 'valid-password-123',
+    },
+  });
+  assert.equal(loginRes.statusCode, 200);
+  const parsed = SessionResponseSchema.parse(loginRes.json());
   return {
     userId: parsed.user.id,
     pseudonym: parsed.user.pseudonym,

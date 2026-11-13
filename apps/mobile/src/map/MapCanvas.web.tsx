@@ -154,7 +154,10 @@ export function MapCanvas({
     mapRef.current = map;
     styleReadyRef.current = false;
 
-    map.addControl(new NavigationControl({ showCompass: false }), 'top-right');
+    map.addControl(
+      new NavigationControl({ showCompass: false }),
+      'bottom-right',
+    );
 
     const resizeObserver =
       typeof ResizeObserver !== 'undefined'

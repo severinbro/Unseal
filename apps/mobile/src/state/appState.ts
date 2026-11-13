@@ -2,8 +2,11 @@ import {
   ApiError,
   checkBboxSpan,
   closeRingIfNeeded,
+  computeMunicipalityNormalizedScore,
   dedupeConsecutivePoints,
   GEOMETRY_LIMITS,
+  PHOTO_LIMITS,
+  validateDraftPolygon,
   type AuthUser,
   type BboxBounds,
   type CreatePolygonRequest,
@@ -13,6 +16,7 @@ import {
   type VoteResponse,
 } from '@entsiegelung/shared';
 
+import type { UploadableFileInput } from '../api/client';
 import {
   DEFAULT_LOCALE,
   getTranslations,
@@ -24,13 +28,22 @@ export { DEFAULT_LOCALE, type Locale } from '../i18n/translations';
 
 export type ConfigStatus = 'loading' | 'ready' | 'error';
 export type InteractionMode = 'browse' | 'drawing';
+export type DrawingStep = 'geometry' | 'details';
 export type BasemapMode = 'osm' | 'orthophoto';
 export type AuthModalView =
   | 'login'
   | 'register'
+  | 'verify_pending'
   | 'recover'
-  | 'recovery_code'
   | 'account';
+
+export const MAX_DRAFT_PHOTOS = 5;
+
+export interface DraftPhotoAttachment {
+  id: string;
+  previewUri: string;
+  file: UploadableFileInput;
+}
 
 export interface ViewportState {
   bbox: BboxBounds;
@@ -48,6 +61,7 @@ export type PendingIntent =
   | {
       type: 'SUBMIT_DRAFT';
       payload: CreatePolygonRequest;
+      photos: readonly UploadableFileInput[];
     }
   | {
       type: 'CAST_VOTE';
@@ -73,18 +87,20 @@ export interface AppState {
   overlapIndex: number;
   selectedFeatureId: string | null;
   mode: InteractionMode;
+  drawingStep: DrawingStep;
   draftVertices: [number, number][];
   isRingClosed: boolean;
   draftSurfaceType: SurfaceType;
   draftNote: string;
+  draftPhotos: DraftPhotoAttachment[];
   confirmingDiscardDraft: boolean;
   isSubmittingDraft: boolean;
   draftSubmitError: string | null;
   currentUser: AuthUser | null;
   authModalOpen: boolean;
   authModalView: AuthModalView;
-  pendingRecoveryCode: string | null;
-  recoveryCodeSavedChecked: boolean;
+  pendingVerificationEmail: string | null;
+  pendingVerificationPseudonym: string | null;
   authError: string | null;
   pendingIntent: PendingIntent | null;
 }
@@ -105,11 +121,16 @@ export type AppAction =
       features: PolygonFeature[];
       truncated: boolean;
     }
+  | { type: 'REFRESH_VIEWPORT_FEATURES' }
   | { type: 'START_DRAW' }
   | { type: 'ADD_VERTEX'; point: [number, number] }
   | { type: 'UNDO_VERTEX' }
   | { type: 'CLOSE_RING' }
+  | { type: 'ADVANCE_TO_DETAILS' }
+  | { type: 'BACK_TO_GEOMETRY' }
   | { type: 'SET_DRAFT_META'; surfaceType?: SurfaceType; note?: string }
+  | { type: 'ADD_DRAFT_PHOTO'; photo: DraftPhotoAttachment }
+  | { type: 'REMOVE_DRAFT_PHOTO'; photoId: string }
   | { type: 'REQUEST_DISCARD_DRAFT' }
   | { type: 'CANCEL_DISCARD_DRAFT' }
   | { type: 'CONFIRM_DISCARD_DRAFT' }
@@ -117,6 +138,7 @@ export type AppAction =
   | { type: 'SUBMIT_ERROR_PRESERVE_DRAFT'; message: string }
   | { type: 'POLYGON_CREATED'; feature: PolygonFeature }
   | { type: 'POLYGON_UPDATED'; feature: PolygonFeature }
+  | { type: 'POLYGON_PHOTO_COUNT_SET'; polygonId: string; photoCount: number }
   | { type: 'POLYGON_DELETED'; polygonId: string }
   | { type: 'SELECT_FEATURES_AT_TAP'; featureIds: readonly string[] }
   | { type: 'CYCLE_OVERLAP_FEATURE' }
@@ -124,16 +146,20 @@ export type AppAction =
   | { type: 'VOTE_UPDATED'; vote: VoteResponse }
   | {
       type: 'OPEN_AUTH_MODAL';
-      view?: Exclude<AuthModalView, 'recovery_code'>;
+      view?: AuthModalView;
     }
   | {
       type: 'SET_AUTH_MODAL_VIEW';
-      view: Exclude<AuthModalView, 'recovery_code'>;
+      view: AuthModalView;
     }
-  | { type: 'SET_RECOVERY_CODE_SAVED_CHECKED'; checked: boolean }
+  | {
+      type: 'REGISTRATION_VERIFICATION_SENT';
+      email: string;
+      pseudonym: string;
+    }
   | { type: 'CLOSE_AUTH_MODAL' }
   | { type: 'AUTH_ERROR'; message: string }
-  | { type: 'AUTH_SUCCEEDED'; user: AuthUser; recoveryCode?: string }
+  | { type: 'AUTH_SUCCEEDED'; user: AuthUser }
   | { type: 'SESSION_EXPIRED' }
   | { type: 'LOGOUT_SUCCEEDED' }
   | { type: 'ACCOUNT_DELETED' }
@@ -157,18 +183,20 @@ export const initialAppState: AppState = {
   overlapIndex: 0,
   selectedFeatureId: null,
   mode: 'browse',
+  drawingStep: 'geometry',
   draftVertices: [],
   isRingClosed: false,
   draftSurfaceType: 'asphalt',
   draftNote: '',
+  draftPhotos: [],
   confirmingDiscardDraft: false,
   isSubmittingDraft: false,
   draftSubmitError: null,
   currentUser: null,
   authModalOpen: false,
   authModalView: 'login',
-  pendingRecoveryCode: null,
-  recoveryCodeSavedChecked: false,
+  pendingVerificationEmail: null,
+  pendingVerificationPseudonym: null,
   authError: null,
   pendingIntent: null,
 };
@@ -220,6 +248,95 @@ function sortFeaturesCanonical(
       return b.properties.createdAt.localeCompare(a.properties.createdAt);
     }
     return a.id.localeCompare(b.id);
+  });
+}
+
+function recomputeMunicipalityScoresForAgs(
+  prevFeatures: readonly PolygonFeature[],
+  nextFeatures: readonly PolygonFeature[],
+  targetAgs: string | null,
+): PolygonFeature[] {
+  if (targetAgs === null) {
+    let visibleMax = 0;
+    for (const f of nextFeatures) {
+      if (
+        f.properties.municipalityAgs === null &&
+        f.properties.status !== 'finished' &&
+        f.properties.score > visibleMax
+      ) {
+        visibleMax = f.properties.score;
+      }
+    }
+    return nextFeatures.map((f) => {
+      if (f.properties.municipalityAgs !== null) {
+        return f;
+      }
+      return {
+        ...f,
+        properties: {
+          ...f.properties,
+          municipalityMaxScore: visibleMax,
+          municipalityNormalizedScore: computeMunicipalityNormalizedScore(
+            f.properties.score,
+            f.properties.status,
+            null,
+            visibleMax,
+          ),
+        },
+      };
+    });
+  }
+
+  let prevReportedMax = 0;
+  let prevVisibleMax = 0;
+  for (const f of prevFeatures) {
+    if (f.properties.municipalityAgs !== targetAgs) {
+      continue;
+    }
+    if (f.properties.municipalityMaxScore > prevReportedMax) {
+      prevReportedMax = f.properties.municipalityMaxScore;
+    }
+    if (
+      f.properties.status !== 'finished' &&
+      f.properties.score > prevVisibleMax
+    ) {
+      prevVisibleMax = f.properties.score;
+    }
+  }
+
+  const offScreenBaseline =
+    prevReportedMax > prevVisibleMax ? prevReportedMax : 0;
+
+  let nextVisibleMax = 0;
+  for (const f of nextFeatures) {
+    if (
+      f.properties.municipalityAgs === targetAgs &&
+      f.properties.status !== 'finished' &&
+      f.properties.score > nextVisibleMax
+    ) {
+      nextVisibleMax = f.properties.score;
+    }
+  }
+
+  const nextMunicipalityMax = Math.max(offScreenBaseline, nextVisibleMax, 0);
+
+  return nextFeatures.map((f) => {
+    if (f.properties.municipalityAgs !== targetAgs) {
+      return f;
+    }
+    return {
+      ...f,
+      properties: {
+        ...f.properties,
+        municipalityMaxScore: nextMunicipalityMax,
+        municipalityNormalizedScore: computeMunicipalityNormalizedScore(
+          f.properties.score,
+          f.properties.status,
+          targetAgs,
+          nextMunicipalityMax,
+        ),
+      },
+    };
   });
 }
 
@@ -384,14 +501,23 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
     }
 
+    case 'REFRESH_VIEWPORT_FEATURES': {
+      return {
+        ...state,
+        viewportRefreshSeq: state.viewportRefreshSeq + 1,
+      };
+    }
+
     case 'START_DRAW': {
       return {
         ...state,
         mode: 'drawing',
+        drawingStep: 'geometry',
         draftVertices: [],
         isRingClosed: false,
         draftSurfaceType: 'asphalt',
         draftNote: '',
+        draftPhotos: [],
         confirmingDiscardDraft: false,
         isSubmittingDraft: false,
         draftSubmitError: null,
@@ -402,7 +528,11 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'ADD_VERTEX': {
-      if (state.mode !== 'drawing' || state.isRingClosed) {
+      if (
+        state.mode !== 'drawing' ||
+        state.drawingStep !== 'geometry' ||
+        state.isRingClosed
+      ) {
         return state;
       }
       return {
@@ -423,6 +553,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       if (state.isRingClosed) {
         return {
           ...state,
+          drawingStep: 'geometry',
           isRingClosed: false,
           confirmingDiscardDraft: false,
           draftSubmitError: null,
@@ -433,6 +564,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       }
       return {
         ...state,
+        drawingStep: 'geometry',
         draftVertices: state.draftVertices.slice(0, -1),
         confirmingDiscardDraft: false,
         draftSubmitError: null,
@@ -461,6 +593,41 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
     }
 
+    case 'ADVANCE_TO_DETAILS': {
+      if (state.mode !== 'drawing') {
+        return state;
+      }
+      const validation = validateDraftPolygon(state.draftVertices);
+      if (!validation.valid) {
+        const firstError = validation.errors[0];
+        return {
+          ...state,
+          draftSubmitError: firstError
+            ? translateValidationMessage(firstError, state.locale)
+            : null,
+        };
+      }
+      return {
+        ...state,
+        isRingClosed: true,
+        drawingStep: 'details',
+        confirmingDiscardDraft: false,
+        draftSubmitError: null,
+      };
+    }
+
+    case 'BACK_TO_GEOMETRY': {
+      if (state.mode !== 'drawing') {
+        return state;
+      }
+      return {
+        ...state,
+        drawingStep: 'geometry',
+        confirmingDiscardDraft: false,
+        draftSubmitError: null,
+      };
+    }
+
     case 'SET_DRAFT_META': {
       return {
         ...state,
@@ -470,17 +637,44 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
     }
 
+    case 'ADD_DRAFT_PHOTO': {
+      if (
+        state.mode !== 'drawing' ||
+        state.draftPhotos.length >=
+          Math.min(MAX_DRAFT_PHOTOS, PHOTO_LIMITS.MAX_PHOTOS_PER_POLYGON)
+      ) {
+        return state;
+      }
+      return {
+        ...state,
+        draftPhotos: [...state.draftPhotos, action.photo],
+        draftSubmitError: null,
+      };
+    }
+
+    case 'REMOVE_DRAFT_PHOTO': {
+      if (state.mode !== 'drawing') {
+        return state;
+      }
+      return {
+        ...state,
+        draftPhotos: state.draftPhotos.filter((p) => p.id !== action.photoId),
+      };
+    }
+
     case 'REQUEST_DISCARD_DRAFT': {
       if (state.mode !== 'drawing') {
         return state;
       }
       if (
         state.draftVertices.length === 0 &&
-        state.draftNote.trim().length === 0
+        state.draftNote.trim().length === 0 &&
+        state.draftPhotos.length === 0
       ) {
         return {
           ...state,
           mode: 'browse',
+          drawingStep: 'geometry',
           isRingClosed: false,
           confirmingDiscardDraft: false,
           isSubmittingDraft: false,
@@ -504,10 +698,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         mode: 'browse',
+        drawingStep: 'geometry',
         draftVertices: [],
         isRingClosed: false,
         draftSurfaceType: 'asphalt',
         draftNote: '',
+        draftPhotos: [],
         confirmingDiscardDraft: false,
         isSubmittingDraft: false,
         draftSubmitError: null,
@@ -526,6 +722,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const intent: PendingIntent = {
         type: 'SUBMIT_DRAFT',
         payload,
+        photos: state.draftPhotos.map((p) => p.file),
       };
 
       if (state.currentUser === null) {
@@ -560,19 +757,24 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const withoutExisting = state.features.filter(
         (f) => f.id !== action.feature.id,
       );
-      const nextFeatures = sortFeaturesCanonical([
-        action.feature,
-        ...withoutExisting,
-      ]);
+      const merged = [action.feature, ...withoutExisting];
+      const normalized = recomputeMunicipalityScoresForAgs(
+        state.features,
+        merged,
+        action.feature.properties.municipalityAgs,
+      );
+      const nextFeatures = sortFeaturesCanonical(normalized);
 
       return {
         ...state,
         features: nextFeatures,
         mode: 'browse',
+        drawingStep: 'geometry',
         draftVertices: [],
         isRingClosed: false,
         draftSurfaceType: 'asphalt',
         draftNote: '',
+        draftPhotos: [],
         confirmingDiscardDraft: false,
         isSubmittingDraft: false,
         draftSubmitError: null,
@@ -587,10 +789,33 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'POLYGON_UPDATED': {
-      const nextFeatures = sortFeaturesCanonical(
-        state.features.map((f) =>
-          f.id === action.feature.id ? action.feature : f,
-        ),
+      const replaced = state.features.map((f) =>
+        f.id === action.feature.id ? action.feature : f,
+      );
+      const normalized = recomputeMunicipalityScoresForAgs(
+        state.features,
+        replaced,
+        action.feature.properties.municipalityAgs,
+      );
+      const nextFeatures = sortFeaturesCanonical(normalized);
+      return {
+        ...state,
+        features: nextFeatures,
+      };
+    }
+
+    case 'POLYGON_PHOTO_COUNT_SET': {
+      const nextCount = Math.max(0, action.photoCount);
+      const nextFeatures = state.features.map((f) =>
+        f.id === action.polygonId
+          ? {
+              ...f,
+              properties: {
+                ...f.properties,
+                photoCount: nextCount,
+              },
+            }
+          : f,
       );
       return {
         ...state,
@@ -599,9 +824,19 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'POLYGON_DELETED': {
-      const nextFeatures = state.features.filter(
+      const deletedTarget = state.features.find(
+        (f) => f.id === action.polygonId,
+      );
+      const remaining = state.features.filter(
         (f) => f.id !== action.polygonId,
       );
+      const nextFeatures = deletedTarget
+        ? recomputeMunicipalityScoresForAgs(
+            state.features,
+            remaining,
+            deletedTarget.properties.municipalityAgs,
+          )
+        : remaining;
       const nextOverlap = state.overlappingFeatureIds.filter(
         (id) => id !== action.polygonId,
       );
@@ -680,23 +915,32 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'VOTE_UPDATED': {
-      const nextFeatures = sortFeaturesCanonical(
-        state.features.map((f) => {
-          if (f.id !== action.vote.polygonId) {
-            return f;
-          }
-          return {
-            ...f,
-            properties: {
-              ...f.properties,
-              upvotes: action.vote.upvotes,
-              downvotes: action.vote.downvotes,
-              score: action.vote.score,
-              myVote: action.vote.myVote,
-            },
-          };
-        }),
+      const targetFeature = state.features.find(
+        (f) => f.id === action.vote.polygonId,
       );
+      const updatedRaw = state.features.map((f) => {
+        if (f.id !== action.vote.polygonId) {
+          return f;
+        }
+        return {
+          ...f,
+          properties: {
+            ...f.properties,
+            upvotes: action.vote.upvotes,
+            downvotes: action.vote.downvotes,
+            score: action.vote.score,
+            myVote: action.vote.myVote,
+          },
+        };
+      });
+      const normalized = targetFeature
+        ? recomputeMunicipalityScoresForAgs(
+            state.features,
+            updatedRaw,
+            targetFeature.properties.municipalityAgs,
+          )
+        : updatedRaw;
+      const nextFeatures = sortFeaturesCanonical(normalized);
 
       const shouldClearPending =
         state.pendingIntent?.type === 'CAST_VOTE' &&
@@ -711,9 +955,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'OPEN_AUTH_MODAL': {
       const defaultView: AuthModalView =
-        state.pendingRecoveryCode !== null
-          ? 'recovery_code'
-          : (action.view ?? (state.currentUser ? 'account' : 'login'));
+        action.view ??
+        (state.currentUser
+          ? 'account'
+          : state.pendingVerificationEmail
+            ? 'verify_pending'
+            : 'login');
       return {
         ...state,
         authModalOpen: true,
@@ -723,9 +970,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'SET_AUTH_MODAL_VIEW': {
-      if (state.pendingRecoveryCode !== null && !state.recoveryCodeSavedChecked) {
-        return state;
-      }
       return {
         ...state,
         authModalView: action.view,
@@ -733,24 +977,26 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
     }
 
-    case 'SET_RECOVERY_CODE_SAVED_CHECKED': {
+    case 'REGISTRATION_VERIFICATION_SENT': {
       return {
         ...state,
-        recoveryCodeSavedChecked: action.checked,
+        authModalOpen: true,
+        authModalView: 'verify_pending',
+        pendingVerificationEmail: action.email,
+        pendingVerificationPseudonym: action.pseudonym,
+        authError: null,
       };
     }
 
     case 'CLOSE_AUTH_MODAL': {
-      if (state.pendingRecoveryCode !== null && !state.recoveryCodeSavedChecked) {
-        return state;
-      }
       return {
         ...state,
         authModalOpen: false,
-        pendingRecoveryCode: null,
-        recoveryCodeSavedChecked: false,
         authError: null,
-        pendingIntent: state.currentUser === null ? null : state.pendingIntent,
+        pendingIntent:
+          state.currentUser === null && state.pendingVerificationEmail === null
+            ? null
+            : state.pendingIntent,
       };
     }
 
@@ -762,21 +1008,15 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'AUTH_SUCCEEDED': {
-      const nextRecoveryCode: string | null =
-        action.recoveryCode !== undefined && action.recoveryCode.length > 0
-          ? action.recoveryCode
-          : null;
-      const hasRecoveryCode = nextRecoveryCode !== null;
-
       return {
         ...state,
         currentUser: action.user,
         viewportRefreshSeq: state.viewportRefreshSeq + 1,
         authError: null,
-        authModalOpen: hasRecoveryCode,
-        authModalView: hasRecoveryCode ? 'recovery_code' : 'account',
-        pendingRecoveryCode: nextRecoveryCode,
-        recoveryCodeSavedChecked: false,
+        authModalOpen: false,
+        authModalView: 'account',
+        pendingVerificationEmail: null,
+        pendingVerificationPseudonym: null,
       };
     }
 
@@ -810,8 +1050,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         isSubmittingDraft: false,
         authModalOpen: false,
         authModalView: 'login',
-        pendingRecoveryCode: null,
-        recoveryCodeSavedChecked: false,
+        pendingVerificationEmail: null,
+        pendingVerificationPseudonym: null,
         authError: null,
         pendingIntent: null,
       };
@@ -838,8 +1078,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         isSubmittingDraft: false,
         authModalOpen: false,
         authModalView: 'login',
-        pendingRecoveryCode: null,
-        recoveryCodeSavedChecked: false,
+        pendingVerificationEmail: null,
+        pendingVerificationPseudonym: null,
         authError: null,
         pendingIntent: null,
       };

@@ -11,6 +11,7 @@ import {
   PolygonCollectionResponseSchema,
   PolygonFeatureSchema,
   RegisterResponseSchema,
+  SessionResponseSchema,
   VoteResponseSchema,
   type PolygonFeature,
 } from '@entsiegelung/shared';
@@ -57,17 +58,37 @@ async function registerUser(
   pseudonym: string,
   remoteAddress = '198.51.100.10',
 ): Promise<{ userId: string; pseudonym: string; sessionToken: string }> {
+  const email = `${pseudonym.toLowerCase()}@example.org`;
   const res = await app.inject({
     method: 'POST',
     url: '/api/v1/auth/register',
     remoteAddress,
     payload: {
       pseudonym,
+      email,
       password: 'valid-password-123',
+      acceptedPrivacyPolicy: true,
     },
   });
   assert.equal(res.statusCode, 201);
-  const body = RegisterResponseSchema.parse(res.json());
+  RegisterResponseSchema.parse(res.json());
+
+  await app.pool.query(
+    'UPDATE users SET email_verified_at = clock_timestamp() WHERE LOWER(email) = $1',
+    [email],
+  );
+
+  const loginRes = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/login',
+    remoteAddress,
+    payload: {
+      identifier: pseudonym,
+      password: 'valid-password-123',
+    },
+  });
+  assert.equal(loginRes.statusCode, 200);
+  const body = SessionResponseSchema.parse(loginRes.json());
   return {
     userId: body.user.id,
     pseudonym: body.user.pseudonym,
@@ -435,6 +456,7 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
       logger: createLogger({ enabled: false }),
       rateLimits: {
         register: { max: 500, timeWindow: '1 hour' },
+        loginIp: { max: 500, timeWindow: '15 minutes' },
         deleteAccount: { max: 500, timeWindow: '1 hour' },
         createPolygon: { max: 500, timeWindow: '1 minute' },
         vote: { max: 1000, timeWindow: '1 minute' },
@@ -801,12 +823,32 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
         remoteAddress: '198.51.100.72',
         payload: {
           pseudonym: 'SpamAbuser',
+          email: 'fresh-spam@example.org',
           password: 'another-password-123',
+          acceptedPrivacyPolicy: true,
         },
       });
       assert.equal(reRegActiveBanned.statusCode, 403);
       assert.equal(
         ApiErrorEnvelopeSchema.parse(reRegActiveBanned.json()).error.code,
+        'FORBIDDEN_PSEUDONYM_BANNED',
+      );
+
+      // Re-registering with the banned user's email under a new pseudonym ALSO fails with 403
+      const reRegBannedEmail = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        remoteAddress: '198.51.100.72',
+        payload: {
+          pseudonym: 'FreshAlias99',
+          email: 'spamabuser@example.org',
+          password: 'another-password-123',
+          acceptedPrivacyPolicy: true,
+        },
+      });
+      assert.equal(reRegBannedEmail.statusCode, 403);
+      assert.equal(
+        ApiErrorEnvelopeSchema.parse(reRegBannedEmail.json()).error.code,
         'FORBIDDEN_PSEUDONYM_BANNED',
       );
 
@@ -826,7 +868,9 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
         remoteAddress: '198.51.100.73',
         payload: {
           pseudonym: 'preemptivetroll',
+          email: 'troll@example.org',
           password: 'another-password-123',
+          acceptedPrivacyPolicy: true,
         },
       });
       assert.equal(regPreemptiveBanned.statusCode, 403);
@@ -849,7 +893,12 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
         method: 'POST',
         url: '/api/v1/auth/register',
         remoteAddress: '198.51.100.76',
-        payload: { pseudonym: 'FormerUser', password: 'another-password-123' },
+        payload: {
+          pseudonym: 'FormerUser',
+          email: 'former2@example.org',
+          password: 'another-password-123',
+          acceptedPrivacyPolicy: true,
+        },
       });
       assert.equal(postSelfDelReg.statusCode, 409);
 
@@ -865,7 +914,12 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
         method: 'POST',
         url: '/api/v1/auth/register',
         remoteAddress: '198.51.100.77',
-        payload: { pseudonym: 'FormerUser', password: 'another-password-123' },
+        payload: {
+          pseudonym: 'FormerUser',
+          email: 'former3@example.org',
+          password: 'another-password-123',
+          acceptedPrivacyPolicy: true,
+        },
       });
       assert.equal(postBanUpgradeReg.statusCode, 403);
       assert.equal(
@@ -974,7 +1028,9 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
         remoteAddress: '198.51.100.74',
         payload: {
           pseudonym: 'CliBannedActor',
+          email: 'clibanned@example.org',
           password: 'another-password-123',
+          acceptedPrivacyPolicy: true,
         },
       });
       assert.equal(cliBanRegRes.statusCode, 403);

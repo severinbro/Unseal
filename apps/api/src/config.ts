@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import {
   AUTH_LIMITS,
   GEOMETRY_LIMITS,
@@ -5,12 +7,25 @@ import {
   type RuntimeConfig,
 } from '@entsiegelung/shared';
 
+export interface SmtpConfig {
+  host: string | null;
+  port: number;
+  secure: boolean;
+  user: string | null;
+  pass: string | null;
+  from: string;
+}
+
 export interface EnvConfig {
   host: string;
   port: number;
   databaseUrl: string;
   trustProxy: boolean;
   corsOrigin: string;
+  publicBaseUrl: string;
+  uploadsDir: string;
+  smtp: SmtpConfig;
+  autoSeedVg250: boolean;
   osmStyleUrl: string;
   orthophoto: RuntimeConfig['orthophoto'];
   initialView: RuntimeConfig['initialView'];
@@ -18,6 +33,7 @@ export interface EnvConfig {
   sessionTtlDays: number;
   disclaimerText: string;
   abuseContact: string | null;
+  privacyPolicyUrl: string;
   runtimeConfig: RuntimeConfig;
 }
 
@@ -132,6 +148,42 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
   const corsOrigin = env.CORS_ORIGIN?.trim() || '*';
   const osmStyleUrl = env.OSM_STYLE_URL?.trim() || DEFAULT_OSM_STYLE_URL;
 
+  const defaultBasePort = port === 80 || port === 443 ? '' : `:${port || 3000}`;
+  const rawPublicBaseUrl =
+    env.PUBLIC_BASE_URL?.trim() || `http://127.0.0.1${defaultBasePort}`;
+  const publicBaseUrl = rawPublicBaseUrl.replace(/\/+$/, '');
+
+  const uploadsDir = env.UPLOADS_DIR?.trim()
+    ? path.resolve(env.UPLOADS_DIR.trim())
+    : path.resolve(process.cwd(), 'uploads');
+
+  const smtpHostRaw = env.SMTP_HOST?.trim() ?? '';
+  const smtpPort = parseIntSetting(env.SMTP_PORT, 587, 'SMTP_PORT');
+  const smtpSecure = parseBooleanSetting(
+    env.SMTP_SECURE,
+    smtpPort === 465,
+    'SMTP_SECURE',
+  );
+  const smtpUserRaw = env.SMTP_USER?.trim() ?? '';
+  const smtpPassRaw = env.SMTP_PASS ?? '';
+  const smtpFrom =
+    env.SMTP_FROM?.trim() || 'Unseal <noreply@localhost>';
+
+  const smtp: SmtpConfig = {
+    host: smtpHostRaw.length > 0 ? smtpHostRaw : null,
+    port: smtpPort,
+    secure: smtpSecure,
+    user: smtpUserRaw.length > 0 ? smtpUserRaw : null,
+    pass: smtpPassRaw.length > 0 ? smtpPassRaw : null,
+    from: smtpFrom,
+  };
+
+  const autoSeedVg250 = parseBooleanSetting(
+    env.AUTO_SEED_VG250,
+    false,
+    'AUTO_SEED_VG250',
+  );
+
   const tileSize = parseOrthophotoTileSize(env.ORTHOPHOTO_TILE_SIZE);
   const orthophotoBounds = parseOrthophotoBounds(env.ORTHOPHOTO_BOUNDS);
   const orthophotoMaxZoom = parseIntSetting(env.ORTHOPHOTO_MAX_ZOOM, 20, 'ORTHOPHOTO_MAX_ZOOM');
@@ -178,6 +230,8 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
   const disclaimerText = env.DISCLAIMER_TEXT?.trim() || DEFAULT_DISCLAIMER_TEXT;
   const rawAbuseContact = env.ABUSE_CONTACT?.trim() ?? '';
   const abuseContact = rawAbuseContact.length > 0 ? rawAbuseContact : null;
+  const privacyPolicyUrl =
+    env.PRIVACY_POLICY_URL?.trim() || `${publicBaseUrl}/auth/privacy`;
 
   const runtimeConfig = RuntimeConfigSchema.parse({
     osmStyleUrl,
@@ -198,6 +252,7 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     },
     disclaimerText,
     abuseContact,
+    privacyPolicyUrl,
   });
 
   return {
@@ -206,6 +261,10 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     databaseUrl,
     trustProxy,
     corsOrigin,
+    publicBaseUrl,
+    uploadsDir,
+    smtp,
+    autoSeedVg250,
     osmStyleUrl: runtimeConfig.osmStyleUrl,
     orthophoto: runtimeConfig.orthophoto,
     initialView: runtimeConfig.initialView,
@@ -213,6 +272,7 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     sessionTtlDays,
     disclaimerText: runtimeConfig.disclaimerText,
     abuseContact: runtimeConfig.abuseContact,
+    privacyPolicyUrl,
     runtimeConfig,
   };
 }

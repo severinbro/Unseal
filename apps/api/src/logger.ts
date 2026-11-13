@@ -42,9 +42,13 @@ export function createLogger(options: CreateLoggerOptions = {}): Logger {
     },
     serializers: {
       req(req: SerializableRequest) {
+        const safeUrl =
+          typeof req.url === 'string'
+            ? req.url.replace(/([?&]token=)[^&]+/gi, '$1[Redacted]')
+            : req.url;
         const serialized: Record<string, unknown> = {
           method: req.method,
-          url: req.url,
+          url: safeUrl,
         };
         if (req.id !== undefined) {
           serialized.id = req.id;

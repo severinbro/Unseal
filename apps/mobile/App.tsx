@@ -5,14 +5,16 @@
  * and operator deployment are defined in `README.md`, `package.json`,
  * `package-lock.json`, `tsconfig.base.json`, `tsconfig.e2e.json`, `app.json`,
  * `LICENSE`, `Dockerfile`, `docker-compose.yml`, `.env.example`, `.gitignore`,
- * `.dockerignore`, and `001_initial_schema.sql`.
+ * `.dockerignore`, `001_initial_schema.sql`, and `002_v2_features.sql`.
  */
 import {
   ApiError,
   type LoginRequest,
   type PatchPolygonRequest,
+  type PhotoVoteResponse,
   type PolygonFeature,
-  type RecoverRequest,
+  type PolygonPhoto,
+  type PolygonStatus,
   type RegisterRequest,
 } from '@entsiegelung/shared';
 import React, {
@@ -40,6 +42,7 @@ import { PpgisApiClient } from './src/api/client';
 import { AuthAndAccountModal } from './src/components/AuthAndAccountModal';
 import { DisclaimerBanner } from './src/components/DisclaimerBanner';
 import { DrawingToolbar } from './src/components/DrawingToolbar';
+import { GnssMapButton } from './src/components/GnssMapButton';
 import { MapControlsBar } from './src/components/MapControlsBar';
 import { PolygonInspectorSheet } from './src/components/PolygonInspectorSheet';
 import {
@@ -65,6 +68,11 @@ import {
   dedupeFeatureIdsPreservingOrder,
   type MapCanvasProps,
 } from './src/map';
+import {
+  pickGeoImportDocument,
+  pickPhotoFromCamera,
+  pickPhotoFromLibrary,
+} from './src/media/pickers';
 import {
   appReducer,
   initialAppState,
@@ -139,10 +147,14 @@ export function App(props: AppProps = {}): React.JSX.Element {
     };
   });
   const [isLocating, setIsLocating] = useState<boolean>(false);
+  const [isImporting, setIsImporting] = useState<boolean>(false);
   const [locationNotice, setLocationNotice] = useState<string | null>(null);
 
   const localeRef = useRef<Locale>(state.locale);
   localeRef.current = state.locale;
+
+  const featuresRef = useRef<PolygonFeature[]>(state.features);
+  featuresRef.current = state.features;
 
   const windowDimensions = useWindowDimensions();
   const layout = useMemo(
@@ -274,7 +286,6 @@ export function App(props: AppProps = {}): React.JSX.Element {
     if (
       state.currentUser === null ||
       state.authModalOpen ||
-      state.pendingRecoveryCode !== null ||
       state.pendingIntent === null
     ) {
       return;
@@ -287,8 +298,39 @@ export function App(props: AppProps = {}): React.JSX.Element {
       try {
         if (activeIntent.type === 'SUBMIT_DRAFT') {
           const created = await apiClient.createPolygon(activeIntent.payload);
+          let uploadedPhotosCount = created.properties.photoCount;
+          let photoUploadWarning: string | null = null;
+
+          for (const photoFile of activeIntent.photos) {
+            try {
+              await apiClient.uploadPolygonPhoto(created.id, photoFile);
+              uploadedPhotosCount += 1;
+            } catch (photoErr: unknown) {
+              const activeLocale = localeRef.current;
+              const fallback =
+                getTranslations(activeLocale).inspector.photoErrorFallback;
+              photoUploadWarning = localizeError(
+                photoErr,
+                fallback,
+                activeLocale,
+              );
+            }
+          }
+
           if (!cancelled) {
-            dispatch({ type: 'POLYGON_CREATED', feature: created });
+            dispatch({
+              type: 'POLYGON_CREATED',
+              feature: {
+                ...created,
+                properties: {
+                  ...created.properties,
+                  photoCount: uploadedPhotosCount,
+                },
+              },
+            });
+            if (photoUploadWarning) {
+              setLocationNotice(photoUploadWarning);
+            }
           }
         } else {
           const voteResult = await apiClient.putVote(
@@ -327,11 +369,11 @@ export function App(props: AppProps = {}): React.JSX.Element {
     storage,
     state.currentUser,
     state.authModalOpen,
-    state.pendingRecoveryCode,
     state.pendingIntent,
   ]);
 
-  const tApp = getTranslations(state.locale).app;
+  const dict = getTranslations(state.locale);
+  const tApp = dict.app;
   const mapControls = deriveMapControlsModel(state);
   const authModal = deriveAuthModalModel(state);
   const drawingToolbar = deriveDrawingToolbarModel(state);
@@ -399,14 +441,91 @@ export function App(props: AppProps = {}): React.JSX.Element {
       });
   }, [state.locale]);
 
+  const handleTakeDraftPhoto = useCallback((): void => {
+    void pickPhotoFromCamera(state.locale).then((outcome) => {
+      if (outcome.status === 'picked') {
+        dispatch({
+          type: 'ADD_DRAFT_PHOTO',
+          photo: {
+            id: `draft-photo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            previewUri: outcome.value.previewUri,
+            file: outcome.value.file,
+          },
+        });
+      } else if (outcome.status === 'error') {
+        setLocationNotice(outcome.message);
+      }
+    });
+  }, [state.locale]);
+
+  const handlePickDraftPhoto = useCallback((): void => {
+    void pickPhotoFromLibrary(state.locale).then((outcome) => {
+      if (outcome.status === 'picked') {
+        dispatch({
+          type: 'ADD_DRAFT_PHOTO',
+          photo: {
+            id: `draft-photo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            previewUri: outcome.value.previewUri,
+            file: outcome.value.file,
+          },
+        });
+      } else if (outcome.status === 'error') {
+        setLocationNotice(outcome.message);
+      }
+    });
+  }, [state.locale]);
+
+  const handleAdminImport = useCallback((): void => {
+    const activeLocale = state.locale;
+    void (async () => {
+      const picked = await pickGeoImportDocument(activeLocale);
+      if (picked.status === 'canceled') {
+        return;
+      }
+      if (picked.status === 'error') {
+        setLocationNotice(picked.message);
+        return;
+      }
+
+      setIsImporting(true);
+      setLocationNotice(null);
+      try {
+        const result = await apiClient.importPolygonsFile(picked.value);
+        dispatch({ type: 'REFRESH_VIEWPORT_FEATURES' });
+        setLocationNotice(
+          getTranslations(activeLocale).controls.importSuccess(
+            result.importedCount,
+            result.skippedCount,
+          ),
+        );
+      } catch (err: unknown) {
+        if (await handleSessionExpiredError(err)) {
+          return;
+        }
+        const fallback =
+          getTranslations(activeLocale).controls.importErrorFallback;
+        setLocationNotice(localizeError(err, fallback, activeLocale));
+      } finally {
+        setIsImporting(false);
+      }
+    })();
+  }, [apiClient, handleSessionExpiredError, state.locale]);
+
   const handleRegister = useCallback(
     async (input: RegisterRequest): Promise<void> => {
       const registered = await apiClient.register(input);
       dispatch({
-        type: 'AUTH_SUCCEEDED',
-        user: registered.user,
-        recoveryCode: registered.recoveryCode,
+        type: 'REGISTRATION_VERIFICATION_SENT',
+        email: registered.email,
+        pseudonym: registered.pseudonym,
       });
+    },
+    [apiClient],
+  );
+
+  const handleResendVerification = useCallback(
+    async (identifier: string): Promise<void> => {
+      await apiClient.resendVerification(identifier);
     },
     [apiClient],
   );
@@ -422,14 +541,9 @@ export function App(props: AppProps = {}): React.JSX.Element {
     [apiClient],
   );
 
-  const handleRecover = useCallback(
-    async (input: RecoverRequest): Promise<void> => {
-      const recovered = await apiClient.recover(input);
-      dispatch({
-        type: 'AUTH_SUCCEEDED',
-        user: recovered.user,
-        recoveryCode: recovered.recoveryCode,
-      });
+  const handleForgotPassword = useCallback(
+    async (email: string): Promise<void> => {
+      await apiClient.forgotPassword(email);
     },
     [apiClient],
   );
@@ -503,6 +617,21 @@ export function App(props: AppProps = {}): React.JSX.Element {
     [apiClient, handleSessionExpiredError],
   );
 
+  const handlePatchPolygonStatus = useCallback(
+    async (polygonId: string, status: PolygonStatus): Promise<void> => {
+      try {
+        const updated = await apiClient.patchPolygonStatus(polygonId, status);
+        dispatch({ type: 'POLYGON_UPDATED', feature: updated });
+      } catch (err: unknown) {
+        if (await handleSessionExpiredError(err)) {
+          return;
+        }
+        throw err;
+      }
+    },
+    [apiClient, handleSessionExpiredError],
+  );
+
   const handleDeletePolygon = useCallback(
     async (polygonId: string): Promise<void> => {
       try {
@@ -516,6 +645,136 @@ export function App(props: AppProps = {}): React.JSX.Element {
       }
     },
     [apiClient, handleSessionExpiredError],
+  );
+
+  const handleListPolygonPhotos = useCallback(
+    async (polygonId: string): Promise<PolygonPhoto[]> => {
+      const response = await apiClient.listPolygonPhotos(polygonId);
+      dispatch({
+        type: 'POLYGON_PHOTO_COUNT_SET',
+        polygonId,
+        photoCount: response.photos.length,
+      });
+      return response.photos;
+    },
+    [apiClient],
+  );
+
+  const handleInspectorUploadCamera = useCallback(
+    async (polygonId: string): Promise<PolygonPhoto | null> => {
+      const picked = await pickPhotoFromCamera(localeRef.current);
+      if (picked.status === 'canceled') {
+        return null;
+      }
+      if (picked.status === 'error') {
+        throw new Error(picked.message);
+      }
+      try {
+        const uploaded = await apiClient.uploadPolygonPhoto(
+          polygonId,
+          picked.value.file,
+        );
+        const currentCount =
+          featuresRef.current.find((f) => f.id === polygonId)?.properties
+            .photoCount ?? 0;
+        dispatch({
+          type: 'POLYGON_PHOTO_COUNT_SET',
+          polygonId,
+          photoCount: currentCount + 1,
+        });
+        return uploaded;
+      } catch (err: unknown) {
+        if (await handleSessionExpiredError(err)) {
+          return null;
+        }
+        throw err;
+      }
+    },
+    [apiClient, handleSessionExpiredError],
+  );
+
+  const handleInspectorUploadLibrary = useCallback(
+    async (polygonId: string): Promise<PolygonPhoto | null> => {
+      const picked = await pickPhotoFromLibrary(localeRef.current);
+      if (picked.status === 'canceled') {
+        return null;
+      }
+      if (picked.status === 'error') {
+        throw new Error(picked.message);
+      }
+      try {
+        const uploaded = await apiClient.uploadPolygonPhoto(
+          polygonId,
+          picked.value.file,
+        );
+        const currentCount =
+          featuresRef.current.find((f) => f.id === polygonId)?.properties
+            .photoCount ?? 0;
+        dispatch({
+          type: 'POLYGON_PHOTO_COUNT_SET',
+          polygonId,
+          photoCount: currentCount + 1,
+        });
+        return uploaded;
+      } catch (err: unknown) {
+        if (await handleSessionExpiredError(err)) {
+          return null;
+        }
+        throw err;
+      }
+    },
+    [apiClient, handleSessionExpiredError],
+  );
+
+  const handleVotePhoto = useCallback(
+    async (photoId: string, value: 1 | -1): Promise<PhotoVoteResponse> => {
+      try {
+        return await apiClient.putPhotoVote(photoId, value);
+      } catch (err: unknown) {
+        await handleSessionExpiredError(err);
+        throw err;
+      }
+    },
+    [apiClient, handleSessionExpiredError],
+  );
+
+  const handleClearPhotoVote = useCallback(
+    async (photoId: string): Promise<PhotoVoteResponse> => {
+      try {
+        return await apiClient.deletePhotoVote(photoId);
+      } catch (err: unknown) {
+        await handleSessionExpiredError(err);
+        throw err;
+      }
+    },
+    [apiClient, handleSessionExpiredError],
+  );
+
+  const handleDeletePhoto = useCallback(
+    async (photoId: string, polygonId: string): Promise<void> => {
+      try {
+        await apiClient.deletePhoto(photoId);
+        const currentCount =
+          featuresRef.current.find((f) => f.id === polygonId)?.properties
+            .photoCount ?? 1;
+        dispatch({
+          type: 'POLYGON_PHOTO_COUNT_SET',
+          polygonId,
+          photoCount: Math.max(0, currentCount - 1),
+        });
+      } catch (err: unknown) {
+        if (await handleSessionExpiredError(err)) {
+          return;
+        }
+        throw err;
+      }
+    },
+    [apiClient, handleSessionExpiredError],
+  );
+
+  const resolveUploadUrl = useCallback(
+    (relativePath: string) => apiClient.resolveUploadUrl(relativePath),
+    [apiClient],
   );
 
   if (state.configStatus === 'loading') {
@@ -563,6 +822,9 @@ export function App(props: AppProps = {}): React.JSX.Element {
     mapControls.showZoomInPrompt ||
     mapControls.showTruncatedNotice;
 
+  const privacyPolicyUrl =
+    state.config.privacyPolicyUrl ?? apiClient.getPrivacyPolicyUrl();
+
   const activePanelContent = hasActivePanel ? (
     <ScrollView
       keyboardShouldPersistTaps="handled"
@@ -575,10 +837,17 @@ export function App(props: AppProps = {}): React.JSX.Element {
         compact={layout.isCompact}
         onUndoVertex={() => dispatch({ type: 'UNDO_VERTEX' })}
         onCloseRing={() => dispatch({ type: 'CLOSE_RING' })}
+        onAdvanceToDetails={() => dispatch({ type: 'ADVANCE_TO_DETAILS' })}
+        onBackToGeometry={() => dispatch({ type: 'BACK_TO_GEOMETRY' })}
         onSelectSurfaceType={(surfaceType) =>
           dispatch({ type: 'SET_DRAFT_META', surfaceType })
         }
         onChangeNote={(note) => dispatch({ type: 'SET_DRAFT_META', note })}
+        onTakeDraftPhoto={handleTakeDraftPhoto}
+        onPickDraftPhoto={handlePickDraftPhoto}
+        onRemoveDraftPhoto={(photoId) =>
+          dispatch({ type: 'REMOVE_DRAFT_PHOTO', photoId })
+        }
         onRequestDiscard={() => dispatch({ type: 'REQUEST_DISCARD_DRAFT' })}
         onCancelDiscard={() => dispatch({ type: 'CANCEL_DISCARD_DRAFT' })}
         onConfirmDiscard={() => dispatch({ type: 'CONFIRM_DISCARD_DRAFT' })}
@@ -592,8 +861,11 @@ export function App(props: AppProps = {}): React.JSX.Element {
         disclaimerText={state.config.disclaimerText}
         abuseContact={state.config.abuseContact}
         isAuthenticated={mapControls.isAuthenticated}
+        isAdmin={mapControls.isAdmin}
         locale={state.locale}
         compact={layout.isCompact}
+        resolveUploadUrl={resolveUploadUrl}
+        onOpenAuth={() => dispatch({ type: 'OPEN_AUTH_MODAL', view: 'login' })}
         onCycleOverlap={() => dispatch({ type: 'CYCLE_OVERLAP_FEATURE' })}
         onClose={() =>
           dispatch({ type: 'SELECT_FEATURES_AT_TAP', featureIds: [] })
@@ -604,7 +876,14 @@ export function App(props: AppProps = {}): React.JSX.Element {
         onCastVote={handleCastVote}
         onClearVote={handleClearVote}
         onPatchPolygon={handlePatchPolygon}
+        onPatchPolygonStatus={handlePatchPolygonStatus}
         onDeletePolygon={handleDeletePolygon}
+        onListPhotos={handleListPolygonPhotos}
+        onUploadPhotoFromCamera={handleInspectorUploadCamera}
+        onUploadPhotoFromLibrary={handleInspectorUploadLibrary}
+        onVotePhoto={handleVotePhoto}
+        onClearPhotoVote={handleClearPhotoVote}
+        onDeletePhoto={handleDeletePhoto}
       />
     </ScrollView>
   ) : null;
@@ -618,15 +897,15 @@ export function App(props: AppProps = {}): React.JSX.Element {
         controls={mapControls}
         proposalCount={state.features.length}
         exportGeoJsonUrl={apiClient.getExportGeoJsonUrl()}
-        isLocating={isLocating}
+        isImporting={isImporting}
         tier={layout.tier}
         onToggleLocale={handleToggleLocale}
         onSetBasemapMode={(mode) =>
           dispatch({ type: 'SET_BASEMAP_MODE', mode })
         }
-        onLocateMe={handleLocateMe}
         onStartDraw={() => dispatch({ type: 'START_DRAW' })}
         onOpenAccount={() => dispatch({ type: 'OPEN_AUTH_MODAL' })}
+        onImportPress={handleAdminImport}
         onExportError={(message) => setLocationNotice(message)}
       />
 
@@ -647,6 +926,12 @@ export function App(props: AppProps = {}): React.JSX.Element {
             onTileError={handleTileError}
           />
         </View>
+
+        <GnssMapButton
+          locale={state.locale}
+          isLocating={isLocating}
+          onPress={handleLocateMe}
+        />
 
         {hasVisibleBanner ? (
           <View
@@ -709,6 +994,15 @@ export function App(props: AppProps = {}): React.JSX.Element {
               />
               <Text style={styles.legendLabel}>{tApp.legendContested}</Text>
             </View>
+            <View style={styles.legendItem}>
+              <View
+                style={[
+                  styles.legendSwatch,
+                  { backgroundColor: PALETTE.finishedDot },
+                ]}
+              />
+              <Text style={styles.legendLabel}>{tApp.legendFinished}</Text>
+            </View>
           </View>
         )}
 
@@ -770,21 +1064,17 @@ export function App(props: AppProps = {}): React.JSX.Element {
             >
               <AuthAndAccountModal
                 modal={authModal}
+                privacyPolicyUrl={privacyPolicyUrl}
                 locale={state.locale}
                 compact={layout.isCompact}
                 onSelectView={(view) =>
                   dispatch({ type: 'SET_AUTH_MODAL_VIEW', view })
                 }
-                onToggleRecoveryCodeSaved={(checked) =>
-                  dispatch({
-                    type: 'SET_RECOVERY_CODE_SAVED_CHECKED',
-                    checked,
-                  })
-                }
                 onClose={() => dispatch({ type: 'CLOSE_AUTH_MODAL' })}
                 onRegister={handleRegister}
+                onResendVerification={handleResendVerification}
                 onLogin={handleLogin}
-                onRecover={handleRecover}
+                onForgotPassword={handleForgotPassword}
                 onLogout={handleLogout}
                 onDeleteAccount={handleDeleteAccount}
               />
@@ -868,7 +1158,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 10,
     left: 10,
-    right: 58,
+    right: 68,
     maxWidth: 560,
     zIndex: 15,
   },
@@ -876,9 +1166,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 10,
     top: 10,
+    maxWidth: '76%',
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: RADII.pill,

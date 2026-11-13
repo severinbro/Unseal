@@ -1,6 +1,9 @@
 node_modules
 dist
+dist-web
+uploads
 .env
+.env.vps
 .expo
 web-build
 .swarm

@@ -13,6 +13,9 @@ RUN npm prune --omit=dev --workspace=@entsiegelung/shared --workspace=@entsiegel
 FROM node:24-bookworm-slim
 WORKDIR /app
 ENV NODE_ENV=production
+ENV UPLOADS_DIR=/var/lib/entsiegelung/uploads
+
+RUN mkdir -p /var/lib/entsiegelung/uploads && chown -R node:node /var/lib/entsiegelung
 
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/node_modules ./node_modules
@@ -22,5 +25,6 @@ COPY --from=build /app/apps/api/package.json ./apps/api/package.json
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY --from=build /app/apps/api/migrations ./apps/api/migrations
 
+USER node
 EXPOSE 3000
 CMD ["sh", "-c", "node apps/api/dist/db/migrate.js && node apps/api/dist/server.js"]

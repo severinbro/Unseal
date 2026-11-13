@@ -1,6 +1,14 @@
 import { z } from 'zod';
 
-import { AUTH_LIMITS, GEOMETRY_LIMITS, SURFACE_TYPES } from './constants.js';
+import {
+  AUTH_LIMITS,
+  GEOMETRY_LIMITS,
+  MUNICIPALITY_NORMS,
+  POLYGON_STATUSES,
+  SURFACE_TYPES,
+  USER_ROLES,
+  type PolygonStatus,
+} from './constants.js';
 import { ApiError } from './errors.js';
 import { checkPolygonRingStructure } from './geometry.js';
 
@@ -10,14 +18,25 @@ const BBOX_SPAN_TOLERANCE = 1e-9;
 
 const IsoDateTimeSchema = z.string().datetime({ offset: true });
 
-const PseudonymSchema = z
+export const PseudonymSchema = z
   .string()
   .regex(
     AUTH_LIMITS.PSEUDONYM_REGEX,
     'Pseudonym must be 3 to 32 characters containing only letters, digits, underscores, or hyphens.',
   );
 
-const PasswordSchema = z.string().superRefine((password, ctx) => {
+export const EmailSchema = z
+  .string()
+  .trim()
+  .min(3, 'Email address is required.')
+  .max(
+    AUTH_LIMITS.MAX_EMAIL_LENGTH,
+    `Email must be at most ${AUTH_LIMITS.MAX_EMAIL_LENGTH} characters.`,
+  )
+  .email('A valid email address is required.')
+  .transform((email) => email.toLowerCase());
+
+export const PasswordSchema = z.string().superRefine((password, ctx) => {
   if (password.length < AUTH_LIMITS.MIN_PASSWORD_LENGTH) {
     ctx.addIssue({
       code: z.ZodIssueCode.too_small,
@@ -45,6 +64,31 @@ const PasswordSchema = z.string().superRefine((password, ctx) => {
   }
 });
 
+const LoginIdentifierSchema = z
+  .string()
+  .trim()
+  .min(3, 'Pseudonym or email must be at least 3 characters.')
+  .max(AUTH_LIMITS.MAX_EMAIL_LENGTH)
+  .superRefine((value, ctx) => {
+    if (value.includes('@')) {
+      const emailCheck = z.string().email().safeParse(value);
+      if (!emailCheck.success) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Please enter a valid email address or pseudonym.',
+        });
+      }
+      return;
+    }
+    if (!AUTH_LIMITS.PSEUDONYM_REGEX.test(value)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'Pseudonym must be 3 to 32 characters containing only letters, digits, underscores, or hyphens.',
+      });
+    }
+  });
+
 export function normalizeRecoveryCode(input: string): string {
   return input.replace(/[-\s]/g, '').toUpperCase();
 }
@@ -52,20 +96,44 @@ export function normalizeRecoveryCode(input: string): string {
 export const RegisterRequestSchema = z
   .object({
     pseudonym: PseudonymSchema,
+    email: EmailSchema,
     password: PasswordSchema,
+    acceptedPrivacyPolicy: z.literal(true, {
+      errorMap: () => ({
+        message: 'Privacy policy consent is required to register.',
+      }),
+    }),
   })
   .strict();
 
-export type RegisterRequest = z.infer<typeof RegisterRequestSchema>;
+export type RegisterRequest = z.input<typeof RegisterRequestSchema>;
 
 export const LoginRequestSchema = z
-  .object({
-    pseudonym: PseudonymSchema,
-    password: PasswordSchema,
-  })
-  .strict();
+  .union([
+    z
+      .object({
+        identifier: LoginIdentifierSchema,
+        password: PasswordSchema,
+      })
+      .strict()
+      .transform((val) => ({
+        identifier: val.identifier,
+        password: val.password,
+      })),
+    z
+      .object({
+        pseudonym: PseudonymSchema,
+        password: PasswordSchema,
+      })
+      .strict()
+      .transform((val) => ({
+        identifier: val.pseudonym,
+        password: val.password,
+      })),
+  ]);
 
-export type LoginRequest = z.infer<typeof LoginRequestSchema>;
+export type LoginRequest = z.input<typeof LoginRequestSchema>;
+export type ParsedLoginRequest = z.output<typeof LoginRequestSchema>;
 
 export const RecoverRequestSchema = z
   .object({
@@ -77,19 +145,65 @@ export const RecoverRequestSchema = z
 
 export type RecoverRequest = z.infer<typeof RecoverRequestSchema>;
 
+export const EmailActionRequestSchema = z
+  .object({
+    email: EmailSchema,
+  })
+  .strict();
+
+export type EmailActionRequest = z.input<typeof EmailActionRequestSchema>;
+
+export const EmailActionResponseSchema = z.object({
+  status: z.literal('ok'),
+  message: z.string().min(1),
+});
+
+export type EmailActionResponse = z.infer<typeof EmailActionResponseSchema>;
+
+export const VerifyEmailRequestSchema = z
+  .object({
+    token: z.string().trim().min(16).max(256),
+  })
+  .strict();
+
+export type VerifyEmailRequest = z.infer<typeof VerifyEmailRequestSchema>;
+
+export const VerifyEmailResponseSchema = z.object({
+  status: z.literal('verified'),
+  pseudonym: PseudonymSchema,
+});
+
+export type VerifyEmailResponse = z.infer<typeof VerifyEmailResponseSchema>;
+
+export const ResetPasswordRequestSchema = z
+  .object({
+    token: z.string().trim().min(16).max(256),
+    newPassword: PasswordSchema,
+  })
+  .strict();
+
+export type ResetPasswordRequest = z.infer<typeof ResetPasswordRequestSchema>;
+
+export const ResetPasswordResponseSchema = z.object({
+  status: z.literal('password_reset'),
+});
+
+export type ResetPasswordResponse = z.infer<typeof ResetPasswordResponseSchema>;
+
 export const AuthUserSchema = z.object({
   id: z.string().uuid(),
   pseudonym: PseudonymSchema,
+  email: z.string().email().nullable().optional().default(null),
+  role: z.enum(USER_ROLES).optional().default('user'),
   createdAt: IsoDateTimeSchema,
 });
 
-export type AuthUser = z.infer<typeof AuthUserSchema>;
+export type AuthUser = z.output<typeof AuthUserSchema>;
 
 export const RegisterResponseSchema = z.object({
-  user: AuthUserSchema,
-  sessionToken: z.string().min(1),
-  expiresAt: IsoDateTimeSchema,
-  recoveryCode: z.string().min(1),
+  status: z.literal('verification_email_sent'),
+  pseudonym: PseudonymSchema,
+  email: z.string().email(),
 });
 
 export type RegisterResponse = z.infer<typeof RegisterResponseSchema>;
@@ -100,7 +214,7 @@ export const SessionResponseSchema = z.object({
   expiresAt: IsoDateTimeSchema,
 });
 
-export type SessionResponse = z.infer<typeof SessionResponseSchema>;
+export type SessionResponse = z.output<typeof SessionResponseSchema>;
 
 export const HealthResponseSchema = z.object({
   status: z.literal('ok'),
@@ -157,9 +271,10 @@ export const RuntimeConfigSchema = z.object({
   }),
   disclaimerText: z.string().min(1),
   abuseContact: z.string().nullable(),
+  privacyPolicyUrl: z.string().url().nullable().optional().default(null),
 });
 
-export type RuntimeConfig = z.infer<typeof RuntimeConfigSchema>;
+export type RuntimeConfig = z.output<typeof RuntimeConfigSchema>;
 
 export const UuidParamSchema = z.union([
   z.object({ id: z.string().uuid() }),
@@ -210,6 +325,14 @@ export const PatchPolygonRequestSchema = z
 
 export type PatchPolygonRequest = z.infer<typeof PatchPolygonRequestSchema>;
 
+export const PatchPolygonStatusRequestSchema = z
+  .object({
+    status: z.enum(POLYGON_STATUSES),
+  })
+  .strict();
+
+export type PatchPolygonStatusRequest = z.infer<typeof PatchPolygonStatusRequestSchema>;
+
 export const VoteRequestSchema = z
   .object({
     value: z.union([z.literal(1), z.literal(-1)]),
@@ -227,6 +350,83 @@ export const VoteResponseSchema = z.object({
 });
 
 export type VoteResponse = z.infer<typeof VoteResponseSchema>;
+
+export const PolygonPhotoSchema = z.object({
+  id: z.string().uuid(),
+  polygonId: z.string().uuid(),
+  url: z.string().min(1),
+  thumbUrl: z.string().min(1),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  gpsVerified: z.boolean(),
+  uploaderPseudonym: z.string().min(1),
+  isUploader: z.boolean(),
+  realVotes: z.number().int().nonnegative(),
+  fakeVotes: z.number().int().nonnegative(),
+  credibilityScore: z.number().int(),
+  myVote: z.union([z.literal(-1), z.literal(0), z.literal(1)]),
+  isFlaggedFake: z.boolean(),
+  createdAt: IsoDateTimeSchema,
+});
+
+export type PolygonPhoto = z.infer<typeof PolygonPhotoSchema>;
+
+export const PolygonPhotoListResponseSchema = z.object({
+  photos: z.array(PolygonPhotoSchema),
+});
+
+export type PolygonPhotoListResponse = z.infer<typeof PolygonPhotoListResponseSchema>;
+
+export const PhotoVoteRequestSchema = z
+  .object({
+    value: z.union([z.literal(1), z.literal(-1)]),
+  })
+  .strict();
+
+export type PhotoVoteRequest = z.infer<typeof PhotoVoteRequestSchema>;
+
+export const PhotoVoteResponseSchema = z.object({
+  photoId: z.string().uuid(),
+  polygonId: z.string().uuid(),
+  realVotes: z.number().int().nonnegative(),
+  fakeVotes: z.number().int().nonnegative(),
+  credibilityScore: z.number().int(),
+  myVote: z.union([z.literal(-1), z.literal(0), z.literal(1)]),
+  isFlaggedFake: z.boolean(),
+});
+
+export type PhotoVoteResponse = z.infer<typeof PhotoVoteResponseSchema>;
+
+export const ImportPolygonsResponseSchema = z.object({
+  format: z.enum(['geojson', 'gpkg']),
+  importedCount: z.number().int().nonnegative(),
+  skippedCount: z.number().int().nonnegative(),
+  errors: z.array(
+    z.object({
+      featureIndex: z.number().int().nonnegative(),
+      reason: z.string(),
+    }),
+  ),
+});
+
+export type ImportPolygonsResponse = z.infer<typeof ImportPolygonsResponseSchema>;
+
+export function computeMunicipalityNormalizedScore(
+  score: number,
+  status: PolygonStatus,
+  municipalityAgs: string | null,
+  municipalityMaxScore: number,
+): number {
+  if (status === 'finished' || score <= 0) {
+    return 0;
+  }
+  const floor =
+    municipalityAgs !== null
+      ? MUNICIPALITY_NORMS.MIN_POSITIVE_SCORE_FLOOR
+      : MUNICIPALITY_NORMS.UNBOUNDED_FALLBACK_FLOOR;
+  const denom = Math.max(municipalityMaxScore, score, floor);
+  return Math.min(1, Math.max(0, Number((score / denom).toFixed(4))));
+}
 
 export interface BboxBounds {
   minLng: number;
@@ -354,8 +554,15 @@ export const PolygonFeatureSchema = z.object({
   properties: z.object({
     id: z.string().uuid(),
     surfaceType: z.enum(SURFACE_TYPES).catch('other'),
+    status: z.enum(POLYGON_STATUSES).optional().default('proposed'),
+    finishedAt: IsoDateTimeSchema.nullable().optional().default(null),
     note: z.string().nullable(),
     areaM2: z.number().finite().nonnegative(),
+    municipalityAgs: z.string().nullable().optional().default(null),
+    municipalityName: z.string().nullable().optional().default(null),
+    municipalityMaxScore: z.number().int().nonnegative().optional().default(0),
+    municipalityNormalizedScore: z.number().min(0).max(1).optional().default(0),
+    photoCount: z.number().int().nonnegative().optional().default(0),
     authorPseudonym: z.string().min(1),
     upvotes: z.number().int().min(0),
     downvotes: z.number().int().min(0),

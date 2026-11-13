@@ -1,0 +1,48 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	# GDPR IP minimization: discard per-request client IP access logs
+	log {
+		output discard
+	}
+
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		?X-Content-Type-Options "nosniff"
+		?Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	# 1. JSON/GeoJSON REST API, multipart GeoJSON/.gpkg imports, and photo uploads
+	handle /api/* {
+		request_body {
+			max_size 60MB
+		}
+		reverse_proxy api:3000
+	}
+
+	# 2. Hosted HTML pages for email confirmation (/auth/verify-email),
+	#    password recovery (/auth/reset-password), and GDPR policy (/auth/privacy)
+	handle /auth/* {
+		reverse_proxy api:3000
+	}
+
+	# 3. EXIF-stripped WebP polygon site photos stored on `uploads_data` volume
+	handle /uploads/* {
+		reverse_proxy api:3000
+	}
+
+	# 4. Static Expo Web frontend (if exported to `./dist-web`)
+	handle {
+		header {
+			Permissions-Policy "geolocation=(self), camera=(self), microphone=()"
+			Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https:; worker-src 'self' blob:; font-src 'self' data: https:; frame-ancestors 'none'"
+		}
+		root * /srv/www
+		try_files {path} /index.html
+		file_server
+	}
+}

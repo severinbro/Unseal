@@ -6,6 +6,7 @@ import { loadEnvConfig } from './config.js';
 import { runMigrations } from './db/migrate.js';
 import { createDbPool } from './db/pool.js';
 import { createLogger } from './logger.js';
+import { ensureMunicipalitiesSeededIfEnabled } from './municipalities/vg250.js';
 
 export async function startServer(): Promise<void> {
   const config = loadEnvConfig();
@@ -46,6 +47,14 @@ export async function startServer(): Promise<void> {
     await pool.end();
     process.exit(1);
   }
+
+  void ensureMunicipalitiesSeededIfEnabled(
+    pool,
+    config.autoSeedVg250,
+    logger,
+  ).catch((err: unknown) => {
+    logger.error({ err }, 'Background BKG VG250 municipality seed failed');
+  });
 }
 
 const isDirectExecution =

@@ -1,3 +1,4 @@
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -13,14 +14,24 @@ import { loadEnvConfig } from '../config.js';
 import { deleteOrBanUserAccount } from '../db/integrity.js';
 import { createDbPool } from '../db/pool.js';
 import { createLogger } from '../logger.js';
+import { loadVg250Municipalities } from '../municipalities/vg250.js';
 
+import type { FastifyBaseLogger } from 'fastify';
 import type pg from 'pg';
 
-export type AdminCommandName = 'ban-user' | 'delete-polygon' | 'redact-note';
+export type AdminCommandName =
+  | 'ban-user'
+  | 'delete-polygon'
+  | 'redact-note'
+  | 'grant-admin'
+  | 'revoke-admin'
+  | 'load-vg250';
 
 export interface AdminCommandResult {
   command: AdminCommandName;
   pseudonym?: string;
+  email?: string | null;
+  role?: 'user' | 'admin';
   reason?: string;
   deletedUser?: boolean;
   deletedPolygonCount?: number;
@@ -28,6 +39,8 @@ export interface AdminCommandResult {
   polygonId?: string;
   deletedPolygon?: boolean;
   redactedNote?: boolean;
+  upsertedMunicipalities?: number;
+  backfilledPolygons?: number;
 }
 
 async function rollbackPreservingError(
@@ -75,11 +88,86 @@ function parseValidatedPolygonId(raw: string | undefined): string {
   return parsed.data.id;
 }
 
+function parseUserIdentifier(raw: string | undefined): string {
+  const trimmed = raw?.trim() ?? '';
+  if (trimmed.length < 3 || trimmed.length > AUTH_LIMITS.MAX_EMAIL_LENGTH) {
+    throw new ApiError(
+      422,
+      'VALIDATION_ERROR',
+      'Please specify a valid user pseudonym or email address.',
+    );
+  }
+  return trimmed.toLowerCase();
+}
+
 export async function runAdminCommand(
   pool: pg.Pool,
   argv: string[],
+  options: { uploadsDir?: string; logger?: FastifyBaseLogger } = {},
 ): Promise<AdminCommandResult> {
   const command = argv[0];
+
+  if (command === 'grant-admin' || command === 'revoke-admin') {
+    if (argv.length !== 2) {
+      throw new ApiError(
+        422,
+        'VALIDATION_ERROR',
+        `Usage: ${command} <pseudonym-or-email>`,
+      );
+    }
+    const identifier = parseUserIdentifier(argv[1]);
+    const targetRole: 'user' | 'admin' =
+      command === 'grant-admin' ? 'admin' : 'user';
+
+    const res = await pool.query<{
+      pseudonym: string;
+      email: string | null;
+      role: 'user' | 'admin';
+    }>(
+      `UPDATE users
+       SET
+         role = $2,
+         email_verified_at = CASE
+           WHEN $2 = 'admin' THEN COALESCE(email_verified_at, clock_timestamp())
+           ELSE email_verified_at
+         END
+       WHERE LOWER(pseudonym) = $1
+          OR LOWER(email) = $1
+       RETURNING pseudonym, email, role`,
+      [identifier, targetRole],
+    );
+    const updated = res.rows[0];
+    if (!updated) {
+      throw new ApiError(404, 'NOT_FOUND', 'User account not found.');
+    }
+
+    return {
+      command,
+      pseudonym: updated.pseudonym,
+      email: updated.email,
+      role: updated.role,
+    };
+  }
+
+  if (command === 'load-vg250') {
+    if (argv.length > 2) {
+      throw new ApiError(
+        422,
+        'VALIDATION_ERROR',
+        'Usage: load-vg250 [localGeoJsonPathOrWfsUrl]',
+      );
+    }
+    const loaded = await loadVg250Municipalities(
+      pool,
+      argv[1],
+      options.logger,
+    );
+    return {
+      command: 'load-vg250',
+      upsertedMunicipalities: loaded.upsertedMunicipalities,
+      backfilledPolygons: loaded.backfilledPolygons,
+    };
+  }
 
   if (command === 'ban-user') {
     const pseudonymInput = parseValidatedPseudonym(argv[1]);
@@ -90,6 +178,7 @@ export async function runAdminCommand(
     const resolvedReason = hasExplicitReason ? rawReason : 'banned';
 
     const client = await pool.connect();
+    let deletedPhotoFiles: string[] = [];
     try {
       await client.query('BEGIN');
 
@@ -106,7 +195,16 @@ export async function runAdminCommand(
           mode: 'ban',
           reason: resolvedReason,
         });
+        deletedPhotoFiles = banResult.deletedPhotoFiles;
         await client.query('COMMIT');
+
+        if (options.uploadsDir && deletedPhotoFiles.length > 0) {
+          for (const fileName of deletedPhotoFiles) {
+            await fs
+              .unlink(path.join(options.uploadsDir, fileName))
+              .catch(() => undefined);
+          }
+        }
 
         return {
           command: 'ban-user',
@@ -162,6 +260,7 @@ export async function runAdminCommand(
     const polygonId = parseValidatedPolygonId(argv[1]);
 
     const client = await pool.connect();
+    let photoFiles: Array<{ file_name: string; thumb_name: string }> = [];
     try {
       await client.query('BEGIN');
 
@@ -173,20 +272,40 @@ export async function runAdminCommand(
         throw new ApiError(404, 'NOT_FOUND', 'Polygon not found.');
       }
 
+      const photosRes = await client.query<{
+        file_name: string;
+        thumb_name: string;
+      }>(
+        'SELECT file_name, thumb_name FROM polygon_photos WHERE polygon_id = $1',
+        [polygonId],
+      );
+      photoFiles = photosRes.rows;
+
       await client.query('DELETE FROM polygons WHERE id = $1', [polygonId]);
       await client.query('COMMIT');
-
-      return {
-        command: 'delete-polygon',
-        polygonId,
-        deletedPolygon: true,
-      };
     } catch (err: unknown) {
       await rollbackPreservingError(client, err);
       throw err;
     } finally {
       client.release();
     }
+
+    if (options.uploadsDir && photoFiles.length > 0) {
+      for (const pf of photoFiles) {
+        await fs
+          .unlink(path.join(options.uploadsDir, pf.file_name))
+          .catch(() => undefined);
+        await fs
+          .unlink(path.join(options.uploadsDir, pf.thumb_name))
+          .catch(() => undefined);
+      }
+    }
+
+    return {
+      command: 'delete-polygon',
+      polygonId,
+      deletedPolygon: true,
+    };
   }
 
   if (command === 'redact-note') {
@@ -233,7 +352,7 @@ export async function runAdminCommand(
   throw new ApiError(
     422,
     'VALIDATION_ERROR',
-    'Unsupported admin command. Supported commands: ban-user <pseudonym> [reason], delete-polygon <polygonId>, redact-note <polygonId>.',
+    'Unsupported admin command. Supported commands: grant-admin <user>, revoke-admin <user>, load-vg250 [source], ban-user <pseudonym> [reason], delete-polygon <polygonId>, redact-note <polygonId>.',
   );
 }
 
@@ -246,7 +365,10 @@ if (isDirectExecution) {
   const logger = createLogger();
   const pool = createDbPool(config.databaseUrl);
 
-  runAdminCommand(pool, process.argv.slice(2))
+  runAdminCommand(pool, process.argv.slice(2), {
+    uploadsDir: config.uploadsDir,
+    logger,
+  })
     .then(async (result) => {
       logger.info({ result }, 'Admin moderation command completed');
       await pool.end();

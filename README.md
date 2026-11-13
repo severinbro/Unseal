@@ -1,8 +1,24 @@
-# Entsiegelungskartierung — Open-Source Ground-Unsealing PPGIS
+# <img src="apps/mobile/assets/unseal-icon.svg" width="36" height="36" align="top" alt="Unseal Icon" /> Unseal — Open-Source Ground-Unsealing PPGIS
 
-**Entsiegelungskartierung** is an open-source Public Participation Geographic Information System (PPGIS) for **Android, iOS, and Web**. Citizens map impervious ground surfaces ("ground sealing", such as asphalt parking corners, concrete courtyards, and paved street margins) proposed for unsealing, and prioritize proposals through `+1` / `-1` community voting.
+**Unseal** is an open-source Public Participation Geographic Information System (PPGIS) for **Android, iOS, and Web** (German `de` default language with full English `en` switcher). Citizens map impervious ground surfaces ("ground sealing", such as asphalt parking corners, concrete courtyards, and paved street margins) proposed for unsealing, attach EXIF-sanitized site photos, and prioritize proposals through `+1` / `-1` community voting.
 
-Unauthenticated visitors can explore OpenStreetMap vector basemaps, toggle `EPSG:3857` aerial orthophotos beneath proposal geometries, center on their GPS position, inspect proposals, and export all proposals as RFC 7946 GeoJSON (`GET /api/v1/polygons/export.geojson`) for direct analysis in QGIS or desktop GIS tools. Contributors register zero-PII pseudonymous accounts (unique `pseudonym`, password, and one-time 32-hex recovery code — no email address, phone number, or real name) to draw validated polygons and vote.
+Unauthenticated visitors can explore OpenStreetMap vector basemaps, toggle `EPSG:3857` aerial orthophotos beneath proposal geometries, center on their position via the floating top-right **GNSS** button, inspect proposals and site photos, and export all proposals as RFC 7946 GeoJSON (`GET /api/v1/polygons/export.geojson`) for direct analysis in QGIS or desktop GIS tools.
+
+Contributors register pseudonymous accounts backed by **email link confirmation** and **VPS-hosted password recovery pages** (`/auth/verify-email`, `/auth/reset-password`, `/auth/privacy`). Email addresses are used strictly for account verification and password recovery and are **never exposed publicly** on the map, on photos, or in GeoJSON exports—only the user's chosen `pseudonym` appears.
+
+---
+
+## Key Capabilities
+
+* **2-Step Progressive Drawing Wizard & 3-Tab Inspector:**
+  * *Creation:* Step 1 (`1. Umriss`) keeps >80% of the map visible while placing polygon vertices (`2–500,000 m²`, topology & `< 2°` spike validation); Step 2 (`2. Details`) captures surface material (`Asphalt`, `Beton`, `Pflaster`, `Sonstige Versiegelung`), optional site notes, and optional camera/gallery photos.
+  * *Inspection:* Sticky summary + `+1` / `-1` voting header above 3 segmented tabs (`Übersicht` | `Fotos (N)` | `Verwaltung`).
+* **Municipality-Bounded Score Coloring (Germany `BKG VG250`):**
+  * Positive proposal scores (`score > 0`) scale along an emerald intensity gradient **bounded to each German municipality's (`vg250_gem`) own positive score range** (`municipalityNormalizedScore` in `[0, 1]`), so smaller municipalities are never drowned out by large cities like Hamburg or Berlin. Neutral (`0`) stays ochre, negative (`< 0`) terracotta, and completed unsealing projects (`finished`) render in teal (`✓ Entsiegelt`).
+* **EXIF-Stripped Site Photos, `"GPS verified"` Badge & `"Real"` / `"Fake"` Rating:**
+  * Authenticated users can shoot or upload photos during creation or on existing polygons. Server-side processing checks EXIF GPS proximity (`<= 250 m` from the polygon -> **`"GPS verified"`** badge) in memory *before* stripping 100% of EXIF/XMP/IPTC metadata and re-encoding to WebP (`sharp`). Community members can rate photos as `"Echt"` / `"Real"` (`+1`) or `"Fake"` (`-1`), automatically blurring photos flagged by consensus (`credibilityScore <= -3`).
+* **Admin Completion Workflow & `.geojson` / `.gpkg` Bulk Import:**
+  * Only `admin` accounts can mark proposals as **`finished` (`✓ Entsiegelt`)** or bulk-import `.geojson` and OGC GeoPackage (`.gpkg`, including automatic CRS reprojection to `EPSG:4326` and `MultiPolygon` splitting). Polygon deletion remains restricted strictly to the creating author (or CLI moderation).
 
 ---
 
@@ -11,231 +27,189 @@ Unauthenticated visitors can explore OpenStreetMap vector basemaps, toggle `EPSG
 ```mermaid
 flowchart LR
   subgraph Client["apps/mobile (Expo Android / iOS / Web — MPL-2.0)"]
-    UI["UI Sheets, Pure Reducers & View-Models"]
-    MC["MapCanvas (.native.tsx / .web.tsx)"]
+    UI["2-Step Wizard, 3-Tab Inspector, Pure Reducers"]
+    MC["MapCanvas (.native.tsx / .web.tsx) + GNSS Button"]
     UI --> MC
   end
   subgraph Shared["packages/shared (Compiled ESM — MPL-2.0)"]
     ZOD["Canonical Zod Wire Schemas, Errors & Draft Validator"]
   end
-  PROXY["External TLS Reverse Proxy (HTTPS + Static Expo Web)"]
-  subgraph Backend["Docker Compose Stack (2 Containers)"]
-    API["apps/api (Fastify /api/v1 — AGPL-3.0-or-later)"]
-    DB[("PostgreSQL 16 + PostGIS 3.4")]
+  subgraph VPS["VPS Docker Stack (docker-compose.vps.yml)"]
+    PROXY["Caddy 2 (Auto-HTTPS + Static Web)"]
+    API["apps/api (Fastify /api/v1 + /auth/* HTML + /uploads/* — AGPL-3.0-or-later)"]
+    DB[("PostgreSQL 16 + PostGIS 3.4 + BKG VG250")]
+    VOL[("uploads_data (EXIF-Stripped WebP)")]
+    PROXY --> API
     API --> DB
+    API --> VOL
   end
+  SMTP["Outbound SMTP Account"]
   Tiles["Configurable OSM Vector Style & EPSG:3857 Orthophoto Tiles"]
   UI -. imports .-> ZOD
   API -. imports .-> ZOD
-  UI <-->|"HTTPS JSON / GeoJSON + Bearer Session"| PROXY
-  PROXY --> API
+  UI <-->|"HTTPS JSON / Multipart + Bearer Session"| PROXY
+  API -->|"Verification & Reset Links"| SMTP
   MC -->|"HTTPS Tile GET"| Tiles
 ```
 
 * **`packages/shared` (`MPL-2.0`):** Compiled ESM package (`dist/`) exporting `camelCase` Zod request/response schemas, `ErrorCode` + `ApiError`, and client-side single-ring polygon pre-checks (`@turf/area`, `@turf/kinks`, consecutive duplicate tap deduplication, and `< 2°` fold-back spike detection).
-* **`apps/api` (`AGPL-3.0-or-later`):** Single-replica compiled Fastify `/api/v1` service backed by PostgreSQL 16 + PostGIS 3.4 (`ST_IsValidDetail`, ellipsoid `ST_Area(geom::geography)` within `2–500,000 m²`, `ST_ForcePolygonCCW`), Argon2id password hashing gated by a bounded semaphore (`4` concurrent / `20` queued), `SHA-256` opaque bearer sessions and recovery codes, IPv6 `/64`-normalized rate limiting, Pino structured logging with secret redaction and omitted client IP addresses, and the `admin.ts` moderation CLI.
-* **`apps/mobile` (`MPL-2.0`):** Expo SDK 52 application targeting Android, iOS, and Web, localized in German (`de`, default) and English (`en`) with an inline `DE | EN` language switcher (`src/i18n/translations.ts`). Platform-specific MapLibre (`MapCanvas.native.tsx` / `MapCanvas.web.tsx`), session token storage (`secureStorage.native.ts` / `secureStorage.web.ts`), and GPS location (`locateMe.native.ts` / `locateMe.web.ts`) live behind `.native` and `.web` module suffixes, keeping reducers and view-models pure TypeScript.
-* **`test/e2e-flow.test.ts`:** Root full-stack integration suite exercising `PpgisApiClient`, `appReducer`, and UI view-models over live HTTP against Fastify + PostGIS without coupling `apps/mobile` dependencies to `apps/api`.
+* **`apps/api` (`AGPL-3.0-or-later`):** Single-replica compiled Fastify service backed by PostgreSQL 16 + PostGIS 3.4, serving `/api/v1/*`, hosted HTML email confirmation & password recovery pages (`/auth/*`), EXIF-stripped WebP photos (`/uploads/*`), BKG VG250 municipality loader, `.geojson`/`.gpkg` importer, Argon2id password hashing gated by a bounded semaphore, IPv6 `/64`-normalized rate limiting, Pino structured logging with omitted client IPs, and the `admin.ts` CLI.
+* **`apps/mobile` (`MPL-2.0`):** Expo SDK 52 application targeting Android, iOS, and Web, localized in German (`de`, default) and English (`en`) with an inline `DE | EN` language switcher (`src/i18n/translations.ts`).
+* **`test/e2e-flow.test.ts`:** Root full-stack integration suite exercising `PpgisApiClient`, `appReducer`, hosted `/auth/*` email verification & password reset pages, EXIF GPS photo stripping, VG250 municipality normalization, and admin import/status workflows over live HTTP against Fastify + PostGIS.
 
 ---
 
-## Quick Start (Docker Compose & Local Development)
+## 1. Local Development & Testing Setup
 
 ### Prerequisites
 
 * **Node.js `>= 24.0.0`** and `npm`
 * **Docker Engine** with **Docker Compose v2**
 
-### 1. Start the 2-Container Backend Stack (`postgis` + `api`)
+### Step 1: Clone & Install Dependencies
+
+```bash
+git clone https://github.com/severinbro/Unseal.git
+cd Unseal
+npm ci
+```
+
+### Step 2: Start the Local Backend Stack (`postgis` + `mailpit` + `api`)
 
 ```bash
 cp .env.example .env
 docker compose up -d --build
 ```
 
-On startup, the `api` container automatically applies numbered SQL migrations from `apps/api/migrations/` under a PostgreSQL advisory lock before binding `0.0.0.0:3000` (mapped to `127.0.0.1:3000` on the host).
-
-Verify readiness and runtime configuration:
+* **API & Hosted Auth Pages:** `http://127.0.0.1:3000` (`/api/v1/health`, `/api/v1/config`, `/auth/privacy`)
+* **Local Mailpit Email Inbox:** `http://127.0.0.1:8025` (captures all local registration confirmation and password recovery emails with clickable links)
+* **BKG VG250 Municipalities:** Automatically downloaded and seeded (~11,000 German municipalities) on first startup when `AUTO_SEED_VG250=true`.
 
 ```bash
 curl -fsS http://127.0.0.1:3000/api/v1/health
 curl -fsS http://127.0.0.1:3000/api/v1/config
 ```
 
-### 2. Install Workspace Dependencies, Build, Typecheck, and Test
+### Step 3: Build, Typecheck, and Run the Automated Test Suite
 
 ```bash
-npm ci
 npm run build
 npm run typecheck
 npm test
 ```
 
-* `npm test` automatically starts the `postgis` service via `docker compose up -d --wait postgis` unless `SKIP_DOCKER_PRETEST=1` is set (useful in CI environments that provision an external PostGIS service container).
+### Step 4: Run the Web App or Test on an Android Smartphone via USB (`adb`)
+
+* **Web App:**
+  ```bash
+  npm --workspace apps/mobile run web
+  ```
+* **Android Smartphone over USB Debugging (`adb`):**
+  Forward port `3000` from your phone to your local Docker API and build/install the standalone APK:
+  ```bash
+  adb reverse tcp:3000 tcp:3000
+  cd apps/mobile
+  npx expo prebuild --platform android
+  ./android/gradlew -p android assembleRelease
+  adb install -r android/app/build/outputs/apk/release/app-release.apk
+  ```
 
 ---
 
-## Production Deployment & Reverse Proxy Configuration
+## 2. Production VPS Deployment (`docker-compose.vps.yml`)
 
-In production, `docker-compose.yml` binds PostGIS (`127.0.0.1:5432`) and Fastify (`127.0.0.1:3000`) strictly to loopback. Place an external TLS reverse proxy (such as **Caddy**, **Nginx**, or **Traefik**) in front of `127.0.0.1:3000` to:
+A complete turnkey VPS deployment stack is included in the repository:
 
-1. **Terminate HTTPS (`TLS 1.2+`):** Required for browser `navigator.geolocation` ("Locate me" requires a secure `https://` context) and mobile App Transport Security / cleartext policies.
-2. **Set `TRUST_PROXY=true` and `CORS_ORIGIN=https://map.example.org` in `.env`:** Ensures `@fastify/rate-limit` reads the forwarded client IP from your trusted reverse proxy rather than `127.0.0.1`, and restricts cross-origin browser requests to your domain. Keep `apps/api` as a **single replica** in v1 (rate-limit caches and concurrency semaphores are per-process).
-3. **Host Static Expo Web Assets:** Export the static web bundle and serve it from the same origin (or a configured `CORS_ORIGIN`):
+* [`docker-compose.vps.yml`](./docker-compose.vps.yml) — Air-gapped `postgis` (`db_internal` network, zero host ports exposed), `api` (`uploads_data` volume + hosted `/auth/*` confirmation/recovery pages + SMTP), and `caddy` (automatic Let's Encrypt HTTPS on `80`/`443` + zero client IP access logs).
+* [`Caddyfile.vps`](./Caddyfile.vps) — Reverse-proxies `/api/*`, `/auth/*`, and `/uploads/*` to `api:3000` and serves static Expo Web assets from `./dist-web`.
+* [`.env.vps.example`](./.env.vps.example) — Production environment template (`DOMAIN`, `POSTGRES_PASSWORD`, `SMTP_*`, `AUTO_SEED_VG250`, etc.).
+* **[`docs/vps-setup.md`](./docs/vps-setup.md) — Step-by-step VPS installation, DNS/TLS, SMTP, Admin account promotion, and backup guide.**
+
+Quick launch on your Linux VPS:
 
 ```bash
-npx --workspace apps/mobile expo export --platform web --output-dir dist-web
+git clone https://github.com/severinbro/Unseal.git /opt/unseal
+cd /opt/unseal
+
+cp .env.vps.example .env.vps
+chmod 600 .env.vps
+# Edit .env.vps with your DOMAIN, POSTGRES_PASSWORD, and SMTP_* credentials
+
+mkdir -p dist-web
+docker compose --env-file .env.vps -f docker-compose.vps.yml up -d --build
 ```
-
-### Disabling Reverse-Proxy Client IP Access Logs (GDPR Data Minimization)
-
-`apps/api` omits `remoteAddress` from Pino logs by design and uses client IP subnets strictly in transient in-memory rate-limit counters. To maintain end-to-end IP minimization, disable client IP access logging in your reverse proxy as well.
-
-### Recommended Content-Security-Policy (CSP) & Example Caddyfile
-
-MapLibre GL JS (`maplibre-gl`) spawns Web Workers from `blob:` URLs on Expo Web, so your CSP must permit `worker-src 'self' blob:` and tile/API HTTPS origins:
-
-```caddyfile
-map.example.org {
-    log {
-        output discard
-    }
-
-    header {
-        Strict-Transport-Security "max-age=63072000; includeSubDomains"
-        X-Content-Type-Options "nosniff"
-        Referrer-Policy "strict-origin-when-cross-origin"
-        Permissions-Policy "geolocation=(self), camera=(), microphone=()"
-        Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://tiles.openfreemap.org https://ortho.example.org; connect-src 'self' https://tiles.openfreemap.org https://ortho.example.org; worker-src 'self' blob:; font-src 'self' data: https://tiles.openfreemap.org; frame-ancestors 'none'"
-    }
-
-    handle /api/* {
-        reverse_proxy 127.0.0.1:3000
-    }
-
-    handle {
-        root * /srv/entsiegelung/dist-web
-        try_files {path} /index.html
-        file_server
-    }
-}
-```
-
-*(For Nginx, set `access_log off;` inside the `server` block, proxy `/api/` to `http://127.0.0.1:3000` with `proxy_set_header X-Forwarded-For $remote_addr;`, and add the same `Content-Security-Policy` header.)*
 
 ---
 
-## Basemap (`PMTiles`) & Municipal Orthophoto (`WMS` / `XYZ`) Setup
+## 3. Operator Moderation & Administration CLI (`admin.ts`)
 
-### Vector Basemap (`OSM_STYLE_URL` & Self-Hosted `PMTiles`)
+```bash
+# 1. Grant or revoke administrator privileges (enables "finished" status & .geojson/.gpkg import)
+docker compose exec api node apps/api/dist/cli/admin.js grant-admin <pseudonym>
+docker compose exec api node apps/api/dist/cli/admin.js revoke-admin <pseudonym>
 
-* By default, `OSM_STYLE_URL` points to OpenFreeMap Liberty (`https://tiles.openfreemap.org/styles/liberty`). Never point `OSM_STYLE_URL` or raster templates at OSM Foundation (`tile.openstreetmap.org`) tile servers, whose usage policy prohibits bulk app traffic.
-* For high-traffic municipal campaigns, generate or download a regional extract in **PMTiles** format, host the `.pmtiles` archive + MapLibre style JSON + glyphs/sprites on static object storage or Caddy/Nginx with HTTP `Range` request support + CORS headers, and set `OSM_STYLE_URL` to your self-hosted `style.json` (updatable via `.env` and container restart without rebuilding mobile binaries).
+# 2. Seed or refresh German BKG VG250 municipality boundaries (from live BKG WFS or local .geojson)
+docker compose exec api node apps/api/dist/cli/admin.js load-vg250
 
-### Aerial Orthophotos (`EPSG:3857` XYZ or WMS) & Browser CORS
+# 3. Ban an abusive pseudonym (records SHA-256 tombstones, purges user's polygons/photos/votes, recomputes scores)
+docker compose exec api node apps/api/dist/cli/admin.js ban-user <pseudonym> "spam brigading"
 
-`ORTHOPHOTO_URL_TEMPLATE` accepts either `{z}/{x}/{y}` XYZ raster templates or OGC WMS `1.3.0` `EPSG:3857` templates containing `{bbox-epsg-3857}`:
-
-```dotenv
-ORTHOPHOTO_URL_TEMPLATE="https://map.example.org/ortho-wms?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=dop20&STYLES=&FORMAT=image/jpeg&TRANSPARENT=false&CRS=EPSG:3857&WIDTH=256&HEIGHT=256&BBOX={bbox-epsg-3857}"
-ORTHOPHOTO_TILE_SIZE=256
-ORTHOPHOTO_ATTRIBUTION="© Municipal Geodata Agency (DL-DE->BY-2.0)"
-ORTHOPHOTO_BOUNDS="9.70,53.35,10.35,53.75"
-ORTHOPHOTO_MAX_ZOOM=20
+# 4. Delete a specific polygon proposal by UUID or redact its free-text note
+docker compose exec api node apps/api/dist/cli/admin.js delete-polygon <polygon-uuid>
+docker compose exec api node apps/api/dist/cli/admin.js redact-note <polygon-uuid>
 ```
 
-* **Municipal WMS CORS Proxy:** Many municipal WMS servers omit `Access-Control-Allow-Origin` headers, causing WebGL canvas tile requests on Expo Web to fail. Proxy the upstream WMS under a same-origin path (e.g. `/ortho-wms` in Caddy/Nginx) or attach `Access-Control-Allow-Origin: https://map.example.org` at your reverse proxy.
-* **Automatic Fallback:** If orthophoto tiles return errors or time out at runtime, `MapCanvas` automatically reverts the active basemap to `'osm'` and displays a dismissible warning banner.
+*(On your production VPS, add `--env-file .env.vps -f docker-compose.vps.yml` right after `docker compose`.)*
 
 ---
 
-## Environment Variable Reference (`.env`)
+## 4. Production Mobile & Web Builds
+
+Because `@maplibre/maplibre-react-native`, `expo-location`, `expo-image-picker`, `expo-document-picker`, and `expo-secure-store` include native modules, Android and iOS builds use **Expo Prebuild** (`npx expo prebuild`):
+
+```bash
+# Export static production Web assets into ./dist-web
+EXPO_PUBLIC_API_BASE_URL=https://unseal.example.org npm --workspace apps/mobile run export:web
+
+# Prebuild & compile native Android / iOS apps pointing at your production VPS
+cd apps/mobile
+EXPO_PUBLIC_API_BASE_URL=https://unseal.example.org npx expo prebuild
+npm --workspace apps/mobile run android
+npm --workspace apps/mobile run ios
+```
+
+---
+
+## 5. Environment Variable Reference
 
 | Variable | Default | Description |
 | :--- | :--- | :--- |
-| `POSTGRES_USER` | `ppgis` | PostgreSQL role used by `docker-compose.yml` and default `DATABASE_URL`. |
+| `POSTGRES_USER` | `ppgis` | PostgreSQL role. |
 | `POSTGRES_PASSWORD` | `ppgis` | PostgreSQL password (**override with a strong secret in production**). |
 | `POSTGRES_DB` | `ppgis` | PostgreSQL database name. |
-| `HOST` | `0.0.0.0` | Fastify bind address inside the container. |
-| `PORT` | `3000` | Fastify HTTP listen port (`0`–`65535`). |
-| `DATABASE_URL` | `postgresql://ppgis:ppgis@127.0.0.1:5432/ppgis` | Full PostgreSQL connection URI (`@postgis:5432` inside Docker Compose). |
-| `TRUST_PROXY` | `false` | Set `true` only when Fastify runs behind your trusted reverse proxy. |
-| `CORS_ORIGIN` | `*` | Allowed browser CORS origin(s), comma-separated (e.g. `https://map.example.org`). |
-| `OSM_STYLE_URL` | `https://tiles.openfreemap.org/styles/liberty` | MapLibre vector style JSON URL served via `GET /api/v1/config`. |
-| `ORTHOPHOTO_URL_TEMPLATE` | *(empty — disabled)* | Optional `EPSG:3857` raster URL containing `{z}/{x}/{y}` or `{bbox-epsg-3857}`. |
-| `ORTHOPHOTO_TILE_SIZE` | `256` | Raster orthophoto tile size (`256` or `512`). |
-| `ORTHOPHOTO_ATTRIBUTION` | *(empty)* | Attribution string displayed when the orthophoto layer is active. |
-| `ORTHOPHOTO_BOUNDS` | *(empty — unbounded)* | Optional `minLng,minLat,maxLng,maxLat` WGS 84 bounds restricting tile requests. |
-| `ORTHOPHOTO_MAX_ZOOM` | `20` | Maximum zoom level fetched from the orthophoto source. |
-| `INITIAL_LNG` | `9.9937` | Initial map camera longitude (WGS 84). |
-| `INITIAL_LAT` | `53.5511` | Initial map camera latitude (WGS 84). |
-| `INITIAL_ZOOM` | `15` | Initial map camera zoom level. |
-| `MAX_DAILY_POLYGONS_PER_USER` | `25` | Rolling 24-hour polygon creation cap per user (tracked in `polygon_creations`; deleting a polygon does not refund quota). |
-| `SESSION_TTL_DAYS` | `30` | Bearer session lifetime in days (`>= 1`, max `10` active sessions per user). |
-| `DISCLAIMER_TEXT` | `Community unsealing suggestions — non-binding public input, regardless of property ownership.` | Civic notice shown on first visit and permanently inside `PolygonInspectorSheet`. |
-| `ABUSE_CONTACT` | *(empty — `null`)* | Optional moderation email or URL shown inside `PolygonInspectorSheet`. |
+| `HOST` / `PORT` | `0.0.0.0` / `3000` | Fastify bind address and HTTP port inside container. |
+| `DATABASE_URL` | `postgresql://ppgis:ppgis@127.0.0.1:5432/ppgis` | Full PostgreSQL connection URI (`@postgis:5432` inside Docker). |
+| `PUBLIC_BASE_URL` | `http://127.0.0.1:3000` | Public origin embedded in registration & password reset email links (e.g. `https://unseal.example.org`). |
+| `UPLOADS_DIR` | `./uploads` | Directory storing EXIF-stripped WebP polygon photos (`/var/lib/entsiegelung/uploads` in Docker). |
+| `AUTO_SEED_VG250` | `false` (`true` in Compose) | Automatically download & seed German BKG VG250 OpenData municipalities when empty. |
+| `SMTP_HOST` / `SMTP_PORT` | *(empty)* / `587` | Outbound SMTP hostname and port (`mailpit` / `1025` in local `docker-compose.yml`). |
+| `SMTP_SECURE` | `false` (`true` if `465`) | Use implicit TLS (`true` for port `465`, `false` for STARTTLS on `587`). |
+| `SMTP_USER` / `SMTP_PASS` | *(empty)* | SMTP authentication credentials. |
+| `SMTP_FROM` | `Unseal <noreply@localhost>` | Sender `From:` header for confirmation and password reset emails. |
+| `TRUST_PROXY` | `false` | Set `true` behind Caddy/Nginx/Traefik. |
+| `CORS_ORIGIN` | `*` | Allowed browser CORS origin(s), comma-separated. |
+| `OSM_STYLE_URL` | `https://tiles.openfreemap.org/styles/liberty` | MapLibre vector style JSON URL. |
+| `ORTHOPHOTO_*` | *(disabled)* | Optional `EPSG:3857` aerial orthophoto layer settings (`URL_TEMPLATE`, `TILE_SIZE`, `ATTRIBUTION`, `BOUNDS`, `MAX_ZOOM`). |
+| `INITIAL_LNG` / `LAT` / `ZOOM` | `9.9937` / `53.5511` / `15` | Default initial viewport camera. |
+| `MAX_DAILY_POLYGONS_PER_USER` | `25` | Rolling 24-hour polygon creation cap per user. |
+| `SESSION_TTL_DAYS` | `30` | Bearer session lifetime in days. |
+| `DISCLAIMER_TEXT` / `ABUSE_CONTACT` | *(civic notice)* / *(empty)* | Public notice and optional moderation contact shown in inspector & privacy page. |
 | `EXPO_PUBLIC_API_BASE_URL` | `http://127.0.0.1:3000` | Base API URL baked into Expo mobile/web builds at bundle time. |
 
 ---
 
-## Database Backups & Restore (`pg_dump` / `pg_restore`)
-
-PostGIS topological validation runs in API write transactions rather than table `CHECK` constraints so logical dumps restore cleanly in any schema search-path order.
-
-```bash
-# Create a compressed custom-format backup
-docker compose exec -T postgis pg_dump -U "${POSTGRES_USER:-ppgis}" -Fc "${POSTGRES_DB:-ppgis}" > backup-$(date +%Y%m%d).dump
-
-# Restore into the running PostGIS container
-docker compose exec -T postgis pg_restore -U "${POSTGRES_USER:-ppgis}" -d "${POSTGRES_DB:-ppgis}" --clean --if-exists < backup-YYYYMMDD.dump
-```
-
----
-
-## Operator Moderation CLI (`admin.ts`)
-
-Operators can moderate abusive accounts, remove invalid proposals, or redact accidental personal data from proposal notes via `apps/api/src/cli/admin.ts`:
-
-```bash
-# 1. Ban an active or preemptive pseudonym (records SHA-256 tombstone, purges user's polygons & votes, and recomputes affected scores)
-docker compose exec api node apps/api/dist/cli/admin.js ban-user <pseudonym> "spam brigading"
-
-# 2. Delete a specific polygon proposal by UUID (cascades associated votes)
-docker compose exec api node apps/api/dist/cli/admin.js delete-polygon <polygon-uuid>
-
-# 3. Redact free-text note on a polygon while keeping the geometry and votes intact
-docker compose exec api node apps/api/dist/cli/admin.js redact-note <polygon-uuid>
-```
-
-*(When running outside Docker against a local `DATABASE_URL`, execute `npm --workspace apps/api run build && npm --workspace apps/api run admin -- <command> ...`.)*
-
-> **Why there is no `reset-recovery` CLI command:** Accounts store zero email or phone PII, and `authorPseudonym` is public on every proposal. An operator-initiated password or recovery reset would have no way to verify identity and would enable social-engineering account takeovers. Losing both password and recovery code permanently locks that pseudonym by design.
-
----
-
-## Mobile Builds (Android, iOS `expo prebuild`, and Expo Web)
-
-Because `@maplibre/maplibre-react-native`, `expo-location`, and `expo-secure-store` include native modules, Android and iOS builds use **Expo Prebuild** (`npx expo prebuild`) rather than the stock Expo Go client:
-
-```bash
-# Generate native android/ and ios/ directories from apps/mobile/app.json
-cd apps/mobile
-EXPO_PUBLIC_API_BASE_URL=https://map.example.org npx expo prebuild
-
-# Build and launch on a connected Android device/emulator or iOS simulator
-npm --workspace apps/mobile run android
-npm --workspace apps/mobile run ios
-
-# Export static production Web assets
-EXPO_PUBLIC_API_BASE_URL=https://map.example.org npm --workspace apps/mobile run export:web
-```
-
----
-
-## Split Open-Source Licensing (`AGPL-3.0-or-later` & `MPL-2.0`)
-
-Entsiegelungskartierung uses a split open-source license model to preserve strong server copyleft while maintaining full compatibility with mobile app store distribution terms:
+## 6. Split Open-Source Licensing (`AGPL-3.0-or-later` & `MPL-2.0`)
 
 * **Server & Repository Root (`AGPL-3.0-or-later`):** `apps/api` and root files (except workspaces providing their own `LICENSE`) are licensed under the **GNU Affero General Public License v3.0 or later** — see [`LICENSE`](./LICENSE) and [`apps/api/LICENSE`](./apps/api/LICENSE).
-* **Mobile/Web Client & Shared Schemas (`MPL-2.0`):** `apps/mobile` and `packages/shared` are licensed under the **Mozilla Public License 2.0** — see [`apps/mobile/LICENSE`](./apps/mobile/LICENSE) and [`packages/shared/LICENSE`](./packages/shared/LICENSE) — avoiding Apple App Store DRM conflicts on client binaries.
-* **AGPLv3 Section 13 Network-Interaction Clarification:** As stated in `LICENSE` and `apps/api/LICENSE`, client packages and applications licensed under `MPL-2.0` (including `packages/shared`, `apps/mobile`, and independent HTTP/GeoJSON clients) that communicate with the `apps/api` HTTP service over a computer network are separate works and remain covered by `MPL-2.0`. Communicating with the HTTP API over a network does not cause `MPL-2.0` client packages to become derivative or combined works under the GNU Affero General Public License.
+* **Mobile/Web Client & Shared Schemas (`MPL-2.0`):** `apps/mobile` and `packages/shared` are licensed under the **Mozilla Public License 2.0** — see [`apps/mobile/LICENSE`](./apps/mobile/LICENSE) and [`packages/shared/LICENSE`](./packages/shared/LICENSE).
+* **AGPLv3 Section 13 Network-Interaction Clarification:** Client packages and applications licensed under `MPL-2.0` (including `packages/shared`, `apps/mobile`, and independent HTTP/GeoJSON clients) that communicate with the `apps/api` HTTP service over a computer network are separate works and remain covered by `MPL-2.0`.

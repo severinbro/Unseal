@@ -1,5 +1,6 @@
 import {
   GEOMETRY_LIMITS,
+  PHOTO_LIMITS,
   validateDraftPolygon,
   type AuthUser,
   type SurfaceType,
@@ -10,7 +11,14 @@ import {
   translateValidationMessage,
   type Locale,
 } from '../i18n/translations';
-import type { AppState, AuthModalView, BasemapMode } from './appState';
+import {
+  MAX_DRAFT_PHOTOS,
+  type AppState,
+  type AuthModalView,
+  type BasemapMode,
+  type DraftPhotoAttachment,
+  type DrawingStep,
+} from './appState';
 
 export const MIN_TOUCH_TARGET_DP = 44;
 
@@ -28,6 +36,7 @@ export interface MapControlsModel {
   showTruncatedNotice: boolean;
   tileWarning: string | null;
   isAuthenticated: boolean;
+  isAdmin: boolean;
   accountLabel: string;
   minTouchTargetDp: typeof MIN_TOUCH_TARGET_DP;
 }
@@ -35,11 +44,9 @@ export interface MapControlsModel {
 export interface AuthModalModel {
   visible: boolean;
   view: AuthModalView;
-  isPostSignupRecoveryDisplay: boolean;
-  recoveryCode: string | null;
-  recoveryCodeSavedChecked: boolean;
+  pendingVerificationEmail: string | null;
+  pendingVerificationPseudonym: string | null;
   canClose: boolean;
-  closeBlockedReason: string | null;
   currentUser: AuthUser | null;
   errorMessage: string | null;
   hasPendingIntent: boolean;
@@ -48,6 +55,7 @@ export interface AuthModalModel {
 
 export interface DrawingToolbarModel {
   visible: boolean;
+  step: DrawingStep;
   rawVertexCount: number;
   distinctVertexCount: number;
   maxVertices: number;
@@ -60,11 +68,14 @@ export interface DrawingToolbarModel {
   canUndo: boolean;
   undoLabel: string;
   canCloseRing: boolean;
+  canAdvanceToDetails: boolean;
   canSubmit: boolean;
   isSubmitting: boolean;
   surfaceType: SurfaceType;
   note: string;
   noteRemainingChars: number;
+  draftPhotos: readonly DraftPhotoAttachment[];
+  canAddPhoto: boolean;
   confirmingDiscard: boolean;
   submitError: string | null;
 }
@@ -96,6 +107,7 @@ export function deriveMapControlsModel(state: AppState): MapControlsModel {
     showTruncatedNotice: !state.spanTooWide && state.truncated,
     tileWarning: state.tileWarning,
     isAuthenticated: state.currentUser !== null,
+    isAdmin: state.currentUser?.role === 'admin',
     accountLabel: state.currentUser
       ? state.currentUser.pseudonym
       : t.controls.signInShort,
@@ -105,10 +117,6 @@ export function deriveMapControlsModel(state: AppState): MapControlsModel {
 
 export function deriveAuthModalModel(state: AppState): AuthModalModel {
   const t = getTranslations(state.locale);
-  const isPostSignupRecoveryDisplay = state.pendingRecoveryCode !== null;
-  const canClose =
-    !isPostSignupRecoveryDisplay || state.recoveryCodeSavedChecked === true;
-  const closeBlockedReason = canClose ? null : t.auth.closeBlockedReason;
 
   let pendingIntentSummary: string | null = null;
   if (state.pendingIntent?.type === 'SUBMIT_DRAFT') {
@@ -119,12 +127,10 @@ export function deriveAuthModalModel(state: AppState): AuthModalModel {
 
   return {
     visible: state.authModalOpen,
-    view: isPostSignupRecoveryDisplay ? 'recovery_code' : state.authModalView,
-    isPostSignupRecoveryDisplay,
-    recoveryCode: state.pendingRecoveryCode,
-    recoveryCodeSavedChecked: state.recoveryCodeSavedChecked,
-    canClose,
-    closeBlockedReason,
+    view: state.authModalView,
+    pendingVerificationEmail: state.pendingVerificationEmail,
+    pendingVerificationPseudonym: state.pendingVerificationPseudonym,
+    canClose: true,
     currentUser: state.currentUser,
     errorMessage: state.authError,
     hasPendingIntent: state.pendingIntent !== null,
@@ -144,12 +150,12 @@ export function deriveDrawingToolbarModel(
     state.config?.limits.maxAreaM2 ?? GEOMETRY_LIMITS.MAX_AREA_M2;
 
   const draftValidation = validateDraftPolygon(state.draftVertices);
-  const rawErrors = [...draftValidation.errors];
+  const rawGeometryErrors = [...draftValidation.errors];
 
   if (draftValidation.vertexCount > maxVertices) {
     const customMaxMsg = `Polygon must have at most ${maxVertices} distinct vertices.`;
-    if (!rawErrors.includes(customMaxMsg)) {
-      rawErrors.push(customMaxMsg);
+    if (!rawGeometryErrors.includes(customMaxMsg)) {
+      rawGeometryErrors.push(customMaxMsg);
     }
   }
 
@@ -158,7 +164,7 @@ export function deriveDrawingToolbarModel(
     draftValidation.areaM2 < minAreaM2 &&
     minAreaM2 !== GEOMETRY_LIMITS.MIN_AREA_M2
   ) {
-    rawErrors.push(
+    rawGeometryErrors.push(
       `Polygon area (${draftValidation.areaM2.toFixed(1)} m²) is below minimum of ${minAreaM2} m².`,
     );
   }
@@ -168,10 +174,12 @@ export function deriveDrawingToolbarModel(
     draftValidation.areaM2 > maxAreaM2 &&
     maxAreaM2 !== GEOMETRY_LIMITS.MAX_AREA_M2
   ) {
-    rawErrors.push(
+    rawGeometryErrors.push(
       `Polygon area (${draftValidation.areaM2.toFixed(1)} m²) exceeds maximum of ${maxAreaM2.toLocaleString('en-US')} m².`,
     );
   }
+
+  const rawErrors = [...rawGeometryErrors];
 
   const noteRemainingChars =
     GEOMETRY_LIMITS.MAX_NOTE_LENGTH - state.draftNote.length;
@@ -187,6 +195,7 @@ export function deriveDrawingToolbarModel(
 
   const canAddVertex =
     state.mode === 'drawing' &&
+    state.drawingStep === 'geometry' &&
     !state.isRingClosed &&
     draftValidation.vertexCount < maxVertices;
   const canUndo =
@@ -196,6 +205,10 @@ export function deriveDrawingToolbarModel(
     state.mode === 'drawing' &&
     !state.isRingClosed &&
     draftValidation.vertexCount >= GEOMETRY_LIMITS.MIN_VERTICES;
+  const canAdvanceToDetails =
+    state.mode === 'drawing' &&
+    draftValidation.valid &&
+    rawGeometryErrors.length === 0;
   const canSubmit =
     state.mode === 'drawing' &&
     state.isRingClosed &&
@@ -203,8 +216,14 @@ export function deriveDrawingToolbarModel(
     errors.length === 0 &&
     !state.isSubmittingDraft;
 
+  const maxAllowedPhotos = Math.min(
+    MAX_DRAFT_PHOTOS,
+    PHOTO_LIMITS.MAX_PHOTOS_PER_POLYGON,
+  );
+
   return {
     visible: state.mode === 'drawing',
+    step: state.drawingStep,
     rawVertexCount: state.draftVertices.length,
     distinctVertexCount: draftValidation.vertexCount,
     maxVertices,
@@ -217,11 +236,14 @@ export function deriveDrawingToolbarModel(
     canUndo,
     undoLabel: state.isRingClosed ? t.drawing.reopenRing : t.drawing.undoVertex,
     canCloseRing,
+    canAdvanceToDetails,
     canSubmit,
     isSubmitting: state.isSubmittingDraft,
     surfaceType: state.draftSurfaceType,
     note: state.draftNote,
     noteRemainingChars,
+    draftPhotos: state.draftPhotos,
+    canAddPhoto: state.draftPhotos.length < maxAllowedPhotos,
     confirmingDiscard: state.confirmingDiscardDraft,
     submitError: state.draftSubmitError,
   };

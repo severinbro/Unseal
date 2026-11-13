@@ -1,35 +1,61 @@
 {
   "expo": {
-    "name": "Entsiegelungskartierung",
-    "slug": "entsiegelungskartierung",
-    "version": "0.1.0",
+    "name": "Unseal",
+    "slug": "unseal",
+    "version": "0.2.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#EFF3F0"
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "org.entsiegelung.ppgis",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Allow Entsiegelungskartierung to center the map on your current location when inspecting or mapping sealed surfaces."
+        "NSLocationWhenInUseUsageDescription": "Erlaubt Unseal, die Karte auf deinen aktuellen GNSS-Standort zu zentrieren.",
+        "NSCameraUsageDescription": "Erlaubt das Aufnehmen von Vor-Ort-Fotos zu vorgeschlagenen Entsiegelungsflächen.",
+        "NSPhotoLibraryUsageDescription": "Erlaubt das Hochladen von Fotos vorgeschlagener Entsiegelungsflächen aus deiner Mediathek."
       }
     },
     "android": {
       "package": "org.entsiegelung.ppgis",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#EFF3F0"
+      },
       "permissions": [
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
+        "ACCESS_FINE_LOCATION",
+        "CAMERA",
+        "ACCESS_MEDIA_LOCATION"
+      ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
       "bundler": "metro",
-      "output": "single"
+      "output": "single",
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "@maplibre/maplibre-react-native",
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Allow Entsiegelungskartierung to center the map on your current location when inspecting or mapping sealed surfaces."
+          "locationWhenInUsePermission": "Erlaubt Unseal, die Karte auf deinen aktuellen GNSS-Standort zu zentrieren."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Erlaubt das Aufnehmen von Vor-Ort-Fotos zu vorgeschlagenen Entsiegelungsflächen.",
+          "photosPermission": "Erlaubt das Hochladen von Fotos vorgeschlagener Entsiegelungsflächen aus deiner Mediathek.",
+          "microphonePermission": false
         }
       ],
       "expo-secure-store"

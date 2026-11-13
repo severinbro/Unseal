@@ -1,21 +1,53 @@
 import crypto from 'node:crypto';
 import fastifyCompress from '@fastify/compress';
 import fastifyCors from '@fastify/cors';
+import fastifyMultipart from '@fastify/multipart';
 import fastifyRateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
 import { ZodError } from 'zod';
 
-import { ApiError, type ErrorCode } from '@entsiegelung/shared';
+import { ApiError, IMPORT_LIMITS, type ErrorCode } from '@entsiegelung/shared';
 
-import { generateRecoveryCode, generateSessionToken, hashOpaqueToken, hashPassword, hashPseudonymTombstone, verifyPassword } from './auth/crypto.js';
-import { createSession, optionalAuth, requireAuth } from './auth/session.js';
+import {
+  generateEmailActionToken,
+  generateRecoveryCode,
+  generateSessionToken,
+  hashEmailTombstone,
+  hashOpaqueToken,
+  hashPassword,
+  hashPseudonymTombstone,
+  verifyPassword,
+} from './auth/crypto.js';
+import {
+  createMemoryMailer,
+  createSmtpMailer,
+  type AuthEmailPayload,
+  type AuthMailer,
+  type MemoryMailer,
+} from './auth/mailer.js';
+import { createSession, optionalAuth, requireAdmin, requireAuth } from './auth/session.js';
 import { runAdminCommand, type AdminCommandResult } from './cli/admin.js';
 import { type EnvConfig } from './config.js';
-import { deleteOrBanUserAccount, lockUserForWrite, recomputePolygonScores } from './db/integrity.js';
+import {
+  deleteOrBanUserAccount,
+  lockUserForWrite,
+  recomputePhotoScores,
+  recomputePolygonScores,
+} from './db/integrity.js';
 import { resetTestDb, setupTestDb } from './db/testHarness.js';
 import { createLogger } from './logger.js';
+import {
+  loadVg250Municipalities,
+  upsertMunicipalitiesAndBackfill,
+  type MunicipalitySeedInput,
+} from './municipalities/vg250.js';
+import { processUploadedPhoto } from './photos/processor.js';
+import { PhotoRepository } from './photos/repository.js';
+import { parseGeoPackageBinary } from './polygons/gpkgReader.js';
 import { PolygonRepository } from './polygons/repository.js';
 import { registerAuthRoutes } from './routes/auth.js';
+import { registerAuthPageRoutes } from './routes/authPages.js';
+import { registerPhotoRoutes } from './routes/photos.js';
 import { registerPolygonRoutes } from './routes/polygons.js';
 import { registerSystemRoutes } from './routes/system.js';
 import { registerVoteRoutes } from './routes/votes.js';
@@ -50,6 +82,7 @@ export interface BuildAppOptions {
   exportBatchSize?: number;
   exportStreamTimeoutMs?: number;
   rateLimits?: RateLimitOverrides;
+  mailer?: AuthMailer;
 }
 
 declare module 'fastify' {
@@ -59,6 +92,7 @@ declare module 'fastify' {
     authSemaphore: BoundedSemaphore;
     exportSemaphore: BoundedSemaphore;
     rateLimitOverrides: RateLimitOverrides;
+    mailer: AuthMailer;
     runAdminCommand: (argv: string[]) => Promise<AdminCommandResult>;
   }
 }
@@ -87,7 +121,9 @@ export async function buildApp(
   const authSemaphore =
     options.argon2Semaphore ?? new BoundedSemaphore(4, 20, 'AUTH_BUSY');
   const exportSemaphore =
-    options.exportSemaphore ?? new BoundedSemaphore(2, 0, 'SERVICE_UNAVAILABLE');
+    options.exportSemaphore ??
+    new BoundedSemaphore(2, 0, 'SERVICE_UNAVAILABLE');
+  const mailer = options.mailer ?? createSmtpMailer(config, logger);
 
   const app = Fastify({
     loggerInstance: logger,
@@ -107,8 +143,30 @@ export async function buildApp(
   app.decorate('authSemaphore', authSemaphore);
   app.decorate('exportSemaphore', exportSemaphore);
   app.decorate('rateLimitOverrides', options.rateLimits ?? {});
+  app.decorate('mailer', mailer);
   app.decorate('runAdminCommand', (argv: string[]) =>
-    runAdminCommand(pool, argv),
+    runAdminCommand(pool, argv, {
+      uploadsDir: config.uploadsDir,
+      logger,
+    }),
+  );
+
+  app.addContentTypeParser(
+    'application/x-www-form-urlencoded',
+    { parseAs: 'string', bodyLimit: 16384 },
+    (_req, body, done) => {
+      try {
+        const raw = typeof body === 'string' ? body : String(body);
+        const params = new URLSearchParams(raw);
+        const obj: Record<string, string> = {};
+        for (const [k, v] of params.entries()) {
+          obj[k] = v;
+        }
+        done(null, obj);
+      } catch (err) {
+        done(err instanceof Error ? err : new Error('Invalid form body'), undefined);
+      }
+    },
   );
 
   app.addHook('onSend', async (request, reply, payload) => {
@@ -125,6 +183,14 @@ export async function buildApp(
     methods: ['GET', 'HEAD', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-request-id'],
     exposedHeaders: ['x-request-id'],
+  });
+
+  await app.register(fastifyMultipart, {
+    limits: {
+      fileSize: IMPORT_LIMITS.MAX_FILE_BYTES,
+      files: 1,
+      fields: 10,
+    },
   });
 
   await app.register(fastifyRateLimit, {
@@ -198,11 +264,15 @@ export async function buildApp(
     const statusCode =
       typeof errRecord.statusCode === 'number' ? errRecord.statusCode : undefined;
 
-    if (fastifyCode === 'FST_ERR_CTP_BODY_TOO_LARGE' || statusCode === 413) {
+    if (
+      fastifyCode === 'FST_ERR_CTP_BODY_TOO_LARGE' ||
+      fastifyCode === 'FST_REQ_FILE_TOO_LARGE' ||
+      statusCode === 413
+    ) {
       reply.status(413).send({
         error: {
           code: 'PAYLOAD_TOO_LARGE' satisfies ErrorCode,
-          message: 'Request payload exceeds the 64 KiB limit.',
+          message: 'Request payload exceeds allowed size limit.',
           requestId,
         },
       });
@@ -255,7 +325,9 @@ export async function buildApp(
       : {}),
   });
   registerAuthRoutes(app);
-  const polygonRepository = new PolygonRepository(pool);
+  registerAuthPageRoutes(app);
+
+  const polygonRepository = new PolygonRepository(pool, config.uploadsDir);
   registerPolygonRoutes(app, polygonRepository, {
     ...(options.exportBatchSize !== undefined
       ? { exportBatchSize: options.exportBatchSize }
@@ -264,6 +336,10 @@ export async function buildApp(
       ? { exportStreamTimeoutMs: options.exportStreamTimeoutMs }
       : {}),
   });
+
+  const photoRepository = new PhotoRepository(pool, config.uploadsDir);
+  registerPhotoRoutes(app, photoRepository);
+
   const voteRepository = new VoteRepository(pool);
   registerVoteRoutes(app, voteRepository);
 
@@ -271,26 +347,43 @@ export async function buildApp(
 }
 
 export {
+  PhotoRepository,
   PolygonRepository,
   VoteRepository,
+  createMemoryMailer,
   createSession,
+  createSmtpMailer,
   deleteOrBanUserAccount,
+  generateEmailActionToken,
   generateRecoveryCode,
   generateSessionToken,
+  hashEmailTombstone,
   hashOpaqueToken,
   hashPassword,
   hashPseudonymTombstone,
+  loadVg250Municipalities,
   lockUserForWrite,
   optionalAuth,
+  parseGeoPackageBinary,
+  processUploadedPhoto,
+  recomputePhotoScores,
   recomputePolygonScores,
+  registerAuthPageRoutes,
   registerAuthRoutes,
+  registerPhotoRoutes,
   registerPolygonRoutes,
   registerVoteRoutes,
+  requireAdmin,
   requireAuth,
   resetTestDb,
   runAdminCommand,
   setupTestDb,
+  upsertMunicipalitiesAndBackfill,
   verifyPassword,
   type AdminCommandResult,
+  type AuthEmailPayload,
+  type AuthMailer,
   type EnvConfig,
+  type MemoryMailer,
+  type MunicipalitySeedInput,
 };
