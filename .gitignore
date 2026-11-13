@@ -4,3 +4,5 @@ dist
 .expo
 web-build
 .swarm
+apps/mobile/android
+apps/mobile/ios
