@@ -1,24 +1,24 @@
-# <img src="apps/mobile/assets/unseal-icon.svg" width="36" height="36" align="top" alt="Unseal Icon" /> Unseal — Open-Source Ground-Unsealing PPGIS
+# <img src="apps/mobile/assets/unseal-icon.svg" width="36" height="36" align="top" alt="Unseal Icon" /> Unseal - Open-Source Ground-Unsealing PPGIS
 
 **Unseal** is an open-source Public Participation Geographic Information System (PPGIS) for **Android, iOS, and Web** (German `de` default language with full English `en` switcher). Citizens map impervious ground surfaces ("ground sealing", such as asphalt parking corners, concrete courtyards, and paved street margins) proposed for unsealing, attach EXIF-sanitized site photos, and prioritize proposals through `+1` / `-1` community voting.
 
-Unauthenticated visitors can explore OpenStreetMap vector basemaps, toggle `EPSG:3857` aerial orthophotos beneath proposal geometries, center on their position via the floating top-right **GNSS** button, inspect proposals and site photos, and export all proposals as RFC 7946 GeoJSON (`GET /api/v1/polygons/export.geojson`) for direct analysis in QGIS or desktop GIS tools.
+Unauthenticated visitors can explore OpenStreetMap vector basemaps, toggle built-in Germany-wide **DOP20 aerial orthophotos** (`EPSG:3857`) beneath proposal geometries, center on their position via the floating top-right **GNSS** button, inspect proposals and site photos, open the **`?` About** dialog, download the standalone Android `.apk`, and export all proposals as RFC 7946 GeoJSON (`GET /api/v1/polygons/export.geojson`) for direct analysis in QGIS or desktop GIS tools.
 
-Contributors register pseudonymous accounts backed by **email link confirmation** and **VPS-hosted password recovery pages** (`/auth/verify-email`, `/auth/reset-password`, `/auth/privacy`). Email addresses are used strictly for account verification and password recovery and are **never exposed publicly** on the map, on photos, or in GeoJSON exports—only the user's chosen `pseudonym` appears.
+Contributors register pseudonymous accounts backed by **email link confirmation** and **VPS-hosted password recovery pages** (`/auth/verify-email`, `/auth/reset-password`, `/auth/privacy`). Email addresses are used strictly for account verification and password recovery and are **never exposed publicly** on the map, on photos, or in GeoJSON exports - only the user's chosen `pseudonym` appears.
 
 ---
 
 ## Key Capabilities
 
-* **2-Step Progressive Drawing Wizard & 3-Tab Inspector:**
+* **2-Step Progressive Drawing Wizard & 4-Tab Inspector:**
   * *Creation:* Step 1 (`1. Umriss`) keeps >80% of the map visible while placing polygon vertices (`2–500,000 m²`, topology & `< 2°` spike validation); Step 2 (`2. Details`) captures surface material (`Asphalt`, `Beton`, `Pflaster`, `Sonstige Versiegelung`), optional site notes, and optional camera/gallery photos.
-  * *Inspection:* Sticky summary + `+1` / `-1` voting header above 3 segmented tabs (`Übersicht` | `Fotos (N)` | `Verwaltung`).
+  * *Inspection & Per-Polygon Threaded Discussion:* Sticky summary + `+1` / `-1` voting header above 4 segmented tabs (`Übersicht` | `Kommentare (N)` | `Fotos (N)` | `Verwaltung`). Every polygon has its own isolated comment thread supporting nested replies, `+1` comment upvotes, and automatic top-rated comment pinning (`★ Top-Kommentar`).
 * **Municipality-Bounded Score Coloring (Germany `BKG VG250`):**
-  * Positive proposal scores (`score > 0`) scale along an emerald intensity gradient **bounded to each German municipality's (`vg250_gem`) own positive score range** (`municipalityNormalizedScore` in `[0, 1]`), so smaller municipalities are never drowned out by large cities like Hamburg or Berlin. Neutral (`0`) stays ochre, negative (`< 0`) terracotta, and completed unsealing projects (`finished`) render in teal (`✓ Entsiegelt`).
+  * Positive proposal scores (`score > 0`) scale along an emerald intensity gradient **bounded to each German municipality's (`vg250_gem`) own positive score range** (`municipalityNormalizedScore` in `[0, 1]`), so smaller municipalities are never drowned out by large cities like Hamburg or Berlin. Neutral (`0`) stays ochre, negative (`< 0`) terracotta, sites currently being depaved (`in_progress`) render in civic blue (`⟳ Wird entsiegelt`), and completed unsealing projects (`finished`) render in teal (`✓ Entsiegelt`).
 * **EXIF-Stripped Site Photos, `"GPS verified"` Badge & `"Real"` / `"Fake"` Rating:**
-  * Authenticated users can shoot or upload photos during creation or on existing polygons. Server-side processing checks EXIF GPS proximity (`<= 250 m` from the polygon -> **`"GPS verified"`** badge) in memory *before* stripping 100% of EXIF/XMP/IPTC metadata and re-encoding to WebP (`sharp`). Community members can rate photos as `"Echt"` / `"Real"` (`+1`) or `"Fake"` (`-1`), automatically blurring photos flagged by consensus (`credibilityScore <= -3`).
-* **Admin Completion Workflow & `.geojson` / `.gpkg` Bulk Import:**
-  * Only `admin` accounts can mark proposals as **`finished` (`✓ Entsiegelt`)** or bulk-import `.geojson` and OGC GeoPackage (`.gpkg`, including automatic CRS reprojection to `EPSG:4326` and `MultiPolygon` splitting). Polygon deletion remains restricted strictly to the creating author (or CLI moderation).
+  * Authenticated users can shoot or upload photos during creation or on existing polygons. Server-side processing checks EXIF GPS containment inside the polygon (`<= 3 m` tolerance buffer -> **`"GPS verified"`** badge) in memory *before* stripping 100% of EXIF/XMP/IPTC metadata and re-encoding to WebP (`sharp`). Community members can rate photos as `"Echt"` / `"Real"` (`+1`) or `"Fake"` (`-1`), automatically blurring photos flagged by consensus (`credibilityScore <= -3`).
+* **Admin Status Workflow & `.geojson` / `.gpkg` Bulk Import:**
+  * Only `admin` accounts can set polygon statuses (`proposed`, `in_progress` / `Wird entsiegelt`, `finished` / `✓ Entsiegelt`) or bulk-import `.geojson` and OGC GeoPackage (`.gpkg`, including automatic CRS reprojection to `EPSG:4326` and `MultiPolygon` splitting). Polygon deletion remains restricted strictly to the creating author (or CLI moderation).
 
 ---
 
@@ -26,17 +26,17 @@ Contributors register pseudonymous accounts backed by **email link confirmation*
 
 ```mermaid
 flowchart LR
-  subgraph Client["apps/mobile (Expo Android / iOS / Web — MPL-2.0)"]
+  subgraph Client["apps/mobile (Expo Android / iOS / Web - MPL-2.0)"]
     UI["2-Step Wizard, 3-Tab Inspector, Pure Reducers"]
     MC["MapCanvas (.native.tsx / .web.tsx) + GNSS Button"]
     UI --> MC
   end
-  subgraph Shared["packages/shared (Compiled ESM — MPL-2.0)"]
+  subgraph Shared["packages/shared (Compiled ESM - MPL-2.0)"]
     ZOD["Canonical Zod Wire Schemas, Errors & Draft Validator"]
   end
   subgraph VPS["VPS Docker Stack (docker-compose.vps.yml)"]
     PROXY["Caddy 2 (Auto-HTTPS + Static Web)"]
-    API["apps/api (Fastify /api/v1 + /auth/* HTML + /uploads/* — AGPL-3.0-or-later)"]
+    API["apps/api (Fastify /api/v1 + /auth/* HTML + /uploads/* - AGPL-3.0-or-later)"]
     DB[("PostgreSQL 16 + PostGIS 3.4 + BKG VG250")]
     VOL[("uploads_data (EXIF-Stripped WebP)")]
     PROXY --> API
@@ -120,10 +120,10 @@ npm test
 
 A complete turnkey VPS deployment stack is included in the repository:
 
-* [`docker-compose.vps.yml`](./docker-compose.vps.yml) — Air-gapped `postgis` (`db_internal` network, zero host ports exposed), `api` (`uploads_data` volume + hosted `/auth/*` confirmation/recovery pages + SMTP), and `caddy` (automatic Let's Encrypt HTTPS on `80`/`443` + zero client IP access logs).
-* [`Caddyfile.vps`](./Caddyfile.vps) — Reverse-proxies `/api/*`, `/auth/*`, and `/uploads/*` to `api:3000` and serves static Expo Web assets from `./dist-web`.
-* [`.env.vps.example`](./.env.vps.example) — Production environment template (`DOMAIN`, `POSTGRES_PASSWORD`, `SMTP_*`, `AUTO_SEED_VG250`, etc.).
-* **[`docs/vps-setup.md`](./docs/vps-setup.md) — Step-by-step VPS installation, DNS/TLS, SMTP, Admin account promotion, and backup guide.**
+* [`docker-compose.vps.yml`](./docker-compose.vps.yml) - Air-gapped `postgis` (`db_internal` network, zero host ports exposed), `api` (`uploads_data` volume + hosted `/auth/*` confirmation/recovery pages + SMTP), and `caddy` (automatic Let's Encrypt HTTPS on `80`/`443` + zero client IP access logs).
+* [`Caddyfile.vps`](./Caddyfile.vps) - Reverse-proxies `/api/*`, `/auth/*`, `/uploads/*`, and `/downloads/*` to `api:3000` and serves static Expo Web assets from `./dist-web`.
+* [`.env.vps.example`](./.env.vps.example) - Production environment template (`DOMAIN`, `POSTGRES_PASSWORD`, `SMTP_*`, `AUTO_SEED_VG250`, etc.).
+* **[`docs/vps-setup.md`](./docs/vps-setup.md) - Step-by-step VPS installation, DNS/TLS, SMTP, Admin account promotion, and backup guide.**
 
 Quick launch on your Linux VPS:
 
@@ -154,8 +154,9 @@ docker compose exec api node apps/api/dist/cli/admin.js load-vg250
 # 3. Ban an abusive pseudonym (records SHA-256 tombstones, purges user's polygons/photos/votes, recomputes scores)
 docker compose exec api node apps/api/dist/cli/admin.js ban-user <pseudonym> "spam brigading"
 
-# 4. Delete a specific polygon proposal by UUID or redact its free-text note
+# 4. Delete a specific polygon proposal or comment by UUID, or redact a proposal's free-text note
 docker compose exec api node apps/api/dist/cli/admin.js delete-polygon <polygon-uuid>
+docker compose exec api node apps/api/dist/cli/admin.js delete-comment <comment-uuid>
 docker compose exec api node apps/api/dist/cli/admin.js redact-note <polygon-uuid>
 ```
 
@@ -199,8 +200,9 @@ npm --workspace apps/mobile run ios
 | `TRUST_PROXY` | `false` | Set `true` behind Caddy/Nginx/Traefik. |
 | `CORS_ORIGIN` | `*` | Allowed browser CORS origin(s), comma-separated. |
 | `OSM_STYLE_URL` | `https://tiles.openfreemap.org/styles/liberty` | MapLibre vector style JSON URL. |
-| `ORTHOPHOTO_*` | *(disabled)* | Optional `EPSG:3857` aerial orthophoto layer settings (`URL_TEMPLATE`, `TILE_SIZE`, `ATTRIBUTION`, `BOUNDS`, `MAX_ZOOM`). |
-| `INITIAL_LNG` / `LAT` / `ZOOM` | `9.9937` / `53.5511` / `15` | Default initial viewport camera. |
+| `ORTHOPHOTO_*` | *(built-in Germany DOP20)* | Built-in server-proxied German DOP20 aerial orthophotos (`/api/v1/tiles/dop20/{z}/{x}/{y}.png`); set `ORTHOPHOTO_URL_TEMPLATE=none` to disable or override with a custom `EPSG:3857` URL. |
+| `APK_DOWNLOAD_URL` / `APK_FILE_PATH` | `/downloads/unseal.apk` / `<UPLOADS_DIR>/unseal.apk` | Optional direct Android `.apk` download link (`none` to hide button) and server file location. |
+| `INITIAL_LNG` / `LAT` / `ZOOM` | `8.2739` / `49.9989` / `15` | Default initial viewport camera (Mainz Cathedral). |
 | `MAX_DAILY_POLYGONS_PER_USER` | `25` | Rolling 24-hour polygon creation cap per user. |
 | `SESSION_TTL_DAYS` | `30` | Bearer session lifetime in days. |
 | `DISCLAIMER_TEXT` / `ABUSE_CONTACT` | *(civic notice)* / *(empty)* | Public notice and optional moderation contact shown in inspector & privacy page. |
@@ -210,6 +212,6 @@ npm --workspace apps/mobile run ios
 
 ## 6. Split Open-Source Licensing (`AGPL-3.0-or-later` & `MPL-2.0`)
 
-* **Server & Repository Root (`AGPL-3.0-or-later`):** `apps/api` and root files (except workspaces providing their own `LICENSE`) are licensed under the **GNU Affero General Public License v3.0 or later** — see [`LICENSE`](./LICENSE) and [`apps/api/LICENSE`](./apps/api/LICENSE).
-* **Mobile/Web Client & Shared Schemas (`MPL-2.0`):** `apps/mobile` and `packages/shared` are licensed under the **Mozilla Public License 2.0** — see [`apps/mobile/LICENSE`](./apps/mobile/LICENSE) and [`packages/shared/LICENSE`](./packages/shared/LICENSE).
+* **Server & Repository Root (`AGPL-3.0-or-later`):** `apps/api` and root files (except workspaces providing their own `LICENSE`) are licensed under the **GNU Affero General Public License v3.0 or later** - see [`LICENSE`](./LICENSE) and [`apps/api/LICENSE`](./apps/api/LICENSE).
+* **Mobile/Web Client & Shared Schemas (`MPL-2.0`):** `apps/mobile` and `packages/shared` are licensed under the **Mozilla Public License 2.0** - see [`apps/mobile/LICENSE`](./apps/mobile/LICENSE) and [`packages/shared/LICENSE`](./packages/shared/LICENSE).
 * **AGPLv3 Section 13 Network-Interaction Clarification:** Client packages and applications licensed under `MPL-2.0` (including `packages/shared`, `apps/mobile`, and independent HTTP/GeoJSON clients) that communicate with the `apps/api` HTTP service over a computer network are separate works and remain covered by `MPL-2.0`.

@@ -10,6 +10,8 @@ import {
   type AuthUser,
   type BboxBounds,
   type CreatePolygonRequest,
+  type FlagPolygonResponse,
+  type PolygonAuthorFilter,
   type PolygonFeature,
   type RuntimeConfig,
   type SurfaceType,
@@ -76,6 +78,8 @@ export interface AppState {
   configError: string | null;
   firstVisitDisclaimerDismissed: boolean;
   basemapMode: BasemapMode;
+  authorFilter: PolygonAuthorFilter;
+  unratedFlaggedOnly: boolean;
   tileWarning: string | null;
   viewport: ViewportState | null;
   spanTooWide: boolean;
@@ -88,6 +92,7 @@ export interface AppState {
   selectedFeatureId: string | null;
   mode: InteractionMode;
   drawingStep: DrawingStep;
+  drawingSheetCollapsed: boolean;
   draftVertices: [number, number][];
   isRingClosed: boolean;
   draftSurfaceType: SurfaceType;
@@ -113,6 +118,8 @@ export type AppAction =
   | { type: 'DISMISS_FIRST_VISIT_DISCLAIMER' }
   | { type: 'DISMISS_TILE_WARNING' }
   | { type: 'SET_BASEMAP_MODE'; mode: BasemapMode }
+  | { type: 'SET_AUTHOR_FILTER'; filter: PolygonAuthorFilter }
+  | { type: 'SET_UNRATED_FLAGGED_ONLY'; enabled: boolean }
   | { type: 'TILE_LOAD_ERROR'; reason?: string }
   | { type: 'SET_CAMERA_TARGET'; lng: number; lat: number; zoom?: number }
   | { type: 'SET_VIEWPORT'; bbox: BboxBounds; zoom: number }
@@ -128,6 +135,7 @@ export type AppAction =
   | { type: 'CLOSE_RING' }
   | { type: 'ADVANCE_TO_DETAILS' }
   | { type: 'BACK_TO_GEOMETRY' }
+  | { type: 'SET_DRAWING_SHEET_COLLAPSED'; collapsed: boolean }
   | { type: 'SET_DRAFT_META'; surfaceType?: SurfaceType; note?: string }
   | { type: 'ADD_DRAFT_PHOTO'; photo: DraftPhotoAttachment }
   | { type: 'REMOVE_DRAFT_PHOTO'; photoId: string }
@@ -139,11 +147,17 @@ export type AppAction =
   | { type: 'POLYGON_CREATED'; feature: PolygonFeature }
   | { type: 'POLYGON_UPDATED'; feature: PolygonFeature }
   | { type: 'POLYGON_PHOTO_COUNT_SET'; polygonId: string; photoCount: number }
+  | {
+      type: 'POLYGON_COMMENT_COUNT_SET';
+      polygonId: string;
+      commentCount: number;
+    }
   | { type: 'POLYGON_DELETED'; polygonId: string }
   | { type: 'SELECT_FEATURES_AT_TAP'; featureIds: readonly string[] }
   | { type: 'CYCLE_OVERLAP_FEATURE' }
   | { type: 'CAST_VOTE'; polygonId: string; value: 1 | -1 }
   | { type: 'VOTE_UPDATED'; vote: VoteResponse }
+  | { type: 'POLYGON_FLAG_UPDATED'; flag: FlagPolygonResponse }
   | {
       type: 'OPEN_AUTH_MODAL';
       view?: AuthModalView;
@@ -172,6 +186,8 @@ export const initialAppState: AppState = {
   configError: null,
   firstVisitDisclaimerDismissed: false,
   basemapMode: 'osm',
+  authorFilter: 'all',
+  unratedFlaggedOnly: false,
   tileWarning: null,
   viewport: null,
   spanTooWide: false,
@@ -184,6 +200,7 @@ export const initialAppState: AppState = {
   selectedFeatureId: null,
   mode: 'browse',
   drawingStep: 'geometry',
+  drawingSheetCollapsed: false,
   draftVertices: [],
   isRingClosed: false,
   draftSurfaceType: 'asphalt',
@@ -261,7 +278,7 @@ function recomputeMunicipalityScoresForAgs(
     for (const f of nextFeatures) {
       if (
         f.properties.municipalityAgs === null &&
-        f.properties.status !== 'finished' &&
+        f.properties.status === 'proposed' &&
         f.properties.score > visibleMax
       ) {
         visibleMax = f.properties.score;
@@ -297,7 +314,7 @@ function recomputeMunicipalityScoresForAgs(
       prevReportedMax = f.properties.municipalityMaxScore;
     }
     if (
-      f.properties.status !== 'finished' &&
+      f.properties.status === 'proposed' &&
       f.properties.score > prevVisibleMax
     ) {
       prevVisibleMax = f.properties.score;
@@ -311,7 +328,7 @@ function recomputeMunicipalityScoresForAgs(
   for (const f of nextFeatures) {
     if (
       f.properties.municipalityAgs === targetAgs &&
-      f.properties.status !== 'finished' &&
+      f.properties.status === 'proposed' &&
       f.properties.score > nextVisibleMax
     ) {
       nextVisibleMax = f.properties.score;
@@ -439,6 +456,28 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
     }
 
+    case 'SET_AUTHOR_FILTER': {
+      if (state.authorFilter === action.filter) {
+        return state;
+      }
+      return {
+        ...state,
+        authorFilter: action.filter,
+        viewportRefreshSeq: state.viewportRefreshSeq + 1,
+      };
+    }
+
+    case 'SET_UNRATED_FLAGGED_ONLY': {
+      if (state.unratedFlaggedOnly === action.enabled) {
+        return state;
+      }
+      return {
+        ...state,
+        unratedFlaggedOnly: action.enabled,
+        viewportRefreshSeq: state.viewportRefreshSeq + 1,
+      };
+    }
+
     case 'TILE_LOAD_ERROR': {
       const defaultFallback =
         state.locale === 'de'
@@ -513,6 +552,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         ...state,
         mode: 'drawing',
         drawingStep: 'geometry',
+        drawingSheetCollapsed: false,
         draftVertices: [],
         isRingClosed: false,
         draftSurfaceType: 'asphalt',
@@ -602,6 +642,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         const firstError = validation.errors[0];
         return {
           ...state,
+          drawingSheetCollapsed: false,
           draftSubmitError: firstError
             ? translateValidationMessage(firstError, state.locale)
             : null,
@@ -611,6 +652,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         ...state,
         isRingClosed: true,
         drawingStep: 'details',
+        drawingSheetCollapsed: false,
         confirmingDiscardDraft: false,
         draftSubmitError: null,
       };
@@ -623,8 +665,19 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         drawingStep: 'geometry',
+        drawingSheetCollapsed: false,
         confirmingDiscardDraft: false,
         draftSubmitError: null,
+      };
+    }
+
+    case 'SET_DRAWING_SHEET_COLLAPSED': {
+      if (state.mode !== 'drawing' || state.drawingSheetCollapsed === action.collapsed) {
+        return state;
+      }
+      return {
+        ...state,
+        drawingSheetCollapsed: action.collapsed,
       };
     }
 
@@ -675,6 +728,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
           ...state,
           mode: 'browse',
           drawingStep: 'geometry',
+          drawingSheetCollapsed: false,
           isRingClosed: false,
           confirmingDiscardDraft: false,
           isSubmittingDraft: false,
@@ -683,6 +737,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       }
       return {
         ...state,
+        drawingSheetCollapsed: false,
         confirmingDiscardDraft: true,
       };
     }
@@ -699,6 +754,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         ...state,
         mode: 'browse',
         drawingStep: 'geometry',
+        drawingSheetCollapsed: false,
         draftVertices: [],
         isRingClosed: false,
         draftSurfaceType: 'asphalt',
@@ -748,6 +804,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case 'SUBMIT_ERROR_PRESERVE_DRAFT': {
       return {
         ...state,
+        drawingSheetCollapsed: false,
         isSubmittingDraft: false,
         draftSubmitError: action.message,
       };
@@ -770,6 +827,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         features: nextFeatures,
         mode: 'browse',
         drawingStep: 'geometry',
+        drawingSheetCollapsed: false,
         draftVertices: [],
         isRingClosed: false,
         draftSurfaceType: 'asphalt',
@@ -813,6 +871,25 @@ export function appReducer(state: AppState, action: AppAction): AppState {
               properties: {
                 ...f.properties,
                 photoCount: nextCount,
+              },
+            }
+          : f,
+      );
+      return {
+        ...state,
+        features: nextFeatures,
+      };
+    }
+
+    case 'POLYGON_COMMENT_COUNT_SET': {
+      const nextCount = Math.max(0, action.commentCount);
+      const nextFeatures = state.features.map((f) =>
+        f.id === action.polygonId
+          ? {
+              ...f,
+              properties: {
+                ...f.properties,
+                commentCount: nextCount,
               },
             }
           : f,
@@ -953,6 +1030,30 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
     }
 
+    case 'POLYGON_FLAG_UPDATED': {
+      const nextFeatures = state.features.map((f) =>
+        f.id === action.flag.polygonId
+          ? {
+              ...f,
+              properties: {
+                ...f.properties,
+                flagCount: action.flag.flagCount,
+                isFlagged: action.flag.isFlagged,
+                myFlag: action.flag.myFlag,
+              },
+            }
+          : f,
+      );
+      return {
+        ...state,
+        features: nextFeatures,
+        viewportRefreshSeq:
+          state.unratedFlaggedOnly && !action.flag.isFlagged
+            ? state.viewportRefreshSeq + 1
+            : state.viewportRefreshSeq,
+      };
+    }
+
     case 'OPEN_AUTH_MODAL': {
       const defaultView: AuthModalView =
         action.view ??
@@ -1038,6 +1139,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         properties: {
           ...f.properties,
           myVote: 0 as const,
+          myFlag: false,
           isAuthor: false,
         },
       }));
@@ -1058,17 +1160,31 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'ACCOUNT_DELETED': {
-      const anonymizedFeatures = state.features.map((f) => ({
-        ...f,
-        properties: {
-          ...f.properties,
-          authorPseudonym: f.properties.isAuthor
-            ? 'deleted'
-            : f.properties.authorPseudonym,
-          isAuthor: false,
-          myVote: 0 as const,
-        },
-      }));
+      const anonymizedFeatures = state.features.map((f) => {
+        const nextFlagCount = f.properties.myFlag
+          ? Math.max(0, f.properties.flagCount - 1)
+          : f.properties.flagCount;
+        return {
+          ...f,
+          properties: {
+            ...f.properties,
+            authorPseudonym: f.properties.isAuthor
+              ? 'deleted'
+              : f.properties.authorPseudonym,
+            authorIsNewUser: f.properties.isAuthor
+              ? false
+              : f.properties.authorIsNewUser,
+            authorLastLoginAt: f.properties.isAuthor
+              ? null
+              : f.properties.authorLastLoginAt,
+            isAuthor: false,
+            myVote: 0 as const,
+            flagCount: nextFlagCount,
+            isFlagged: nextFlagCount > 0,
+            myFlag: false,
+          },
+        };
+      });
 
       return {
         ...state,

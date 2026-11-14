@@ -401,7 +401,7 @@ export function AuthAndAccountModal({
         <View style={styles.formSection}>
           <View style={styles.verifyInfoCard}>
             <Text style={styles.verifyInfoText}>
-              {t.verifyPendingBody(pendingEmailDisplay || '—')}
+              {t.verifyPendingBody(pendingEmailDisplay || '-')}
             </Text>
           </View>
 

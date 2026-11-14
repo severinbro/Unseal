@@ -30,7 +30,9 @@ import {
 import {
   deriveAuthModalModel,
   deriveDrawingToolbarModel,
+  deriveInspectorOverviewMeta,
   deriveMapControlsModel,
+  formatInspectorDate,
   MIN_TOUCH_TARGET_DP,
 } from '../src/state/viewModels';
 import {
@@ -62,9 +64,11 @@ const SAMPLE_CONFIG: RuntimeConfig = {
     maxDailyPolygonsPerUser: 25,
   },
   disclaimerText:
-    'Community unsealing suggestions — non-binding public input, regardless of property ownership.',
+    'Community unsealing suggestions - non-binding public input, regardless of property ownership.',
   abuseContact: 'moderation@example.org',
   privacyPolicyUrl: 'https://maps.example.org/auth/privacy',
+  apkDownloadUrl: 'https://maps.example.org/downloads/unseal.apk',
+  authCaptchaRequired: false,
 };
 
 function makeSampleFeature(id: string, score: number): PolygonFeature {
@@ -95,11 +99,17 @@ function makeSampleFeature(id: string, score: number): PolygonFeature {
       municipalityMaxScore: Math.max(score, 3),
       municipalityNormalizedScore: score > 0 ? 1 : 0,
       photoCount: 0,
+      commentCount: 0,
       authorPseudonym: 'citizen_a',
+      authorIsNewUser: true,
+      authorLastLoginAt: '2026-11-14T08:30:00.000Z',
       upvotes: score > 0 ? score : 0,
       downvotes: score < 0 ? Math.abs(score) : 0,
       score,
       myVote: 0,
+      flagCount: 0,
+      isFlagged: false,
+      myFlag: false,
       isAuthor: false,
       createdAt: '2026-11-12T10:00:00.000Z',
       updatedAt: '2026-11-12T10:00:00.000Z',
@@ -268,6 +278,98 @@ describe('locateMe.web requestCurrentCoordinates adapter', () => {
       lat: 53.5511,
     });
   });
+
+  it('refines coarse initial GeoIP fix (e.g. Frankfurt hub) via watchPosition until precise user GPS/Wi-Fi fix arrives', async () => {
+    let clearedId: number | null = null;
+    let capturedMaxAge: number | undefined;
+    const refiningNav: WebNavigatorLike = {
+      geolocation: {
+        getCurrentPosition() {
+          assert.fail('watchPosition should be preferred when available');
+        },
+        watchPosition(onSuccess, _onError, options) {
+          capturedMaxAge = options?.maximumAge;
+          // 1. Browser immediately emits coarse ISP/GeoIP fix in Frankfurt (±25 km)
+          setTimeout(() => {
+            onSuccess({
+              coords: {
+                longitude: 8.6821,
+                latitude: 50.1109,
+                accuracy: 25_000,
+              },
+            });
+          }, 5);
+          // 2. Moments later, GNSS/Wi-Fi locks onto actual user position in Mainz (±18 m)
+          setTimeout(() => {
+            onSuccess({
+              coords: {
+                longitude: 8.2739,
+                latitude: 49.9989,
+                accuracy: 18,
+              },
+            });
+          }, 20);
+          return 42;
+        },
+        clearWatch(id) {
+          clearedId = id;
+        },
+      },
+    };
+
+    const result = await requestCurrentCoordinates(
+      refiningNav,
+      true,
+      'de',
+      200,
+    );
+    assert.equal(capturedMaxAge, 0);
+    assert.equal(clearedId, 42);
+    assert.deepEqual(result, {
+      ok: true,
+      lng: 8.2739,
+      lat: 49.9989,
+      accuracyMeters: 18,
+    });
+  });
+
+  it('returns best available fix with accuracyMeters after refinement window if only coarse GeoIP is available', async () => {
+    let clearedId: number | null = null;
+    const coarseOnlyNav: WebNavigatorLike = {
+      geolocation: {
+        getCurrentPosition() {},
+        watchPosition(onSuccess) {
+          setTimeout(() => {
+            onSuccess({
+              coords: {
+                longitude: 8.6821,
+                latitude: 50.1109,
+                accuracy: 18_000,
+              },
+            });
+          }, 5);
+          return 77;
+        },
+        clearWatch(id) {
+          clearedId = id;
+        },
+      },
+    };
+
+    const result = await requestCurrentCoordinates(
+      coarseOnlyNav,
+      true,
+      'de',
+      40,
+    );
+    assert.equal(clearedId, 77);
+    assert.deepEqual(result, {
+      ok: true,
+      lng: 8.6821,
+      lat: 50.1109,
+      accuracyMeters: 18_000,
+    });
+  });
 });
 
 describe('UI sheet, banner, and GPS camera state transitions', () => {
@@ -362,8 +464,39 @@ describe('UI sheet, banner, and GPS camera state transitions', () => {
     state = appReducer(state, { type: 'ADD_VERTEX', point: [9.993, 53.552] });
     const toolbar = deriveDrawingToolbarModel(state);
     assert.equal(toolbar.visible, true);
+    assert.equal(toolbar.collapsed, false);
     assert.notEqual(toolbar.crossingPoint, null);
     assert.equal(toolbar.canSubmit, false);
+
+    // Collapsing and expanding the new-polygon form preserves draft metadata & vertices
+    state = appReducer(state, { type: 'START_DRAW' });
+    state = appReducer(state, { type: 'ADD_VERTEX', point: [8.2738, 49.9988] });
+    state = appReducer(state, { type: 'ADD_VERTEX', point: [8.274, 49.9988] });
+    state = appReducer(state, { type: 'ADD_VERTEX', point: [8.274, 49.999] });
+    state = appReducer(state, { type: 'ADVANCE_TO_DETAILS' });
+    state = appReducer(state, {
+      type: 'SET_DRAFT_META',
+      surfaceType: 'concrete',
+      note: 'Versiegelter Vorplatz am Dom',
+    });
+    state = appReducer(state, {
+      type: 'SET_DRAWING_SHEET_COLLAPSED',
+      collapsed: true,
+    });
+    let detailsToolbar = deriveDrawingToolbarModel(state);
+    assert.equal(detailsToolbar.visible, true);
+    assert.equal(detailsToolbar.collapsed, true);
+    assert.equal(detailsToolbar.step, 'details');
+    assert.equal(detailsToolbar.surfaceType, 'concrete');
+    assert.equal(detailsToolbar.note, 'Versiegelter Vorplatz am Dom');
+
+    // Auto-expands if submit error arrives so alert is never hidden
+    state = appReducer(state, {
+      type: 'SUBMIT_ERROR_PRESERVE_DRAFT',
+      message: 'Network timeout',
+    });
+    detailsToolbar = deriveDrawingToolbarModel(state);
+    assert.equal(detailsToolbar.collapsed, false);
   });
 
   it('adapts responsive layout across phone (390x844), tablet (768x1024), and desktop (1440x900) and formats recovery codes', () => {
@@ -429,7 +562,12 @@ describe('German default localization and DE <-> EN switching', () => {
     const controlsDe = deriveMapControlsModel(state);
     assert.equal(controlsDe.locale, 'de');
     assert.equal(controlsDe.accountLabel, 'Anmelden');
+    assert.equal(controlsDe.apkDownloadUrl, 'https://maps.example.org/downloads/unseal.apk');
     assert.match(controlsDe.zoomInPromptText, /heranzoomen/);
+    assert.equal(getTranslations('de').inspector.statusInProgressBadge, '⟳ Wird entsiegelt');
+    assert.equal(getTranslations('en').inspector.statusInProgressBadge, '⟳ In progress');
+    assert.equal(getTranslations('en').controls.apkDownloadFull, 'Download Android APK');
+    assert.equal(getTranslations('de').about.title, 'Über Unseal');
 
     // Built-in English server disclaimer translates to German in 'de', while custom operator overrides stay verbatim
     assert.equal(
@@ -441,8 +579,8 @@ describe('German default localization and DE <-> EN switching', () => {
       SAMPLE_CONFIG.disclaimerText,
     );
     assert.equal(
-      localizeDisclaimerText('Bezirksamt Altona — Bürgerbeteiligung 2026', 'de'),
-      'Bezirksamt Altona — Bürgerbeteiligung 2026',
+      localizeDisclaimerText('Bezirksamt Altona - Bürgerbeteiligung 2026', 'de'),
+      'Bezirksamt Altona - Bürgerbeteiligung 2026',
     );
     assert.equal(
       localizeDisclaimerText('Custom Municipal Notice', 'en'),
@@ -535,5 +673,93 @@ describe('German default localization and DE <-> EN switching', () => {
       'Please confirm your email address first.',
     );
     assert.match(localizeError(unverifiedErr, 'Fallback', 'de'), /E-Mail-Adresse/);
+
+    // Carbon error codes & validation messages localize cleanly to German
+    assert.match(
+      localizeError(
+        new ApiError(409, 'POLYGON_OVERLAP', 'Overlaps existing polygon.'),
+        'Fallback',
+        'de',
+      ),
+      /überlappt/i,
+    );
+    assert.match(
+      localizeError(
+        new ApiError(422, 'LAND_COVER_EXCLUDED', 'Water or forest.'),
+        'Fallback',
+        'de',
+      ),
+      /Gewässern|Wald|Gebäuden/,
+    );
+    assert.match(
+      localizeError(
+        new ApiError(422, 'OUTSIDE_JURISDICTION', 'Outside municipality.'),
+        'Fallback',
+        'de',
+      ),
+      /Kartierungsgebiets/,
+    );
+    assert.match(
+      localizeError(
+        new ApiError(422, 'AUTH_DISPOSABLE_EMAIL', 'Disposable domain.'),
+        'Fallback',
+        'de',
+      ),
+      /Wegwerf-E-Mail/,
+    );
+    assert.match(
+      localizeError(
+        new Error(
+          'Polygon shape is too thin or irregular (compactness 0.021 is below 0.05).',
+        ),
+        'Fallback',
+        'de',
+      ),
+      /Kompaktheit 0\.021 liegt unter 0\.05/,
+    );
+
+    // Inspector overview metadata formatting (entry date, new contributor badge, last login, Needs review badge)
+    assert.equal(formatInspectorDate('2026-11-14T13:20:00.000Z', 'de'), '14.11.2026');
+    assert.equal(formatInspectorDate('2026-11-14T13:20:00.000Z', 'en'), '2026-11-14');
+    assert.equal(formatInspectorDate(null, 'de'), null);
+
+    const flaggedNewFeature: PolygonFeature = {
+      ...makeSampleFeature('33333333-3333-4333-8333-333333333333', 0),
+      properties: {
+        ...makeSampleFeature('33333333-3333-4333-8333-333333333333', 0).properties,
+        authorIsNewUser: true,
+        authorLastLoginAt: '2026-11-14T08:30:00.000Z',
+        flagCount: 2,
+        isFlagged: true,
+        myFlag: true,
+      },
+    };
+    const metaDe = deriveInspectorOverviewMeta(flaggedNewFeature, 'de');
+    assert.equal(metaDe.displayAuthorHandle, 'citizen_a');
+    assert.equal(metaDe.newContributorBadgeText, 'Neuer Beitragender');
+    assert.equal(metaDe.entryDateText, '12.11.2026');
+    assert.equal(metaDe.authorLastLoginText, '14.11.2026');
+    assert.equal(metaDe.needsReviewBadgeText, 'Prüfbedarf (2)');
+    assert.equal(metaDe.canFlagOrUnflag, true);
+
+    const metaEn = deriveInspectorOverviewMeta(
+      {
+        ...flaggedNewFeature,
+        properties: {
+          ...flaggedNewFeature.properties,
+          authorPseudonym: 'deleted',
+          authorIsNewUser: false,
+          authorLastLoginAt: null,
+          isAuthor: true,
+        },
+      },
+      'en',
+    );
+    assert.equal(metaEn.displayAuthorHandle, 'deleted');
+    assert.equal(metaEn.newContributorBadgeText, null);
+    assert.equal(metaEn.entryDateText, '2026-11-12');
+    assert.equal(metaEn.authorLastLoginText, 'Unknown');
+    assert.equal(metaEn.needsReviewBadgeText, 'Needs review (2)');
+    assert.equal(metaEn.canFlagOrUnflag, false);
   });
 });

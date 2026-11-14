@@ -21,6 +21,7 @@ export interface RawImportedCandidate {
   featureIndex: number;
   kind: 'geojson' | 'wkb';
   srid: number;
+  srsWkt?: string;
   geoJsonGeometry?: string;
   wkb?: Buffer;
   surfaceType: SurfaceType;
@@ -165,7 +166,7 @@ function parseEpsgCodeFromCrsObject(crs: unknown): number {
   if (/CRS84/i.test(name)) {
     return 4326;
   }
-  const match = /EPSG[:]+(\d{4,6})/i.exec(name);
+  const match = /EPSG(?:[:/]+[\d.]*)?[:/]+(\d{4,6})/i.exec(name);
   if (match && match[1]) {
     const code = Number(match[1]);
     if (Number.isInteger(code) && code > 0) {
@@ -306,24 +307,45 @@ async function extractFromGpkgBuffer(buffer: Buffer): Promise<ExtractedImportDat
     }
 
     const srsMap = new Map<number, number>();
+    const srsWktMap = new Map<number, string>();
     try {
       const srsRows = db
         .prepare(
-          'SELECT srs_id, organization, organization_coordsys_id FROM gpkg_spatial_ref_sys',
+          'SELECT srs_name, srs_id, organization, organization_coordsys_id, definition FROM gpkg_spatial_ref_sys',
         )
         .all() as Array<{
+        srs_name: string | null;
         srs_id: number;
         organization: string | null;
         organization_coordsys_id: number | null;
+        definition: string | null;
       }>;
       for (const srs of srsRows) {
+        if (typeof srs.srs_id !== 'number') {
+          continue;
+        }
         if (
-          typeof srs.srs_id === 'number' &&
           typeof srs.organization_coordsys_id === 'number' &&
           srs.organization_coordsys_id > 0 &&
           (!srs.organization || /^epsg$/i.test(srs.organization))
         ) {
           srsMap.set(srs.srs_id, srs.organization_coordsys_id);
+          continue;
+        }
+        if (
+          (/^ogc$/i.test(srs.organization ?? '') &&
+            srs.organization_coordsys_id === 84) ||
+          /CRS84/i.test(srs.srs_name ?? '')
+        ) {
+          srsMap.set(srs.srs_id, 4326);
+          continue;
+        }
+        const trimmedDef = srs.definition?.trim() ?? '';
+        if (
+          trimmedDef.length > 0 &&
+          !/^undefined$/i.test(trimmedDef)
+        ) {
+          srsWktMap.set(srs.srs_id, trimmedDef);
         }
       }
     } catch {
@@ -420,9 +442,19 @@ async function extractFromGpkgBuffer(buffer: Buffer): Promise<ExtractedImportDat
           continue;
         }
 
+        const explicitEpsg =
+          srsMap.get(parsedGpb.srsId) ?? srsMap.get(layer.srs_id);
+        const customWkt =
+          explicitEpsg === undefined
+            ? (srsWktMap.get(parsedGpb.srsId) ?? srsWktMap.get(layer.srs_id))
+            : undefined;
         const resolvedSrid =
-          srsMap.get(parsedGpb.srsId) ??
-          (parsedGpb.srsId > 0 ? parsedGpb.srsId : defaultEpsg);
+          explicitEpsg ??
+          (customWkt !== undefined
+            ? 0
+            : parsedGpb.srsId > 0
+              ? parsedGpb.srsId
+              : defaultEpsg);
 
         const nonGeomProps: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(row)) {
@@ -435,6 +467,7 @@ async function extractFromGpkgBuffer(buffer: Buffer): Promise<ExtractedImportDat
           featureIndex: currentIndex,
           kind: 'wkb',
           srid: resolvedSrid,
+          ...(customWkt !== undefined ? { srsWkt: customWkt } : {}),
           wkb: parsedGpb.wkb,
           surfaceType: resolveSurfaceTypeFromProps(nonGeomProps),
           note: resolveNoteFromProps(nonGeomProps),

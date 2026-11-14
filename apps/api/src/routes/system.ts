@@ -1,3 +1,7 @@
+import { createReadStream } from 'node:fs';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+
 import {
   ApiError,
   HealthResponseSchema,
@@ -72,4 +76,65 @@ export function registerSystemRoutes(
   app.get('/api/v1/config', async () => {
     return RuntimeConfigSchema.parse(app.config.runtimeConfig);
   });
+
+  app.get(
+    '/downloads/unseal.apk',
+    {
+      config: {
+        compress: false,
+        rateLimit: {
+          max: 30,
+          timeWindow: '15 minutes',
+        },
+      },
+    },
+    async (_request, reply) => {
+      const defaultDevApkPath = path.join(
+        path.resolve(process.cwd(), 'uploads'),
+        'unseal.apk',
+      );
+      const isDefaultDevPath = app.config.apkFilePath === defaultDevApkPath;
+      const candidatePaths = isDefaultDevPath
+        ? [
+            app.config.apkFilePath,
+            path.resolve(process.cwd(), 'downloads', 'unseal.apk'),
+            path.resolve(
+              process.cwd(),
+              'apps/mobile/android/app/build/outputs/apk/release/app-release.apk',
+            ),
+            path.resolve(
+              process.cwd(),
+              '../mobile/android/app/build/outputs/apk/release/app-release.apk',
+            ),
+          ]
+        : [app.config.apkFilePath];
+
+      for (const filePath of candidatePaths) {
+        try {
+          const stat = await fs.stat(filePath);
+          if (stat.isFile() && stat.size > 0) {
+            return reply
+              .status(200)
+              .header('Content-Type', 'application/vnd.android.package-archive')
+              .header(
+                'Content-Disposition',
+                'attachment; filename="unseal.apk"',
+              )
+              .header('Content-Length', String(stat.size))
+              .header('Cache-Control', 'public, max-age=300')
+              .header('X-Content-Type-Options', 'nosniff')
+              .send(createReadStream(filePath));
+          }
+        } catch {
+          // Try next candidate path
+        }
+      }
+
+      throw new ApiError(
+        404,
+        'NOT_FOUND',
+        'Android APK package has not been uploaded to this server yet.',
+      );
+    },
+  );
 }

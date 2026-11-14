@@ -6,15 +6,49 @@ import { GEOMETRY_LIMITS } from './constants.js';
 
 const FLOAT_SPAN_TOLERANCE = 1e-9;
 const NEAR_AREA_RATIO = 0.1;
+const EARTH_RADIUS_M = 6_371_008.8;
 
 export interface DraftValidationResult {
   valid: boolean;
   closedRing: [number, number][] | null;
   vertexCount: number;
   areaM2: number;
+  compactnessPp?: number;
   nearAreaBound: boolean;
   crossingPoint: [number, number] | null;
   errors: string[];
+}
+
+export function computeRingPerimeterMeters(
+  closedRing: readonly [number, number][],
+): number {
+  let total = 0;
+  for (let i = 0; i < closedRing.length - 1; i++) {
+    const [lng1, lat1] = closedRing[i]!;
+    const [lng2, lat2] = closedRing[i + 1]!;
+    const phi1 = (lat1 * Math.PI) / 180;
+    const phi2 = (lat2 * Math.PI) / 180;
+    const dPhi = phi2 - phi1;
+    const dLambda = ((lng2 - lng1) * Math.PI) / 180;
+    const sinHalfPhi = Math.sin(dPhi / 2);
+    const sinHalfLambda = Math.sin(dLambda / 2);
+    const a =
+      sinHalfPhi * sinHalfPhi +
+      Math.cos(phi1) * Math.cos(phi2) * sinHalfLambda * sinHalfLambda;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
+    total += EARTH_RADIUS_M * c;
+  }
+  return total;
+}
+
+export function computePolsbyPopperCompactness(
+  areaM2: number,
+  perimeterM: number,
+): number {
+  if (!Number.isFinite(areaM2) || !Number.isFinite(perimeterM) || perimeterM <= 0 || areaM2 <= 0) {
+    return 0;
+  }
+  return (4 * Math.PI * areaM2) / (perimeterM * perimeterM);
 }
 
 export interface RingStructureCheckResult {
@@ -287,6 +321,8 @@ export function validateDraftPolygon(
 
   const rawArea = area(turfPoly);
   const areaM2 = Number.isFinite(rawArea) ? rawArea : 0;
+  const perimeterM = computeRingPerimeterMeters(candidateClosedRing);
+  const compactnessPp = computePolsbyPopperCompactness(areaM2, perimeterM);
 
   if (areaM2 < GEOMETRY_LIMITS.MIN_AREA_M2) {
     errors.push(
@@ -295,6 +331,17 @@ export function validateDraftPolygon(
   } else if (areaM2 > GEOMETRY_LIMITS.MAX_AREA_M2) {
     errors.push(
       `Polygon area (${areaM2.toFixed(1)} m²) exceeds maximum of ${GEOMETRY_LIMITS.MAX_AREA_M2.toLocaleString('en-US')} m².`,
+    );
+  } else if (compactnessPp < GEOMETRY_LIMITS.MIN_COMPACTNESS_PP) {
+    errors.push(
+      `Polygon shape is too thin or irregular (compactness ${compactnessPp.toFixed(3)} is below ${GEOMETRY_LIMITS.MIN_COMPACTNESS_PP}).`,
+    );
+  } else if (
+    perimeterM > 0 &&
+    (2 * areaM2) / perimeterM < GEOMETRY_LIMITS.MIN_WIDTH_BUFFER_M
+  ) {
+    errors.push(
+      `Polygon is too narrow (minimum width must exceed ${(GEOMETRY_LIMITS.MIN_WIDTH_BUFFER_M * 2).toFixed(1)} m).`,
     );
   }
 
@@ -311,6 +358,7 @@ export function validateDraftPolygon(
     closedRing: valid ? candidateClosedRing : null,
     vertexCount,
     areaM2,
+    compactnessPp,
     nearAreaBound,
     crossingPoint,
     errors,

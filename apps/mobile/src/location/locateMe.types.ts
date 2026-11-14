@@ -10,6 +10,7 @@ export type LocateMeResult =
       ok: true;
       lng: number;
       lat: number;
+      accuracyMeters?: number;
     }
   | {
       ok: false;

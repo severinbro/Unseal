@@ -1,6 +1,7 @@
 import {
   ApiError,
   type ErrorCode,
+  type PolygonFlagReason,
   type SurfaceType,
 } from '@entsiegelung/shared';
 
@@ -10,10 +11,10 @@ export const DEFAULT_LOCALE: Locale = 'de';
 export const LOCALE_STORAGE_KEY = 'entsiegelung.locale';
 
 export const BUILTIN_SERVER_DISCLAIMER_EN =
-  'Community unsealing suggestions — non-binding public input, regardless of property ownership.';
+  'Community unsealing suggestions - non-binding public input, regardless of property ownership.';
 
 export const BUILTIN_DISCLAIMER_DE =
-  'Gemeinschaftliche Entsiegelungsvorschläge — unverbindliche Hinweise der Öffentlichkeit, unabhängig von den Eigentumsverhältnissen.';
+  'Gemeinschaftliche Entsiegelungsvorschläge - unverbindliche Hinweise der Öffentlichkeit, unabhängig von den Eigentumsverhältnissen.';
 
 interface WebLocaleStorageLike {
   getItem(key: string): string | null;
@@ -76,7 +77,10 @@ export interface TranslationDictionary {
     readonly legendBacked: string;
     readonly legendNew: string;
     readonly legendContested: string;
+    readonly legendInProgress: string;
     readonly legendFinished: string;
+    readonly nativeAttributionOsm: string;
+    readonly nativeAttributionOrtho: string;
   };
   readonly controls: {
     readonly signInShort: string;
@@ -84,8 +88,14 @@ export interface TranslationDictionary {
     readonly subtitleOrthophoto: string;
     readonly subtitleOsm: string;
     readonly subtitleRegistry: string;
+    readonly osmAttributionShort: string;
     readonly imageryPrefix: string;
     readonly switchLocaleA11y: string;
+    readonly aboutButtonA11y: string;
+    readonly apkDownloadA11y: string;
+    readonly apkDownloadCompact: string;
+    readonly apkDownloadFull: string;
+    readonly apkDownloadErrorFallback: string;
     readonly accountSettingsA11y: (pseudonym: string) => string;
     readonly signInOrRegisterA11y: string;
     readonly switchToOrthoA11y: string;
@@ -113,6 +123,17 @@ export interface TranslationDictionary {
     readonly proposeCompact: string;
     readonly proposeFull: string;
     readonly zoomInPrompt: string;
+    readonly filterAll: string;
+    readonly filterAllA11y: string;
+    readonly filterNewContributorsCompact: string;
+    readonly filterNewContributorsFull: string;
+    readonly filterNewContributorsA11y: string;
+    readonly filterEstablishedCompact: string;
+    readonly filterEstablishedFull: string;
+    readonly filterEstablishedA11y: string;
+    readonly filterUnratedFlaggedCompact: string;
+    readonly filterUnratedFlaggedFull: string;
+    readonly filterUnratedFlaggedA11y: string;
   };
   readonly banners: {
     readonly disclaimerA11y: string;
@@ -183,9 +204,29 @@ export interface TranslationDictionary {
     readonly closeA11y: string;
     readonly close: string;
     readonly tabOverview: string;
+    readonly tabComments: (count: number) => string;
     readonly tabPhotos: (count: number) => string;
     readonly tabManage: string;
+    readonly openCommentsBanner: (count: number) => string;
+    readonly topCommentBadge: string;
+    readonly replyingToLabel: (pseudonym: string) => string;
+    readonly commentAuthorLabel: (pseudonym: string, isAuthor: boolean) => string;
+    readonly commentInputPlaceholder: string;
+    readonly commentInputA11y: string;
+    readonly replyInputPlaceholder: (pseudonym: string) => string;
+    readonly postComment: string;
+    readonly postReply: string;
+    readonly postingComment: string;
+    readonly replyButton: string;
+    readonly cancelReplyButton: string;
+    readonly upvoteCommentA11y: (count: number) => string;
+    readonly deleteComment: string;
+    readonly deleteCommentA11y: string;
+    readonly noCommentsYet: string;
+    readonly commentSignInPrompt: string;
+    readonly commentErrorFallback: string;
     readonly statusProposedBadge: string;
+    readonly statusInProgressBadge: string;
     readonly statusFinishedBadge: string;
     readonly municipalityRankHint: (
       score: number,
@@ -235,6 +276,10 @@ export interface TranslationDictionary {
     readonly deletePhotoA11y: string;
     readonly photoSignInPrompt: string;
     readonly adminSectionTitle: string;
+    readonly statusSelectorLabel: string;
+    readonly setStatusProposed: string;
+    readonly setStatusInProgress: string;
+    readonly setStatusFinished: string;
     readonly markFinishedButton: string;
     readonly markProposedButton: string;
     readonly updatingStatus: string;
@@ -242,6 +287,24 @@ export interface TranslationDictionary {
     readonly manageReadonlyHint: string;
     readonly photoErrorFallback: string;
     readonly statusErrorFallback: string;
+    readonly entryDateLabel: string;
+    readonly creatorSectionLabel: string;
+    readonly newContributorBadge: string;
+    readonly creatorLastLoginLabel: string;
+    readonly creatorLastLoginUnknown: string;
+    readonly needsReviewBadge: (count: number) => string;
+    readonly flagForReviewButton: string;
+    readonly flagForReviewA11y: string;
+    readonly removeFlagButton: string;
+    readonly removeFlagA11y: string;
+    readonly flagReasonPrompt: string;
+    readonly flagReasonLabels: Readonly<Record<PolygonFlagReason, string>>;
+    readonly submitFlagButton: string;
+    readonly submittingFlag: string;
+    readonly cancelFlagButton: string;
+    readonly clearFlagsAdminButton: (count: number) => string;
+    readonly clearingFlags: string;
+    readonly flagErrorFallback: string;
   };
   readonly auth: {
     readonly modalA11y: string;
@@ -349,6 +412,7 @@ export interface TranslationDictionary {
     readonly webPermissionDenied: string;
     readonly webPositionUnavailable: string;
     readonly webTimeout: string;
+    readonly webApproximateLocationNotice: (accuracyKm: number) => string;
     readonly webGenericError: (detail: string) => string;
     readonly webRequestFailed: (detail: string) => string;
     readonly nativePermissionDeniedSettings: string;
@@ -356,12 +420,37 @@ export interface TranslationDictionary {
     readonly nativeInvalidCoords: string;
     readonly nativeGenericError: (suffix: string) => string;
   };
+  readonly about: {
+    readonly modalA11y: string;
+    readonly title: string;
+    readonly subtitle: string;
+    readonly closeA11y: string;
+    readonly close: string;
+    readonly missionTitle: string;
+    readonly missionBody: string;
+    readonly workflowTitle: string;
+    readonly statusProposedDesc: string;
+    readonly statusInProgressDesc: string;
+    readonly statusFinishedDesc: string;
+    readonly photoRuleBody: string;
+    readonly attributionTitle: string;
+    readonly attributionOsmLabel: string;
+    readonly attributionDop20Label: string;
+    readonly attributionVg250Label: string;
+    readonly privacyAndLicenseTitle: string;
+    readonly privacySummary: string;
+    readonly privacyLinkLabel: string;
+    readonly licenseSummary: string;
+    readonly apkSectionTitle: string;
+    readonly apkSectionHint: string;
+    readonly apkDownloadButton: string;
+  };
 }
 
 export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
   de: {
     app: {
-      documentTitle: 'Unseal — Gemeinschaftliche Entsiegelungskarte',
+      documentTitle: 'Unseal - Gemeinschaftliche Entsiegelungskarte',
       loadingTitle: 'Entsiegelungskarte wird geladen…',
       errorTitle: 'Verbindung zum Kartendienst fehlgeschlagen',
       errorFallback:
@@ -373,16 +462,27 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       legendBacked: '+ Unterstützt',
       legendNew: '0 Neu',
       legendContested: '− Umstritten',
+      legendInProgress: '⟳ Wird entsiegelt',
       legendFinished: '✓ Entsiegelt',
+      nativeAttributionOsm:
+        '© OpenStreetMap-Mitwirkende (ODbL) · OpenFreeMap · VG250: © GeoBasis-DE / BKG (dl-de/by-2-0)',
+      nativeAttributionOrtho:
+        'DOP20: © GeoBasis-DE / Landesvermessungsämter (dl-de/by-2-0) · VG250: © BKG',
     },
     controls: {
       signInShort: 'Anmelden',
       inViewSuffix: 'im Ausschnitt',
-      subtitleOrthophoto: 'Luftbild (Orthofoto)',
+      subtitleOrthophoto: 'Luftbild (DOP20)',
       subtitleOsm: 'OpenStreetMap-Straßenkarte',
       subtitleRegistry: 'Offenes Entsiegelungsregister',
+      osmAttributionShort: '© OpenStreetMap (ODbL) · OpenFreeMap · VG250 © BKG',
       imageryPrefix: 'Bilddaten:',
       switchLocaleA11y: 'Sprache auf Englisch (EN) umstellen',
+      aboutButtonA11y: 'Über Unseal, Kartendaten und Datenschutz öffnen',
+      apkDownloadA11y: 'Android-App als APK-Datei herunterladen',
+      apkDownloadCompact: 'APK',
+      apkDownloadFull: 'Android-APK herunterladen',
+      apkDownloadErrorFallback: 'Android-APK konnte nicht heruntergeladen werden.',
       accountSettingsA11y: (pseudonym) =>
         `Kontoeinstellungen für ${pseudonym}`,
       signInOrRegisterA11y: 'Anmelden oder Konto erstellen',
@@ -415,6 +515,20 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       proposeFull: '+ Fläche vorschlagen',
       zoomInPrompt:
         'Bitte näher heranzoomen, um Vorschläge zu sehen und einzutragen',
+      filterAll: 'Alle',
+      filterAllA11y: 'Alle Beitragenden anzeigen',
+      filterNewContributorsCompact: 'Neu',
+      filterNewContributorsFull: 'Neue Beitragende',
+      filterNewContributorsA11y:
+        'Nur Flächen neuer Beitragender anzeigen',
+      filterEstablishedCompact: 'Etabliert',
+      filterEstablishedFull: 'Etablierte',
+      filterEstablishedA11y:
+        'Nur Flächen etablierter Beitragender anzeigen',
+      filterUnratedFlaggedCompact: 'Prüfbedarf',
+      filterUnratedFlaggedFull: 'Prüfbedarf & unbewertet',
+      filterUnratedFlaggedA11y:
+        'Nur unbewertete Flächen mit Prüfbedarf anzeigen',
     },
     banners: {
       disclaimerA11y: 'Hinweis zur Öffentlichkeitsbeteiligung',
@@ -453,7 +567,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       verticesLabel: 'Eckpunkte',
       areaLabel: 'Fläche',
       statusClosed:
-        'Fläche geschlossen — Versiegelungsart prüfen & einreichen',
+        'Fläche geschlossen - Versiegelungsart prüfen & einreichen',
       statusOpen:
         'Eckpunkte auf der Karte antippen, um versiegelte Fläche zu umreißen',
       expandSheetA11y: 'Vorschlagsdetails ausklappen',
@@ -468,7 +582,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       crossingError: (lng, lat, undoLabel) =>
         `Kanten kreuzen sich nahe [${lng}, ${lat}]. Tippe auf „${undoLabel}“, um die Überschneidung aufzulösen.`,
       nearBoundNotice:
-        'Geschätzte Fläche liegt nahe an der Grenze (2–500.000 m²); beim Einreichen wird die exakte PostGIS-Ellipsoidfläche geprüft.',
+        'Geschätzte Fläche liegt nahe an der Grenze (2–20.000 m²); beim Einreichen wird die exakte PostGIS-Ellipsoidfläche geprüft.',
       surfaceSectionTitle: 'Versiegelungsmaterial',
       noteSectionTitle: 'Standorthinweis (optional)',
       noteInputA11y: 'Optionaler Standorthinweis',
@@ -497,7 +611,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       pickPhoto: 'Galerie',
       removeDraftPhotoA11y: 'Angehängtes Foto entfernen',
       photoPrivacyHint:
-        'Alle EXIF-Metadaten werden beim Upload entfernt; bei Aufnahme vor Ort erscheint „GPS verified“.',
+        'Alle EXIF-Metadaten werden beim Upload entfernt; bei Aufnahme im Polygon (bis 3 m Toleranz) erscheint „GPS verified“.',
     },
     inspector: {
       sheetA11y: 'Details des ausgewählten Entsiegelungsvorschlags',
@@ -511,9 +625,44 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       closeA11y: 'Vorschlagsansicht schließen',
       close: 'Schließen',
       tabOverview: 'Übersicht',
+      tabComments: (count) => `Kommentare (${count})`,
       tabPhotos: (count) => `Fotos (${count})`,
       tabManage: 'Verwaltung',
+      openCommentsBanner: (count) =>
+        count === 1
+          ? '1 Kommentar zu dieser Fläche anzeigen →'
+          : `${count} Kommentare zu dieser Fläche anzeigen →`,
+      topCommentBadge: '★ Top-Kommentar',
+      replyingToLabel: (pseudonym) => {
+        const displayHandle = pseudonym === 'deleted' ? 'gelöscht' : pseudonym;
+        return `Antwort an @${displayHandle}`;
+      },
+      commentAuthorLabel: (pseudonym, isAuthor) => {
+        const displayHandle = pseudonym === 'deleted' ? 'gelöscht' : pseudonym;
+        return `@${displayHandle}${isAuthor ? ' · Du' : ''}`;
+      },
+      commentInputPlaceholder: 'Kommentar zu dieser Fläche schreiben…',
+      commentInputA11y: 'Neuer Kommentar zu dieser Fläche',
+      replyInputPlaceholder: (pseudonym) => {
+        const displayHandle = pseudonym === 'deleted' ? 'gelöscht' : pseudonym;
+        return `Antwort an @${displayHandle} schreiben…`;
+      },
+      postComment: 'Kommentar senden',
+      postReply: 'Antwort senden',
+      postingComment: 'Sendet…',
+      replyButton: 'Antworten',
+      cancelReplyButton: 'Abbrechen',
+      upvoteCommentA11y: (count) =>
+        `Kommentar hochwählen (+1), aktuell ${count} Stimmen`,
+      deleteComment: 'Löschen',
+      deleteCommentA11y: 'Kommentar löschen',
+      noCommentsYet:
+        'Noch keine Kommentare zu dieser Fläche. Starte die Diskussion!',
+      commentSignInPrompt:
+        'Melde dich an, um Flächen zu kommentieren, auf Kommentare zu antworten oder Kommentare hochzuwählen.',
+      commentErrorFallback: 'Kommentaraktion fehlgeschlagen.',
       statusProposedBadge: 'Vorgeschlagen',
+      statusInProgressBadge: '⟳ Wird entsiegelt',
       statusFinishedBadge: '✓ Entsiegelt',
       municipalityRankHint: (score, maxScore, municipalityName) =>
         `Farbskala relativ zu ${municipalityName} (Score +${score} von max. +${maxScore} vor Ort)`,
@@ -572,14 +721,42 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       photoSignInPrompt:
         'Melde dich an, um eigene Fotos hochzuladen oder Aufnahmen als „Echt“ / „Fake“ zu bewerten.',
       adminSectionTitle: 'Kommunale / Admin-Verwaltung',
+      statusSelectorLabel: 'Flächenstatus setzen:',
+      setStatusProposed: 'Vorgeschlagen',
+      setStatusInProgress: '⟳ Wird entsiegelt',
+      setStatusFinished: '✓ Entsiegelt',
       markFinishedButton: '✓ Als „Entsiegelt“ markieren',
       markProposedButton: 'Auf „Vorgeschlagen“ zurücksetzen',
       updatingStatus: 'Aktualisiert…',
       authorSectionTitle: 'Dein Vorschlag',
       manageReadonlyHint:
-        'Nur die erstellende Person kann diesen Vorschlag bearbeiten oder löschen. Administratoren können umgesetzte Flächen als „Entsiegelt“ markieren.',
+        'Nur die erstellende Person kann diesen Vorschlag bearbeiten oder löschen. Administratoren können Flächen als „Wird entsiegelt“ oder „Entsiegelt“ markieren.',
       photoErrorFallback: 'Fotoaktion fehlgeschlagen.',
       statusErrorFallback: 'Status konnte nicht geändert werden.',
+      entryDateLabel: 'Eingetragen am',
+      creatorSectionLabel: 'Erstellt von',
+      newContributorBadge: 'Neuer Beitragender',
+      creatorLastLoginLabel: 'Letzte Anmeldung',
+      creatorLastLoginUnknown: 'Unbekannt',
+      needsReviewBadge: (count) =>
+        count > 1 ? `Prüfbedarf (${count})` : 'Prüfbedarf',
+      flagForReviewButton: 'Zur Prüfung melden',
+      flagForReviewA11y: 'Fläche zur gemeinschaftlichen Prüfung melden',
+      removeFlagButton: 'Meldung zurückziehen',
+      removeFlagA11y: 'Eigene Prüfmeldung zurückziehen',
+      flagReasonPrompt: 'Grund für den Prüfbedarf auswählen:',
+      flagReasonLabels: {
+        implausible: 'Unplausible Fläche',
+        already_unsealed: 'Bereits entsiegelt / Grün',
+        duplicate: 'Duplikat / Überlappung',
+        spam: 'Spam / Sinnloser Eintrag',
+      },
+      submitFlagButton: 'Meldung absenden',
+      submittingFlag: 'Meldet…',
+      cancelFlagButton: 'Abbrechen',
+      clearFlagsAdminButton: (count) => `Prüfmeldungen zurücksetzen (${count})`,
+      clearingFlags: 'Setzt zurück…',
+      flagErrorFallback: 'Prüfmeldung konnte nicht aktualisiert werden.',
     },
     auth: {
       modalA11y: 'Benutzerkonto',
@@ -678,7 +855,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       loggingOut: 'Abmeldung läuft…',
       logout: 'Abmelden',
       deleteAccountWarning:
-        'Das Löschen deines Kontos entfernt dauerhaft deine E-Mail-Adresse, Zugangsdaten, Sitzungen und Stimmen (Art. 17 DSGVO), sperrt dein Pseudonym gegen Nachahmung und erhält deine eingereichten Flächen anonym unter „gelöscht“.',
+        'Das Löschen deines Kontos entfernt dauerhaft deine E-Mail-Adresse, Zugangsdaten, Sitzungen und Stimmen (Art. 17 DSGVO), sperrt dein Pseudonym gegen Nachahmung und erhält deine eingereichten Flächen und Kommentare anonym unter „gelöscht“.',
       cancelDeleteAccountA11y: 'Kontolöschung abbrechen',
       cancel: 'Abbrechen',
       confirmDeleteAccountA11y: 'Endgültige Kontolöschung bestätigen',
@@ -716,6 +893,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         'Dein aktueller Standort ist nicht verfügbar. Bitte prüfe, ob die Ortungsdienste deines Geräts aktiviert sind, und versuche es erneut.',
       webTimeout:
         'Zeitüberschreitung beim Abrufen der GPS-Koordinaten. Bitte begib dich an einen Ort mit freier Sicht oder versuche es erneut.',
+      webApproximateLocationNotice: (accuracyKm) =>
+        `Dein Browser hat nur einen ungefähren Netzwerk-/IP-Standort (±${accuracyKm} km, oft am Netzknoten des Internetanbieters) geliefert. Für deinen exakten Standort bitte WLAN/Ortungsdienste und „Genauer Standort“ im Browser aktivieren.`,
       webGenericError: (detail) =>
         detail.length > 0
           ? `Aktueller Standort konnte nicht ermittelt werden: ${detail}`
@@ -731,10 +910,46 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       nativeGenericError: (suffix) =>
         `Aktuelle GPS-Position konnte nicht bestimmt werden. Bitte prüfe, ob die Ortungsdienste aktiviert sind.${suffix}`,
     },
+    about: {
+      modalA11y: 'Über Unseal',
+      title: 'Über Unseal',
+      subtitle: 'Offenes Beteiligungsregister zur Flächenentsiegelung (PPGIS)',
+      closeA11y: 'Infofenster schließen',
+      close: 'Schließen',
+      missionTitle: 'Worum geht es?',
+      missionBody:
+        'Unseal ermöglicht Bürgerinnen, Bürgern und Initiativen, versiegelte Flächen (Asphalt, Beton, Pflaster) einzuzeichnen, vor Ort mit Fotos zu dokumentieren und gemeinschaftlich zu bewerten. Alle Einträge sind unverbindliche Hinweise der Öffentlichkeit - unabhängig von den Eigentumsverhältnissen.',
+      workflowTitle: 'Status & Bewertung',
+      statusProposedDesc:
+        'Vorgeschlagen - Eingereichte Fläche, offen für +1/-1-Stimmen. Positive Vorschläge werden relativ zum Höchstwert derselben Gemeinde eingefärbt.',
+      statusInProgressDesc:
+        'Wird entsiegelt - Fläche befindet sich aktuell im Rückbau oder in der Entsiegelungsumsetzung.',
+      statusFinishedDesc:
+        'Entsiegelt - Erfolgreich entsiegelte Fläche als sichtbarer Nachweis umgesetzter Maßnahmen.',
+      photoRuleBody:
+        'Beim Foto-Upload werden sämtliche EXIF-Metadaten serverseitig entfernt. Lag die GPS-Koordinate der Aufnahme innerhalb des Polygons (inkl. 3 m Puffer), erhält das Bild das Merkmal „GPS verified“.',
+      attributionTitle: 'Kartendaten & Quellenangaben',
+      attributionOsmLabel:
+        'Straßenkarte: © OpenStreetMap-Mitwirkende (ODbL) · Vektorkacheln: OpenFreeMap / OpenMapTiles',
+      attributionDop20Label:
+        'Luftbilder (DOP20): © GeoBasis-DE / Landesvermessungsämter der Bundesländer (Datenlizenz Deutschland - Namensnennung - Version 2.0, dl-de/by-2-0)',
+      attributionVg250Label:
+        'Gemeindegrenzen (VG250): © GeoBasis-DE / BKG (dl-de/by-2-0)',
+      privacyAndLicenseTitle: 'Datenschutz & Open Source',
+      privacySummary:
+        'Unseal speichert öffentlich nur dein gewähltes Pseudonym - E-Mail-Adressen dienen ausschließlich der Kontobestätigung und Passwortwiederherstellung und sind jederzeit nach Art. 17 DSGVO löschbar.',
+      privacyLinkLabel: 'Datenschutzerklärung öffnen',
+      licenseSummary:
+        'Quelloffene Software: API-Server unter AGPL-3.0-or-later, Mobil-/Web-App und geteilte Schemata unter MPL-2.0.',
+      apkSectionTitle: 'Android-App direkt installieren',
+      apkSectionHint:
+        'Lade die signierte Android-Paketdatei (.apk) direkt herunter, falls du kein Google-Play-Konto nutzt.',
+      apkDownloadButton: 'Download Android APK',
+    },
   },
   en: {
     app: {
-      documentTitle: 'Unseal — Civic Unsealing Map',
+      documentTitle: 'Unseal - Civic Unsealing Map',
       loadingTitle: 'Loading civic unsealing map…',
       errorTitle: 'Could not connect to map service',
       errorFallback: 'Please verify your network connection and retry.',
@@ -745,16 +960,27 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       legendBacked: '+ Backed',
       legendNew: '0 New',
       legendContested: '− Contested',
+      legendInProgress: '⟳ In progress',
       legendFinished: '✓ Finished',
+      nativeAttributionOsm:
+        '© OpenStreetMap contributors (ODbL) · OpenFreeMap · VG250: © GeoBasis-DE / BKG (dl-de/by-2-0)',
+      nativeAttributionOrtho:
+        'DOP20: © GeoBasis-DE / State Survey Offices (dl-de/by-2-0) · VG250: © BKG',
     },
     controls: {
       signInShort: 'Sign in',
       inViewSuffix: 'in view',
-      subtitleOrthophoto: 'Aerial Orthophoto',
+      subtitleOrthophoto: 'Aerial Orthophoto (DOP20)',
       subtitleOsm: 'OpenStreetMap Street Layer',
       subtitleRegistry: 'Open civic unsealing registry',
+      osmAttributionShort: '© OpenStreetMap (ODbL) · OpenFreeMap · VG250 © BKG',
       imageryPrefix: 'Imagery:',
       switchLocaleA11y: 'Switch language to German (DE)',
+      aboutButtonA11y: 'Open About Unseal, map attributions, and privacy',
+      apkDownloadA11y: 'Download Android APK package',
+      apkDownloadCompact: 'APK',
+      apkDownloadFull: 'Download Android APK',
+      apkDownloadErrorFallback: 'Unable to start Android APK download.',
       accountSettingsA11y: (pseudonym) => `Account settings for ${pseudonym}`,
       signInOrRegisterA11y: 'Sign in or register account',
       switchToOrthoA11y: 'Switch to aerial orthophoto layer',
@@ -785,6 +1011,18 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       proposeCompact: '+ Propose',
       proposeFull: '+ Propose Unsealing',
       zoomInPrompt: 'Zoom in to view and add proposals',
+      filterAll: 'All',
+      filterAllA11y: 'Show all contributors',
+      filterNewContributorsCompact: 'New',
+      filterNewContributorsFull: 'New contributors',
+      filterNewContributorsA11y: 'Show only polygons by new contributors',
+      filterEstablishedCompact: 'Established',
+      filterEstablishedFull: 'Established',
+      filterEstablishedA11y: 'Show only polygons by established contributors',
+      filterUnratedFlaggedCompact: 'Needs review',
+      filterUnratedFlaggedFull: 'Needs review & unrated',
+      filterUnratedFlaggedA11y:
+        'Show only unrated polygons flagged for review',
     },
     banners: {
       disclaimerA11y: 'Public participation disclaimer',
@@ -821,7 +1059,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       toolbarA11y: 'Polygon proposal drawing toolbar',
       verticesLabel: 'Vertices',
       areaLabel: 'Area',
-      statusClosed: 'Shape closed — review surface type & publish',
+      statusClosed: 'Shape closed - review surface type & publish',
       statusOpen: 'Tap corners on the map to outline sealed ground',
       expandSheetA11y: 'Expand proposal details sheet',
       minimizeSheetA11y: 'Minimize sheet to view more map',
@@ -835,7 +1073,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       crossingError: (lng, lat, undoLabel) =>
         `Edges cross near [${lng}, ${lat}]. Tap “${undoLabel}” to uncross the boundary.`,
       nearBoundNotice:
-        'Estimated area is close to the allowed range (2–500,000 m²); exact PostGIS ellipsoid area is verified on submit.',
+        'Estimated area is close to the allowed range (2–20,000 m²); exact PostGIS ellipsoid area is verified on submit.',
       surfaceSectionTitle: 'Sealed Surface Material',
       noteSectionTitle: 'Site Context (Optional)',
       noteInputA11y: 'Optional site context note',
@@ -863,7 +1101,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       pickPhoto: 'Gallery',
       removeDraftPhotoA11y: 'Remove attached photo',
       photoPrivacyHint:
-        'All EXIF metadata is stripped on upload; on-site captures earn a “GPS verified” badge.',
+        'All EXIF metadata is stripped on upload; captures inside the polygon (3 m tolerance) earn a “GPS verified” badge.',
     },
     inspector: {
       sheetA11y: 'Selected unsealing proposal inspector',
@@ -875,9 +1113,36 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       closeA11y: 'Close proposal inspector',
       close: 'Close',
       tabOverview: 'Overview',
+      tabComments: (count) => `Comments (${count})`,
       tabPhotos: (count) => `Photos (${count})`,
       tabManage: 'Manage',
+      openCommentsBanner: (count) =>
+        count === 1
+          ? 'View 1 comment on this site →'
+          : `View ${count} comments on this site →`,
+      topCommentBadge: '★ Top comment',
+      replyingToLabel: (pseudonym) => `Reply to @${pseudonym}`,
+      commentAuthorLabel: (pseudonym, isAuthor) =>
+        `@${pseudonym}${isAuthor ? ' · You' : ''}`,
+      commentInputPlaceholder: 'Write a comment about this site…',
+      commentInputA11y: 'New comment on this site',
+      replyInputPlaceholder: (pseudonym) => `Write a reply to @${pseudonym}…`,
+      postComment: 'Post Comment',
+      postReply: 'Post Reply',
+      postingComment: 'Posting…',
+      replyButton: 'Reply',
+      cancelReplyButton: 'Cancel',
+      upvoteCommentA11y: (count) =>
+        `Upvote comment (+1), current upvotes ${count}`,
+      deleteComment: 'Delete',
+      deleteCommentA11y: 'Delete comment',
+      noCommentsYet:
+        'No comments on this site yet. Start the discussion!',
+      commentSignInPrompt:
+        'Sign in to comment on sites, reply to other comments, or upvote comments.',
+      commentErrorFallback: 'Comment action failed.',
       statusProposedBadge: 'Proposed',
+      statusInProgressBadge: '⟳ In progress',
       statusFinishedBadge: '✓ Finished',
       municipalityRankHint: (score, maxScore, municipalityName) =>
         `Color scaled within ${municipalityName} (score +${score} of +${maxScore} local max)`,
@@ -933,14 +1198,42 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       photoSignInPrompt:
         'Sign in to upload photos or rate existing photos as “Real” or “Fake”.',
       adminSectionTitle: 'Municipal / Admin Actions',
+      statusSelectorLabel: 'Set site status:',
+      setStatusProposed: 'Proposed',
+      setStatusInProgress: '⟳ In progress',
+      setStatusFinished: '✓ Finished',
       markFinishedButton: '✓ Mark as “Finished”',
       markProposedButton: 'Reset to “Proposed”',
       updatingStatus: 'Updating…',
       authorSectionTitle: 'Your Proposal',
       manageReadonlyHint:
-        'Only the creator can edit or delete this proposal. Administrators can mark completed unsealing sites as “Finished”.',
+        'Only the creator can edit or delete this proposal. Administrators can mark sites as “In progress” or “Finished”.',
       photoErrorFallback: 'Photo action failed.',
       statusErrorFallback: 'Unable to update polygon status.',
+      entryDateLabel: 'Submitted on',
+      creatorSectionLabel: 'Created by',
+      newContributorBadge: 'New contributor',
+      creatorLastLoginLabel: 'Last login',
+      creatorLastLoginUnknown: 'Unknown',
+      needsReviewBadge: (count) =>
+        count > 1 ? `Needs review (${count})` : 'Needs review',
+      flagForReviewButton: 'Flag for review',
+      flagForReviewA11y: 'Flag site for community review',
+      removeFlagButton: 'Remove flag',
+      removeFlagA11y: 'Remove your review flag',
+      flagReasonPrompt: 'Select reason for review:',
+      flagReasonLabels: {
+        implausible: 'Implausible site',
+        already_unsealed: 'Already unsealed / green',
+        duplicate: 'Duplicate / overlap',
+        spam: 'Spam / senseless entry',
+      },
+      submitFlagButton: 'Submit flag',
+      submittingFlag: 'Flagging…',
+      cancelFlagButton: 'Cancel',
+      clearFlagsAdminButton: (count) => `Clear review flags (${count})`,
+      clearingFlags: 'Clearing…',
+      flagErrorFallback: 'Unable to update review flag.',
     },
     auth: {
       modalA11y: 'Contributor account modal',
@@ -1037,7 +1330,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       loggingOut: 'Signing Out…',
       logout: 'Log Out',
       deleteAccountWarning:
-        'Deleting your account permanently erases your email address, credentials, active sessions, and votes (GDPR Art. 17), reserves a cryptographic tombstone of your pseudonym to prevent impersonation, and keeps your authored proposals public under “deleted”.',
+        'Deleting your account permanently erases your email address, credentials, active sessions, and votes (GDPR Art. 17), reserves a cryptographic tombstone of your pseudonym to prevent impersonation, and keeps your authored proposals and comments public under “deleted”.',
       cancelDeleteAccountA11y: 'Cancel account deletion',
       cancel: 'Cancel',
       confirmDeleteAccountA11y: 'Confirm permanent account deletion',
@@ -1073,6 +1366,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         'Your current position is unavailable. Check that device location services are enabled and try again.',
       webTimeout:
         'Timed out while waiting for GPS coordinates. Move to an area with a clearer view or try again.',
+      webApproximateLocationNotice: (accuracyKm) =>
+        `Your browser only provided an approximate network/IP location (±${accuracyKm} km, often at your ISP’s regional hub). Enable Wi-Fi / location services and “Precise location” in your browser for your exact position.`,
       webGenericError: (detail) =>
         detail.length > 0
           ? `Unable to retrieve your current location: ${detail}`
@@ -1087,6 +1382,42 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         'Device location provider returned invalid GPS coordinates.',
       nativeGenericError: (suffix) =>
         `Unable to determine your current GPS position. Ensure device location services are enabled and try again.${suffix}`,
+    },
+    about: {
+      modalA11y: 'About Unseal',
+      title: 'About Unseal',
+      subtitle: 'Open Civic Ground-Unsealing Registry (PPGIS)',
+      closeA11y: 'Close About dialog',
+      close: 'Close',
+      missionTitle: 'What is Unseal?',
+      missionBody:
+        'Unseal enables residents and civic initiatives to map sealed surfaces (asphalt, concrete, pavers), document sites with photos, and prioritize unsealing candidates through community voting. All entries are non-binding public input - regardless of property ownership.',
+      workflowTitle: 'Statuses & Scoring',
+      statusProposedDesc:
+        'Proposed - Community candidate open for +1/-1 voting. Positively rated sites are color-scaled relative to the highest score within the same municipality.',
+      statusInProgressDesc:
+        'In progress - Unsealing or depaving work is actively underway on site.',
+      statusFinishedDesc:
+        'Finished - Completed unsealing site preserved on the map as a public record.',
+      photoRuleBody:
+        'All EXIF metadata is stripped server-side upon upload. If the capture coordinates fall inside the polygon (within a 3 m buffer), the photo receives a “GPS verified” badge.',
+      attributionTitle: 'Map Data & Attributions',
+      attributionOsmLabel:
+        'Street basemap: © OpenStreetMap contributors (ODbL) · Vector tiles: OpenFreeMap / OpenMapTiles',
+      attributionDop20Label:
+        'Aerial orthophotos (DOP20): © GeoBasis-DE / German State Survey Offices (Data licence Germany - attribution - Version 2.0, dl-de/by-2-0)',
+      attributionVg250Label:
+        'Municipal boundaries (VG250): © GeoBasis-DE / BKG (dl-de/by-2-0)',
+      privacyAndLicenseTitle: 'Privacy & Open Source',
+      privacySummary:
+        'Unseal displays only your chosen pseudonym publicly - email addresses are used strictly for account confirmation and password recovery and can be erased at any time under GDPR Art. 17.',
+      privacyLinkLabel: 'Open Privacy Policy',
+      licenseSummary:
+        'Open-source software: API server licensed under AGPL-3.0-or-later; mobile/web client and shared schemas under MPL-2.0.',
+      apkSectionTitle: 'Direct Android App Install',
+      apkSectionHint:
+        'Download the signed Android package (.apk) directly for sideloading without Google Play.',
+      apkDownloadButton: 'Download Android APK',
     },
   },
 };
@@ -1194,9 +1525,38 @@ export function translateValidationMessage(
     const formattedMax = maxAreaMatch[2].replace(/,/g, '.');
     return `Die Polygonfläche (${maxAreaMatch[1]} m²) überschreitet das Maximum von ${formattedMax} m².`;
   }
+  const compactnessMatch =
+    /^Polygon shape is too thin or irregular \(compactness ([0-9.]+) is below ([0-9.]+)\)\.$/.exec(
+      msg,
+    );
+  if (compactnessMatch?.[1] && compactnessMatch[2]) {
+    return `Die Polygonform ist zu schmal oder ausgefranst (Kompaktheit ${compactnessMatch[1]} liegt unter ${compactnessMatch[2]}).`;
+  }
+  const narrowMatch =
+    /^Polygon is too narrow \(minimum width must exceed ([0-9.]+) m\)\.$/.exec(
+      msg,
+    );
+  if (narrowMatch?.[1]) {
+    return `Das Polygon ist zu schmal (Mindestbreite muss über ${narrowMatch[1]} m liegen).`;
+  }
   const noteLenMatch = /^Note must be at most (\d+) characters\.$/.exec(msg);
   if (noteLenMatch?.[1]) {
     return `Der Standorthinweis darf höchstens ${noteLenMatch[1]} Zeichen lang sein.`;
+  }
+  const commentLenMatch =
+    /^Comment body must be between 1 and (\d+) characters\.$/.exec(msg);
+  if (commentLenMatch?.[1]) {
+    return `Der Kommentar muss zwischen 1 und ${commentLenMatch[1]} Zeichen lang sein.`;
+  }
+  const maxCommentsMatch =
+    /^Maximum of (\d+) comments per polygon reached\.$/.exec(msg);
+  if (maxCommentsMatch?.[1]) {
+    return `Das Maximum von ${maxCommentsMatch[1]} Kommentaren für diese Fläche wurde erreicht.`;
+  }
+  const maxReplyDepthMatch =
+    /^Maximum reply nesting depth of (\d+) reached\.$/.exec(msg);
+  if (maxReplyDepthMatch?.[1]) {
+    return `Die maximale Antworttiefe von ${maxReplyDepthMatch[1]} Ebenen wurde erreicht.`;
   }
   return msg;
 }
@@ -1208,6 +1568,12 @@ const GERMAN_API_ERROR_MESSAGES: Readonly<Record<ErrorCode, string>> = {
   AUTH_EMAIL_TAKEN: 'Diese E-Mail-Adresse ist bereits registriert.',
   AUTH_EMAIL_UNVERIFIED:
     'Bitte bestätige zuerst deine E-Mail-Adresse über den zugesandten Bestätigungslink.',
+  AUTH_DISPOSABLE_EMAIL:
+    'Wegwerf-E-Mail-Adressen sind für die Registrierung nicht zugelassen.',
+  AUTH_CAPTCHA_REQUIRED:
+    'Bitte führe die automatische Sicherheitsprüfung für die Registrierung durch.',
+  AUTH_CAPTCHA_INVALID:
+    'Die Sicherheitsprüfung ist ungültig oder abgelaufen. Bitte erneut versuchen.',
   AUTH_TOKEN_INVALID:
     'Dieser Bestätigungs- oder Wiederherstellungslink ist ungültig oder abgelaufen.',
   FORBIDDEN_PSEUDONYM_BANNED: 'Dieses Pseudonym oder diese E-Mail ist gesperrt.',
@@ -1217,6 +1583,8 @@ const GERMAN_API_ERROR_MESSAGES: Readonly<Record<ErrorCode, string>> = {
     'Anmeldedienst ist ausgelastet. Bitte kurz warten und erneut versuchen.',
   FORBIDDEN_NOT_AUTHOR:
     'Nur die erstellende Person kann diesen Eintrag bearbeiten oder löschen.',
+  FORBIDDEN_SELF_FLAG:
+    'Eigene Vorschläge können nicht selbst zur Prüfung gemeldet werden.',
   FORBIDDEN_ADMIN_ONLY:
     'Diese Funktion steht nur Administrator-Konten zur Verfügung.',
   NOT_FOUND: 'Der angeforderte Eintrag wurde nicht gefunden.',
@@ -1225,9 +1593,21 @@ const GERMAN_API_ERROR_MESSAGES: Readonly<Record<ErrorCode, string>> = {
     'Nicht unterstütztes Dateiformat (erlaubt: JPEG, PNG, WebP, HEIC bzw. .geojson/.gpkg).',
   GEOMETRY_INVALID:
     'Ungültige Polygongeometrie: Kanten dürfen sich nicht selbst schneiden.',
+  GEOMETRY_SLIVER:
+    'Das Polygon ist zu schmal (Mindestbreite über 1,0 m erforderlich).',
+  GEOMETRY_NOT_COMPACT:
+    'Die Polygonform ist zu dünn oder ausgefranst. Bitte eine zusammenhängende Fläche einzeichnen.',
   AREA_OUT_OF_BOUNDS:
-    'Die Polygonfläche liegt außerhalb des zulässigen Bereichs (2–500.000 m²).',
-  BBOX_TOO_LARGE: 'Kartenausschnitt zu groß — bitte näher heranzoomen.',
+    'Die Polygonfläche liegt außerhalb des zulässigen Bereichs (2–20.000 m²).',
+  POLYGON_OVERLAP:
+    'Dieser Vorschlag überlappt zu stark mit einer bereits eingetragenen Fläche.',
+  SPATIAL_CLUSTER_LIMIT:
+    'In diesem unmittelbaren Umkreis wurden kürzlich zu viele Flächen eingereicht. Bitte später erneut versuchen.',
+  OUTSIDE_JURISDICTION:
+    'Die Fläche liegt außerhalb des unterstützten Kartierungsgebiets.',
+  LAND_COVER_EXCLUDED:
+    'Diese Fläche liegt überwiegend auf Gewässern, Wald, Grünflächen, Ackerland, Bahnanlagen oder Gebäuden.',
+  BBOX_TOO_LARGE: 'Kartenausschnitt zu groß - bitte näher heranzoomen.',
   PAYLOAD_TOO_LARGE: 'Die gesendeten Daten überschreiten die maximale Größe.',
   RATE_LIMITED:
     'Zu viele Anfragen oder Tageslimit erreicht. Bitte später erneut versuchen.',

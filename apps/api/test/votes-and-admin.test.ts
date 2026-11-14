@@ -537,7 +537,7 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
         'AUTH_REQUIRED',
       );
 
-      // Part A2: Reverse lock-barrier direction — in-flight vote transaction holds
+      // Part A2: Reverse lock-barrier direction - in-flight vote transaction holds
       // lockUserForWrite (FOR KEY SHARE on users) + FOR UPDATE on p2 while concurrent
       // DELETE /api/v1/auth/me blocks on users FOR UPDATE, then sees & cleans up the vote!
       const reverseVoter = await registerUser(

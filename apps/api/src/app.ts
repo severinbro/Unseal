@@ -9,13 +9,19 @@ import { ZodError } from 'zod';
 import { ApiError, IMPORT_LIMITS, type ErrorCode } from '@entsiegelung/shared';
 
 import {
+  canonicalizeEmail,
+  createAltchaChallenge,
   generateEmailActionToken,
   generateRecoveryCode,
   generateSessionToken,
+  hashCanonicalEmail,
   hashEmailTombstone,
   hashOpaqueToken,
   hashPassword,
   hashPseudonymTombstone,
+  isDisposableEmailDomain,
+  solveAltchaChallenge,
+  verifyAltchaPayload,
   verifyPassword,
 } from './auth/crypto.js';
 import {
@@ -27,10 +33,12 @@ import {
 } from './auth/mailer.js';
 import { createSession, optionalAuth, requireAdmin, requireAuth } from './auth/session.js';
 import { runAdminCommand, type AdminCommandResult } from './cli/admin.js';
+import { CommentRepository } from './comments/repository.js';
 import { type EnvConfig } from './config.js';
 import {
   deleteOrBanUserAccount,
   lockUserForWrite,
+  recomputeCommentScores,
   recomputePhotoScores,
   recomputePolygonScores,
 } from './db/integrity.js';
@@ -44,9 +52,22 @@ import {
 import { processUploadedPhoto } from './photos/processor.js';
 import { PhotoRepository } from './photos/repository.js';
 import { parseGeoPackageBinary } from './polygons/gpkgReader.js';
+import {
+  classifyLandCoverFeatureProperties,
+  loadLandCoverFile,
+  seedLandCoverExclusions,
+  type LandCoverSeedItem,
+  type LoadLandCoverOptions,
+  type LoadLandCoverResult,
+} from './polygons/landCover.js';
 import { PolygonRepository } from './polygons/repository.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerAuthPageRoutes } from './routes/authPages.js';
+import { registerCommentRoutes } from './routes/comments.js';
+import {
+  registerDop20TileRoutes,
+  type Dop20TileRoutesOptions,
+} from './routes/dop20Tiles.js';
 import { registerPhotoRoutes } from './routes/photos.js';
 import { registerPolygonRoutes } from './routes/polygons.js';
 import { registerSystemRoutes } from './routes/system.js';
@@ -64,6 +85,7 @@ export interface RateLimitWindowOverride {
 
 export interface RateLimitOverrides {
   register?: RateLimitWindowOverride;
+  registerSubnet?: { max: number; timeWindowMs: number };
   loginIp?: RateLimitWindowOverride;
   loginAccount?: { max: number; timeWindowMs: number };
   recover?: RateLimitWindowOverride;
@@ -83,6 +105,7 @@ export interface BuildAppOptions {
   exportStreamTimeoutMs?: number;
   rateLimits?: RateLimitOverrides;
   mailer?: AuthMailer;
+  dop20TileFetch?: Dop20TileRoutesOptions['fetchImpl'];
 }
 
 declare module 'fastify' {
@@ -324,10 +347,19 @@ export async function buildApp(
       ? { migrationsDir: options.migrationsDir }
       : {}),
   });
+  registerDop20TileRoutes(
+    app,
+    options.dop20TileFetch !== undefined
+      ? { fetchImpl: options.dop20TileFetch }
+      : {},
+  );
   registerAuthRoutes(app);
   registerAuthPageRoutes(app);
 
-  const polygonRepository = new PolygonRepository(pool, config.uploadsDir);
+  const polygonRepository = new PolygonRepository(pool, config.uploadsDir, {
+    minAccountDays: config.newUserMinAccountDays,
+    minCleanPolygons: config.newUserMinCleanPolygons,
+  });
   registerPolygonRoutes(app, polygonRepository, {
     ...(options.exportBatchSize !== undefined
       ? { exportBatchSize: options.exportBatchSize }
@@ -340,6 +372,9 @@ export async function buildApp(
   const photoRepository = new PhotoRepository(pool, config.uploadsDir);
   registerPhotoRoutes(app, photoRepository);
 
+  const commentRepository = new CommentRepository(pool);
+  registerCommentRoutes(app, commentRepository);
+
   const voteRepository = new VoteRepository(pool);
   registerVoteRoutes(app, voteRepository);
 
@@ -347,9 +382,13 @@ export async function buildApp(
 }
 
 export {
+  CommentRepository,
   PhotoRepository,
   PolygonRepository,
   VoteRepository,
+  canonicalizeEmail,
+  classifyLandCoverFeatureProperties,
+  createAltchaChallenge,
   createMemoryMailer,
   createSession,
   createSmtpMailer,
@@ -357,19 +396,24 @@ export {
   generateEmailActionToken,
   generateRecoveryCode,
   generateSessionToken,
+  hashCanonicalEmail,
   hashEmailTombstone,
   hashOpaqueToken,
   hashPassword,
   hashPseudonymTombstone,
+  isDisposableEmailDomain,
+  loadLandCoverFile,
   loadVg250Municipalities,
   lockUserForWrite,
   optionalAuth,
   parseGeoPackageBinary,
   processUploadedPhoto,
+  recomputeCommentScores,
   recomputePhotoScores,
   recomputePolygonScores,
   registerAuthPageRoutes,
   registerAuthRoutes,
+  registerCommentRoutes,
   registerPhotoRoutes,
   registerPolygonRoutes,
   registerVoteRoutes,
@@ -377,13 +421,19 @@ export {
   requireAuth,
   resetTestDb,
   runAdminCommand,
+  seedLandCoverExclusions,
   setupTestDb,
+  solveAltchaChallenge,
   upsertMunicipalitiesAndBackfill,
+  verifyAltchaPayload,
   verifyPassword,
   type AdminCommandResult,
   type AuthEmailPayload,
   type AuthMailer,
   type EnvConfig,
+  type LandCoverSeedItem,
+  type LoadLandCoverOptions,
+  type LoadLandCoverResult,
   type MemoryMailer,
   type MunicipalitySeedInput,
 };

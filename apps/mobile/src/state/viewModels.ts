@@ -1,8 +1,13 @@
 import {
+  findTopRatedCommentId,
   GEOMETRY_LIMITS,
   PHOTO_LIMITS,
+  sortPolygonCommentsByRating,
   validateDraftPolygon,
   type AuthUser,
+  type PolygonAuthorFilter,
+  type PolygonComment,
+  type PolygonFeature,
   type SurfaceType,
 } from '@entsiegelung/shared';
 
@@ -20,13 +25,78 @@ import {
   type DrawingStep,
 } from './appState';
 
+export function formatInspectorDate(
+  iso: string | null | undefined,
+  locale: Locale,
+): string | null {
+  if (!iso || iso.trim().length === 0) {
+    return null;
+  }
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  const yyyy = String(parsed.getUTCFullYear()).padStart(4, '0');
+  const mm = String(parsed.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(parsed.getUTCDate()).padStart(2, '0');
+  return locale === 'de' ? `${dd}.${mm}.${yyyy}` : `${yyyy}-${mm}-${dd}`;
+}
+
+export interface InspectorOverviewMetaModel {
+  displayAuthorHandle: string;
+  authorIsNewUser: boolean;
+  newContributorBadgeText: string | null;
+  entryDateText: string | null;
+  authorLastLoginText: string;
+  isFlagged: boolean;
+  needsReviewBadgeText: string | null;
+  canFlagOrUnflag: boolean;
+  myFlag: boolean;
+}
+
+export function deriveInspectorOverviewMeta(
+  feature: PolygonFeature,
+  locale: Locale,
+): InspectorOverviewMetaModel {
+  const t = getTranslations(locale).inspector;
+  const { properties } = feature;
+  const displayAuthorHandle =
+    locale === 'de' && properties.authorPseudonym === 'deleted'
+      ? 'gelöscht'
+      : properties.authorPseudonym;
+  const entryDateText = formatInspectorDate(properties.createdAt, locale);
+  const formattedLastLogin = formatInspectorDate(
+    properties.authorLastLoginAt,
+    locale,
+  );
+
+  return {
+    displayAuthorHandle,
+    authorIsNewUser: properties.authorIsNewUser,
+    newContributorBadgeText: properties.authorIsNewUser
+      ? t.newContributorBadge
+      : null,
+    entryDateText,
+    authorLastLoginText: formattedLastLogin ?? t.creatorLastLoginUnknown,
+    isFlagged: properties.isFlagged,
+    needsReviewBadgeText: properties.isFlagged
+      ? t.needsReviewBadge(properties.flagCount)
+      : null,
+    canFlagOrUnflag: !properties.isAuthor,
+    myFlag: properties.myFlag,
+  };
+}
+
 export const MIN_TOUCH_TARGET_DP = 44;
 
 export interface MapControlsModel {
   locale: Locale;
   showOrthophotoToggle: boolean;
   basemapMode: BasemapMode;
+  authorFilter: PolygonAuthorFilter;
+  unratedFlaggedOnly: boolean;
   orthophotoAttribution: string | null;
+  apkDownloadUrl: string | null;
   canStartDraw: boolean;
   drawDisabledReason: string | null;
   showZoomInPrompt: boolean;
@@ -55,6 +125,7 @@ export interface AuthModalModel {
 
 export interface DrawingToolbarModel {
   visible: boolean;
+  collapsed: boolean;
   step: DrawingStep;
   rawVertexCount: number;
   distinctVertexCount: number;
@@ -93,7 +164,10 @@ export function deriveMapControlsModel(state: AppState): MapControlsModel {
     locale: state.locale,
     showOrthophotoToggle,
     basemapMode: effectiveBasemapMode,
+    authorFilter: state.authorFilter,
+    unratedFlaggedOnly: state.unratedFlaggedOnly,
     orthophotoAttribution: state.config?.orthophoto?.attribution ?? null,
+    apkDownloadUrl: state.config?.apkDownloadUrl ?? null,
     canStartDraw:
       state.configStatus === 'ready' &&
       state.mode === 'browse' &&
@@ -223,6 +297,7 @@ export function deriveDrawingToolbarModel(
 
   return {
     visible: state.mode === 'drawing',
+    collapsed: state.mode === 'drawing' && state.drawingSheetCollapsed,
     step: state.drawingStep,
     rawVertexCount: state.draftVertices.length,
     distinctVertexCount: draftValidation.vertexCount,
@@ -247,4 +322,115 @@ export function deriveDrawingToolbarModel(
     confirmingDiscard: state.confirmingDiscardDraft,
     submitError: state.draftSubmitError,
   };
+}
+
+export interface CommentThreadNode {
+  readonly comment: PolygonComment;
+  readonly parentAuthorPseudonym: string | null;
+  readonly depth: number;
+  readonly replies: readonly CommentThreadNode[];
+}
+
+export interface CommentDisplayModel {
+  readonly topCommentId: string | null;
+  readonly pinnedTopReply: {
+    readonly comment: PolygonComment;
+    readonly parentAuthorPseudonym: string | null;
+  } | null;
+  readonly roots: readonly CommentThreadNode[];
+  readonly totalCount: number;
+}
+
+export function buildCommentDisplayModel(
+  comments: readonly PolygonComment[],
+): CommentDisplayModel {
+  const sorted = sortPolygonCommentsByRating(comments);
+  const topCommentId = findTopRatedCommentId(sorted);
+  const byId = new Map<string, PolygonComment>(sorted.map((c) => [c.id, c]));
+
+  const childrenMap = new Map<string, PolygonComment[]>();
+  const rootComments: PolygonComment[] = [];
+
+  for (const comment of sorted) {
+    if (
+      comment.parentId !== null &&
+      comment.parentId !== comment.id &&
+      byId.has(comment.parentId)
+    ) {
+      const bucket = childrenMap.get(comment.parentId);
+      if (bucket) {
+        bucket.push(comment);
+      } else {
+        childrenMap.set(comment.parentId, [comment]);
+      }
+    } else {
+      rootComments.push(comment);
+    }
+  }
+
+  const visited = new Set<string>();
+  const buildNode = (
+    comment: PolygonComment,
+    depth: number,
+  ): CommentThreadNode => {
+    visited.add(comment.id);
+    const parent =
+      comment.parentId !== null ? (byId.get(comment.parentId) ?? null) : null;
+    const rawChildren = childrenMap.get(comment.id) ?? [];
+    const replies: CommentThreadNode[] = [];
+    for (const child of rawChildren) {
+      if (!visited.has(child.id)) {
+        replies.push(buildNode(child, depth + 1));
+      }
+    }
+    return {
+      comment,
+      parentAuthorPseudonym: parent ? parent.authorPseudonym : null,
+      depth,
+      replies,
+    };
+  };
+
+  const roots = rootComments.map((comment) => buildNode(comment, 0));
+  const topComment =
+    topCommentId !== null ? (byId.get(topCommentId) ?? null) : null;
+  const pinnedTopReply =
+    topComment !== null &&
+    topComment.parentId !== null &&
+    byId.has(topComment.parentId)
+      ? {
+          comment: topComment,
+          parentAuthorPseudonym:
+            byId.get(topComment.parentId)?.authorPseudonym ?? null,
+        }
+      : null;
+
+  return {
+    topCommentId,
+    pinnedTopReply,
+    roots,
+    totalCount: sorted.length,
+  };
+}
+
+export function pruneDeletedCommentSubtree(
+  comments: readonly PolygonComment[],
+  deletedCommentId: string,
+): PolygonComment[] {
+  const removedIds = new Set<string>([deletedCommentId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const item of comments) {
+      if (
+        !removedIds.has(item.id) &&
+        item.parentId !== null &&
+        removedIds.has(item.parentId)
+      ) {
+        removedIds.add(item.id);
+        changed = true;
+      }
+    }
+  }
+  return comments.filter((item) => !removedIds.has(item.id));
 }

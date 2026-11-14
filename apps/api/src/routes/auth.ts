@@ -1,5 +1,6 @@
 import {
   AUTH_LIMITS,
+  AltchaChallengeResponseSchema,
   ApiError,
   AuthUserSchema,
   EmailActionRequestSchema,
@@ -19,17 +20,24 @@ import {
 import {
   TIMING_GUARD_OPAQUE_TOKEN_HASH,
   TIMING_GUARD_PASSWORD_HASH,
+  createAltchaChallenge,
   generateEmailActionToken,
+  hashCanonicalEmail,
   hashEmailTombstone,
   hashOpaqueToken,
   hashPassword,
   hashPseudonymTombstone,
+  isDisposableEmailDomain,
+  verifyAltchaPayload,
   verifyOpaqueToken,
   verifyPassword,
 } from '../auth/crypto.js';
 import { createSession, requireAuth } from '../auth/session.js';
 import { deleteOrBanUserAccount } from '../db/integrity.js';
-import { normalizeRateLimitIp } from '../util/rateLimit.js';
+import {
+  normalizeRateLimitIp,
+  normalizeRateLimitSubnet,
+} from '../util/rateLimit.js';
 import { BoundedSemaphore } from '../util/semaphore.js';
 
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
@@ -38,6 +46,49 @@ import type pg from 'pg';
 const MAX_FAILED_LOGIN_CACHE_ENTRIES = 10_000;
 const DEFAULT_LOGIN_ACCOUNT_MAX = 5;
 const DEFAULT_LOGIN_ACCOUNT_WINDOW_MS = 15 * 60 * 1000;
+const DEFAULT_REGISTER_SUBNET_WINDOW_MS = 60 * 60 * 1000;
+const MAX_USED_ALTCHA_CHALLENGES = 10_000;
+const ALTCHA_REPLAY_RETENTION_MS = 15 * 60 * 1000;
+
+class BoundedReplayCache {
+  private readonly seen = new Map<string, number>();
+  private readonly maxEntries: number;
+  private readonly ttlMs: number;
+
+  constructor(
+    maxEntries = MAX_USED_ALTCHA_CHALLENGES,
+    ttlMs = ALTCHA_REPLAY_RETENTION_MS,
+  ) {
+    this.maxEntries = maxEntries;
+    this.ttlMs = ttlMs;
+  }
+
+  public consumeOnce(key: string, nowMs: number): boolean {
+    const existingExpiry = this.seen.get(key);
+    if (existingExpiry !== undefined && nowMs < existingExpiry) {
+      return false;
+    }
+    this.seen.delete(key);
+    if (this.seen.size >= this.maxEntries) {
+      for (const [k, exp] of this.seen) {
+        if (nowMs >= exp) {
+          this.seen.delete(k);
+          if (this.seen.size < this.maxEntries) {
+            break;
+          }
+        }
+      }
+      if (this.seen.size >= this.maxEntries) {
+        const oldest = this.seen.keys().next().value;
+        if (oldest !== undefined) {
+          this.seen.delete(oldest);
+        }
+      }
+    }
+    this.seen.set(key, nowMs + this.ttlMs);
+    return true;
+  }
+}
 
 interface FailedLoginBucket {
   count: number;
@@ -185,9 +236,10 @@ async function checkReservedEmailTable(
   emailLower: string,
 ): Promise<void> {
   const emailHash = hashEmailTombstone(emailLower);
+  const canonicalHash = hashCanonicalEmail(emailLower);
   const reservedRes = await db.query<ReservedRow>(
-    'SELECT reason FROM reserved_emails WHERE email_hash = $1 LIMIT 1',
-    [emailHash],
+    'SELECT reason FROM reserved_emails WHERE email_hash = $1 OR email_hash = $2 LIMIT 1',
+    [emailHash, canonicalHash],
   );
   if ((reservedRes.rowCount ?? 0) > 0) {
     throw new ApiError(
@@ -443,6 +495,20 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     max: 10,
     timeWindow: '1 hour',
   };
+  const defaultSubnetMax = Math.max(
+    25,
+    (app.rateLimitOverrides.register?.max ?? 10) * 3,
+  );
+  const registerSubnetOverride = app.rateLimitOverrides.registerSubnet;
+  const registerSubnetTracker = new BoundedFailedLoginTracker(
+    registerSubnetOverride?.max ?? defaultSubnetMax,
+    registerSubnetOverride?.timeWindowMs ?? DEFAULT_REGISTER_SUBNET_WINDOW_MS,
+  );
+  const altchaReplayCache = new BoundedReplayCache();
+  const challengeLimit = {
+    max: Math.max(60, (app.rateLimitOverrides.register?.max ?? 10) * 6),
+    timeWindow: '1 minute',
+  };
   const loginIpLimit = app.rateLimitOverrides.loginIp ?? {
     max: 20,
     timeWindow: '15 minutes',
@@ -456,6 +522,22 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     timeWindow: '1 hour',
   };
 
+  app.get(
+    '/api/v1/auth/challenge',
+    {
+      config: {
+        rateLimit: challengeLimit,
+      },
+    },
+    async (_request, reply) => {
+      reply.header('Cache-Control', 'no-store');
+      const challenge = createAltchaChallenge(app.config.authCaptchaSecret, {
+        maxNumber: app.config.authCaptchaMaxNumber,
+      });
+      return AltchaChallengeResponseSchema.parse(challenge);
+    },
+  );
+
   app.post(
     '/api/v1/auth/register',
     {
@@ -464,9 +546,76 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       },
     },
     async (request, reply) => {
+      const subnetKey = normalizeRateLimitSubnet(request.ip);
+      const nowMs = Date.now();
+      try {
+        registerSubnetTracker.assertAllowed(subnetKey, nowMs);
+      } catch {
+        throw new ApiError(
+          429,
+          'RATE_LIMITED',
+          'Too many account registrations from this network; please retry later.',
+        );
+      }
+
       const body = RegisterRequestSchema.parse(request.body);
       const pseudonymLower = body.pseudonym.toLowerCase();
       const emailLower = body.email.toLowerCase();
+      const canonicalEmailHash = hashCanonicalEmail(emailLower);
+
+      if (
+        isDisposableEmailDomain(
+          emailLower,
+          app.config.disposableEmailBlocklistExtra,
+        )
+      ) {
+        throw new ApiError(
+          422,
+          'AUTH_DISPOSABLE_EMAIL',
+          'Disposable or temporary email addresses are not permitted.',
+        );
+      }
+
+      if (app.config.authCaptchaEnabled && !body.altchaPayload) {
+        throw new ApiError(
+          422,
+          'AUTH_CAPTCHA_REQUIRED',
+          'Anti-spam verification challenge is required to register.',
+        );
+      }
+
+      if (body.altchaPayload !== undefined) {
+        const verifiedChallenge = verifyAltchaPayload(
+          body.altchaPayload,
+          app.config.authCaptchaSecret,
+          nowMs,
+        );
+        if (
+          !verifiedChallenge.valid ||
+          !verifiedChallenge.challengeId ||
+          !altchaReplayCache.consumeOnce(verifiedChallenge.challengeId, nowMs)
+        ) {
+          throw new ApiError(
+            422,
+            'AUTH_CAPTCHA_INVALID',
+            'Invalid, expired, or already-used anti-spam verification challenge.',
+          );
+        }
+      }
+
+      // GDPR Art. 5(1)(e) storage limitation: purge abandoned unverified accounts (> 48h)
+      await app.pool.query(
+        `DELETE FROM users u
+         WHERE u.email_verified_at IS NULL
+           AND u.created_at < NOW() - INTERVAL '48 hours'
+           AND NOT EXISTS (
+             SELECT 1 FROM email_tokens et
+             WHERE et.user_id = u.id
+               AND et.purpose = 'verify_email'
+               AND et.consumed_at IS NULL
+               AND et.expires_at > NOW()
+           )`,
+      );
 
       if ((RESERVED_PSEUDONYMS as readonly string[]).includes(pseudonymLower)) {
         throw new ApiError(
@@ -492,8 +641,8 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       }
 
       const existingEmailRes = await app.pool.query<{ exists: number }>(
-        'SELECT 1 AS exists FROM users WHERE LOWER(email) = $1 LIMIT 1',
-        [emailLower],
+        'SELECT 1 AS exists FROM users WHERE LOWER(email) = $1 OR canonical_email_hash = $2 LIMIT 1',
+        [emailLower, canonicalEmailHash],
       );
       if ((existingEmailRes.rowCount ?? 0) > 0) {
         throw new ApiError(
@@ -525,13 +674,14 @@ export function registerAuthRoutes(app: FastifyInstance): void {
             `INSERT INTO users (
                pseudonym,
                email,
+               canonical_email_hash,
                password_hash,
                privacy_accepted_at,
                role
              )
-             VALUES ($1, $2, $3, clock_timestamp(), 'user')
+             VALUES ($1, $2, $3, $4, clock_timestamp(), 'user')
              RETURNING id, pseudonym, email`,
-            [body.pseudonym, emailLower, passwordHash],
+            [body.pseudonym, emailLower, canonicalEmailHash, passwordHash],
           );
           createdUser = insertRes.rows[0];
         } catch (err: unknown) {
@@ -575,6 +725,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
         );
 
         await client.query('COMMIT');
+        registerSubnetTracker.recordFailure(subnetKey, Date.now());
       } catch (err: unknown) {
         await rollbackQuietly(client, request.log);
         throw err;
@@ -777,6 +928,11 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       }
 
       failedLoginTracker.clear(compositeKey);
+
+      await app.pool.query(
+        'UPDATE users SET last_login_at = clock_timestamp() WHERE id = $1',
+        [userRow.id],
+      );
 
       const session = await createSession(
         app.pool,

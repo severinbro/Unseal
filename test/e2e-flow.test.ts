@@ -23,6 +23,7 @@ import { createMemorySessionStorage } from '@entsiegelung/mobile/tokenStorage';
 import {
   deriveAuthModalModel,
   deriveDrawingToolbarModel,
+  deriveInspectorOverviewMeta,
   deriveMapControlsModel,
 } from '@entsiegelung/mobile/viewModels';
 
@@ -157,6 +158,8 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
       UPLOADS_DIR: uploadsDir,
       AUTO_SEED_VG250: 'false',
       ABUSE_CONTACT: 'moderation@entsiegelung.example.org',
+      AUTH_CAPTCHA_ENABLED: 'true',
+      AUTH_CAPTCHA_MAX_NUMBER: '500',
       ORTHOPHOTO_URL_TEMPLATE:
         'https://ortho.entsiegelung.example.org/dop/{z}/{x}/{y}.jpg',
       ORTHOPHOTO_TILE_SIZE: '256',
@@ -167,6 +170,9 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     app = await buildApp(config, pool, {
       logger: createLogger({ level: 'silent' }),
       mailer,
+      rateLimits: {
+        register: { max: 50, timeWindow: '1 hour' },
+      },
     });
     baseUrl = await app.listen({ port: 0, host: '127.0.0.1' });
   });
@@ -295,7 +301,7 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     assert.ok(toolbar.areaM2 >= 2 && toolbar.areaM2 <= 500_000);
     assert.equal(toolbar.canAdvanceToDetails, true);
 
-    // Advance to Step 2 ('details') — automatically closes the polygon ring
+    // Advance to Step 2 ('details') - automatically closes the polygon ring
     state = appReducer(state, { type: 'ADVANCE_TO_DETAILS' });
     state = appReducer(state, {
       type: 'SET_DRAFT_META',
@@ -525,10 +531,41 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
       ) < 0.01,
     );
 
-    // Voter self-deletes account -> polygon & photo votes recompute cleanly, email & pseudonym tombstoned
+    // 3b. Per-polygon comments, replies to comments, comment upvotes, and top-rated ordering
+    const rootComment = await authorClient.createPolygonComment(polygonId, {
+      body: 'Asphalt is cracked and floods during summer rainstorms.',
+    });
+    assert.equal(rootComment.parentId, null);
+
+    const replyComment = await voterClient.createPolygonComment(polygonId, {
+      body: 'Confirmed - tree pit unsealing along the curb would drain this whole corner.',
+      parentId: rootComment.id,
+    });
+    assert.equal(replyComment.parentId, rootComment.id);
+
+    await authorClient.putCommentVote(replyComment.id);
+    await voterClient.putCommentVote(replyComment.id);
+
+    const commentsBeforeDelete = await anonClient.listPolygonComments(polygonId);
+    assert.equal(commentsBeforeDelete.comments.length, 2);
+    assert.equal(commentsBeforeDelete.topCommentId, replyComment.id);
+    assert.equal(commentsBeforeDelete.comments[0]?.id, replyComment.id);
+    assert.equal(commentsBeforeDelete.comments[0]?.upvotes, 2);
+
+    const polyWithComments = await anonClient.getPolygon(polygonId);
+    assert.equal(polyWithComments.properties.commentCount, 2);
+
+    // Voter self-deletes account -> polygon, photo & comment votes recompute cleanly, surviving comment anonymized to 'deleted'
     await voterClient.deleteMe();
     const afterVoterDeleted = await anonClient.getPolygon(polygonId);
     assert.equal(afterVoterDeleted.properties.score, 0);
+    assert.equal(afterVoterDeleted.properties.commentCount, 2);
+
+    const commentsAfterGdpr = await anonClient.listPolygonComments(polygonId);
+    assert.equal(commentsAfterGdpr.topCommentId, replyComment.id);
+    assert.equal(commentsAfterGdpr.comments[0]?.id, replyComment.id);
+    assert.equal(commentsAfterGdpr.comments[0]?.authorPseudonym, 'deleted');
+    assert.equal(commentsAfterGdpr.comments[0]?.upvotes, 1);
 
     // 4. Promote an admin user, import GeoJSON polygons in Mainz, and mark Hamburg polygon as "finished"
     const adminStorage = createMemorySessionStorage();
@@ -562,6 +599,13 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     await app.runAdminCommand(['grant-admin', 'umweltamt_hh']);
     const adminMe = await adminClient.getMe();
     assert.equal(adminMe.role, 'admin');
+
+    const markedInProgress = await adminClient.patchPolygonStatus(
+      polygonId,
+      'in_progress',
+    );
+    assert.equal(markedInProgress.properties.status, 'in_progress');
+    assert.equal(markedInProgress.properties.finishedAt, null);
 
     const markedFinished = await adminClient.patchPolygonStatus(
       polygonId,
@@ -816,5 +860,258 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
         return true;
       },
     );
+  });
+
+  it('enforces Carbon anti-spam & civic moderation end-to-end: ALTCHA signup + email hardening, overlap auto-clipping & blocking, jurisdiction, creator/login metadata, community flagging, map filters, and 14-day unrated pruning', async () => {
+    const newcomerStorage = createMemorySessionStorage();
+    const newcomerClient = new PpgisApiClient(baseUrl, newcomerStorage);
+
+    const cfg = await newcomerClient.getConfig();
+    assert.equal(cfg.authCaptchaRequired, true);
+    assert.equal(cfg.limits.maxAreaM2, 20_000);
+
+    // Disposable email blocked on registration
+    await assert.rejects(
+      () =>
+        newcomerClient.register({
+          pseudonym: 'throwaway_mapper',
+          email: 'throwaway@mailinator.com',
+          password: 'strong-password-1234',
+          acceptedPrivacyPolicy: true,
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof ApiError);
+        assert.equal(err.statusCode, 422);
+        assert.equal(err.code, 'AUTH_DISPOSABLE_EMAIL');
+        return true;
+      },
+    );
+
+    // Proactive ALTCHA PoW challenge solved automatically by PpgisApiClient.register
+    await newcomerClient.register({
+      pseudonym: 'newcomer_hh',
+      email: 'newcomer.hh@gmail.com',
+      password: 'strong-password-1234',
+      acceptedPrivacyPolicy: true,
+    });
+
+    // Canonical email normalization blocks Gmail dot/+tag alias duplicate
+    await assert.rejects(
+      () =>
+        newcomerClient.register({
+          pseudonym: 'newcomer_alias',
+          email: 'newcomerhh+sockpuppet@googlemail.com',
+          password: 'strong-password-1234',
+          acceptedPrivacyPolicy: true,
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof ApiError);
+        assert.equal(err.statusCode, 409);
+        assert.equal(err.code, 'AUTH_EMAIL_TAKEN');
+        return true;
+      },
+    );
+
+    await confirmEmailViaHostedWebPage(
+      baseUrl,
+      mailer.outbox[mailer.outbox.length - 1]!.actionUrl,
+    );
+    await newcomerClient.login({
+      identifier: 'newcomer_hh',
+      password: 'strong-password-1234',
+    });
+
+    // Polygon outside seeded jurisdictions (e.g. North Sea) rejected with 422 OUTSIDE_JURISDICTION
+    await assert.rejects(
+      () =>
+        newcomerClient.createPolygon({
+          geometry: {
+            type: 'Polygon',
+            coordinates: [
+              [
+                [7.5, 54.2],
+                [7.5002, 54.2],
+                [7.5002, 54.20015],
+                [7.5, 54.20015],
+                [7.5, 54.2],
+              ],
+            ],
+          },
+          surfaceType: 'asphalt',
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof ApiError);
+        assert.equal(err.statusCode, 422);
+        assert.equal(err.code, 'OUTSIDE_JURISDICTION');
+        return true;
+      },
+    );
+
+    // New contributor creates valid courtyard polygon -> marked authorIsNewUser=true with last login & entry date
+    const basePoly = await newcomerClient.createPolygon({
+      geometry: {
+        type: 'Polygon',
+        coordinates: [
+          [
+            [9.994, 53.552],
+            [9.9944, 53.552],
+            [9.9944, 53.55225],
+            [9.994, 53.55225],
+            [9.994, 53.552],
+          ],
+        ],
+      },
+      surfaceType: 'asphalt',
+      note: 'Wide sealed yard',
+    });
+    assert.equal(basePoly.properties.authorPseudonym, 'newcomer_hh');
+    assert.equal(basePoly.properties.authorIsNewUser, true);
+    assert.ok(basePoly.properties.authorLastLoginAt);
+
+    const metaDe = deriveInspectorOverviewMeta(basePoly, 'de');
+    assert.equal(metaDe.displayAuthorHandle, 'newcomer_hh');
+    assert.equal(metaDe.authorIsNewUser, true);
+    assert.ok(metaDe.newContributorBadgeText);
+    assert.equal(metaDe.needsReviewBadgeText, null);
+    assert.ok(metaDe.entryDateText && metaDe.entryDateText.length >= 8);
+    assert.notEqual(metaDe.authorLastLoginText, 'Unbekannt');
+
+    // Public GeoJSON export redacts authorLastLoginAt to null
+    const exportRes = await fetch(newcomerClient.getExportGeoJsonUrl());
+    const exported = parseStreamedGeoJson(await exportRes.text());
+    const exportedPoly = exported.features.find((f) => f.id === basePoly.id);
+    assert.ok(exportedPoly);
+    assert.equal(exportedPoly.properties.authorLastLoginAt, null);
+
+    // >= 50% overlap is blocked (409 POLYGON_OVERLAP)
+    await assert.rejects(
+      () =>
+        newcomerClient.createPolygon({
+          geometry: {
+            type: 'Polygon',
+            coordinates: [
+              [
+                [9.99405, 53.552],
+                [9.99445, 53.552],
+                [9.99445, 53.55225],
+                [9.99405, 53.55225],
+                [9.99405, 53.552],
+              ],
+            ],
+          },
+          surfaceType: 'concrete',
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof ApiError);
+        assert.equal(err.statusCode, 409);
+        assert.equal(err.code, 'POLYGON_OVERLAP');
+        return true;
+      },
+    );
+
+    // < 50% overlap (~25%) is auto-clipped via ST_Difference
+    const unclippedPoly = await newcomerClient.createPolygon({
+      geometry: {
+        type: 'Polygon',
+        coordinates: [
+          [
+            [9.9943, 53.552],
+            [9.9947, 53.552],
+            [9.9947, 53.55225],
+            [9.9943, 53.55225],
+            [9.9943, 53.552],
+          ],
+        ],
+      },
+      surfaceType: 'pavers',
+      note: 'Adjacent strip with minor overlap',
+    });
+    assert.ok(unclippedPoly.properties.areaM2 < basePoly.properties.areaM2 * 0.9);
+
+    // Self-flagging own polygon is rejected (422 FORBIDDEN_SELF_FLAG)
+    await assert.rejects(
+      () => newcomerClient.flagPolygon(basePoly.id, { reason: 'spam' }),
+      (err: unknown) => {
+        assert.ok(err instanceof ApiError);
+        assert.equal(err.statusCode, 422);
+        assert.equal(err.code, 'FORBIDDEN_SELF_FLAG');
+        return true;
+      },
+    );
+
+    // Second user + admin user register to test flagging, filtering, score=0 vs zero-ratings, and 14-day pruning
+    const reviewerClient = new PpgisApiClient(
+      baseUrl,
+      createMemorySessionStorage(),
+    );
+    await reviewerClient.register({
+      pseudonym: 'civic_reviewer',
+      email: 'reviewer@example.org',
+      password: 'reviewer-password-1234',
+      acceptedPrivacyPolicy: true,
+    });
+    await confirmEmailViaHostedWebPage(
+      baseUrl,
+      mailer.outbox[mailer.outbox.length - 1]!.actionUrl,
+    );
+    await reviewerClient.login({
+      identifier: 'civic_reviewer',
+      password: 'reviewer-password-1234',
+    });
+
+    const flagRes = await reviewerClient.flagPolygon(basePoly.id, {
+      reason: 'implausible',
+      note: 'Looks like roof area',
+    });
+    assert.equal(flagRes.flagCount, 1);
+    assert.equal(flagRes.isFlagged, true);
+    assert.equal(flagRes.myFlag, true);
+
+    // Filter: new_user + unratedFlaggedOnly returns ONLY basePoly (unclippedPoly is unflagged)
+    const filteredUnratedFlagged = await reviewerClient.listPolygons(
+      HAMBURG_BBOX,
+      { authorType: 'new_user', unratedFlaggedOnly: true },
+    );
+    assert.equal(filteredUnratedFlagged.features.length, 1);
+    assert.equal(filteredUnratedFlagged.features[0]?.id, basePoly.id);
+
+    const establishedOnly = await reviewerClient.listPolygons(HAMBURG_BBOX, {
+      authorType: 'established',
+    });
+    assert.equal(establishedOnly.features.length, 0);
+
+    // Once basePoly receives +1 and -1 (net score = 0, but total ratings = 2), unratedFlaggedOnly excludes it
+    await newcomerClient.putVote(basePoly.id, 1);
+    await reviewerClient.putVote(basePoly.id, -1);
+    const ratedZeroNet = await reviewerClient.getPolygon(basePoly.id);
+    assert.equal(ratedZeroNet.properties.score, 0);
+    assert.equal(ratedZeroNet.properties.upvotes, 1);
+    assert.equal(ratedZeroNet.properties.downvotes, 1);
+
+    const afterVotesUnratedFlagged = await reviewerClient.listPolygons(
+      HAMBURG_BBOX,
+      { unratedFlaggedOnly: true },
+    );
+    assert.equal(afterVotesUnratedFlagged.features.length, 0);
+
+    // Promote reviewer to admin -> clear flags on basePoly
+    await app.runAdminCommand(['grant-admin', 'civic_reviewer']);
+    const cleared = await reviewerClient.clearPolygonFlags(basePoly.id);
+    assert.equal(cleared.flagCount, 0);
+    assert.equal(cleared.isFlagged, false);
+
+    // Backdate BOTH polygons to 15 days ago: prune-stale-polygons deletes unclippedPoly (0 ratings)
+    // and keeps basePoly (2 ratings, net score 0)
+    await pool.query(
+      `UPDATE polygons SET created_at = NOW() - INTERVAL '15 days' WHERE id = ANY($1::uuid[])`,
+      [[basePoly.id, unclippedPoly.id]],
+    );
+    const pruneRes = await app.runAdminCommand(['prune-stale-polygons']);
+    assert.equal(pruneRes.deletedPolygonCount, 1);
+    assert.deepEqual(pruneRes.prunedPolygonIds, [unclippedPoly.id]);
+
+    const remaining = await reviewerClient.listPolygons(HAMBURG_BBOX);
+    assert.equal(remaining.features.length, 1);
+    assert.equal(remaining.features[0]?.id, basePoly.id);
   });
 });

@@ -494,7 +494,10 @@ describe('PPGIS-4: PostGIS polygon CRUD, authoritative validation, span/sliver c
         remoteAddress: '198.51.100.30',
         headers: { authorization: `Bearer ${user.sessionToken}` },
         payload: {
-          geometry: { type: 'Polygon', coordinates: [VALID_CCW_RING] },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [VALID_CCW_RING.map(([lng, lat]) => [lng, lat + 0.002])],
+          },
           surfaceType: 'asphalt',
         },
       });
@@ -509,7 +512,10 @@ describe('PPGIS-4: PostGIS polygon CRUD, authoritative validation, span/sliver c
         remoteAddress: '198.51.100.31',
         headers: { authorization: `Bearer ${otherUser.sessionToken}` },
         payload: {
-          geometry: { type: 'Polygon', coordinates: [VALID_CCW_RING] },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [VALID_CCW_RING.map(([lng, lat]) => [lng, lat + 0.004])],
+          },
           surfaceType: 'pavers',
         },
       });
@@ -531,7 +537,10 @@ describe('PPGIS-4: PostGIS polygon CRUD, authoritative validation, span/sliver c
         remoteAddress: '198.51.100.32',
         headers: { authorization: `Bearer ${user.sessionToken}` },
         payload: {
-          geometry: { type: 'Polygon', coordinates: [VALID_CCW_RING] },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [VALID_CCW_RING.map(([lng, lat]) => [lng, lat + 0.006])],
+          },
           surfaceType: 'asphalt',
         },
       });
@@ -1239,13 +1248,17 @@ describe('PPGIS-4: PostGIS polygon CRUD, authoritative validation, span/sliver c
 
       // 4. createPolygon & mutatePolygon IP-subnet rate limits (max: 2/min override)
       for (let i = 0; i < 2; i++) {
+        const lngShift = (i + 1) * 0.001;
         const r = await app.inject({
           method: 'POST',
           url: '/api/v1/polygons',
           remoteAddress: '198.51.100.75',
           headers: { authorization: `Bearer ${user.sessionToken}` },
           payload: {
-            geometry: { type: 'Polygon', coordinates: [VALID_CCW_RING] },
+            geometry: {
+              type: 'Polygon',
+              coordinates: [VALID_CCW_RING.map(([lng, lat]) => [lng + lngShift, lat])],
+            },
             surfaceType: 'asphalt',
           },
         });

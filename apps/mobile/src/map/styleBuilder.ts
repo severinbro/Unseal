@@ -64,11 +64,17 @@ export interface ProposalFeatureProperties {
   municipalityMaxScore: number;
   municipalityNormalizedScore: number;
   photoCount: number;
+  commentCount: number;
   authorPseudonym: string;
+  authorIsNewUser: boolean;
+  authorLastLoginAt: string | null;
   upvotes: number;
   downvotes: number;
   score: number;
   myVote: -1 | 0 | 1;
+  flagCount: number;
+  isFlagged: boolean;
+  myFlag: boolean;
   isAuthor: boolean;
   createdAt: string;
   updatedAt: string;
@@ -118,6 +124,8 @@ export type ScoreColorCaseExpression = [
   'case',
   ['==', ['get', 'status'], 'finished'],
   string,
+  ['==', ['get', 'status'], 'in_progress'],
+  string,
   ['<', ['get', 'score'], number],
   string,
   ['>', ['get', 'score'], number],
@@ -131,6 +139,8 @@ export type SelectedOutlineColorExpression = [
   string,
   ['==', ['get', 'status'], 'finished'],
   string,
+  ['==', ['get', 'status'], 'in_progress'],
+  string,
   ['<', ['get', 'score'], number],
   string,
   ['>', ['get', 'score'], number],
@@ -143,6 +153,8 @@ export type FillOpacityCaseExpression = [
   ['boolean', ['get', 'selected'], boolean],
   number,
   ['==', ['get', 'status'], 'finished'],
+  number,
+  ['==', ['get', 'status'], 'in_progress'],
   number,
   number,
 ];
@@ -159,6 +171,8 @@ export type OutlineWidthCaseExpression = [
   ['boolean', ['get', 'selected'], boolean],
   number,
   ['==', ['get', 'status'], 'finished'],
+  number,
+  ['==', ['get', 'status'], 'in_progress'],
   number,
   number,
 ];
@@ -502,6 +516,8 @@ export function buildPolygonLayerSpecs(): PolygonLayerSpecsTuple {
     'case',
     ['==', ['get', 'status'], 'finished'],
     '#0d9488',
+    ['==', ['get', 'status'], 'in_progress'],
+    '#2563eb',
     ['<', ['get', 'score'], 0],
     '#c44536',
     ['>', ['get', 'score'], 0],
@@ -521,6 +537,8 @@ export function buildPolygonLayerSpecs(): PolygonLayerSpecsTuple {
         0.58,
         ['==', ['get', 'status'], 'finished'],
         0.44,
+        ['==', ['get', 'status'], 'in_progress'],
+        0.4,
         0.32,
       ],
     },
@@ -541,6 +559,8 @@ export function buildPolygonLayerSpecs(): PolygonLayerSpecsTuple {
         '#0b3d91',
         ['==', ['get', 'status'], 'finished'],
         '#0f766e',
+        ['==', ['get', 'status'], 'in_progress'],
+        '#1e40af',
         ['<', ['get', 'score'], 0],
         '#8f281d',
         ['>', ['get', 'score'], 0],
@@ -553,6 +573,8 @@ export function buildPolygonLayerSpecs(): PolygonLayerSpecsTuple {
         3.5,
         ['==', ['get', 'status'], 'finished'],
         2.75,
+        ['==', ['get', 'status'], 'in_progress'],
+        2.5,
         2,
       ],
     },

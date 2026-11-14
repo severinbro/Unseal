@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import http from 'node:http';
 import { describe, it } from 'node:test';
 
@@ -8,6 +9,7 @@ import {
   type ImportPolygonsResponse,
   type PhotoVoteResponse,
   type PolygonCollectionResponse,
+  type PolygonComment,
   type PolygonFeature,
   type PolygonPhoto,
   type RegisterResponse,
@@ -16,6 +18,11 @@ import {
   type VoteResponse,
 } from '@entsiegelung/shared';
 
+import {
+  encodeUtf8Base64,
+  sha256Hex,
+  solveAltchaChallengeClient,
+} from '../src/api/altcha';
 import { PpgisApiClient } from '../src/api/client';
 import {
   appReducer,
@@ -23,9 +30,11 @@ import {
   type AppState,
 } from '../src/state/appState';
 import {
+  buildCommentDisplayModel,
   deriveAuthModalModel,
   deriveDrawingToolbarModel,
   deriveMapControlsModel,
+  pruneDeletedCommentSubtree,
 } from '../src/state/viewModels';
 import {
   createWebSessionStorage,
@@ -55,9 +64,11 @@ const SAMPLE_CONFIG_NO_ORTHO: RuntimeConfig = {
     maxDailyPolygonsPerUser: 25,
   },
   disclaimerText:
-    'Community unsealing suggestions — non-binding public input, regardless of property ownership.',
+    'Community unsealing suggestions - non-binding public input, regardless of property ownership.',
   abuseContact: 'moderation@example.org',
   privacyPolicyUrl: 'https://maps.example.org/auth/privacy',
+  apkDownloadUrl: null,
+  authCaptchaRequired: false,
 };
 
 const SAMPLE_CONFIG_WITH_ORTHO: RuntimeConfig = {
@@ -150,11 +161,20 @@ function makePolygonFeature(
           ? 0
           : Number((score / municipalityMaxScore).toFixed(4))),
       photoCount: overrides?.photoCount ?? 0,
+      commentCount: overrides?.commentCount ?? 0,
       authorPseudonym: overrides?.authorPseudonym ?? SAMPLE_USER.pseudonym,
+      authorIsNewUser: overrides?.authorIsNewUser ?? false,
+      authorLastLoginAt:
+        overrides?.authorLastLoginAt !== undefined
+          ? overrides.authorLastLoginAt
+          : '2026-11-12T09:30:00.000Z',
       upvotes: overrides?.upvotes ?? Math.max(score, 0),
       downvotes: overrides?.downvotes ?? Math.max(-score, 0),
       score,
       myVote: overrides?.myVote ?? 0,
+      flagCount: overrides?.flagCount ?? 0,
+      isFlagged: overrides?.isFlagged ?? (overrides?.flagCount ?? 0) > 0,
+      myFlag: overrides?.myFlag ?? false,
       isAuthor: overrides?.isAuthor ?? true,
       createdAt: overrides?.createdAt ?? '2026-11-12T10:05:00.000Z',
       updatedAt: overrides?.updatedAt ?? '2026-11-12T10:05:00.000Z',
@@ -880,7 +900,25 @@ describe('appReducer and viewModels v2', () => {
       truncated: false,
     });
 
-    // Admin marks hhTop as 'finished' -> hhRunnerUp automatically rises from 0.75 to 1.0 in Hamburg while Mainz stays independent!
+    // Admin marks hhTop as 'in_progress' -> hhRunnerUp automatically rises from 0.75 to 1.0 in Hamburg while Mainz stays independent!
+    state = appReducer(state, {
+      type: 'POLYGON_UPDATED',
+      feature: {
+        ...hhTop,
+        properties: {
+          ...hhTop.properties,
+          status: 'in_progress',
+          finishedAt: null,
+          municipalityMaxScore: 3,
+          municipalityNormalizedScore: 0,
+        },
+      },
+    });
+
+    const runnerUpAfterInProgress = state.features.find((f) => f.id === hhRunnerUp.id);
+    assert.equal(runnerUpAfterInProgress?.properties.municipalityNormalizedScore, 1);
+
+    // Admin marks hhTop as 'finished' -> hhRunnerUp stays at 1.0 in Hamburg while Mainz stays independent!
     state = appReducer(state, {
       type: 'POLYGON_UPDATED',
       feature: {
@@ -948,5 +986,487 @@ describe('appReducer and viewModels v2', () => {
       htmlProxyClient.getPrivacyPolicyUrl(),
       'https://maps.example.org/auth/privacy',
     );
+
+    // Relative DOP20 urlTemplate and relative apkDownloadUrl resolve against origin
+    const relativeConfigClient = new PpgisApiClient(
+      'https://maps.example.org/api/v1/',
+      mem,
+      async () =>
+        new Response(
+          JSON.stringify({
+            ...SAMPLE_CONFIG_NO_ORTHO,
+            orthophoto: {
+              urlTemplate: '/api/v1/tiles/dop20/{z}/{x}/{y}.png',
+              tileSize: 256,
+              attribution: '© GeoBasis-DE',
+              bounds: [5.8, 47.2, 15.1, 55.1],
+              maxZoom: 20,
+            },
+            apkDownloadUrl: '/downloads/unseal.apk',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+    );
+    const resolvedCfg = await relativeConfigClient.getConfig();
+    assert.equal(
+      resolvedCfg.orthophoto?.urlTemplate,
+      'https://maps.example.org/api/v1/tiles/dop20/{z}/{x}/{y}.png',
+    );
+    assert.equal(
+      resolvedCfg.apkDownloadUrl,
+      'https://maps.example.org/downloads/unseal.apk',
+    );
+  });
+
+  it('orders comments with highest-rated comment always on top, pins top-rated nested replies, prunes deleted subtrees, and exercises PpgisApiClient comment endpoints', async () => {
+    const rootLow: PolygonComment = {
+      id: 'c0000000-0000-4000-8000-000000000001',
+      polygonId: SAMPLE_POLYGON_ID,
+      parentId: null,
+      body: 'Initial question about drainage potential',
+      authorPseudonym: 'citizen_a',
+      isAuthor: false,
+      upvotes: 2,
+      myVote: 0,
+      createdAt: '2026-11-13T10:00:00.000Z',
+      updatedAt: '2026-11-13T10:00:00.000Z',
+    };
+    const rootMid: PolygonComment = {
+      id: 'c0000000-0000-4000-8000-000000000002',
+      polygonId: SAMPLE_POLYGON_ID,
+      parentId: null,
+      body: 'Soil beneath the asphalt is sandy gravel',
+      authorPseudonym: 'citizen_b',
+      isAuthor: false,
+      upvotes: 5,
+      myVote: 1,
+      createdAt: '2026-11-13T11:00:00.000Z',
+      updatedAt: '2026-11-13T11:00:00.000Z',
+    };
+    const replyTop: PolygonComment = {
+      id: 'c0000000-0000-4000-8000-000000000003',
+      polygonId: SAMPLE_POLYGON_ID,
+      parentId: rootLow.id,
+      body: 'Municipal stormwater map confirms zero utility lines here!',
+      authorPseudonym: 'hydro_engineer',
+      isAuthor: true,
+      upvotes: 9,
+      myVote: 1,
+      createdAt: '2026-11-13T12:00:00.000Z',
+      updatedAt: '2026-11-13T12:00:00.000Z',
+    };
+    const subReply: PolygonComment = {
+      id: 'c0000000-0000-4000-8000-000000000004',
+      polygonId: SAMPLE_POLYGON_ID,
+      parentId: replyTop.id,
+      body: 'Thanks for checking the cadastre!',
+      authorPseudonym: 'citizen_a',
+      isAuthor: false,
+      upvotes: 1,
+      myVote: 0,
+      createdAt: '2026-11-13T12:30:00.000Z',
+      updatedAt: '2026-11-13T12:30:00.000Z',
+    };
+
+    // Case 1: When a root comment has the highest rating, it sits first in roots and pinnedTopReply is null
+    const rootTopModel = buildCommentDisplayModel([rootLow, rootMid]);
+    assert.equal(rootTopModel.topCommentId, rootMid.id);
+    assert.equal(rootTopModel.pinnedTopReply, null);
+    assert.equal(rootTopModel.roots[0]?.comment.id, rootMid.id);
+    assert.equal(rootTopModel.roots[1]?.comment.id, rootLow.id);
+
+    // Case 2: When a nested reply has the highest rating overall, pinnedTopReply pins it at the top of the list
+    const replyTopModel = buildCommentDisplayModel([
+      rootLow,
+      rootMid,
+      replyTop,
+      subReply,
+    ]);
+    assert.equal(replyTopModel.topCommentId, replyTop.id);
+    assert.equal(replyTopModel.pinnedTopReply?.comment.id, replyTop.id);
+    assert.equal(
+      replyTopModel.pinnedTopReply?.parentAuthorPseudonym,
+      'citizen_a',
+    );
+    assert.equal(replyTopModel.roots[0]?.comment.id, rootMid.id);
+    assert.equal(replyTopModel.roots[1]?.comment.id, rootLow.id);
+    assert.equal(replyTopModel.roots[1]?.replies[0]?.comment.id, replyTop.id);
+    assert.equal(
+      replyTopModel.roots[1]?.replies[0]?.replies[0]?.comment.id,
+      subReply.id,
+    );
+
+    // Deleting rootLow prunes rootLow + replyTop + subReply transitively
+    const pruned = pruneDeletedCommentSubtree(
+      [rootLow, rootMid, replyTop, subReply],
+      rootLow.id,
+    );
+    assert.deepEqual(
+      pruned.map((c) => c.id),
+      [rootMid.id],
+    );
+
+    // Reducer updates polygon commentCount via POLYGON_COMMENT_COUNT_SET
+    let state: AppState = appReducer(initialAppState, {
+      type: 'VIEWPORT_FEATURES_LOADED',
+      features: [makePolygonFeature({ commentCount: 0 })],
+      truncated: false,
+    });
+    state = appReducer(state, {
+      type: 'POLYGON_COMMENT_COUNT_SET',
+      polygonId: SAMPLE_POLYGON_ID,
+      commentCount: 4,
+    });
+    assert.equal(state.features[0]?.properties.commentCount, 4);
+
+    // PpgisApiClient comment methods send expected paths, methods, and bodies
+    const mem = createMemorySessionStorage();
+    await mem.setToken('tok-123');
+    const calls: { method: string; url: string; body: string | null }[] = [];
+    const client = new PpgisApiClient(
+      'https://maps.example.org',
+      mem,
+      async (input, init) => {
+        const url = String(input);
+        const method = init?.method ?? 'GET';
+        const body = typeof init?.body === 'string' ? init.body : null;
+        calls.push({ method, url, body });
+
+        if (method === 'GET' && url.endsWith('/comments')) {
+          return new Response(
+            JSON.stringify({
+              polygonId: SAMPLE_POLYGON_ID,
+              topCommentId: replyTop.id,
+              comments: [replyTop, rootLow],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        if (method === 'POST' && url.endsWith('/comments')) {
+          return new Response(JSON.stringify(replyTop), {
+            status: 201,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.endsWith('/vote')) {
+          return new Response(
+            JSON.stringify({
+              commentId: replyTop.id,
+              polygonId: SAMPLE_POLYGON_ID,
+              upvotes: method === 'PUT' ? 10 : 9,
+              myVote: method === 'PUT' ? 1 : 0,
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        return new Response(null, { status: 204 });
+      },
+    );
+
+    const listed = await client.listPolygonComments(SAMPLE_POLYGON_ID);
+    assert.equal(listed.topCommentId, replyTop.id);
+
+    const created = await client.createPolygonComment(SAMPLE_POLYGON_ID, {
+      body: 'Municipal stormwater map confirms zero utility lines here!',
+      parentId: rootLow.id,
+    });
+    assert.equal(created.parentId, rootLow.id);
+
+    const upvoted = await client.putCommentVote(replyTop.id);
+    assert.equal(upvoted.myVote, 1);
+    assert.equal(calls[2]?.body, JSON.stringify({ value: 1 }));
+
+    const cleared = await client.deleteCommentVote(replyTop.id);
+    assert.equal(cleared.myVote, 0);
+
+    await client.deleteComment(replyTop.id);
+    assert.equal(calls[4]?.method, 'DELETE');
+  });
+
+  it('solves ALTCHA challenges in pure TypeScript and manages Carbon filter and flag state transitions', async () => {
+    for (const sample of [
+      '',
+      'abc',
+      'a'.repeat(137),
+      'Prüfbedarf 🌍 Entsiegelung 2026!',
+    ]) {
+      assert.equal(
+        sha256Hex(sample),
+        crypto.createHash('sha256').update(sample, 'utf8').digest('hex'),
+      );
+      assert.equal(
+        encodeUtf8Base64(sample),
+        Buffer.from(sample, 'utf8').toString('base64'),
+      );
+    }
+
+    const sampleSalt = 'salt-0123456789abcdef?expires=4102444800';
+    const targetNumber = 17;
+    const sampleChallengeHash = crypto
+      .createHash('sha256')
+      .update(`${sampleSalt}${targetNumber}`, 'utf8')
+      .digest('hex');
+    const sampleSignature = 'a'.repeat(64);
+    const solvedBase64 = solveAltchaChallengeClient({
+      algorithm: 'SHA-256',
+      challenge: sampleChallengeHash,
+      maxnumber: 100,
+      salt: sampleSalt,
+      signature: sampleSignature,
+    });
+    const decodedSolved = JSON.parse(
+      Buffer.from(solvedBase64, 'base64').toString('utf8'),
+    ) as {
+      algorithm: string;
+      challenge: string;
+      number: number;
+      salt: string;
+      signature: string;
+    };
+    assert.equal(decodedSolved.number, targetNumber);
+    assert.equal(decodedSolved.challenge, sampleChallengeHash);
+
+    // 1) Proactive ALTCHA solve after getConfig() sets authCaptchaRequired: true
+    const mem = createMemorySessionStorage();
+    await mem.setToken('tok_flag_tester');
+    const calls: { method: string; url: string; body: string | null }[] = [];
+    let requireRetryPath = false;
+
+    const client = new PpgisApiClient(
+      'https://maps.example.org',
+      mem,
+      async (input, init) => {
+        const url = String(input);
+        const method = init?.method ?? 'GET';
+        const body = typeof init?.body === 'string' ? init.body : null;
+        calls.push({ method, url, body });
+
+        if (method === 'GET' && url.endsWith('/api/v1/config')) {
+          return new Response(
+            JSON.stringify({
+              ...SAMPLE_CONFIG_WITH_ORTHO,
+              authCaptchaRequired: true,
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        if (method === 'GET' && url.endsWith('/api/v1/auth/challenge')) {
+          return new Response(
+            JSON.stringify({
+              algorithm: 'SHA-256',
+              challenge: sampleChallengeHash,
+              maxnumber: 100,
+              salt: sampleSalt,
+              signature: sampleSignature,
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        if (method === 'POST' && url.endsWith('/api/v1/auth/register')) {
+          const parsedBody = JSON.parse(body ?? '{}') as {
+            pseudonym: string;
+            email: string;
+            altchaPayload?: string;
+          };
+          if (requireRetryPath && !parsedBody.altchaPayload) {
+            return new Response(
+              JSON.stringify({
+                error: {
+                  code: 'AUTH_CAPTCHA_REQUIRED',
+                  message: 'Verification required',
+                  requestId: 'req-captcha-1',
+                },
+              }),
+              { status: 422, headers: { 'Content-Type': 'application/json' } },
+            );
+          }
+          assert.equal(parsedBody.altchaPayload, solvedBase64);
+          return new Response(
+            JSON.stringify({
+              status: 'verification_email_sent',
+              email: parsedBody.email,
+              pseudonym: parsedBody.pseudonym,
+            } satisfies RegisterResponse),
+            { status: 202, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        if (method === 'GET' && url.includes('/api/v1/polygons?')) {
+          return new Response(
+            JSON.stringify({
+              type: 'FeatureCollection',
+              features: [],
+              meta: { truncated: false, limit: 500 },
+            } satisfies PolygonCollectionResponse),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        if (url.endsWith(`/api/v1/polygons/${SAMPLE_POLYGON_ID}/flag`)) {
+          return new Response(
+            JSON.stringify({
+              polygonId: SAMPLE_POLYGON_ID,
+              flagCount: method === 'POST' ? 2 : 1,
+              isFlagged: true,
+              myFlag: method === 'POST',
+              myFlagReason: method === 'POST' ? 'already_unsealed' : null,
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        if (url.endsWith(`/api/v1/polygons/${SAMPLE_POLYGON_ID}/flags`)) {
+          return new Response(
+            JSON.stringify({
+              polygonId: SAMPLE_POLYGON_ID,
+              flagCount: 0,
+              isFlagged: false,
+              myFlag: false,
+              myFlagReason: null,
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        return new Response(null, { status: 204 });
+      },
+    );
+
+    const loadedCfg = await client.getConfig();
+    assert.equal(loadedCfg.authCaptchaRequired, true);
+    const regProactive = await client.register({
+      pseudonym: 'proactive_user',
+      email: 'proactive@example.org',
+      password: 'strong-password-123',
+      acceptedPrivacyPolicy: true,
+    });
+    assert.equal(regProactive.status, 'verification_email_sent');
+
+    // 2) Fallback retry when register() is called before getConfig() and server returns 422 AUTH_CAPTCHA_REQUIRED
+    requireRetryPath = true;
+    const coldClient = new PpgisApiClient(
+      'https://maps.example.org',
+      mem,
+      client['fetchImpl'],
+    );
+    const regCold = await coldClient.register({
+      pseudonym: 'cold_user',
+      email: 'cold@example.org',
+      password: 'strong-password-123',
+      acceptedPrivacyPolicy: true,
+    });
+    assert.equal(regCold.status, 'verification_email_sent');
+
+    // 3) listPolygons filter query parameters + flag/unflag/clearPolygonFlags endpoints
+    calls.length = 0;
+    await client.listPolygons({
+      minLng: 9.99,
+      minLat: 53.55,
+      maxLng: 10.0,
+      maxLat: 53.56,
+    });
+    assert.equal(
+      calls[0]?.url,
+      'https://maps.example.org/api/v1/polygons?bbox=9.99%2C53.55%2C10%2C53.56',
+    );
+
+    await client.listPolygons(
+      { minLng: 9.99, minLat: 53.55, maxLng: 10.0, maxLat: 53.56 },
+      { authorType: 'new_user', unratedFlaggedOnly: true },
+    );
+    assert.equal(
+      calls[1]?.url,
+      'https://maps.example.org/api/v1/polygons?bbox=9.99%2C53.55%2C10%2C53.56&authorType=new_user&unratedFlaggedOnly=true',
+    );
+
+    const flaggedRes = await client.flagPolygon(SAMPLE_POLYGON_ID, {
+      reason: 'already_unsealed',
+      note: 'Aerial imagery shows lawn',
+    });
+    assert.equal(flaggedRes.myFlag, true);
+    assert.equal(flaggedRes.flagCount, 2);
+
+    const unflaggedRes = await client.unflagPolygon(SAMPLE_POLYGON_ID);
+    assert.equal(unflaggedRes.myFlag, false);
+    assert.equal(unflaggedRes.flagCount, 1);
+
+    const clearedFlagsRes = await client.clearPolygonFlags(SAMPLE_POLYGON_ID);
+    assert.equal(clearedFlagsRes.flagCount, 0);
+    assert.equal(clearedFlagsRes.isFlagged, false);
+
+    // 4) appReducer filter & flag transitions + logout / account deletion flag cleanup
+    const authoredNewPoly = makePolygonFeature({
+      id: 'aaaa1111-1111-4111-8111-111111111111',
+      isAuthor: true,
+      authorIsNewUser: true,
+      authorLastLoginAt: '2026-11-14T10:00:00.000Z',
+    });
+    const otherPoly = makePolygonFeature({
+      id: SAMPLE_POLYGON_ID,
+      isAuthor: false,
+      authorPseudonym: 'other_mapper',
+      flagCount: 0,
+      isFlagged: false,
+      myFlag: false,
+    });
+
+    let state: AppState = appReducer(initialAppState, {
+      type: 'CONFIG_LOADED',
+      config: SAMPLE_CONFIG_WITH_ORTHO,
+    });
+    state = appReducer(state, {
+      type: 'AUTH_SUCCEEDED',
+      user: SAMPLE_USER,
+    });
+    state = appReducer(state, {
+      type: 'VIEWPORT_FEATURES_LOADED',
+      features: [authoredNewPoly, otherPoly],
+      truncated: false,
+    });
+
+    state = appReducer(state, {
+      type: 'SET_AUTHOR_FILTER',
+      filter: 'new_user',
+    });
+    state = appReducer(state, {
+      type: 'SET_UNRATED_FLAGGED_ONLY',
+      enabled: true,
+    });
+    const controls = deriveMapControlsModel(state);
+    assert.equal(controls.authorFilter, 'new_user');
+    assert.equal(controls.unratedFlaggedOnly, true);
+
+    state = appReducer(state, {
+      type: 'POLYGON_FLAG_UPDATED',
+      flag: {
+        polygonId: SAMPLE_POLYGON_ID,
+        flagCount: 1,
+        isFlagged: true,
+        myFlag: true,
+        myFlagReason: 'implausible',
+      },
+    });
+    const updatedOther = state.features.find((f) => f.id === SAMPLE_POLYGON_ID);
+    assert.equal(updatedOther?.properties.flagCount, 1);
+    assert.equal(updatedOther?.properties.isFlagged, true);
+    assert.equal(updatedOther?.properties.myFlag, true);
+
+    const loggedOutState = appReducer(state, { type: 'LOGOUT_SUCCEEDED' });
+    const loggedOutOther = loggedOutState.features.find(
+      (f) => f.id === SAMPLE_POLYGON_ID,
+    );
+    assert.equal(loggedOutOther?.properties.flagCount, 1);
+    assert.equal(loggedOutOther?.properties.isFlagged, true);
+    assert.equal(loggedOutOther?.properties.myFlag, false);
+
+    const deletedState = appReducer(state, { type: 'ACCOUNT_DELETED' });
+    const deletedAuthored = deletedState.features.find(
+      (f) => f.id === authoredNewPoly.id,
+    );
+    assert.equal(deletedAuthored?.properties.authorPseudonym, 'deleted');
+    assert.equal(deletedAuthored?.properties.authorIsNewUser, false);
+    assert.equal(deletedAuthored?.properties.authorLastLoginAt, null);
+    const deletedOther = deletedState.features.find(
+      (f) => f.id === SAMPLE_POLYGON_ID,
+    );
+    assert.equal(deletedOther?.properties.flagCount, 0);
+    assert.equal(deletedOther?.properties.isFlagged, false);
+    assert.equal(deletedOther?.properties.myFlag, false);
   });
 });

@@ -1,11 +1,16 @@
 import {
+  AltchaChallengeResponseSchema,
   ApiError,
   ApiErrorEnvelopeSchema,
   AuthUserSchema,
+  CommentVoteResponseSchema,
   EmailActionResponseSchema,
+  FlagPolygonResponseSchema,
   ImportPolygonsResponseSchema,
   PhotoVoteResponseSchema,
   PolygonCollectionResponseSchema,
+  PolygonCommentListResponseSchema,
+  PolygonCommentSchema,
   PolygonFeatureSchema,
   PolygonPhotoListResponseSchema,
   PolygonPhotoSchema,
@@ -15,16 +20,24 @@ import {
   SessionResponseSchema,
   VerifyEmailResponseSchema,
   VoteResponseSchema,
+  type AltchaChallengeResponse,
   type AuthUser,
   type BboxBounds,
+  type CommentVoteResponse,
+  type CreatePolygonCommentRequest,
   type CreatePolygonRequest,
   type EmailActionResponse,
   type ErrorCode,
+  type FlagPolygonRequest,
+  type FlagPolygonResponse,
   type ImportPolygonsResponse,
   type LoginRequest,
   type PatchPolygonRequest,
   type PhotoVoteResponse,
+  type PolygonAuthorFilter,
   type PolygonCollectionResponse,
+  type PolygonComment,
+  type PolygonCommentListResponse,
   type PolygonFeature,
   type PolygonPhoto,
   type PolygonPhotoListResponse,
@@ -39,7 +52,19 @@ import {
   type VoteResponse,
 } from '@entsiegelung/shared';
 
+import {
+  encodeUtf8Base64,
+  sha256Hex,
+  solveAltchaChallengeClient,
+} from './altcha';
 import type { SessionStorage } from '../storage/tokenStorage';
+
+export { encodeUtf8Base64, sha256Hex, solveAltchaChallengeClient };
+
+export interface PolygonListFilters {
+  readonly authorType?: PolygonAuthorFilter | undefined;
+  readonly unratedFlaggedOnly?: boolean | undefined;
+}
 
 export type FetchLike = typeof fetch;
 
@@ -145,6 +170,7 @@ export class PpgisApiClient {
   private readonly baseUrl: string;
   private readonly sessionStorage: SessionStorage;
   private readonly fetchImpl: FetchLike;
+  private authCaptchaRequired = false;
 
   constructor(
     baseUrl: string,
@@ -182,16 +208,42 @@ export class PpgisApiClient {
       path: '/api/v1/config',
       includeAuth: false,
     });
-    return RuntimeConfigSchema.parse(json);
+    const parsed = RuntimeConfigSchema.parse(json);
+    this.authCaptchaRequired = parsed.authCaptchaRequired;
+    const resolvedOrthophoto =
+      parsed.orthophoto !== null &&
+      parsed.orthophoto.urlTemplate.startsWith('/')
+        ? {
+            ...parsed.orthophoto,
+            urlTemplate: this.resolveUploadUrl(parsed.orthophoto.urlTemplate),
+          }
+        : parsed.orthophoto;
+    const resolvedApkDownloadUrl =
+      parsed.apkDownloadUrl !== null && parsed.apkDownloadUrl.startsWith('/')
+        ? this.resolveUploadUrl(parsed.apkDownloadUrl)
+        : parsed.apkDownloadUrl;
+    return {
+      ...parsed,
+      orthophoto: resolvedOrthophoto,
+      apkDownloadUrl: resolvedApkDownloadUrl,
+    };
   }
 
   public async listPolygons(
     bbox: BboxInput,
+    filters?: PolygonListFilters,
   ): Promise<PolygonCollectionResponse> {
     const bboxParam = encodeURIComponent(formatBboxQueryParam(bbox));
+    let query = `bbox=${bboxParam}`;
+    if (filters?.authorType && filters.authorType !== 'all') {
+      query += `&authorType=${encodeURIComponent(filters.authorType)}`;
+    }
+    if (filters?.unratedFlaggedOnly === true) {
+      query += '&unratedFlaggedOnly=true';
+    }
     const json = await this.requestJson({
       method: 'GET',
-      path: `/api/v1/polygons?bbox=${bboxParam}`,
+      path: `/api/v1/polygons?${query}`,
       includeAuth: true,
     });
     return PolygonCollectionResponseSchema.parse(json);
@@ -290,6 +342,40 @@ export class PpgisApiClient {
     return VoteResponseSchema.parse(json);
   }
 
+  public async flagPolygon(
+    id: string,
+    input: FlagPolygonRequest = { reason: 'implausible' },
+  ): Promise<FlagPolygonResponse> {
+    const encodedId = assertNonEmptyId(id);
+    const json = await this.requestJson({
+      method: 'POST',
+      path: `/api/v1/polygons/${encodedId}/flag`,
+      body: input ?? { reason: 'implausible' },
+      includeAuth: true,
+    });
+    return FlagPolygonResponseSchema.parse(json);
+  }
+
+  public async unflagPolygon(id: string): Promise<FlagPolygonResponse> {
+    const encodedId = assertNonEmptyId(id);
+    const json = await this.requestJson({
+      method: 'DELETE',
+      path: `/api/v1/polygons/${encodedId}/flag`,
+      includeAuth: true,
+    });
+    return FlagPolygonResponseSchema.parse(json);
+  }
+
+  public async clearPolygonFlags(id: string): Promise<FlagPolygonResponse> {
+    const encodedId = assertNonEmptyId(id);
+    const json = await this.requestJson({
+      method: 'DELETE',
+      path: `/api/v1/polygons/${encodedId}/flags`,
+      includeAuth: true,
+    });
+    return FlagPolygonResponseSchema.parse(json);
+  }
+
   public async listPolygonPhotos(
     polygonId: string,
   ): Promise<PolygonPhotoListResponse> {
@@ -350,14 +436,113 @@ export class PpgisApiClient {
     });
   }
 
-  public async register(input: RegisterRequest): Promise<RegisterResponse> {
+  public async listPolygonComments(
+    polygonId: string,
+  ): Promise<PolygonCommentListResponse> {
+    const encodedId = assertNonEmptyId(polygonId);
+    const json = await this.requestJson({
+      method: 'GET',
+      path: `/api/v1/polygons/${encodedId}/comments`,
+      includeAuth: true,
+    });
+    return PolygonCommentListResponseSchema.parse(json);
+  }
+
+  public async createPolygonComment(
+    polygonId: string,
+    input: CreatePolygonCommentRequest,
+  ): Promise<PolygonComment> {
+    const encodedId = assertNonEmptyId(polygonId);
     const json = await this.requestJson({
       method: 'POST',
-      path: '/api/v1/auth/register',
+      path: `/api/v1/polygons/${encodedId}/comments`,
       body: input,
+      includeAuth: true,
+    });
+    return PolygonCommentSchema.parse(json);
+  }
+
+  public async putCommentVote(commentId: string): Promise<CommentVoteResponse> {
+    const encodedId = assertNonEmptyId(commentId);
+    const json = await this.requestJson({
+      method: 'PUT',
+      path: `/api/v1/comments/${encodedId}/vote`,
+      body: { value: 1 },
+      includeAuth: true,
+    });
+    return CommentVoteResponseSchema.parse(json);
+  }
+
+  public async deleteCommentVote(
+    commentId: string,
+  ): Promise<CommentVoteResponse> {
+    const encodedId = assertNonEmptyId(commentId);
+    const json = await this.requestJson({
+      method: 'DELETE',
+      path: `/api/v1/comments/${encodedId}/vote`,
+      includeAuth: true,
+    });
+    return CommentVoteResponseSchema.parse(json);
+  }
+
+  public async deleteComment(commentId: string): Promise<void> {
+    const encodedId = assertNonEmptyId(commentId);
+    await this.requestVoid({
+      method: 'DELETE',
+      path: `/api/v1/comments/${encodedId}`,
+      includeAuth: true,
+    });
+  }
+
+  public async fetchAltchaChallenge(): Promise<AltchaChallengeResponse> {
+    const json = await this.requestJson({
+      method: 'GET',
+      path: '/api/v1/auth/challenge',
       includeAuth: false,
     });
-    return RegisterResponseSchema.parse(json);
+    return AltchaChallengeResponseSchema.parse(json);
+  }
+
+  public async register(input: RegisterRequest): Promise<RegisterResponse> {
+    let payload: RegisterRequest = input;
+    if (!payload.altchaPayload && this.authCaptchaRequired) {
+      const challenge = await this.fetchAltchaChallenge();
+      payload = {
+        ...payload,
+        altchaPayload: solveAltchaChallengeClient(challenge),
+      };
+    }
+
+    try {
+      const json = await this.requestJson({
+        method: 'POST',
+        path: '/api/v1/auth/register',
+        body: payload,
+        includeAuth: false,
+      });
+      return RegisterResponseSchema.parse(json);
+    } catch (err: unknown) {
+      if (
+        !input.altchaPayload &&
+        !payload.altchaPayload &&
+        err instanceof ApiError &&
+        err.code === 'AUTH_CAPTCHA_REQUIRED'
+      ) {
+        this.authCaptchaRequired = true;
+        const challenge = await this.fetchAltchaChallenge();
+        const retryJson = await this.requestJson({
+          method: 'POST',
+          path: '/api/v1/auth/register',
+          body: {
+            ...input,
+            altchaPayload: solveAltchaChallengeClient(challenge),
+          },
+          includeAuth: false,
+        });
+        return RegisterResponseSchema.parse(retryJson);
+      }
+      throw err;
+    }
   }
 
   public async resendVerification(email: string): Promise<EmailActionResponse> {

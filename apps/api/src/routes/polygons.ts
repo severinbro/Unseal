@@ -2,13 +2,15 @@ import { Readable } from 'node:stream';
 
 import {
   ApiError,
-  BboxQuerySchema,
   CreatePolygonRequestSchema,
+  FlagPolygonRequestSchema,
+  FlagPolygonResponseSchema,
   IMPORT_LIMITS,
   ImportPolygonsResponseSchema,
   PatchPolygonRequestSchema,
   PatchPolygonStatusRequestSchema,
   PolygonFeatureSchema,
+  PolygonListQuerySchema,
   UuidParamSchema,
   checkBboxSpan,
   type PolygonCollectionResponse,
@@ -77,7 +79,14 @@ function mapExportQueryError(err: unknown, timedOut: boolean): unknown {
 
 export function registerPolygonRoutes(
   app: FastifyInstance,
-  repository: PolygonRepository = new PolygonRepository(app.pool),
+  repository: PolygonRepository = new PolygonRepository(
+    app.pool,
+    app.config.uploadsDir,
+    {
+      minAccountDays: app.config.newUserMinAccountDays,
+      minCleanPolygons: app.config.newUserMinCleanPolygons,
+    },
+  ),
   options: RegisterPolygonRoutesOptions = {},
 ): void {
   if (!app.hasRequestDecorator('auth')) {
@@ -112,14 +121,16 @@ export function registerPolygonRoutes(
     },
     async (request, reply) => {
       applyOptionalAuthCacheHeaders(request, reply);
-      const bbox = BboxQuerySchema.parse(request.query);
-      checkBboxSpan(bbox, app.config.runtimeConfig.limits.maxBboxSpanDeg);
+      const query = PolygonListQuerySchema.parse(request.query);
+      checkBboxSpan(query.bbox, app.config.runtimeConfig.limits.maxBboxSpanDeg);
 
       const viewerUserId = request.auth?.user.id ?? null;
       const result = await repository.listByBbox({
-        bbox,
+        bbox: query.bbox,
         viewerUserId,
         limit: app.config.runtimeConfig.limits.bboxFeatureLimit,
+        authorType: query.authorType,
+        unratedFlaggedOnly: query.unratedFlaggedOnly,
       });
 
       const response: PolygonCollectionResponse = {
@@ -324,6 +335,7 @@ export function registerPolygonRoutes(
         maxDailyPolygonsPerUser: app.config.maxDailyPolygonsPerUser,
         minAreaM2: app.config.runtimeConfig.limits.minAreaM2,
         maxAreaM2: app.config.runtimeConfig.limits.maxAreaM2,
+        requireJurisdiction: app.config.requireJurisdiction,
       });
 
       return reply.status(201).send(PolygonFeatureSchema.parse(created));
@@ -408,7 +420,10 @@ export function registerPolygonRoutes(
         adminUserId: auth.user.id,
         dataset,
         minAreaM2: app.config.runtimeConfig.limits.minAreaM2,
-        maxAreaM2: app.config.runtimeConfig.limits.maxAreaM2,
+        maxAreaM2: Math.max(
+          IMPORT_LIMITS.MAX_AREA_M2,
+          app.config.runtimeConfig.limits.maxAreaM2,
+        ),
       });
 
       return ImportPolygonsResponseSchema.parse(imported);
@@ -435,6 +450,85 @@ export function registerPolygonRoutes(
       });
 
       return PolygonFeatureSchema.parse(updated);
+    },
+  );
+
+  app.post(
+    '/api/v1/polygons/:id/flag',
+    {
+      config: {
+        rateLimit: mutatePolygonLimit,
+      },
+      preHandler: requireAuth,
+    },
+    async (request) => {
+      const auth = request.auth;
+      if (!auth) {
+        throw new ApiError(
+          401,
+          'AUTH_REQUIRED',
+          'Valid bearer session token is required.',
+        );
+      }
+
+      const { id } = UuidParamSchema.parse(request.params);
+      const body = FlagPolygonRequestSchema.parse(request.body);
+      const flagged = await repository.flagPolygon({
+        polygonId: id,
+        userId: auth.user.id,
+        reason: body.reason,
+        note: 'note' in body ? body.note : undefined,
+      });
+
+      return FlagPolygonResponseSchema.parse(flagged);
+    },
+  );
+
+  app.delete(
+    '/api/v1/polygons/:id/flag',
+    {
+      config: {
+        rateLimit: mutatePolygonLimit,
+      },
+      preHandler: requireAuth,
+    },
+    async (request) => {
+      const auth = request.auth;
+      if (!auth) {
+        throw new ApiError(
+          401,
+          'AUTH_REQUIRED',
+          'Valid bearer session token is required.',
+        );
+      }
+
+      const { id } = UuidParamSchema.parse(request.params);
+      const unflagged = await repository.unflagPolygon({
+        polygonId: id,
+        userId: auth.user.id,
+      });
+
+      return FlagPolygonResponseSchema.parse(unflagged);
+    },
+  );
+
+  app.delete(
+    '/api/v1/polygons/:id/flags',
+    {
+      config: {
+        rateLimit: mutatePolygonLimit,
+      },
+      preHandler: requireAdmin,
+    },
+    async (request) => {
+      const auth = request.auth!;
+      const { id } = UuidParamSchema.parse(request.params);
+      const cleared = await repository.clearFlagsAsAdmin({
+        polygonId: id,
+        adminUserId: auth.user.id,
+      });
+
+      return FlagPolygonResponseSchema.parse(cleared);
     },
   );
 

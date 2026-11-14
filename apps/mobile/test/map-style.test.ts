@@ -40,7 +40,7 @@ const FEATURE_C_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 function makeFeature(params: {
   id: string;
   score: number;
-  status?: 'proposed' | 'finished';
+  status?: 'proposed' | 'in_progress' | 'finished';
   municipalityNormalizedScore?: number;
   upvotes?: number;
   downvotes?: number;
@@ -78,13 +78,19 @@ function makeFeature(params: {
       municipalityMaxScore: Math.max(params.score, 3),
       municipalityNormalizedScore:
         params.municipalityNormalizedScore ??
-        (status === 'finished' || params.score <= 0 ? 0 : 1),
+        (status !== 'proposed' || params.score <= 0 ? 0 : 1),
       photoCount: 0,
+      commentCount: 0,
       authorPseudonym: 'mapper_one',
+      authorIsNewUser: false,
+      authorLastLoginAt: '2026-11-12T11:00:00.000Z',
       upvotes,
       downvotes,
       score: params.score,
       myVote: 0,
+      flagCount: 0,
+      isFlagged: false,
+      myFlag: false,
       isAuthor: false,
       createdAt,
       updatedAt: createdAt,
@@ -360,7 +366,7 @@ describe('styleBuilder and MapCanvas contract', () => {
 
     const evalFillColor = (
       score: number,
-      status: 'proposed' | 'finished' = 'proposed',
+      status: 'proposed' | 'in_progress' | 'finished' = 'proposed',
       municipalityNormalizedScore: number = 0.5,
     ): string =>
       String(
@@ -381,11 +387,16 @@ describe('styleBuilder and MapCanvas contract', () => {
     const zeroColor = evalFillColor(0);
     const posLowNormColor = evalFillColor(1, 'proposed', 0.2);
     const posHighNormColor = evalFillColor(8, 'proposed', 1.0);
+    const inProgressColor = evalFillColor(8, 'in_progress', 0);
     const finishedColor = evalFillColor(8, 'finished', 0);
 
     assert.notEqual(negColor, zeroColor);
     assert.notEqual(zeroColor, posLowNormColor);
     assert.notEqual(posLowNormColor, posHighNormColor);
+    assert.notEqual(inProgressColor, finishedColor);
+    assert.notEqual(inProgressColor, posHighNormColor);
+    assert.notEqual(inProgressColor, zeroColor);
+    assert.notEqual(inProgressColor, negColor);
     assert.notEqual(finishedColor, posHighNormColor);
     assert.notEqual(finishedColor, zeroColor);
     assert.notEqual(finishedColor, negColor);

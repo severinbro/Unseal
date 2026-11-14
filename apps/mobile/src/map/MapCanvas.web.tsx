@@ -1,6 +1,7 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 import {
+  AttributionControl,
   Map as MapLibreMap,
   NavigationControl,
   type GeoJSONSource,
@@ -150,12 +151,20 @@ export function MapCanvas({
       pitchWithRotate: false,
       dragRotate: false,
       preserveDrawingBuffer: true,
+      attributionControl: false,
     });
     mapRef.current = map;
     styleReadyRef.current = false;
 
     map.addControl(
       new NavigationControl({ showCompass: false }),
+      'bottom-right',
+    );
+    map.addControl(
+      new AttributionControl({
+        compact: false,
+        customAttribution: 'VG250: © GeoBasis-DE / BKG (dl-de/by-2-0)',
+      }),
       'bottom-right',
     );
 

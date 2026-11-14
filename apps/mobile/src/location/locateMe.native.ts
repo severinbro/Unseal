@@ -22,6 +22,7 @@ export async function requestCurrentCoordinates(
   _nav?: unknown,
   _isSecureContext?: boolean,
   locale: Locale = DEFAULT_LOCALE,
+  _refinementWindowMs?: number,
 ): Promise<LocateMeResult> {
   const t = getTranslations(locale).location;
   try {
@@ -37,10 +38,17 @@ export async function requestCurrentCoordinates(
       };
     }
 
-    const position = await Location.getCurrentPositionAsync({
-      accuracy: Location.LocationAccuracy.Balanced,
-    });
-    const { longitude, latitude } = position.coords;
+    let position: Location.LocationObject;
+    try {
+      position = await Location.getCurrentPositionAsync({
+        accuracy: Location.LocationAccuracy.High,
+      });
+    } catch {
+      position = await Location.getCurrentPositionAsync({
+        accuracy: Location.LocationAccuracy.Balanced,
+      });
+    }
+    const { longitude, latitude, accuracy } = position.coords;
 
     if (!isValidCoordinatePair(longitude, latitude)) {
       return {
@@ -53,6 +61,11 @@ export async function requestCurrentCoordinates(
       ok: true,
       lng: longitude,
       lat: latitude,
+      ...(typeof accuracy === 'number' &&
+      Number.isFinite(accuracy) &&
+      accuracy >= 0
+        ? { accuracyMeters: accuracy }
+        : {}),
     };
   } catch (err: unknown) {
     const detail = err instanceof Error ? err.message.trim() : '';

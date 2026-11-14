@@ -1,6 +1,10 @@
 import { ApiError } from '@entsiegelung/shared';
 
-import { hashEmailTombstone, hashPseudonymTombstone } from '../auth/crypto.js';
+import {
+  hashCanonicalEmail,
+  hashEmailTombstone,
+  hashPseudonymTombstone,
+} from '../auth/crypto.js';
 
 import type pg from 'pg';
 
@@ -73,7 +77,9 @@ export async function recomputePolygonScores(
          COALESCE(COUNT(*) FILTER (WHERE v.value = 1), 0)::int AS upvotes,
          COALESCE(COUNT(*) FILTER (WHERE v.value = -1), 0)::int AS downvotes,
          COALESCE(SUM(v.value), 0)::int AS score,
-         COALESCE((SELECT COUNT(*) FROM polygon_photos pp WHERE pp.polygon_id = target.id), 0)::int AS photo_count
+         COALESCE((SELECT COUNT(*) FROM polygon_photos pp WHERE pp.polygon_id = target.id), 0)::int AS photo_count,
+         COALESCE((SELECT COUNT(*) FROM polygon_comments pc WHERE pc.polygon_id = target.id), 0)::int AS comment_count,
+         COALESCE((SELECT COUNT(*) FROM polygon_flags pf WHERE pf.polygon_id = target.id), 0)::int AS flag_count
        FROM unnest($1::uuid[]) AS target(id)
        LEFT JOIN votes v ON v.polygon_id = target.id
        GROUP BY target.id
@@ -83,7 +89,9 @@ export async function recomputePolygonScores(
        upvotes = agg.upvotes,
        downvotes = agg.downvotes,
        score = agg.score,
-       photo_count = agg.photo_count
+       photo_count = agg.photo_count,
+       comment_count = agg.comment_count,
+       flag_count = agg.flag_count
      FROM agg
      WHERE p.id = agg.polygon_id`,
     [lockedIds],
@@ -130,6 +138,45 @@ export async function recomputePhotoScores(
        credibility_score = agg.credibility_score
      FROM agg
      WHERE pp.id = agg.photo_id`,
+    [lockedIds],
+  );
+}
+
+export async function recomputeCommentScores(
+  client: pg.PoolClient,
+  commentIds: readonly string[],
+): Promise<void> {
+  const sortedIds = uniqueSortedUuids(commentIds);
+  if (sortedIds.length === 0) {
+    return;
+  }
+
+  const lockRes = await client.query<{ id: string }>(
+    `SELECT id
+     FROM polygon_comments
+     WHERE id = ANY($1::uuid[])
+     ORDER BY id ASC
+     FOR UPDATE`,
+    [sortedIds],
+  );
+  const lockedIds = lockRes.rows.map((row) => row.id);
+  if (lockedIds.length === 0) {
+    return;
+  }
+
+  await client.query(
+    `WITH agg AS (
+       SELECT
+         target.id AS comment_id,
+         COALESCE(COUNT(cv.user_id), 0)::int AS upvotes
+       FROM unnest($1::uuid[]) AS target(id)
+       LEFT JOIN polygon_comment_votes cv ON cv.comment_id = target.id
+       GROUP BY target.id
+     )
+     UPDATE polygon_comments AS pc
+     SET upvotes = agg.upvotes
+     FROM agg
+     WHERE pc.id = agg.comment_id`,
     [lockedIds],
   );
 }
@@ -201,17 +248,24 @@ export async function deleteOrBanUserAccount(
 
   if (params.mode === 'ban' && userRow.email) {
     const emailHash = hashEmailTombstone(userRow.email);
-    await client.query(
-      `INSERT INTO reserved_emails (email_hash, reason)
-       VALUES ($1, $2)
-       ON CONFLICT (email_hash) DO UPDATE
-       SET reason = EXCLUDED.reason`,
-      [emailHash, resolvedReason],
-    );
+    const canonicalHash = hashCanonicalEmail(userRow.email);
+    for (const digest of [emailHash, canonicalHash]) {
+      await client.query(
+        `INSERT INTO reserved_emails (email_hash, reason)
+         VALUES ($1, $2)
+         ON CONFLICT (email_hash) DO UPDATE
+         SET reason = EXCLUDED.reason`,
+        [digest, resolvedReason],
+      );
+    }
   }
 
   const votedRes = await client.query<{ polygon_id: string }>(
     'SELECT polygon_id FROM votes WHERE user_id = $1',
+    [userRow.id],
+  );
+  const flaggedRes = await client.query<{ polygon_id: string }>(
+    'SELECT polygon_id FROM polygon_flags WHERE user_id = $1',
     [userRow.id],
   );
   const authoredRes = await client.query<{ id: string }>(
@@ -231,18 +285,37 @@ export async function deleteOrBanUserAccount(
     'SELECT photo_id FROM polygon_photo_votes WHERE user_id = $1',
     [userRow.id],
   );
+  const commentedPolygonsRes = await client.query<{ polygon_id: string }>(
+    'SELECT DISTINCT polygon_id FROM polygon_comments WHERE user_id = $1',
+    [userRow.id],
+  );
+  const votedCommentsRes = await client.query<{ comment_id: string }>(
+    'SELECT comment_id FROM polygon_comment_votes WHERE user_id = $1',
+    [userRow.id],
+  );
 
   const votedPolygonIds = votedRes.rows.map((r) => r.polygon_id.toLowerCase());
+  const flaggedPolygonIds = flaggedRes.rows.map((r) =>
+    r.polygon_id.toLowerCase(),
+  );
   const authoredPolygonIds = authoredRes.rows.map((r) => r.id.toLowerCase());
   const uploadedPhotoPolygonIds = uploadedPhotoPolygonsRes.rows.map((r) =>
     r.polygon_id.toLowerCase(),
   );
   const votedPhotoIds = votedPhotosRes.rows.map((r) => r.photo_id.toLowerCase());
+  const commentedPolygonIds = commentedPolygonsRes.rows.map((r) =>
+    r.polygon_id.toLowerCase(),
+  );
+  const votedCommentIds = votedCommentsRes.rows.map((r) =>
+    r.comment_id.toLowerCase(),
+  );
 
   const allTouchedPolygonIds = uniqueSortedUuids([
     ...votedPolygonIds,
+    ...flaggedPolygonIds,
     ...authoredPolygonIds,
     ...uploadedPhotoPolygonIds,
+    ...commentedPolygonIds,
   ]);
 
   if (allTouchedPolygonIds.length > 0) {
@@ -283,6 +356,9 @@ export async function deleteOrBanUserAccount(
       }
     }
 
+    await client.query('DELETE FROM polygon_comments WHERE user_id = $1', [
+      userRow.id,
+    ]);
     await client.query('DELETE FROM polygon_photos WHERE user_id = $1', [
       userRow.id,
     ]);
@@ -293,18 +369,25 @@ export async function deleteOrBanUserAccount(
     deletedPolygonCount = delPolyRes.rowCount ?? 0;
     const authoredSet = new Set(authoredPolygonIds);
     remainingPolygonIdsToRecompute = uniqueSortedUuids(
-      [...votedPolygonIds, ...uploadedPhotoPolygonIds].filter(
-        (id) => !authoredSet.has(id),
-      ),
+      [
+        ...votedPolygonIds,
+        ...flaggedPolygonIds,
+        ...uploadedPhotoPolygonIds,
+        ...commentedPolygonIds,
+      ].filter((id) => !authoredSet.has(id)),
     );
   } else {
-    remainingPolygonIdsToRecompute = uniqueSortedUuids(votedPolygonIds);
+    remainingPolygonIdsToRecompute = uniqueSortedUuids([
+      ...votedPolygonIds,
+      ...flaggedPolygonIds,
+    ]);
   }
 
   await client.query('DELETE FROM users WHERE id = $1', [userRow.id]);
 
   await recomputePolygonScores(client, remainingPolygonIdsToRecompute);
   await recomputePhotoScores(client, votedPhotoIds);
+  await recomputeCommentScores(client, votedCommentIds);
 
   return {
     deletedUser: true,

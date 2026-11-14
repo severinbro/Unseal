@@ -10,9 +10,12 @@ import sharp from 'sharp';
 
 import {
   ApiErrorEnvelopeSchema,
+  CommentVoteResponseSchema,
   ImportPolygonsResponseSchema,
   PhotoVoteResponseSchema,
   PolygonCollectionResponseSchema,
+  PolygonCommentListResponseSchema,
+  PolygonCommentSchema,
   PolygonFeatureSchema,
   PolygonPhotoListResponseSchema,
   PolygonPhotoSchema,
@@ -324,6 +327,25 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
       const grantRes = await runAdminCommand(pool, ['grant-admin', 'CityMapper']);
       assert.equal(grantRes.role, 'admin');
 
+      const adminPatchInProgress = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/polygons/${hhHigh.id}/status`,
+        headers: { authorization: `Bearer ${mapper.sessionToken}` },
+        payload: { status: 'in_progress' },
+      });
+      assert.equal(adminPatchInProgress.statusCode, 200);
+      const inProgressFeature = PolygonFeatureSchema.parse(adminPatchInProgress.json());
+      assert.equal(inProgressFeature.properties.status, 'in_progress');
+      assert.equal(inProgressFeature.properties.finishedAt, null);
+      assert.equal(inProgressFeature.properties.municipalityNormalizedScore, 0);
+
+      // Once hhHigh is "in_progress", hhLow (score=3) already becomes the top proposed polygon in Hamburg (normalized = 1.0)
+      const hhLowAfterInProgress = PolygonFeatureSchema.parse(
+        (await app.inject({ method: 'GET', url: `/api/v1/polygons/${hhLow.id}` })).json(),
+      );
+      assert.equal(hhLowAfterInProgress.properties.municipalityMaxScore, 3);
+      assert.equal(hhLowAfterInProgress.properties.municipalityNormalizedScore, 1);
+
       const adminPatchFinished = await app.inject({
         method: 'PATCH',
         url: `/api/v1/polygons/${hhHigh.id}/status`,
@@ -459,25 +481,73 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
       assert.equal(geoJsonRes.skippedCount, 1);
       assert.equal(geoJsonRes.errors.length, 1);
 
-      // Build a real SQLite GeoPackage (.gpkg) in EPSG:25832 (ETRS89 / UTM zone 32N)
-      const utmWkbRes = await pool.query<{ wkb: Buffer }>(
-        `SELECT ST_AsBinary(
-           ST_Transform(
-             ST_SetSRID(
-               ST_GeomFromGeoJSON($1),
-               4326
-             ),
-             25832
-           )
-         ) AS wkb`,
+      // Build a real SQLite GeoPackage (.gpkg) in EPSG:25832 (ETRS89 / UTM zone 32N) + GeoJSON with versioned OGC URN
+      const utmWkbRes = await pool.query<{ wkb: Buffer; utm_geojson: string }>(
+        `SELECT
+           ST_AsBinary(
+             ST_Transform(
+               ST_SetSRID(
+                 ST_GeomFromGeoJSON($1),
+                 4326
+               ),
+               25832
+             )
+           ) AS wkb,
+           ST_AsGeoJSON(
+             ST_Transform(
+               ST_SetSRID(
+                 ST_GeomFromGeoJSON($2),
+                 4326
+               ),
+               25832
+             )
+           ) AS utm_geojson`,
         [
           JSON.stringify({
             type: 'Polygon',
             coordinates: [makeCourtyardRing(9.998, 53.553)],
           }),
+          JSON.stringify({
+            type: 'Polygon',
+            coordinates: [makeCourtyardRing(9.999, 53.553)],
+          }),
         ],
       );
       const gpbBlob = buildGeoPackageBinaryHeader(25832, utmWkbRes.rows[0]!.wkb);
+
+      const utmGeoJsonMultipart = buildMultipartPayload({
+        fieldName: 'file',
+        fileName: 'utm32n-versioned-urn.geojson',
+        contentType: 'application/geo+json',
+        fileBuffer: Buffer.from(
+          JSON.stringify({
+            type: 'FeatureCollection',
+            crs: {
+              type: 'name',
+              properties: { name: 'urn:ogc:def:crs:EPSG:6.3:25832' },
+            },
+            features: [
+              {
+                type: 'Feature',
+                properties: { surfaceType: 'asphalt', note: 'Reprojected from versioned EPSG URN GeoJSON' },
+                geometry: JSON.parse(utmWkbRes.rows[0]!.utm_geojson),
+              },
+            ],
+          }),
+          'utf8',
+        ),
+      });
+      const okUtmGeoJson = await app.inject({
+        method: 'POST',
+        url: '/api/v1/polygons/import',
+        headers: {
+          authorization: `Bearer ${adminUser.sessionToken}`,
+          'content-type': utmGeoJsonMultipart.contentTypeHeader,
+        },
+        payload: utmGeoJsonMultipart.body,
+      });
+      assert.equal(okUtmGeoJson.statusCode, 200);
+      assert.equal(ImportPolygonsResponseSchema.parse(okUtmGeoJson.json()).importedCount, 1);
 
       const gpkgPath = path.join(uploadsDir, 'utm32n-sample.gpkg');
       const sqlite = new DatabaseSync(gpkgPath);
@@ -547,14 +617,14 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
       assert.equal(gpkgRes.importedCount, 1);
       assert.equal(gpkgRes.skippedCount, 0);
 
-      // Verify all 4 imported polygons appear in Hamburg bbox with EPSG:4326 coordinates & municipality assigned
+      // Verify all 5 imported polygons appear in Hamburg bbox with EPSG:4326 coordinates & municipality assigned
       const bboxRes = await app.inject({
         method: 'GET',
         url: '/api/v1/polygons?bbox=9.98,53.54,10.01,53.56',
       });
       assert.equal(bboxRes.statusCode, 200);
       const collection = PolygonCollectionResponseSchema.parse(bboxRes.json());
-      assert.equal(collection.features.length, 4);
+      assert.equal(collection.features.length, 5);
       const reprojectedFeature = collection.features.find(
         (f) => f.properties.note === 'Reprojected from EPSG:25832 GPKG',
       );
@@ -588,7 +658,7 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
         'Courtyard with photos',
       );
 
-      // 1) Synthesize a JPEG with EXIF camera Make + GPS inside ~20m of (9.9937, 53.5511)
+      // 1) Synthesize a JPEG with EXIF camera Make + GPS ~1.85 m outside southern edge of [53.5511..53.55122] (within 3 m buffer -> gpsVerified: true)
       const nearJpeg = await sharp({
         create: {
           width: 800,
@@ -604,7 +674,7 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
           },
           IFD3: {
             GPSLatitudeRef: 'N',
-            GPSLatitude: '53 33 4.00',
+            GPSLatitude: '53 33 3.90',
             GPSLongitudeRef: 'E',
             GPSLongitude: '9 59 37.40',
           },
@@ -639,7 +709,7 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
       assert.equal(nearPhoto.gpsVerified, true);
       assert.equal(nearPhoto.uploaderPseudonym, 'PhotoMapper');
 
-      // 2) Synthesize a JPEG with GPS in Munich (>600 km away) -> gpsVerified: false
+      // 2) Synthesize a JPEG with GPS ~11.1 m south of polygon edge (> 3 m buffer -> gpsVerified: false)
       const farJpeg = await sharp({
         create: {
           width: 640,
@@ -651,9 +721,9 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
         .withExif({
           IFD3: {
             GPSLatitudeRef: 'N',
-            GPSLatitude: '48 8 15.00',
+            GPSLatitude: '53 33 3.60',
             GPSLongitudeRef: 'E',
-            GPSLongitude: '11 34 30.00',
+            GPSLongitude: '9 59 37.40',
           },
         })
         .jpeg()
@@ -781,6 +851,217 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
       );
       assert.equal(polyAfterDeletes.properties.photoCount, 0);
       assert.equal((await fs.readdir(uploadsDir)).length, 0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('supports isolated per-polygon comment instances, nested replies, comment upvotes, highest-rated-first ordering, and GDPR/moderation cleanup', async () => {
+    const config = loadEnvConfig({ UPLOADS_DIR: uploadsDir });
+    const app = await buildApp(config, pool, {
+      logger: createLogger({ enabled: false }),
+      mailer: createMemoryMailer(),
+      rateLimits: {
+        register: { max: 100, timeWindow: '1 hour' },
+        loginIp: { max: 100, timeWindow: '15 minutes' },
+        vote: { max: 500, timeWindow: '1 minute' },
+      },
+    });
+    try {
+      const alice = await registerTestUser(app, 'alice_discuss', '198.51.100.41');
+      const bob = await registerTestUser(app, 'bob_discuss', '198.51.100.42');
+      const clara = await registerTestUser(app, 'clara_discuss', '198.51.100.43');
+
+      // Create two distinct polygons so we verify strict per-polygon comment isolation
+      const polyA = await createPolygon(
+        app,
+        alice.sessionToken,
+        makeCourtyardRing(9.9937, 53.5511),
+        'Polygon A courtyard',
+      );
+      assert.equal(polyA.properties.commentCount, 0);
+
+      const polyB = await createPolygon(
+        app,
+        alice.sessionToken,
+        makeCourtyardRing(8.271, 49.998),
+        'Polygon B square',
+      );
+
+      // Unauthenticated comment creation is rejected (401)
+      const unauthPost = await app.inject({
+        method: 'POST',
+        url: `/api/v1/polygons/${polyA.id}/comments`,
+        payload: { body: 'Unauthenticated comment' },
+      });
+      assert.equal(unauthPost.statusCode, 401);
+
+      // Alice posts a root comment on Polygon A
+      const c1Res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/polygons/${polyA.id}/comments`,
+        headers: { authorization: `Bearer ${alice.sessionToken}` },
+        payload: { body: 'First root comment on Polygon A' },
+      });
+      assert.equal(c1Res.statusCode, 201);
+      const c1 = PolygonCommentSchema.parse(c1Res.json());
+      assert.equal(c1.polygonId, polyA.id);
+      assert.equal(c1.parentId, null);
+      assert.equal(c1.authorPseudonym, 'alice_discuss');
+      assert.equal(c1.isAuthor, true);
+      assert.equal(c1.upvotes, 0);
+
+      // Bob posts a second root comment on Polygon A
+      const c2Res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/polygons/${polyA.id}/comments`,
+        headers: { authorization: `Bearer ${bob.sessionToken}` },
+        payload: { body: 'Second root comment on Polygon A' },
+      });
+      assert.equal(c2Res.statusCode, 201);
+      const c2 = PolygonCommentSchema.parse(c2Res.json());
+
+      // Clara replies to Alice's comment c1 ("comment other comments")
+      const replyRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/polygons/${polyA.id}/comments`,
+        headers: { authorization: `Bearer ${clara.sessionToken}` },
+        payload: {
+          body: 'Detailed hydrological reply to Alice',
+          parentId: c1.id,
+        },
+      });
+      assert.equal(replyRes.statusCode, 201);
+      const reply = PolygonCommentSchema.parse(replyRes.json());
+      assert.equal(reply.parentId, c1.id);
+
+      // Cross-polygon parentId is strictly rejected with 404 NOT_FOUND
+      const crossPolyReply = await app.inject({
+        method: 'POST',
+        url: `/api/v1/polygons/${polyB.id}/comments`,
+        headers: { authorization: `Bearer ${bob.sessionToken}` },
+        payload: {
+          body: 'Trying to reply across polygons',
+          parentId: c1.id,
+        },
+      });
+      assert.equal(crossPolyReply.statusCode, 404);
+
+      // Polygon B still has 0 comments (isolated per-polygon comment instance)
+      const polyBCommentsRes = await app.inject({
+        method: 'GET',
+        url: `/api/v1/polygons/${polyB.id}/comments`,
+      });
+      assert.equal(polyBCommentsRes.statusCode, 200);
+      const polyBList = PolygonCommentListResponseSchema.parse(polyBCommentsRes.json());
+      assert.equal(polyBList.comments.length, 0);
+      assert.equal(polyBList.topCommentId, null);
+
+      // Polygon A has commentCount = 3
+      const polyAAfterPost = PolygonFeatureSchema.parse(
+        (await app.inject({ method: 'GET', url: `/api/v1/polygons/${polyA.id}` })).json(),
+      );
+      assert.equal(polyAAfterPost.properties.commentCount, 3);
+
+      // Upvote comments: give c2 1 upvote, and give Clara's reply 2 upvotes (Alice + Bob)
+      const voteC2 = await app.inject({
+        method: 'PUT',
+        url: `/api/v1/comments/${c2.id}/vote`,
+        headers: { authorization: `Bearer ${alice.sessionToken}` },
+        payload: { value: 1 },
+      });
+      assert.equal(voteC2.statusCode, 200);
+      assert.equal(CommentVoteResponseSchema.parse(voteC2.json()).upvotes, 1);
+
+      await app.inject({
+        method: 'PUT',
+        url: `/api/v1/comments/${reply.id}/vote`,
+        headers: { authorization: `Bearer ${alice.sessionToken}` },
+        payload: { value: 1 },
+      });
+      const voteReplyBob = await app.inject({
+        method: 'PUT',
+        url: `/api/v1/comments/${reply.id}/vote`,
+        headers: { authorization: `Bearer ${bob.sessionToken}` },
+        payload: {},
+      });
+      assert.equal(voteReplyBob.statusCode, 200);
+      const parsedReplyVote = CommentVoteResponseSchema.parse(voteReplyBob.json());
+      assert.equal(parsedReplyVote.upvotes, 2);
+      assert.equal(parsedReplyVote.myVote, 1);
+
+      // GET /api/v1/polygons/:id/comments returns highest-rated comment ALWAYS at index 0 + sets topCommentId
+      const listPolyARes = await app.inject({
+        method: 'GET',
+        url: `/api/v1/polygons/${polyA.id}/comments`,
+        headers: { authorization: `Bearer ${bob.sessionToken}` },
+      });
+      assert.equal(listPolyARes.statusCode, 200);
+      const polyAList = PolygonCommentListResponseSchema.parse(listPolyARes.json());
+      assert.equal(polyAList.topCommentId, reply.id);
+      assert.equal(polyAList.comments[0]?.id, reply.id);
+      assert.equal(polyAList.comments[0]?.upvotes, 2);
+      assert.equal(polyAList.comments[0]?.myVote, 1);
+      assert.equal(polyAList.comments[1]?.id, c2.id);
+      assert.equal(polyAList.comments[1]?.upvotes, 1);
+      assert.equal(polyAList.comments[2]?.id, c1.id);
+      assert.equal(polyAList.comments[2]?.upvotes, 0);
+
+      // Removing an upvote updates score immediately
+      const unvoteRes = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/comments/${c2.id}/vote`,
+        headers: { authorization: `Bearer ${alice.sessionToken}` },
+      });
+      assert.equal(unvoteRes.statusCode, 200);
+      assert.equal(CommentVoteResponseSchema.parse(unvoteRes.json()).upvotes, 0);
+
+      // Non-author cannot delete someone else's comment (403 FORBIDDEN_NOT_AUTHOR)
+      const forbiddenDel = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/comments/${c2.id}`,
+        headers: { authorization: `Bearer ${clara.sessionToken}` },
+      });
+      assert.equal(forbiddenDel.statusCode, 403);
+
+      // GDPR self-deletion (Clara) anonymizes Clara's surviving comment to 'deleted' and removes Bob's/Clara's votes cleanly
+      const claraDelMe = await app.inject({
+        method: 'DELETE',
+        url: '/api/v1/auth/me',
+        headers: { authorization: `Bearer ${clara.sessionToken}` },
+      });
+      assert.equal(claraDelMe.statusCode, 204);
+
+      const listAfterGdpr = PolygonCommentListResponseSchema.parse(
+        (await app.inject({ method: 'GET', url: `/api/v1/polygons/${polyA.id}/comments` })).json(),
+      );
+      const survivingReply = listAfterGdpr.comments.find((c) => c.id === reply.id);
+      assert.equal(survivingReply?.authorPseudonym, 'deleted');
+      assert.equal(survivingReply?.upvotes, 2);
+
+      // Deleting parent comment c1 cascades to reply and updates commentCount from 3 -> 1
+      const delParentRes = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/comments/${c1.id}`,
+        headers: { authorization: `Bearer ${alice.sessionToken}` },
+      });
+      assert.equal(delParentRes.statusCode, 204);
+
+      const polyAAfterCascade = PolygonFeatureSchema.parse(
+        (await app.inject({ method: 'GET', url: `/api/v1/polygons/${polyA.id}` })).json(),
+      );
+      assert.equal(polyAAfterCascade.properties.commentCount, 1);
+
+      // CLI moderation command delete-comment removes c2 and updates commentCount -> 0
+      const cliRes = await runAdminCommand(pool, ['delete-comment', c2.id]);
+      assert.equal(cliRes.command, 'delete-comment');
+      assert.equal(cliRes.deletedComment, true);
+      assert.equal(cliRes.commentId, c2.id);
+
+      const polyAFinal = PolygonFeatureSchema.parse(
+        (await app.inject({ method: 'GET', url: `/api/v1/polygons/${polyA.id}` })).json(),
+      );
+      assert.equal(polyAFinal.properties.commentCount, 0);
     } finally {
       await app.close();
     }

@@ -118,6 +118,12 @@ export const PALETTE = {
   infoBorder: '#B9CFE4',
   infoText: '#194064',
 
+  inProgressBg: '#DBEAFE',
+  inProgressBorder: '#93C5FD',
+  inProgressSolid: '#1D4ED8',
+  inProgressText: '#1E40AF',
+  inProgressDot: '#2563EB',
+
   finishedBg: '#CCFBF1',
   finishedBorder: '#5EEAD4',
   finishedSolid: '#0D9488',

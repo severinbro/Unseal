@@ -1,9 +1,11 @@
+import type { PolygonAuthorFilter } from '@entsiegelung/shared';
 import React from 'react';
 import {
   Image,
   Linking,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -42,16 +44,17 @@ interface WebDocumentLike {
   } | null;
 }
 
-export async function triggerGeoJsonExportDownload(
-  exportUrl: string,
+export async function triggerFileDownload(
+  downloadUrl: string,
+  filename: string,
 ): Promise<void> {
   if (Platform.OS === 'web') {
     const scope = globalThis as { document?: WebDocumentLike };
     const doc = scope.document;
     if (doc && typeof doc.createElement === 'function') {
       const anchor = doc.createElement('a');
-      anchor.href = exportUrl;
-      anchor.download = 'entsiegelung-proposals.geojson';
+      anchor.href = downloadUrl;
+      anchor.download = filename;
       anchor.rel = 'noopener noreferrer';
       anchor.style.display = 'none';
       if (doc.body) {
@@ -68,7 +71,17 @@ export async function triggerGeoJsonExportDownload(
     }
   }
 
-  await Linking.openURL(exportUrl);
+  await Linking.openURL(downloadUrl);
+}
+
+export async function triggerGeoJsonExportDownload(
+  exportUrl: string,
+): Promise<void> {
+  await triggerFileDownload(exportUrl, 'entsiegelung-proposals.geojson');
+}
+
+export async function triggerApkDownload(apkUrl: string): Promise<void> {
+  await triggerFileDownload(apkUrl, 'unseal.apk');
 }
 
 export interface MapControlsBarProps {
@@ -78,7 +91,10 @@ export interface MapControlsBarProps {
   isImporting?: boolean;
   tier?: ViewportTier;
   onToggleLocale?: () => void;
+  onOpenAbout?: () => void;
   onSetBasemapMode: (mode: BasemapMode) => void;
+  onSetAuthorFilter?: (filter: PolygonAuthorFilter) => void;
+  onToggleUnratedFlaggedOnly?: () => void;
   onStartDraw: () => void;
   onOpenAccount: () => void;
   onImportPress?: () => void;
@@ -202,7 +218,10 @@ export function MapControlsBar({
   isImporting = false,
   tier = 'expanded',
   onToggleLocale,
+  onOpenAbout,
   onSetBasemapMode,
+  onSetAuthorFilter,
+  onToggleUnratedFlaggedOnly,
   onStartDraw,
   onOpenAccount,
   onImportPress,
@@ -225,6 +244,21 @@ export function MapControlsBar({
     );
   };
 
+  const showApkDownloadButton =
+    Platform.OS === 'web' &&
+    controls.apkDownloadUrl !== null &&
+    controls.apkDownloadUrl.length > 0;
+
+  const handleApkDownloadPress = (): void => {
+    if (!controls.apkDownloadUrl) {
+      return;
+    }
+    void triggerApkDownload(controls.apkDownloadUrl).catch((err: unknown) => {
+      const detail = localizeError(err, t.apkDownloadErrorFallback, locale);
+      onExportError(detail);
+    });
+  };
+
   const accountButtonA11y = controls.isAuthenticated
     ? t.accountSettingsA11y(controls.accountLabel)
     : t.signInOrRegisterA11y;
@@ -237,7 +271,10 @@ export function MapControlsBar({
         isExpanded ? styles.barShellExpanded : null,
       ]}
     >
-      <View style={styles.brandAndAccountRow}>
+      <View
+        style={isExpanded ? styles.topBarExpandedRow : styles.topBarStacked}
+      >
+        <View style={styles.brandAndAccountRow}>
         <View
           style={[
             styles.brandGroup,
@@ -304,7 +341,7 @@ export function MapControlsBar({
                 controls.orthophotoAttribution &&
                 controls.orthophotoAttribution.length > 0
                   ? ` · ${controls.orthophotoAttribution}`
-                  : ` · ${t.subtitleRegistry}`}
+                  : ` · ${t.osmAttributionShort}`}
               </Text>
             ) : controls.basemapMode === 'orthophoto' &&
               controls.orthophotoAttribution &&
@@ -323,6 +360,21 @@ export function MapControlsBar({
               isCompact ? styles.rightHeaderClusterCompact : null,
             ]}
           >
+            {onOpenAbout ? (
+              <Pressable
+                testID="about-modal-button"
+                accessibilityRole="button"
+                accessibilityLabel={t.aboutButtonA11y}
+                onPress={onOpenAbout}
+                style={({ pressed }) => [
+                  styles.helpButton,
+                  isCompact ? styles.helpButtonCompact : null,
+                  pressed ? styles.buttonPressed : null,
+                ]}
+              >
+                <Text style={styles.helpButtonLabel}>?</Text>
+              </Pressable>
+            ) : null}
             <LocaleTogglePill
               locale={locale}
               compact={isCompact}
@@ -438,6 +490,31 @@ export function MapControlsBar({
           </Text>
         </Pressable>
 
+        {showApkDownloadButton ? (
+          <Pressable
+            testID="download-apk-button"
+            accessibilityRole="button"
+            accessibilityLabel={t.apkDownloadA11y}
+            onPress={handleApkDownloadPress}
+            style={({ pressed }) => [
+              styles.controlButton,
+              isCompact ? styles.controlButtonCompact : null,
+              styles.secondaryButton,
+              pressed ? styles.buttonPressed : null,
+            ]}
+          >
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.secondaryButtonLabel,
+                isCompact ? styles.compactButtonLabel : null,
+              ]}
+            >
+              {isCompact ? t.apkDownloadCompact : t.apkDownloadFull}
+            </Text>
+          </Pressable>
+        ) : null}
+
         {controls.isAdmin && onImportPress ? (
           <Pressable
             accessibilityRole="button"
@@ -498,6 +575,20 @@ export function MapControlsBar({
 
         {isExpanded ? (
           <>
+            {onOpenAbout ? (
+              <Pressable
+                testID="about-modal-button"
+                accessibilityRole="button"
+                accessibilityLabel={t.aboutButtonA11y}
+                onPress={onOpenAbout}
+                style={({ pressed }) => [
+                  styles.helpButton,
+                  pressed ? styles.buttonPressed : null,
+                ]}
+              >
+                <Text style={styles.helpButtonLabel}>?</Text>
+              </Pressable>
+            ) : null}
             <LocaleTogglePill
               locale={locale}
               compact={false}
@@ -537,7 +628,139 @@ export function MapControlsBar({
             </Pressable>
           </>
         ) : null}
+        </View>
       </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={[
+          styles.filterStripContent,
+          isCompact ? styles.filterStripContentCompact : null,
+        ]}
+      >
+        <Pressable
+          testID="filter-author-all"
+          accessibilityRole="button"
+          accessibilityLabel={t.filterAllA11y}
+          accessibilityState={{ selected: controls.authorFilter === 'all' }}
+          onPress={() => onSetAuthorFilter?.('all')}
+          style={({ pressed }) => [
+            styles.filterChip,
+            isCompact ? styles.filterChipCompact : null,
+            controls.authorFilter === 'all' ? styles.filterChipActive : null,
+            pressed ? styles.buttonPressed : null,
+          ]}
+        >
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.filterChipLabel,
+              isCompact ? styles.filterChipLabelCompact : null,
+              controls.authorFilter === 'all'
+                ? styles.filterChipLabelActive
+                : null,
+            ]}
+          >
+            {t.filterAll}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          testID="filter-author-new"
+          accessibilityRole="button"
+          accessibilityLabel={t.filterNewContributorsA11y}
+          accessibilityState={{
+            selected: controls.authorFilter === 'new_user',
+          }}
+          onPress={() => onSetAuthorFilter?.('new_user')}
+          style={({ pressed }) => [
+            styles.filterChip,
+            isCompact ? styles.filterChipCompact : null,
+            controls.authorFilter === 'new_user'
+              ? styles.filterChipActive
+              : null,
+            pressed ? styles.buttonPressed : null,
+          ]}
+        >
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.filterChipLabel,
+              isCompact ? styles.filterChipLabelCompact : null,
+              controls.authorFilter === 'new_user'
+                ? styles.filterChipLabelActive
+                : null,
+            ]}
+          >
+            {isCompact
+              ? t.filterNewContributorsCompact
+              : t.filterNewContributorsFull}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          testID="filter-author-established"
+          accessibilityRole="button"
+          accessibilityLabel={t.filterEstablishedA11y}
+          accessibilityState={{
+            selected: controls.authorFilter === 'established',
+          }}
+          onPress={() => onSetAuthorFilter?.('established')}
+          style={({ pressed }) => [
+            styles.filterChip,
+            isCompact ? styles.filterChipCompact : null,
+            controls.authorFilter === 'established'
+              ? styles.filterChipActive
+              : null,
+            pressed ? styles.buttonPressed : null,
+          ]}
+        >
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.filterChipLabel,
+              isCompact ? styles.filterChipLabelCompact : null,
+              controls.authorFilter === 'established'
+                ? styles.filterChipLabelActive
+                : null,
+            ]}
+          >
+            {isCompact ? t.filterEstablishedCompact : t.filterEstablishedFull}
+          </Text>
+        </Pressable>
+
+        <View style={styles.filterDivider} />
+
+        <Pressable
+          testID="filter-unrated-flagged"
+          accessibilityRole="button"
+          accessibilityLabel={t.filterUnratedFlaggedA11y}
+          accessibilityState={{ selected: controls.unratedFlaggedOnly }}
+          onPress={() => onToggleUnratedFlaggedOnly?.()}
+          style={({ pressed }) => [
+            styles.filterChip,
+            isCompact ? styles.filterChipCompact : null,
+            controls.unratedFlaggedOnly ? styles.filterChipWarningActive : null,
+            pressed ? styles.buttonPressed : null,
+          ]}
+        >
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.filterChipLabel,
+              isCompact ? styles.filterChipLabelCompact : null,
+              controls.unratedFlaggedOnly
+                ? styles.filterChipWarningLabelActive
+                : null,
+            ]}
+          >
+            {isCompact
+              ? t.filterUnratedFlaggedCompact
+              : t.filterUnratedFlaggedFull}
+          </Text>
+        </Pressable>
+      </ScrollView>
     </View>
   );
 }
@@ -557,12 +780,71 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   barShellExpanded: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  topBarStacked: {
+    gap: 8,
+  },
+  topBarExpandedRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 18,
-    paddingVertical: 10,
     gap: 16,
+  },
+  filterStripContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  filterStripContentCompact: {
+    gap: 5,
+  },
+  filterChip: {
+    minHeight: MIN_TOUCH_TARGET_DP,
+    minWidth: MIN_TOUCH_TARGET_DP,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: RADII.pill,
+    borderWidth: 1,
+    borderColor: PALETTE.borderStrong,
+    backgroundColor: PALETTE.bgSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterChipCompact: {
+    paddingHorizontal: 9,
+  },
+  filterChipActive: {
+    backgroundColor: PALETTE.bgTinted,
+    borderColor: PALETTE.accentPrimary,
+  },
+  filterChipWarningActive: {
+    backgroundColor: PALETTE.neutralBg,
+    borderColor: PALETTE.neutralDot,
+  },
+  filterChipLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: PALETTE.inkSecondary,
+  },
+  filterChipLabelCompact: {
+    fontSize: 11.5,
+  },
+  filterChipLabelActive: {
+    color: PALETTE.positiveText,
+    fontWeight: '700',
+  },
+  filterChipWarningLabelActive: {
+    color: PALETTE.neutralText,
+    fontWeight: '700',
+  },
+  filterDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: PALETTE.borderSubtle,
+    marginHorizontal: 2,
   },
   brandAndAccountRow: {
     flexDirection: 'row',
@@ -580,7 +862,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   rightHeaderClusterCompact: {
-    maxWidth: '48%',
+    maxWidth: '58%',
   },
   brandGroup: {
     flexDirection: 'row',
@@ -671,6 +953,27 @@ const styles = StyleSheet.create({
   attributionText: {
     fontSize: 11,
     color: PALETTE.inkMuted,
+  },
+  helpButton: {
+    minHeight: MIN_TOUCH_TARGET_DP,
+    minWidth: MIN_TOUCH_TARGET_DP,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: RADII.pill,
+    borderWidth: 1,
+    borderColor: PALETTE.borderStrong,
+    backgroundColor: PALETTE.bgSurface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  helpButtonCompact: {
+    paddingHorizontal: 8,
+  },
+  helpButtonLabel: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: PALETTE.inkPrimary,
   },
   localePill: {
     minHeight: MIN_TOUCH_TARGET_DP,

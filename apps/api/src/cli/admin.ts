@@ -5,8 +5,13 @@ import { pathToFileURL } from 'node:url';
 import {
   AUTH_LIMITS,
   ApiError,
+  LAND_COVER_CATEGORIES,
+  LAND_COVER_SOURCES,
   RESERVED_PSEUDONYMS,
+  TRUST_AND_MODERATION_LIMITS,
   UuidParamSchema,
+  type LandCoverCategory,
+  type LandCoverSource,
 } from '@entsiegelung/shared';
 
 import { hashPseudonymTombstone } from '../auth/crypto.js';
@@ -15,6 +20,8 @@ import { deleteOrBanUserAccount } from '../db/integrity.js';
 import { createDbPool } from '../db/pool.js';
 import { createLogger } from '../logger.js';
 import { loadVg250Municipalities } from '../municipalities/vg250.js';
+import { loadLandCoverFile } from '../polygons/landCover.js';
+import { PolygonRepository } from '../polygons/repository.js';
 
 import type { FastifyBaseLogger } from 'fastify';
 import type pg from 'pg';
@@ -22,10 +29,13 @@ import type pg from 'pg';
 export type AdminCommandName =
   | 'ban-user'
   | 'delete-polygon'
+  | 'delete-comment'
   | 'redact-note'
   | 'grant-admin'
   | 'revoke-admin'
-  | 'load-vg250';
+  | 'load-vg250'
+  | 'load-landcover'
+  | 'prune-stale-polygons';
 
 export interface AdminCommandResult {
   command: AdminCommandName;
@@ -37,10 +47,16 @@ export interface AdminCommandResult {
   deletedPolygonCount?: number;
   recomputedPolygonIds?: string[];
   polygonId?: string;
+  commentId?: string;
   deletedPolygon?: boolean;
+  deletedComment?: boolean;
   redactedNote?: boolean;
   upsertedMunicipalities?: number;
   backfilledPolygons?: number;
+  landCoverSource?: LandCoverSource;
+  importedLandCoverCount?: number;
+  skippedLandCoverCount?: number;
+  prunedPolygonIds?: string[];
 }
 
 async function rollbackPreservingError(
@@ -166,6 +182,86 @@ export async function runAdminCommand(
       command: 'load-vg250',
       upsertedMunicipalities: loaded.upsertedMunicipalities,
       backfilledPolygons: loaded.backfilledPolygons,
+    };
+  }
+
+  if (command === 'load-landcover') {
+    const replaceSource = argv.includes('--replace');
+    const positional = argv.slice(1).filter((arg) => arg !== '--replace');
+    if (positional.length < 2 || positional.length > 3) {
+      throw new ApiError(
+        422,
+        'VALIDATION_ERROR',
+        'Usage: load-landcover <osm|alkis> <filePath> [defaultCategory] [--replace]',
+      );
+    }
+
+    const rawSource = positional[0]?.trim().toLowerCase() ?? '';
+    if (!(LAND_COVER_SOURCES as readonly string[]).includes(rawSource)) {
+      throw new ApiError(
+        422,
+        'VALIDATION_ERROR',
+        'Land-cover source must be "osm" or "alkis".',
+      );
+    }
+    const source = rawSource as LandCoverSource;
+    const filePath = positional[1]!;
+
+    let defaultCategory: LandCoverCategory | undefined;
+    if (positional[2] !== undefined) {
+      const rawCat = positional[2].trim().toLowerCase();
+      if (!(LAND_COVER_CATEGORIES as readonly string[]).includes(rawCat)) {
+        throw new ApiError(
+          422,
+          'VALIDATION_ERROR',
+          `Invalid land-cover category "${positional[2]}".`,
+        );
+      }
+      defaultCategory = rawCat as LandCoverCategory;
+    }
+
+    const loaded = await loadLandCoverFile(pool, filePath, {
+      source,
+      defaultCategory,
+      replaceSource,
+    });
+    return {
+      command: 'load-landcover',
+      landCoverSource: loaded.source,
+      importedLandCoverCount: loaded.importedCount,
+      skippedLandCoverCount: loaded.skippedCount,
+    };
+  }
+
+  if (command === 'prune-stale-polygons') {
+    if (argv.length > 2) {
+      throw new ApiError(
+        422,
+        'VALIDATION_ERROR',
+        'Usage: prune-stale-polygons [retentionDays]',
+      );
+    }
+
+    let retentionDays: number =
+      TRUST_AND_MODERATION_LIMITS.STALE_UNRATED_PRUNE_DAYS;
+    if (argv[1] !== undefined) {
+      const parsedDays = Number(argv[1]);
+      if (!Number.isInteger(parsedDays) || parsedDays < 1) {
+        throw new ApiError(
+          422,
+          'VALIDATION_ERROR',
+          'retentionDays must be a positive integer.',
+        );
+      }
+      retentionDays = parsedDays;
+    }
+
+    const repo = new PolygonRepository(pool, options.uploadsDir);
+    const pruned = await repo.pruneStaleUnratedPolygons(retentionDays);
+    return {
+      command: 'prune-stale-polygons',
+      deletedPolygonCount: pruned.deletedCount,
+      prunedPolygonIds: pruned.deletedIds,
     };
   }
 
@@ -349,10 +445,75 @@ export async function runAdminCommand(
     }
   }
 
+  if (command === 'delete-comment') {
+    if (argv.length !== 2) {
+      throw new ApiError(
+        422,
+        'VALIDATION_ERROR',
+        'Usage: delete-comment <commentId>',
+      );
+    }
+    const parsedId = UuidParamSchema.safeParse(argv[1]);
+    if (!parsedId.success) {
+      throw new ApiError(
+        422,
+        'VALIDATION_ERROR',
+        'Comment ID must be a valid UUID.',
+      );
+    }
+    const commentId = parsedId.data.id;
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const lookupRes = await client.query<{ polygon_id: string }>(
+        'SELECT polygon_id FROM polygon_comments WHERE id = $1',
+        [commentId],
+      );
+      const lookup = lookupRes.rows[0];
+      if (!lookup) {
+        throw new ApiError(404, 'NOT_FOUND', 'Comment not found.');
+      }
+
+      await client.query('SELECT id FROM polygons WHERE id = $1 FOR UPDATE', [
+        lookup.polygon_id,
+      ]);
+      const delRes = await client.query(
+        'DELETE FROM polygon_comments WHERE id = $1',
+        [commentId],
+      );
+      if (delRes.rowCount === 0) {
+        throw new ApiError(404, 'NOT_FOUND', 'Comment not found.');
+      }
+      await client.query(
+        `UPDATE polygons
+         SET comment_count = (
+           SELECT COUNT(*)::int FROM polygon_comments WHERE polygon_id = $1
+         )
+         WHERE id = $1`,
+        [lookup.polygon_id],
+      );
+      await client.query('COMMIT');
+
+      return {
+        command: 'delete-comment',
+        polygonId: lookup.polygon_id,
+        commentId,
+        deletedComment: true,
+      };
+    } catch (err: unknown) {
+      await rollbackPreservingError(client, err);
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
   throw new ApiError(
     422,
     'VALIDATION_ERROR',
-    'Unsupported admin command. Supported commands: grant-admin <user>, revoke-admin <user>, load-vg250 [source], ban-user <pseudonym> [reason], delete-polygon <polygonId>, redact-note <polygonId>.',
+    'Unsupported admin command. Supported commands: grant-admin <user>, revoke-admin <user>, load-vg250 [source], load-landcover <osm|alkis> <filePath> [defaultCategory] [--replace], prune-stale-polygons [retentionDays], ban-user <pseudonym> [reason], delete-polygon <polygonId>, delete-comment <commentId>, redact-note <polygonId>.',
   );
 }
 

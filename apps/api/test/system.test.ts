@@ -5,6 +5,7 @@ import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import { after, before, beforeEach, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import sharp from 'sharp';
 import { z } from 'zod';
 
 import {
@@ -41,10 +42,10 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
     }
   });
 
-  it('applies 001_initial_schema.sql + 002_v2_features.sql idempotently and resetTestDb truncates all application tables', async () => {
+  it('applies 001_initial_schema.sql + 002_v2_features.sql + 003_v3_adjustments.sql + 004_polygon_comments.sql idempotently and resetTestDb truncates all application tables', async () => {
     const secondRun = await runMigrations(pool);
     assert.equal(secondRun.applied.length, 0);
-    assert.equal(secondRun.totalApplied, 2);
+    assert.equal(secondRun.totalApplied, 5);
 
     const indexRes = await pool.query<{ indexname: string }>(
       `SELECT indexname FROM pg_indexes WHERE schemaname = 'public'`,
@@ -126,7 +127,7 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
     assert.equal(counts.polygons_cnt, 0);
     assert.equal(counts.creations_cnt, 0);
     assert.equal(counts.votes_cnt, 0);
-    assert.equal(counts.migrations_cnt, 2);
+    assert.equal(counts.migrations_cnt, 5);
   });
 
   it('GET /api/v1/health returns 200 against live PostGIS and 503 SERVICE_UNAVAILABLE when DB fails or migrations are incomplete', async () => {
@@ -144,7 +145,7 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
       assert.ok(okRes.headers['x-request-id']);
       const health = HealthResponseSchema.parse(okRes.json());
       assert.equal(health.status, 'ok');
-      assert.equal(health.migrationsApplied, 2);
+      assert.equal(health.migrationsApplied, 5);
       assert.match(health.postgisVersion, /^3\./);
     } finally {
       await app.close();
@@ -182,9 +183,21 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
       const mig2Path = fileURLToPath(
         new URL('../migrations/002_v2_features.sql', import.meta.url),
       );
+      const mig3Path = fileURLToPath(
+        new URL('../migrations/003_v3_adjustments.sql', import.meta.url),
+      );
+      const mig4Path = fileURLToPath(
+        new URL('../migrations/004_polygon_comments.sql', import.meta.url),
+      );
+      const mig5Path = fileURLToPath(
+        new URL('../migrations/005_carbon_anti_spam.sql', import.meta.url),
+      );
       await fs.copyFile(mig1Path, path.join(tmpDir, '001_initial_schema.sql'));
       await fs.copyFile(mig2Path, path.join(tmpDir, '002_v2_features.sql'));
-      await fs.writeFile(path.join(tmpDir, '003_pending.sql'), 'SELECT 1;\n', 'utf8');
+      await fs.copyFile(mig3Path, path.join(tmpDir, '003_v3_adjustments.sql'));
+      await fs.copyFile(mig4Path, path.join(tmpDir, '004_polygon_comments.sql'));
+      await fs.copyFile(mig5Path, path.join(tmpDir, '005_carbon_anti_spam.sql'));
+      await fs.writeFile(path.join(tmpDir, '006_pending.sql'), 'SELECT 1;\n', 'utf8');
 
       const unmigratedApp = await buildApp(config, pool, {
         logger: createLogger({ enabled: false }),
@@ -339,15 +352,20 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
       assert.ok(res.headers['x-request-id']);
       const cfg = RuntimeConfigSchema.parse(res.json());
       assert.equal(cfg.osmStyleUrl, 'https://tiles.openfreemap.org/styles/liberty');
-      assert.equal(cfg.orthophoto, null);
+      assert.ok(cfg.orthophoto);
+      assert.equal(cfg.orthophoto.urlTemplate, '/api/v1/tiles/dop20/{z}/{x}/{y}.png');
+      assert.equal(cfg.orthophoto.tileSize, 256);
+      assert.equal(cfg.orthophoto.maxZoom, 20);
+      assert.match(cfg.orthophoto.attribution, /GeoBasis-DE/);
+      assert.equal(cfg.apkDownloadUrl, '/downloads/unseal.apk');
       assert.deepEqual(cfg.initialView, {
-        lng: 9.9937,
-        lat: 53.5511,
+        lng: 8.2739,
+        lat: 49.9989,
         zoom: 15,
       });
       assert.deepEqual(cfg.limits, {
         minAreaM2: 2,
-        maxAreaM2: 500_000,
+        maxAreaM2: 20_000,
         maxVertices: 200,
         maxPolygonSpanDeg: 0.05,
         maxBboxSpanDeg: 0.15,
@@ -356,12 +374,20 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
       });
       assert.equal(
         cfg.disclaimerText,
-        'Community unsealing suggestions — non-binding public input, regardless of property ownership.',
+        'Community unsealing suggestions - non-binding public input, regardless of property ownership.',
       );
       assert.equal(cfg.abuseContact, null);
     } finally {
       await defaultApp.close();
     }
+
+    // Explicit opt-out ('none') disables built-in DOP20 orthophoto and APK download link
+    const disabledExtrasCfg = loadEnvConfig({
+      ORTHOPHOTO_URL_TEMPLATE: 'none',
+      APK_DOWNLOAD_URL: 'none',
+    });
+    assert.equal(disabledExtrasCfg.orthophoto, null);
+    assert.equal(disabledExtrasCfg.apkDownloadUrl, null);
 
     // XYZ {z}/{x}/{y} template + 512 tileSize + bounds + abuseContact
     const xyzConfig = loadEnvConfig({
@@ -611,5 +637,87 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
       normalizeRateLimitIp('2001:db8:85a3:42::1'),
       normalizeRateLimitIp('2001:db8:85a3:43::1'),
     );
+  });
+
+  it('serves Germany DOP20 orthophoto proxy tiles (/api/v1/tiles/dop20/:z/:x/:y.png) and local APK downloads (/downloads/unseal.apk)', async () => {
+    const tmpUploads = await fs.mkdtemp(path.join(os.tmpdir(), 'ppgis-apk-dop-'));
+    const samplePng = await sharp({
+      create: {
+        width: 256,
+        height: 256,
+        channels: 4,
+        background: { r: 60, g: 130, b: 80, alpha: 1 },
+      },
+    })
+      .png()
+      .toBuffer();
+
+    let wmsFetchCalls = 0;
+    const config = loadEnvConfig({ UPLOADS_DIR: tmpUploads });
+    const app = await buildApp(config, pool, {
+      logger: createLogger({ enabled: false }),
+      dop20TileFetch: async () => {
+        wmsFetchCalls += 1;
+        return new Response(new Uint8Array(samplePng), {
+          status: 200,
+          headers: { 'content-type': 'image/png' },
+        });
+      },
+    });
+
+    try {
+      // Low zoom (< 11) returns immediate transparent PNG without hitting upstream WMS
+      const lowZoomRes = await app.inject({
+        method: 'GET',
+        url: '/api/v1/tiles/dop20/8/135/83.png',
+      });
+      assert.equal(lowZoomRes.statusCode, 200);
+      assert.equal(lowZoomRes.headers['content-type'], 'image/png');
+      assert.equal(wmsFetchCalls, 0);
+
+      // Zoom 16 tile over Hamburg fetches state DOP20 WMS once and caches subsequent hits
+      const hhTileRes1 = await app.inject({
+        method: 'GET',
+        url: '/api/v1/tiles/dop20/16/34588/21172.png',
+      });
+      assert.equal(hhTileRes1.statusCode, 200);
+      assert.equal(hhTileRes1.headers['content-type'], 'image/png');
+      const meta = await sharp(hhTileRes1.rawPayload).metadata();
+      assert.equal(meta.width, 256);
+      assert.equal(meta.height, 256);
+      const callsAfterFirst = wmsFetchCalls;
+      assert.ok(callsAfterFirst >= 1);
+
+      const hhTileRes2 = await app.inject({
+        method: 'GET',
+        url: '/api/v1/tiles/dop20/16/34588/21172.png',
+      });
+      assert.equal(hhTileRes2.statusCode, 200);
+      assert.equal(wmsFetchCalls, callsAfterFirst);
+
+      // Missing APK -> 404 NOT_FOUND
+      const missingApkRes = await app.inject({
+        method: 'GET',
+        url: '/downloads/unseal.apk',
+      });
+      assert.equal(missingApkRes.statusCode, 404);
+
+      // Present APK -> 200 application/vnd.android.package-archive
+      const fakeApkBytes = Buffer.from('PK\x03\x04unseal-test-apk-payload', 'binary');
+      await fs.writeFile(path.join(tmpUploads, 'unseal.apk'), fakeApkBytes);
+      const presentApkRes = await app.inject({
+        method: 'GET',
+        url: '/downloads/unseal.apk',
+      });
+      assert.equal(presentApkRes.statusCode, 200);
+      assert.match(
+        String(presentApkRes.headers['content-type']),
+        /application\/vnd\.android\.package-archive/,
+      );
+      assert.equal(presentApkRes.rawPayload.length, fakeApkBytes.length);
+    } finally {
+      await app.close();
+      await fs.rm(tmpUploads, { recursive: true, force: true });
+    }
   });
 });

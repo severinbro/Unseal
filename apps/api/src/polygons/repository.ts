@@ -4,13 +4,20 @@ import path from 'node:path';
 import {
   ApiError,
   GEOMETRY_LIMITS,
+  IMPORT_LIMITS,
+  LAND_COVER_MAX_OVERLAP_RATIO,
   POLYGON_STATUSES,
   SURFACE_TYPES,
+  TRUST_AND_MODERATION_LIMITS,
   computeMunicipalityNormalizedScore,
   type BboxBounds,
   type CreatePolygonRequest,
+  type FlagPolygonResponse,
   type ImportPolygonsResponse,
+  type LandCoverCategory,
+  type PolygonAuthorFilter,
   type PolygonFeature,
+  type PolygonFlagReason,
   type PolygonStatus,
   type SurfaceType,
 } from '@entsiegelung/shared';
@@ -20,6 +27,11 @@ import type { ExtractedImportDataset } from './gpkgReader.js';
 
 import type pg from 'pg';
 
+export interface PolygonTrustConfig {
+  minAccountDays: number;
+  minCleanPolygons: number;
+}
+
 export interface CreatePolygonParams {
   userId: string;
   geometry: CreatePolygonRequest['geometry'];
@@ -28,12 +40,37 @@ export interface CreatePolygonParams {
   maxDailyPolygonsPerUser: number;
   minAreaM2?: number | undefined;
   maxAreaM2?: number | undefined;
+  requireJurisdiction?: 'when_seeded' | 'strict' | 'off' | undefined;
 }
 
 export interface ListPolygonsByBboxParams {
   bbox: BboxBounds;
   viewerUserId: string | null;
   limit?: number | undefined;
+  authorType?: PolygonAuthorFilter | undefined;
+  unratedFlaggedOnly?: boolean | undefined;
+}
+
+export interface FlagPolygonParams {
+  polygonId: string;
+  userId: string;
+  reason: PolygonFlagReason;
+  note?: string | null | undefined;
+}
+
+export interface UnflagPolygonParams {
+  polygonId: string;
+  userId: string;
+}
+
+export interface ClearPolygonFlagsParams {
+  polygonId: string;
+  adminUserId: string;
+}
+
+export interface PruneStalePolygonsResult {
+  deletedCount: number;
+  deletedIds: string[];
 }
 
 export interface ListPolygonsByBboxResult {
@@ -85,7 +122,12 @@ interface PolygonQueryRow {
   municipality_name: string | null;
   municipality_max_score: number;
   photo_count: number;
+  comment_count: number;
   author_pseudonym: string;
+  author_is_new_user: boolean;
+  author_last_login_at: Date | null;
+  flag_count: number;
+  my_flag: boolean;
   upvotes: number;
   downvotes: number;
   score: number;
@@ -107,7 +149,10 @@ interface ExportPolygonRow {
   municipality_name: string | null;
   municipality_max_score: number;
   photo_count: number;
+  comment_count: number;
   author_pseudonym: string;
+  author_is_new_user: boolean;
+  flag_count: number;
   upvotes: number;
   downvotes: number;
   score: number;
@@ -124,6 +169,9 @@ interface GeometryValidationRow {
   invalid_reason: string | null;
   invalid_location_geojson: string | null;
   area_m2: number | null;
+  perimeter_m: number | null;
+  compactness_pp: number | null;
+  is_sliver: boolean | null;
 }
 
 interface LockedPolygonRow {
@@ -241,7 +289,15 @@ function mapRowToPolygonFeature(row: PolygonQueryRow): PolygonFeature {
       municipalityMaxScore,
       municipalityNormalizedScore,
       photoCount: Math.max(0, Number(row.photo_count ?? 0)),
+      commentCount: Math.max(0, Number(row.comment_count ?? 0)),
       authorPseudonym: row.author_pseudonym,
+      authorIsNewUser: Boolean(row.author_is_new_user),
+      authorLastLoginAt: row.author_last_login_at
+        ? row.author_last_login_at.toISOString()
+        : null,
+      flagCount: Math.max(0, Number(row.flag_count ?? 0)),
+      isFlagged: Number(row.flag_count ?? 0) > 0,
+      myFlag: Boolean(row.my_flag),
       upvotes: row.upvotes,
       downvotes: row.downvotes,
       score: row.score,
@@ -280,7 +336,13 @@ function mapExportRowToPolygonFeature(row: ExportPolygonRow): PolygonFeature {
       municipalityMaxScore,
       municipalityNormalizedScore,
       photoCount: Math.max(0, Number(row.photo_count ?? 0)),
+      commentCount: Math.max(0, Number(row.comment_count ?? 0)),
       authorPseudonym: row.author_pseudonym,
+      authorIsNewUser: Boolean(row.author_is_new_user),
+      authorLastLoginAt: null,
+      flagCount: Math.max(0, Number(row.flag_count ?? 0)),
+      isFlagged: Number(row.flag_count ?? 0) > 0,
+      myFlag: false,
       upvotes: row.upvotes,
       downvotes: row.downvotes,
       score: row.score,
@@ -305,10 +367,31 @@ async function rollbackPreservingError(
   }
 }
 
+function buildAuthorIsNewUserSql(
+  userAlias: string,
+  minDaysParam: string,
+  minCleanParam: string,
+): string {
+  return `CASE
+    WHEN ${userAlias}.id IS NULL OR ${userAlias}.role = 'admin' THEN FALSE
+    WHEN ${userAlias}.created_at <= NOW() - make_interval(days => ${minDaysParam}::int)
+      AND (
+        SELECT COUNT(*)
+        FROM polygons p_clean
+        WHERE p_clean.user_id = ${userAlias}.id
+          AND p_clean.flag_count = 0
+          AND p_clean.score > 0
+      ) >= ${minCleanParam}::int
+      THEN FALSE
+    ELSE TRUE
+  END`;
+}
+
 async function querySinglePolygonById(
   db: pg.Pool | pg.PoolClient,
   polygonId: string,
   viewerUserId: string | null,
+  trust: PolygonTrustConfig,
 ): Promise<PolygonFeature | null> {
   const res = await db.query<PolygonQueryRow>(
     `SELECT
@@ -336,7 +419,20 @@ async function querySinglePolygonById(
          ELSE 0
        END AS municipality_max_score,
        p.photo_count,
+       p.comment_count,
        COALESCE(u.pseudonym, 'deleted') AS author_pseudonym,
+       ${buildAuthorIsNewUserSql('u', '$3', '$4')} AS author_is_new_user,
+       u.last_login_at AS author_last_login_at,
+       p.flag_count,
+       CASE
+         WHEN $2::uuid IS NOT NULL THEN EXISTS (
+           SELECT 1
+           FROM polygon_flags pf
+           WHERE pf.polygon_id = p.id
+             AND pf.user_id = $2::uuid
+         )
+         ELSE FALSE
+       END AS my_flag,
        p.upvotes,
        p.downvotes,
        p.score,
@@ -356,7 +452,7 @@ async function querySinglePolygonById(
       AND v.user_id = $2::uuid
      WHERE p.id = $1
      LIMIT 1`,
-    [polygonId, viewerUserId],
+    [polygonId, viewerUserId, trust.minAccountDays, trust.minCleanPolygons],
   );
 
   const row = res.rows[0];
@@ -366,15 +462,29 @@ async function querySinglePolygonById(
 export class PolygonRepository {
   private readonly pool: pg.Pool;
   private readonly uploadsDir: string | undefined;
+  private readonly trust: PolygonTrustConfig;
 
-  constructor(pool: pg.Pool, uploadsDir?: string) {
+  constructor(
+    pool: pg.Pool,
+    uploadsDir?: string,
+    trust: Partial<PolygonTrustConfig> = {},
+  ) {
     this.pool = pool;
     this.uploadsDir = uploadsDir;
+    this.trust = {
+      minAccountDays:
+        trust.minAccountDays ??
+        TRUST_AND_MODERATION_LIMITS.NEW_USER_MIN_ACCOUNT_DAYS,
+      minCleanPolygons:
+        trust.minCleanPolygons ??
+        TRUST_AND_MODERATION_LIMITS.NEW_USER_MIN_CLEAN_POLYGONS,
+    };
   }
 
   public async create(params: CreatePolygonParams): Promise<PolygonFeature> {
     const minAreaM2 = params.minAreaM2 ?? GEOMETRY_LIMITS.MIN_AREA_M2;
     const maxAreaM2 = params.maxAreaM2 ?? GEOMETRY_LIMITS.MAX_AREA_M2;
+    const requireJurisdiction = params.requireJurisdiction ?? 'when_seeded';
     const normalizedNote = normalizeNote(params.note);
     const geoJsonInput = JSON.stringify(params.geometry);
 
@@ -416,6 +526,30 @@ export class PolygonRepository {
                ST_NPoints(g) AS n_points,
                ST_IsValidDetail(g) AS d
              FROM parsed
+           ),
+           metrics AS (
+             SELECT
+               g,
+               geom_type,
+               interior_rings,
+               n_points,
+               d,
+               CASE
+                 WHEN (d).valid AND geom_type = 'POLYGON' AND interior_rings = 0 AND n_points <= $2
+                   THEN ST_Area(g::geography)
+                 ELSE NULL
+               END AS area_m2,
+               CASE
+                 WHEN (d).valid AND geom_type = 'POLYGON' AND interior_rings = 0 AND n_points <= $2
+                   THEN ST_Perimeter(g::geography)
+                 ELSE NULL
+               END AS perimeter_m,
+               CASE
+                 WHEN (d).valid AND geom_type = 'POLYGON' AND interior_rings = 0 AND n_points <= $2
+                   THEN ST_IsEmpty(ST_Buffer(g::geography, -($3::double precision))::geometry)
+                 ELSE NULL
+               END AS is_sliver
+             FROM inspected
            )
            SELECT
              geom_type,
@@ -427,13 +561,20 @@ export class PolygonRepository {
                WHEN (d).location IS NOT NULL THEN ST_AsGeoJSON((d).location, 6)
                ELSE NULL
              END AS invalid_location_geojson,
+             area_m2,
+             perimeter_m,
              CASE
-               WHEN (d).valid AND geom_type = 'POLYGON' AND interior_rings = 0 AND n_points <= $2
-                 THEN ST_Area(g::geography)
+               WHEN area_m2 IS NOT NULL AND perimeter_m IS NOT NULL AND perimeter_m > 0
+                 THEN (4.0 * pi() * area_m2) / (perimeter_m * perimeter_m)
                ELSE NULL
-             END AS area_m2
-           FROM inspected`,
-          [geoJsonInput, GEOMETRY_LIMITS.MAX_RING_POSITIONS],
+             END AS compactness_pp,
+             is_sliver
+           FROM metrics`,
+          [
+            geoJsonInput,
+            GEOMETRY_LIMITS.MAX_RING_POSITIONS,
+            GEOMETRY_LIMITS.MIN_WIDTH_BUFFER_M,
+          ],
         );
         validationRow = validationRes.rows[0];
       } catch (pgErr: unknown) {
@@ -485,7 +626,8 @@ export class PolygonRepository {
         );
       }
 
-      const areaM2 = validationRow.area_m2;
+      let finalGeoJson = geoJsonInput;
+      let areaM2 = validationRow.area_m2;
       if (
         areaM2 === null ||
         !Number.isFinite(areaM2) ||
@@ -498,6 +640,346 @@ export class PolygonRepository {
           `Polygon area must be between ${minAreaM2} m² and ${maxAreaM2} m².`,
           { areaM2, minAreaM2, maxAreaM2 },
         );
+      }
+
+      if (
+        validationRow.compactness_pp === null ||
+        validationRow.compactness_pp < GEOMETRY_LIMITS.MIN_COMPACTNESS_PP
+      ) {
+        throw new ApiError(
+          422,
+          'GEOMETRY_NOT_COMPACT',
+          `Polygon shape is too thin or irregular (compactness must be at least ${GEOMETRY_LIMITS.MIN_COMPACTNESS_PP}).`,
+          {
+            compactnessPp: validationRow.compactness_pp,
+            minCompactnessPp: GEOMETRY_LIMITS.MIN_COMPACTNESS_PP,
+          },
+        );
+      }
+
+      if (validationRow.is_sliver) {
+        throw new ApiError(
+          422,
+          'GEOMETRY_SLIVER',
+          `Polygon is too narrow; minimum width must exceed ${(GEOMETRY_LIMITS.MIN_WIDTH_BUFFER_M * 2).toFixed(1)} m.`,
+          { minWidthMeters: GEOMETRY_LIMITS.MIN_WIDTH_BUFFER_M * 2 },
+        );
+      }
+
+      // Serialize concurrent spatial writes in the same ~500m grid cell
+      await client.query(
+        `WITH cand AS (
+           SELECT ST_Centroid(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326)) AS c
+         )
+         SELECT pg_advisory_xact_lock(
+           hashtext(
+             'poly_cell:' || floor(ST_X(c) * 200)::text || ':' || floor(ST_Y(c) * 200)::text
+           )
+         )
+         FROM cand`,
+        [finalGeoJson],
+      );
+
+      // Overlap blocking & auto-clipping against existing polygons
+      const overlapRes = await client.query<{
+        id: string;
+        existing_area_m2: number;
+        inter_area_m2: number;
+      }>(
+        `WITH cand AS (
+           SELECT ST_ForcePolygonCCW(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326)) AS g
+         )
+         SELECT
+           p.id,
+           p.area_m2 AS existing_area_m2,
+           ST_Area(
+             ST_CollectionExtract(ST_MakeValid(ST_Intersection(p.geom, cand.g)), 3)::geography
+           ) AS inter_area_m2
+         FROM polygons p, cand
+         WHERE ST_Intersects(p.geom, cand.g)`,
+        [finalGeoJson],
+      );
+
+      const significantOverlaps = overlapRes.rows.filter(
+        (r) => Number.isFinite(r.inter_area_m2) && r.inter_area_m2 > 0.01,
+      );
+
+      if (significantOverlaps.length > 0) {
+        let maxOverlapRatio = 0;
+        const conflictingPolygonIds: string[] = [];
+        for (const ov of significantOverlaps) {
+          const denom = Math.max(0.01, Math.min(ov.existing_area_m2, areaM2));
+          const ratio = ov.inter_area_m2 / denom;
+          if (ratio > maxOverlapRatio) {
+            maxOverlapRatio = ratio;
+          }
+          if (ratio >= GEOMETRY_LIMITS.OVERLAP_REJECT_RATIO) {
+            conflictingPolygonIds.push(ov.id);
+          }
+        }
+
+        if (maxOverlapRatio >= GEOMETRY_LIMITS.OVERLAP_REJECT_RATIO) {
+          throw new ApiError(
+            409,
+            'POLYGON_OVERLAP',
+            'This area significantly overlaps an existing unsealing proposal.',
+            {
+              conflictingPolygonIds,
+              maxOverlapRatio: Number(maxOverlapRatio.toFixed(4)),
+            },
+          );
+        }
+
+        // Minor overlap (< OVERLAP_REJECT_RATIO): auto-clip against existing polygons
+        const overlapIds = significantOverlaps.map((o) => o.id);
+        const clipRes = await client.query<{
+          clipped_geojson: string | null;
+          total_parts: number;
+          total_area_m2: number | null;
+          largest_area_m2: number | null;
+          interior_rings: number | null;
+          n_points: number | null;
+          is_valid: boolean | null;
+          compactness_pp: number | null;
+          is_sliver: boolean | null;
+        }>(
+          `WITH cand AS (
+             SELECT ST_ForcePolygonCCW(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326)) AS g
+           ),
+           diff AS (
+             SELECT ST_CollectionExtract(
+               ST_MakeValid(
+                 ST_Difference(
+                   cand.g,
+                   (SELECT ST_UnaryUnion(ST_Collect(p.geom)) FROM polygons p WHERE p.id = ANY($2::uuid[]))
+                 )
+               ),
+               3
+             ) AS dg
+             FROM cand
+           ),
+           parts AS (
+             SELECT
+               (ST_Dump(dg)).geom AS poly,
+               ST_Area((ST_Dump(dg)).geom::geography) AS part_area
+             FROM diff
+             WHERE dg IS NOT NULL AND NOT ST_IsEmpty(dg)
+           ),
+           ranked AS (
+             SELECT
+               CASE
+                 WHEN ST_NPoints(poly) > $3::int
+                   THEN ST_SimplifyPreserveTopology(poly, 0.000005)
+                 ELSE poly
+               END AS poly,
+               part_area,
+               COUNT(*) OVER ()::int AS total_parts,
+               SUM(part_area) OVER () AS total_area_m2,
+               ROW_NUMBER() OVER (ORDER BY part_area DESC) AS rn
+             FROM parts
+             WHERE GeometryType(poly) = 'POLYGON'
+           ),
+           chosen AS (
+             SELECT
+               ST_ForcePolygonCCW(poly) AS poly,
+               total_parts,
+               total_area_m2,
+               ST_Area(poly::geography) AS largest_area_m2,
+               ST_Perimeter(poly::geography) AS perimeter_m
+             FROM ranked
+             WHERE rn = 1
+           )
+           SELECT
+             ST_AsGeoJSON(poly, 6) AS clipped_geojson,
+             total_parts,
+             total_area_m2,
+             largest_area_m2,
+             ST_NumInteriorRings(poly) AS interior_rings,
+             ST_NPoints(poly) AS n_points,
+             ST_IsValid(poly) AS is_valid,
+             CASE
+               WHEN perimeter_m > 0 THEN (4.0 * pi() * largest_area_m2) / (perimeter_m * perimeter_m)
+               ELSE 0
+             END AS compactness_pp,
+             ST_IsEmpty(ST_Buffer(poly::geography, -($4::double precision))::geometry) AS is_sliver
+           FROM chosen`,
+          [
+            finalGeoJson,
+            overlapIds,
+            GEOMETRY_LIMITS.MAX_RING_POSITIONS,
+            GEOMETRY_LIMITS.MIN_WIDTH_BUFFER_M,
+          ],
+        );
+
+        const clipped = clipRes.rows[0];
+        if (
+          !clipped ||
+          !clipped.clipped_geojson ||
+          clipped.largest_area_m2 === null ||
+          clipped.total_area_m2 === null ||
+          clipped.interior_rings !== 0 ||
+          !clipped.is_valid ||
+          clipped.n_points === null ||
+          clipped.n_points < GEOMETRY_LIMITS.MIN_RING_POSITIONS ||
+          clipped.n_points > GEOMETRY_LIMITS.MAX_RING_POSITIONS ||
+          (clipped.total_parts > 1 &&
+            clipped.largest_area_m2 / Math.max(0.01, clipped.total_area_m2) < 0.9)
+        ) {
+          throw new ApiError(
+            409,
+            'POLYGON_OVERLAP',
+            'Overlapping existing proposals splits or invalidates this polygon; please outline the remaining area directly.',
+            { conflictingPolygonIds: overlapIds },
+          );
+        }
+
+        if (clipped.largest_area_m2 < minAreaM2 || clipped.largest_area_m2 > maxAreaM2) {
+          throw new ApiError(
+            422,
+            'AREA_OUT_OF_BOUNDS',
+            `Remaining non-overlapping area (${clipped.largest_area_m2.toFixed(1)} m²) must be between ${minAreaM2} m² and ${maxAreaM2} m².`,
+            { areaM2: clipped.largest_area_m2, minAreaM2, maxAreaM2 },
+          );
+        }
+        if (
+          clipped.compactness_pp === null ||
+          clipped.compactness_pp < GEOMETRY_LIMITS.MIN_COMPACTNESS_PP
+        ) {
+          throw new ApiError(
+            422,
+            'GEOMETRY_NOT_COMPACT',
+            'Remaining non-overlapping polygon shape is too thin or irregular.',
+            { compactnessPp: clipped.compactness_pp },
+          );
+        }
+        if (clipped.is_sliver) {
+          throw new ApiError(
+            422,
+            'GEOMETRY_SLIVER',
+            'Remaining non-overlapping polygon is too narrow.',
+          );
+        }
+
+        finalGeoJson = clipped.clipped_geojson;
+        areaM2 = clipped.largest_area_m2;
+      }
+
+      // Spatial clustering cap (micro-spam prevention within radius & rolling window)
+      const clusterRes = await client.query<{
+        user_cluster_count: number;
+        global_cluster_count: number;
+      }>(
+        `WITH cand AS (
+           SELECT ST_PointOnSurface(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326)) AS pt
+         )
+         SELECT
+           COUNT(*) FILTER (WHERE p.user_id = $2::uuid)::int AS user_cluster_count,
+           COUNT(*)::int AS global_cluster_count
+         FROM polygons p, cand
+         WHERE p.created_at > NOW() - make_interval(hours => $3::int)
+           AND ST_DWithin(p.geom::geography, cand.pt::geography, $4::double precision)`,
+        [
+          finalGeoJson,
+          params.userId,
+          GEOMETRY_LIMITS.CLUSTER_WINDOW_HOURS,
+          GEOMETRY_LIMITS.CLUSTER_RADIUS_M,
+        ],
+      );
+      const userClusterCount = clusterRes.rows[0]?.user_cluster_count ?? 0;
+      const globalClusterCount = clusterRes.rows[0]?.global_cluster_count ?? 0;
+      if (
+        userClusterCount >= GEOMETRY_LIMITS.CLUSTER_MAX_PER_USER ||
+        globalClusterCount >= GEOMETRY_LIMITS.CLUSTER_MAX_GLOBAL
+      ) {
+        throw new ApiError(
+          429,
+          'SPATIAL_CLUSTER_LIMIT',
+          `Too many recent proposals within ${GEOMETRY_LIMITS.CLUSTER_RADIUS_M} m; please combine adjacent surfaces or retry later.`,
+          {
+            radiusMeters: GEOMETRY_LIMITS.CLUSTER_RADIUS_M,
+            windowHours: GEOMETRY_LIMITS.CLUSTER_WINDOW_HOURS,
+            userClusterCount,
+            globalClusterCount,
+          },
+        );
+      }
+
+      // Jurisdiction lookup & enforcement
+      const muniRes = await client.query<{
+        municipality_id: number | null;
+        has_any_municipalities: boolean;
+      }>(
+        `WITH cand AS (
+           SELECT ST_SetSRID(ST_GeomFromGeoJSON($1), 4326) AS g
+         )
+         SELECT
+           (
+             SELECT m.id
+             FROM municipalities m
+             WHERE ST_Covers(m.geom, ST_PointOnSurface(cand.g))
+             LIMIT 1
+           ) AS municipality_id,
+           EXISTS (SELECT 1 FROM municipalities LIMIT 1) AS has_any_municipalities
+         FROM cand`,
+        [finalGeoJson],
+      );
+      const matchedMuniId = muniRes.rows[0]?.municipality_id ?? null;
+      const hasAnyMunicipalities =
+        muniRes.rows[0]?.has_any_municipalities ?? false;
+
+      if (
+        matchedMuniId === null &&
+        (requireJurisdiction === 'strict' ||
+          (requireJurisdiction === 'when_seeded' && hasAnyMunicipalities))
+      ) {
+        throw new ApiError(
+          422,
+          'OUTSIDE_JURISDICTION',
+          'Polygon lies outside the supported municipal boundaries.',
+        );
+      }
+
+      // OSM / ALKIS land-cover exclusion validation
+      const landCoverRes = await client.query<{
+        category: string;
+        sources: string[];
+        excluded_area_m2: number;
+      }>(
+        `WITH cand AS (
+           SELECT ST_SetSRID(ST_GeomFromGeoJSON($1), 4326) AS g
+         )
+         SELECT
+           lce.category,
+           ARRAY_AGG(DISTINCT lce.source) AS sources,
+           ST_Area(
+             ST_CollectionExtract(
+               ST_MakeValid(ST_Intersection(cand.g, ST_UnaryUnion(ST_Collect(lce.geom)))),
+               3
+             )::geography
+           ) AS excluded_area_m2
+         FROM cand
+         INNER JOIN land_cover_exclusions lce ON ST_Intersects(lce.geom, cand.g)
+         GROUP BY lce.category, cand.g`,
+        [finalGeoJson],
+      );
+
+      for (const lcRow of landCoverRes.rows) {
+        const cat = lcRow.category as LandCoverCategory;
+        const maxRatio = LAND_COVER_MAX_OVERLAP_RATIO[cat] ?? 0.5;
+        const overlapRatio = lcRow.excluded_area_m2 / Math.max(0.01, areaM2);
+        if (overlapRatio >= maxRatio) {
+          throw new ApiError(
+            422,
+            'LAND_COVER_EXCLUDED',
+            `Polygon overlaps excluded ${cat.replace('_', '/')} land cover (${(overlapRatio * 100).toFixed(0)}%).`,
+            {
+              category: cat,
+              sources: lcRow.sources,
+              overlapRatio: Number(overlapRatio.toFixed(4)),
+              maxAllowedRatio: maxRatio,
+            },
+          );
+        }
       }
 
       const insertRes = await client.query<{ id: string }>(
@@ -518,20 +1000,16 @@ export class PolygonRepository {
            $3,
            $4,
            $5,
-           (
-             SELECT m.id
-             FROM municipalities m
-             WHERE ST_Covers(m.geom, ST_PointOnSurface(prepared.geom))
-             LIMIT 1
-           )
+           $6
          FROM prepared
          RETURNING id`,
         [
           params.userId,
-          geoJsonInput,
+          finalGeoJson,
           params.surfaceType,
           normalizedNote,
           areaM2,
+          matchedMuniId,
         ],
       );
 
@@ -549,6 +1027,7 @@ export class PolygonRepository {
         client,
         insertedId,
         params.userId,
+        this.trust,
       );
       if (!createdFeature) {
         throw new ApiError(500, 'INTERNAL_ERROR', 'Failed to load created polygon.');
@@ -569,6 +1048,9 @@ export class PolygonRepository {
   ): Promise<ListPolygonsByBboxResult> {
     const limit = params.limit ?? GEOMETRY_LIMITS.BBOX_FEATURE_LIMIT;
     const queryLimit = limit + 1;
+    const authorType = params.authorType ?? 'all';
+    const unratedFlaggedOnly = Boolean(params.unratedFlaggedOnly);
+    const authorIsNewSql = buildAuthorIsNewUserSql('u', '$7', '$8');
 
     const res = await this.pool.query<PolygonQueryRow>(
       `WITH bbox_polys AS (
@@ -585,7 +1067,20 @@ export class PolygonRepository {
            m.ags AS municipality_ags,
            m.name AS municipality_name,
            p.photo_count,
+           p.comment_count,
            COALESCE(u.pseudonym, 'deleted') AS author_pseudonym,
+           ${authorIsNewSql} AS author_is_new_user,
+           u.last_login_at AS author_last_login_at,
+           p.flag_count,
+           CASE
+             WHEN $5::uuid IS NOT NULL THEN EXISTS (
+               SELECT 1
+               FROM polygon_flags pf
+               WHERE pf.polygon_id = p.id
+                 AND pf.user_id = $5::uuid
+             )
+             ELSE FALSE
+           END AS my_flag,
            p.upvotes,
            p.downvotes,
            p.score,
@@ -607,6 +1102,15 @@ export class PolygonRepository {
            p.geom,
            ST_MakeEnvelope($1, $2, $3, $4, 4326)
          )
+           AND (
+             NOT $10::boolean
+             OR (p.upvotes = 0 AND p.downvotes = 0 AND p.flag_count > 0)
+           )
+           AND (
+             $9::text = 'all'
+             OR ($9::text = 'new_user' AND (${authorIsNewSql}) = TRUE)
+             OR ($9::text = 'established' AND p.user_id IS NOT NULL AND (${authorIsNewSql}) = FALSE)
+           )
          ORDER BY p.score DESC, p.created_at DESC, p.id ASC
          LIMIT $6
        ),
@@ -638,7 +1142,12 @@ export class PolygonRepository {
          bp.municipality_name,
          COALESCE(ms.max_score, 0)::int AS municipality_max_score,
          bp.photo_count,
+         bp.comment_count,
          bp.author_pseudonym,
+         bp.author_is_new_user,
+         bp.author_last_login_at,
+         bp.flag_count,
+         bp.my_flag,
          bp.upvotes,
          bp.downvotes,
          bp.score,
@@ -656,6 +1165,10 @@ export class PolygonRepository {
         params.bbox.maxLat,
         params.viewerUserId,
         queryLimit,
+        this.trust.minAccountDays,
+        this.trust.minCleanPolygons,
+        authorType,
+        unratedFlaggedOnly,
       ],
     );
 
@@ -675,7 +1188,12 @@ export class PolygonRepository {
     polygonId: string,
     viewerUserId: string | null,
   ): Promise<PolygonFeature | null> {
-    return querySinglePolygonById(this.pool, polygonId, viewerUserId);
+    return querySinglePolygonById(
+      this.pool,
+      polygonId,
+      viewerUserId,
+      this.trust,
+    );
   }
 
   public async patch(params: PatchPolygonParams): Promise<PolygonFeature> {
@@ -723,6 +1241,7 @@ export class PolygonRepository {
         client,
         params.polygonId,
         params.userId,
+        this.trust,
       );
       if (!updated) {
         throw new ApiError(404, 'NOT_FOUND', 'Polygon not found.');
@@ -773,6 +1292,7 @@ export class PolygonRepository {
         client,
         params.polygonId,
         params.adminUserId,
+        this.trust,
       );
       if (!updated) {
         throw new ApiError(404, 'NOT_FOUND', 'Polygon not found.');
@@ -788,11 +1308,229 @@ export class PolygonRepository {
     }
   }
 
+  public async flagPolygon(
+    params: FlagPolygonParams,
+  ): Promise<FlagPolygonResponse> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await lockUserForWrite(client, params.userId);
+
+      const lockRes = await client.query<{ id: string; user_id: string | null }>(
+        `SELECT id, user_id
+         FROM polygons
+         WHERE id = $1
+         FOR UPDATE`,
+        [params.polygonId],
+      );
+      const existing = lockRes.rows[0];
+      if (!existing) {
+        throw new ApiError(404, 'NOT_FOUND', 'Polygon not found.');
+      }
+      if (existing.user_id !== null && existing.user_id === params.userId) {
+        throw new ApiError(
+          422,
+          'FORBIDDEN_SELF_FLAG',
+          'You cannot flag your own polygon proposal.',
+        );
+      }
+
+      const normalizedNote = normalizeNote(params.note);
+      await client.query(
+        `INSERT INTO polygon_flags (polygon_id, user_id, reason, note)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (polygon_id, user_id)
+         DO UPDATE SET
+           reason = EXCLUDED.reason,
+           note = EXCLUDED.note,
+           created_at = NOW()`,
+        [params.polygonId, params.userId, params.reason, normalizedNote],
+      );
+
+      const countRes = await client.query<{ flag_count: number }>(
+        `UPDATE polygons p
+         SET flag_count = (
+           SELECT COUNT(*)::int FROM polygon_flags pf WHERE pf.polygon_id = p.id
+         )
+         WHERE p.id = $1
+         RETURNING p.flag_count`,
+        [params.polygonId],
+      );
+      const flagCount = Math.max(0, Number(countRes.rows[0]?.flag_count ?? 0));
+
+      await client.query('COMMIT');
+      return {
+        polygonId: params.polygonId,
+        flagCount,
+        isFlagged: flagCount > 0,
+        myFlag: true,
+        myFlagReason: params.reason,
+      };
+    } catch (err: unknown) {
+      await rollbackPreservingError(client, err);
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  public async unflagPolygon(
+    params: UnflagPolygonParams,
+  ): Promise<FlagPolygonResponse> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await lockUserForWrite(client, params.userId);
+
+      const lockRes = await client.query<{ id: string }>(
+        'SELECT id FROM polygons WHERE id = $1 FOR UPDATE',
+        [params.polygonId],
+      );
+      if (lockRes.rowCount === 0) {
+        throw new ApiError(404, 'NOT_FOUND', 'Polygon not found.');
+      }
+
+      await client.query(
+        'DELETE FROM polygon_flags WHERE polygon_id = $1 AND user_id = $2',
+        [params.polygonId, params.userId],
+      );
+
+      const countRes = await client.query<{ flag_count: number }>(
+        `UPDATE polygons p
+         SET flag_count = (
+           SELECT COUNT(*)::int FROM polygon_flags pf WHERE pf.polygon_id = p.id
+         )
+         WHERE p.id = $1
+         RETURNING p.flag_count`,
+        [params.polygonId],
+      );
+      const flagCount = Math.max(0, Number(countRes.rows[0]?.flag_count ?? 0));
+
+      await client.query('COMMIT');
+      return {
+        polygonId: params.polygonId,
+        flagCount,
+        isFlagged: flagCount > 0,
+        myFlag: false,
+        myFlagReason: null,
+      };
+    } catch (err: unknown) {
+      await rollbackPreservingError(client, err);
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  public async clearFlagsAsAdmin(
+    params: ClearPolygonFlagsParams,
+  ): Promise<FlagPolygonResponse> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await lockUserForWrite(client, params.adminUserId);
+
+      const lockRes = await client.query<{ id: string }>(
+        'SELECT id FROM polygons WHERE id = $1 FOR UPDATE',
+        [params.polygonId],
+      );
+      if (lockRes.rowCount === 0) {
+        throw new ApiError(404, 'NOT_FOUND', 'Polygon not found.');
+      }
+
+      await client.query('DELETE FROM polygon_flags WHERE polygon_id = $1', [
+        params.polygonId,
+      ]);
+      await client.query(
+        'UPDATE polygons SET flag_count = 0 WHERE id = $1',
+        [params.polygonId],
+      );
+
+      await client.query('COMMIT');
+      return {
+        polygonId: params.polygonId,
+        flagCount: 0,
+        isFlagged: false,
+        myFlag: false,
+        myFlagReason: null,
+      };
+    } catch (err: unknown) {
+      await rollbackPreservingError(client, err);
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  public async pruneStaleUnratedPolygons(
+    retentionDays: number = TRUST_AND_MODERATION_LIMITS.STALE_UNRATED_PRUNE_DAYS,
+  ): Promise<PruneStalePolygonsResult> {
+    const safeDays = Math.max(1, Math.trunc(retentionDays));
+    const client = await this.pool.connect();
+    let photoFilesToDelete: Array<{ file_name: string; thumb_name: string }> = [];
+    let deletedIds: string[] = [];
+
+    try {
+      await client.query('BEGIN');
+
+      const lockRes = await client.query<{ id: string }>(
+        `SELECT id
+         FROM polygons
+         WHERE status = 'proposed'
+           AND upvotes = 0
+           AND downvotes = 0
+           AND created_at < NOW() - make_interval(days => $1::int)
+         FOR UPDATE SKIP LOCKED`,
+        [safeDays],
+      );
+      deletedIds = lockRes.rows.map((r) => r.id);
+
+      if (deletedIds.length > 0) {
+        const photosRes = await client.query<{
+          file_name: string;
+          thumb_name: string;
+        }>(
+          'SELECT file_name, thumb_name FROM polygon_photos WHERE polygon_id = ANY($1::uuid[])',
+          [deletedIds],
+        );
+        photoFilesToDelete = photosRes.rows;
+
+        await client.query(
+          'DELETE FROM polygons WHERE id = ANY($1::uuid[])',
+          [deletedIds],
+        );
+      }
+
+      await client.query('COMMIT');
+    } catch (err: unknown) {
+      await rollbackPreservingError(client, err);
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    if (this.uploadsDir && photoFilesToDelete.length > 0) {
+      for (const pf of photoFilesToDelete) {
+        await fs
+          .unlink(path.join(this.uploadsDir, pf.file_name))
+          .catch(() => undefined);
+        await fs
+          .unlink(path.join(this.uploadsDir, pf.thumb_name))
+          .catch(() => undefined);
+      }
+    }
+
+    return {
+      deletedCount: deletedIds.length,
+      deletedIds,
+    };
+  }
+
   public async importBatch(
     params: ImportPolygonsParams,
   ): Promise<ImportPolygonsResponse> {
     const minAreaM2 = params.minAreaM2 ?? GEOMETRY_LIMITS.MIN_AREA_M2;
-    const maxAreaM2 = params.maxAreaM2 ?? GEOMETRY_LIMITS.MAX_AREA_M2;
+    const maxAreaM2 = params.maxAreaM2 ?? IMPORT_LIMITS.MAX_AREA_M2;
     const errors = [...params.dataset.preErrors];
     let importedCount = 0;
 
@@ -827,6 +1565,7 @@ export class PolygonRepository {
              ),
              reproj AS (
                SELECT CASE
+                 WHEN $6::text IS NOT NULL THEN ST_Transform(ST_SetSRID(g, 0), $6::text, 4326)
                  WHEN $2::int = 4326 THEN g
                  ELSE ST_Transform(g, 4326)
                END AS g4326
@@ -873,6 +1612,7 @@ export class PolygonRepository {
               GEOMETRY_LIMITS.MAX_RING_POSITIONS,
               GEOMETRY_LIMITS.MAX_POLYGON_SPAN_DEG,
               GEOMETRY_LIMITS.MAX_ABS_LAT,
+              candidate.srsWkt ?? null,
             ],
           );
 
@@ -1074,7 +1814,10 @@ export class PolygonRepository {
                m.ags AS municipality_ags,
                m.name AS municipality_name,
                p.photo_count,
+               p.comment_count,
                COALESCE(u.pseudonym, 'deleted') AS author_pseudonym,
+               ${buildAuthorIsNewUserSql('u', '$4', '$5')} AS author_is_new_user,
+               p.flag_count,
                p.upvotes,
                p.downvotes,
                p.score,
@@ -1101,7 +1844,10 @@ export class PolygonRepository {
                m.ags AS municipality_ags,
                m.name AS municipality_name,
                p.photo_count,
+               p.comment_count,
                COALESCE(u.pseudonym, 'deleted') AS author_pseudonym,
+               ${buildAuthorIsNewUserSql('u', '$2', '$3')} AS author_is_new_user,
+               p.flag_count,
                p.upvotes,
                p.downvotes,
                p.score,
@@ -1138,8 +1884,14 @@ export class PolygonRepository {
             cursor.createdAtRaw,
             cursor.id,
             batchSize,
+            this.trust.minAccountDays,
+            this.trust.minCleanPolygons,
           ])
-        : await client.query<ExportPolygonRow>(baseCte + tailSql, [batchSize]);
+        : await client.query<ExportPolygonRow>(baseCte + tailSql, [
+            batchSize,
+            this.trust.minAccountDays,
+            this.trust.minCleanPolygons,
+          ]);
 
       await client.query('COMMIT');
 

@@ -2,10 +2,14 @@ import { z } from 'zod';
 
 import {
   AUTH_LIMITS,
+  COMMENT_LIMITS,
   GEOMETRY_LIMITS,
   MUNICIPALITY_NORMS,
+  POLYGON_AUTHOR_FILTERS,
+  POLYGON_FLAG_REASONS,
   POLYGON_STATUSES,
   SURFACE_TYPES,
+  TRUST_AND_MODERATION_LIMITS,
   USER_ROLES,
   type PolygonStatus,
 } from './constants.js';
@@ -93,6 +97,18 @@ export function normalizeRecoveryCode(input: string): string {
   return input.replace(/[-\s]/g, '').toUpperCase();
 }
 
+export const AltchaChallengeResponseSchema = z.object({
+  algorithm: z.literal('SHA-256'),
+  challenge: z.string().min(16).max(128),
+  maxnumber: z.number().int().positive(),
+  salt: z.string().min(8).max(256),
+  signature: z.string().min(16).max(256),
+});
+
+export type AltchaChallengeResponse = z.infer<
+  typeof AltchaChallengeResponseSchema
+>;
+
 export const RegisterRequestSchema = z
   .object({
     pseudonym: PseudonymSchema,
@@ -103,6 +119,7 @@ export const RegisterRequestSchema = z
         message: 'Privacy policy consent is required to register.',
       }),
     }),
+    altchaPayload: z.string().trim().min(1).max(4096).optional(),
   })
   .strict();
 
@@ -272,6 +289,8 @@ export const RuntimeConfigSchema = z.object({
   disclaimerText: z.string().min(1),
   abuseContact: z.string().nullable(),
   privacyPolicyUrl: z.string().url().nullable().optional().default(null),
+  apkDownloadUrl: z.string().min(1).nullable().optional().default(null),
+  authCaptchaRequired: z.boolean().optional().default(false),
 });
 
 export type RuntimeConfig = z.output<typeof RuntimeConfigSchema>;
@@ -351,6 +370,38 @@ export const VoteResponseSchema = z.object({
 
 export type VoteResponse = z.infer<typeof VoteResponseSchema>;
 
+export const FlagPolygonRequestSchema = z
+  .union([
+    z
+      .object({
+        reason: z.enum(POLYGON_FLAG_REASONS).optional().default('implausible'),
+        note: z
+          .string()
+          .trim()
+          .max(
+            TRUST_AND_MODERATION_LIMITS.MAX_FLAG_NOTE_LENGTH,
+            `Flag note must not exceed ${TRUST_AND_MODERATION_LIMITS.MAX_FLAG_NOTE_LENGTH} characters.`,
+          )
+          .nullable()
+          .optional(),
+      })
+      .strict(),
+    z.undefined().transform(() => ({ reason: 'implausible' as const })),
+    z.null().transform(() => ({ reason: 'implausible' as const })),
+  ]);
+
+export type FlagPolygonRequest = z.input<typeof FlagPolygonRequestSchema>;
+
+export const FlagPolygonResponseSchema = z.object({
+  polygonId: z.string().uuid(),
+  flagCount: z.number().int().nonnegative(),
+  isFlagged: z.boolean(),
+  myFlag: z.boolean(),
+  myFlagReason: z.enum(POLYGON_FLAG_REASONS).nullable().optional().default(null),
+});
+
+export type FlagPolygonResponse = z.output<typeof FlagPolygonResponseSchema>;
+
 export const PolygonPhotoSchema = z.object({
   id: z.string().uuid(),
   polygonId: z.string().uuid(),
@@ -397,6 +448,93 @@ export const PhotoVoteResponseSchema = z.object({
 
 export type PhotoVoteResponse = z.infer<typeof PhotoVoteResponseSchema>;
 
+export const PolygonCommentSchema = z.object({
+  id: z.string().uuid(),
+  polygonId: z.string().uuid(),
+  parentId: z.string().uuid().nullable(),
+  body: z.string().min(1).max(COMMENT_LIMITS.MAX_BODY_LENGTH),
+  authorPseudonym: z.string().min(1),
+  isAuthor: z.boolean(),
+  upvotes: z.number().int().nonnegative(),
+  myVote: z.union([z.literal(0), z.literal(1)]),
+  createdAt: IsoDateTimeSchema,
+  updatedAt: IsoDateTimeSchema,
+});
+
+export type PolygonComment = z.infer<typeof PolygonCommentSchema>;
+
+export const PolygonCommentListResponseSchema = z.object({
+  polygonId: z.string().uuid(),
+  topCommentId: z.string().uuid().nullable(),
+  comments: z.array(PolygonCommentSchema),
+});
+
+export type PolygonCommentListResponse = z.infer<
+  typeof PolygonCommentListResponseSchema
+>;
+
+export const CreatePolygonCommentRequestSchema = z
+  .object({
+    body: z
+      .string()
+      .trim()
+      .min(1, 'Comment text must not be empty.')
+      .max(
+        COMMENT_LIMITS.MAX_BODY_LENGTH,
+        `Comment must not exceed ${COMMENT_LIMITS.MAX_BODY_LENGTH} characters.`,
+      ),
+    parentId: z.string().uuid().nullable().optional(),
+  })
+  .strict();
+
+export type CreatePolygonCommentRequest = z.input<
+  typeof CreatePolygonCommentRequestSchema
+>;
+
+export const CommentVoteRequestSchema = z
+  .union([
+    z.object({ value: z.literal(1).optional() }).strict(),
+    z.undefined(),
+    z.null(),
+  ])
+  .transform(() => ({ value: 1 as const }));
+
+export type CommentVoteRequest = z.input<typeof CommentVoteRequestSchema>;
+
+export const CommentVoteResponseSchema = z.object({
+  commentId: z.string().uuid(),
+  polygonId: z.string().uuid(),
+  upvotes: z.number().int().nonnegative(),
+  myVote: z.union([z.literal(0), z.literal(1)]),
+});
+
+export type CommentVoteResponse = z.infer<typeof CommentVoteResponseSchema>;
+
+export function sortPolygonCommentsByRating<
+  T extends { id: string; upvotes: number; createdAt: string },
+>(comments: readonly T[]): T[] {
+  return [...comments].sort((a, b) => {
+    if (b.upvotes !== a.upvotes) {
+      return b.upvotes - a.upvotes;
+    }
+    if (b.createdAt !== a.createdAt) {
+      return b.createdAt.localeCompare(a.createdAt);
+    }
+    return a.id.localeCompare(b.id);
+  });
+}
+
+export function findTopRatedCommentId(
+  comments: readonly { id: string; upvotes: number; createdAt: string }[],
+): string | null {
+  if (comments.length === 0) {
+    return null;
+  }
+  const sorted = sortPolygonCommentsByRating(comments);
+  const top = sorted[0];
+  return top && top.upvotes > 0 ? top.id : null;
+}
+
 export const ImportPolygonsResponseSchema = z.object({
   format: z.enum(['geojson', 'gpkg']),
   importedCount: z.number().int().nonnegative(),
@@ -417,7 +555,7 @@ export function computeMunicipalityNormalizedScore(
   municipalityAgs: string | null,
   municipalityMaxScore: number,
 ): number {
-  if (status === 'finished' || score <= 0) {
+  if (status !== 'proposed' || score <= 0) {
     return 0;
   }
   const floor =
@@ -512,6 +650,23 @@ export const BboxQuerySchema = z.union([
 
 export type BboxQuery = z.output<typeof BboxQuerySchema>;
 
+const OptionalBooleanQueryParamSchema = z
+  .union([
+    z.boolean(),
+    z.enum(['true', 'false', '1', '0']).transform((v) => v === 'true' || v === '1'),
+    z.undefined().transform(() => false),
+  ])
+  .optional()
+  .default(false);
+
+export const PolygonListQuerySchema = z.object({
+  bbox: BboxStringSchema,
+  authorType: z.enum(POLYGON_AUTHOR_FILTERS).optional().default('all'),
+  unratedFlaggedOnly: OptionalBooleanQueryParamSchema,
+});
+
+export type PolygonListQuery = z.output<typeof PolygonListQuerySchema>;
+
 export function checkBboxSpan(
   bbox: BboxBounds | readonly [number, number, number, number],
   maxSpanDeg: number = GEOMETRY_LIMITS.MAX_BBOX_SPAN_DEG,
@@ -563,7 +718,13 @@ export const PolygonFeatureSchema = z.object({
     municipalityMaxScore: z.number().int().nonnegative().optional().default(0),
     municipalityNormalizedScore: z.number().min(0).max(1).optional().default(0),
     photoCount: z.number().int().nonnegative().optional().default(0),
+    commentCount: z.number().int().nonnegative().optional().default(0),
     authorPseudonym: z.string().min(1),
+    authorIsNewUser: z.boolean().optional().default(false),
+    authorLastLoginAt: IsoDateTimeSchema.nullable().optional().default(null),
+    flagCount: z.number().int().nonnegative().optional().default(0),
+    isFlagged: z.boolean().optional().default(false),
+    myFlag: z.boolean().optional().default(false),
     upvotes: z.number().int().min(0),
     downvotes: z.number().int().min(0),
     score: z.number().int(),

@@ -7,19 +7,32 @@ import { ZodError } from 'zod';
 
 import {
   AUTH_LIMITS,
+  AltchaChallengeResponseSchema,
   ApiError,
   ApiErrorEnvelopeSchema,
   AuthUserSchema,
   BboxQuerySchema,
+  COMMENT_LIMITS,
+  CommentVoteRequestSchema,
+  CommentVoteResponseSchema,
+  CreatePolygonCommentRequestSchema,
   CreatePolygonRequestSchema,
   type DraftValidationResult,
   type ErrorCode,
+  FlagPolygonRequestSchema,
+  FlagPolygonResponseSchema,
   GEOMETRY_LIMITS,
   HealthResponseSchema,
+  IMPORT_LIMITS,
   ImportPolygonsResponseSchema,
   LoginRequestSchema,
+  PHOTO_LIMITS,
+  POLYGON_STATUSES,
   PatchPolygonRequestSchema,
   PatchPolygonStatusRequestSchema,
+  PolygonCommentListResponseSchema,
+  PolygonCommentSchema,
+  PolygonListQuerySchema,
   PolygonPhotoSchema,
   type PolygonFeature,
   PolygonCollectionResponseSchema,
@@ -41,6 +54,8 @@ import {
   closeRingIfNeeded,
   computeMunicipalityNormalizedScore,
   dedupeConsecutivePoints,
+  findTopRatedCommentId,
+  sortPolygonCommentsByRating,
   normalizeRecoveryCode,
   validateDraftPolygon,
 } from '../src/index.js';
@@ -134,7 +149,8 @@ describe('@entsiegelung/shared bootstrap, licensing, and compiled ESM contract',
     assert.deepEqual(SURFACE_TYPES, ['asphalt', 'concrete', 'pavers', 'other']);
     assert.deepEqual(RESERVED_PSEUDONYMS, ['deleted']);
     assert.equal(GEOMETRY_LIMITS.MIN_AREA_M2, 2);
-    assert.equal(GEOMETRY_LIMITS.MAX_AREA_M2, 500_000);
+    assert.equal(GEOMETRY_LIMITS.MAX_AREA_M2, 20_000);
+    assert.equal(IMPORT_LIMITS.MAX_AREA_M2, 500_000);
     assert.equal(GEOMETRY_LIMITS.MIN_VERTICES, 3);
     assert.equal(GEOMETRY_LIMITS.MAX_VERTICES, 200);
     assert.equal(GEOMETRY_LIMITS.MIN_RING_POSITIONS, 4);
@@ -145,6 +161,8 @@ describe('@entsiegelung/shared bootstrap, licensing, and compiled ESM contract',
     assert.equal(GEOMETRY_LIMITS.BBOX_FEATURE_LIMIT, 500);
     assert.equal(GEOMETRY_LIMITS.DEDUPE_EPSILON_DEG, 1e-7);
     assert.equal(GEOMETRY_LIMITS.MIN_TURN_ANGLE_DEG, 2);
+    assert.equal(GEOMETRY_LIMITS.MIN_COMPACTNESS_PP, 0.05);
+    assert.equal(GEOMETRY_LIMITS.MIN_WIDTH_BUFFER_M, 0.5);
     assert.equal(GEOMETRY_LIMITS.MAX_NOTE_LENGTH, 500);
 
     assert.equal(AUTH_LIMITS.MIN_PASSWORD_LENGTH, 8);
@@ -337,7 +355,7 @@ describe('Review Focus 1: Draft geometry validation & CreatePolygonRequestSchema
     assert.ok(tinyRes.areaM2 > 0 && tinyRes.areaM2 < 2);
     assert.ok(tinyRes.errors.some((e) => /2 m²|minimum/i.test(e)));
 
-    // ~1.47 million m² square (0.015° × 0.013°, well within 0.05° span, > 500,000 m²)
+    // ~1.47 million m² square (0.015° × 0.013°, well within 0.05° span, > 20,000 m²)
     const hugePolygon: [number, number][] = [
       [9.99, 53.55],
       [10.005, 53.55],
@@ -346,8 +364,21 @@ describe('Review Focus 1: Draft geometry validation & CreatePolygonRequestSchema
     ];
     const hugeRes = validateDraftPolygon(hugePolygon);
     assert.equal(hugeRes.valid, false);
-    assert.ok(hugeRes.areaM2 > 500_000);
-    assert.ok(hugeRes.errors.some((e) => /500,?000|maximum/i.test(e)));
+    assert.ok(hugeRes.areaM2 > 20_000);
+    assert.ok(hugeRes.errors.some((e) => /20,?000|maximum/i.test(e)));
+
+    // ~60 m × 0.3 m ribbon (~18 m², valid area, but ultra-thin sliver / low compactness)
+    const thinSliverPolygon: [number, number][] = [
+      [9.9937, 53.5511],
+      [9.9946, 53.5511],
+      [9.9946, 53.5511027],
+      [9.9937, 53.5511027],
+    ];
+    const thinSliverRes = validateDraftPolygon(thinSliverPolygon);
+    assert.equal(thinSliverRes.valid, false);
+    assert.ok(
+      thinSliverRes.errors.some((e) => /compactness|narrow|thin/i.test(e)),
+    );
 
     // ~2.08 m² square (within 10% of MIN_AREA_M2 = 2) -> valid & nearAreaBound === true
     const nearMinPolygon: [number, number][] = [
@@ -764,10 +795,13 @@ describe('Review Focus 3: BboxQuerySchema vs checkBboxSpan and remaining wire sc
         maxDailyPolygonsPerUser: 25,
       },
       disclaimerText:
-        'Community unsealing suggestions — non-binding public input, regardless of property ownership.',
+        'Community unsealing suggestions - non-binding public input, regardless of property ownership.',
       abuseContact: null,
     });
     assert.equal(cleanDefaultConfig.orthophoto, null);
+    assert.equal(cleanDefaultConfig.apkDownloadUrl, null);
+    assert.deepEqual(POLYGON_STATUSES, ['proposed', 'in_progress', 'finished']);
+    assert.equal(PHOTO_LIMITS.GPS_VERIFY_DISTANCE_M, 3);
 
     const wmsOrthophotoConfig = RuntimeConfigSchema.parse({
       ...cleanDefaultConfig,
@@ -846,10 +880,15 @@ describe('Review Focus 3: BboxQuerySchema vs checkBboxSpan and remaining wire sc
     assert.equal(computeMunicipalityNormalizedScore(12, 'proposed', '07315000', 12), 1);
     assert.equal(computeMunicipalityNormalizedScore(6, 'proposed', '07315000', 12), 0.5);
     assert.equal(computeMunicipalityNormalizedScore(12, 'proposed', '02000000', 120), 0.1);
+    assert.equal(computeMunicipalityNormalizedScore(12, 'in_progress', '07315000', 12), 0);
     assert.equal(computeMunicipalityNormalizedScore(12, 'finished', '07315000', 12), 0);
     assert.equal(computeMunicipalityNormalizedScore(-2, 'proposed', '07315000', 12), 0);
     assert.equal(computeMunicipalityNormalizedScore(1, 'proposed', '07315000', 1), 0.3333);
 
+    assert.equal(
+      PatchPolygonStatusRequestSchema.parse({ status: 'in_progress' }).status,
+      'in_progress',
+    );
     assert.equal(
       PatchPolygonStatusRequestSchema.parse({ status: 'finished' }).status,
       'finished',
@@ -881,5 +920,109 @@ describe('Review Focus 3: BboxQuerySchema vs checkBboxSpan and remaining wire sc
       errors: [{ featureIndex: 7, reason: 'Area below 2 m²' }],
     });
     assert.equal(parsedImport.importedCount, 15);
+
+    // Comment schemas and rating sort helpers
+    assert.equal(COMMENT_LIMITS.MAX_BODY_LENGTH, 1000);
+    const createRootComment = CreatePolygonCommentRequestSchema.parse({
+      body: '  Great candidate for shade trees!  ',
+    });
+    assert.equal(createRootComment.body, 'Great candidate for shade trees!');
+    assert.equal(createRootComment.parentId, undefined);
+
+    assert.throws(
+      () => CreatePolygonCommentRequestSchema.parse({ body: '   ' }),
+      ZodError,
+    );
+
+    assert.deepEqual(CommentVoteRequestSchema.parse(undefined), { value: 1 });
+    assert.deepEqual(CommentVoteRequestSchema.parse({}), { value: 1 });
+    assert.deepEqual(CommentVoteRequestSchema.parse({ value: 1 }), { value: 1 });
+
+    const commentLow = PolygonCommentSchema.parse({
+      id: '550e8400-e29b-41d4-a716-446655440011',
+      polygonId: '550e8400-e29b-41d4-a716-446655440001',
+      parentId: null,
+      body: 'Older comment with 1 upvote',
+      authorPseudonym: 'citizen_a',
+      isAuthor: false,
+      upvotes: 1,
+      myVote: 0,
+      createdAt: '2026-11-13T10:00:00.000Z',
+      updatedAt: '2026-11-13T10:00:00.000Z',
+    });
+    const commentHigh = PolygonCommentSchema.parse({
+      id: '550e8400-e29b-41d4-a716-446655440012',
+      polygonId: '550e8400-e29b-41d4-a716-446655440001',
+      parentId: commentLow.id,
+      body: 'Reply with 5 upvotes',
+      authorPseudonym: 'citizen_b',
+      isAuthor: true,
+      upvotes: 5,
+      myVote: 1,
+      createdAt: '2026-11-13T11:00:00.000Z',
+      updatedAt: '2026-11-13T11:00:00.000Z',
+    });
+
+    const sortedComments = sortPolygonCommentsByRating([commentLow, commentHigh]);
+    assert.equal(sortedComments[0]?.id, commentHigh.id);
+    assert.equal(findTopRatedCommentId([commentLow, commentHigh]), commentHigh.id);
+    assert.equal(
+      findTopRatedCommentId([{ ...commentLow, upvotes: 0 }]),
+      null,
+    );
+
+    const parsedCommentList = PolygonCommentListResponseSchema.parse({
+      polygonId: '550e8400-e29b-41d4-a716-446655440001',
+      topCommentId: commentHigh.id,
+      comments: sortedComments,
+    });
+    assert.equal(parsedCommentList.topCommentId, commentHigh.id);
+
+    const parsedCommentVote = CommentVoteResponseSchema.parse({
+      commentId: commentHigh.id,
+      polygonId: '550e8400-e29b-41d4-a716-446655440001',
+      upvotes: 5,
+      myVote: 1,
+    });
+    assert.equal(parsedCommentVote.upvotes, 5);
+
+    const parsedListQuery = PolygonListQuerySchema.parse({
+      bbox: '9.98,53.54,10.01,53.56',
+      authorType: 'new_user',
+      unratedFlaggedOnly: 'true',
+    });
+    assert.equal(parsedListQuery.authorType, 'new_user');
+    assert.equal(parsedListQuery.unratedFlaggedOnly, true);
+
+    const parsedListQueryFalse = PolygonListQuerySchema.parse({
+      bbox: '9.98,53.54,10.01,53.56',
+      unratedFlaggedOnly: 'false',
+    });
+    assert.equal(parsedListQueryFalse.authorType, 'all');
+    assert.equal(parsedListQueryFalse.unratedFlaggedOnly, false);
+
+    const parsedFlagReq = FlagPolygonRequestSchema.parse({
+      reason: 'already_unsealed',
+      note: 'Satellite & street view show lawn.',
+    });
+    assert.equal(parsedFlagReq.reason, 'already_unsealed');
+
+    const parsedFlagRes = FlagPolygonResponseSchema.parse({
+      polygonId: '550e8400-e29b-41d4-a716-446655440001',
+      flagCount: 2,
+      isFlagged: true,
+      myFlag: true,
+      myFlagReason: 'already_unsealed',
+    });
+    assert.equal(parsedFlagRes.isFlagged, true);
+
+    const parsedChallenge = AltchaChallengeResponseSchema.parse({
+      algorithm: 'SHA-256',
+      challenge: 'a'.repeat(64),
+      maxnumber: 10000,
+      salt: '1700000000000:abcdef1234567890',
+      signature: 'b'.repeat(64),
+    });
+    assert.equal(parsedChallenge.algorithm, 'SHA-256');
   });
 });

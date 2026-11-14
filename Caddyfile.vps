@@ -35,7 +35,12 @@
 		reverse_proxy api:3000
 	}
 
-	# 4. Static Expo Web frontend (if exported to `./dist-web`)
+	# 4. Direct Android APK package download (/downloads/unseal.apk)
+	handle /downloads/* {
+		reverse_proxy api:3000
+	}
+
+	# 5. Static Expo Web frontend (if exported to `./dist-web`)
 	handle {
 		header {
 			Permissions-Policy "geolocation=(self), camera=(self), microphone=()"

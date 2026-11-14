@@ -51,13 +51,14 @@ services:
       ORTHOPHOTO_ATTRIBUTION: "${ORTHOPHOTO_ATTRIBUTION:-}"
       ORTHOPHOTO_BOUNDS: "${ORTHOPHOTO_BOUNDS:-}"
       ORTHOPHOTO_MAX_ZOOM: "${ORTHOPHOTO_MAX_ZOOM:-20}"
-      INITIAL_LNG: "${INITIAL_LNG:-9.9937}"
-      INITIAL_LAT: "${INITIAL_LAT:-53.5511}"
+      INITIAL_LNG: "${INITIAL_LNG:-8.2739}"
+      INITIAL_LAT: "${INITIAL_LAT:-49.9989}"
       INITIAL_ZOOM: "${INITIAL_ZOOM:-15}"
       MAX_DAILY_POLYGONS_PER_USER: "${MAX_DAILY_POLYGONS_PER_USER:-25}"
       SESSION_TTL_DAYS: "${SESSION_TTL_DAYS:-30}"
-      DISCLAIMER_TEXT: "${DISCLAIMER_TEXT:-Community unsealing suggestions — non-binding public input, regardless of property ownership.}"
+      DISCLAIMER_TEXT: "${DISCLAIMER_TEXT:-Community unsealing suggestions - non-binding public input, regardless of property ownership.}"
       ABUSE_CONTACT: "${ABUSE_CONTACT:-}"
+      APK_DOWNLOAD_URL: "${APK_DOWNLOAD_URL:-}"
     networks:
       - db_internal
       - edge_net

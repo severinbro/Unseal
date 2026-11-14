@@ -10,12 +10,12 @@ All backend services run inside isolated Docker networks defined in [`docker-com
    - Stores both the spatial GIS tables (`polygons`, German BKG VG250 `municipalities`, `polygon_photos`) and the user/authentication tables (`users`, `sessions`, `email_tokens`, `votes`, `photo_votes`, `reserved_pseudonyms`, `reserved_emails`).
    - Air-gapped on an `internal: true` Docker network with **zero host ports exposed**.
 2. **`api` (`apps/api/Dockerfile` on `db_internal` + `edge_net`):**
-   - Runs numbered SQL migrations (`001_initial_schema.sql`, `002_v2_features.sql`) automatically on boot.
+   - Runs numbered SQL migrations (`001_initial_schema.sql`, `002_v2_features.sql`, `003_v3_adjustments.sql`) automatically on boot.
    - Automatically downloads and seeds Germany's **BKG VG250 OpenData municipality boundaries** (`vg250_gem`, `~11,000` municipalities) on first startup when `AUTO_SEED_VG250=true`.
    - Hosts the **clickable web pages** for email confirmation (`GET/POST /auth/verify-email?token=...`), password recovery (`GET/POST /auth/reset-password?token=...`), and GDPR privacy policy (`GET /auth/privacy`).
-   - Processes uploaded site photos (`<= 250 m` EXIF GPS proximity check -> `"GPS verified"`, followed by 100% EXIF stripping and WebP conversion) onto the persistent `uploads_data` Docker volume (`/uploads/*`).
+   - Processes uploaded site photos (`<= 3 m` EXIF GPS polygon tolerance check -> `"GPS verified"`, followed by 100% EXIF stripping and WebP conversion) onto the persistent `uploads_data` Docker volume (`/uploads/*`), and optionally serves `/downloads/unseal.apk`.
 3. **`caddy` (`caddy:2-alpine` on `edge_net`):**
-   - Terminates HTTPS (`80`/`443`) with automatic Let's Encrypt certificates, discards per-request client IP access logs (`output discard`), proxies `/api/*`, `/auth/*`, and `/uploads/*` to `api:3000`, and serves the static Expo Web app from `./dist-web`.
+   - Terminates HTTPS (`80`/`443`) with automatic Let's Encrypt certificates, discards per-request client IP access logs (`output discard`), proxies `/api/*`, `/auth/*`, `/uploads/*`, and `/downloads/*` to `api:3000`, and serves the static Expo Web app from `./dist-web`.
 
 ---
 
@@ -37,11 +37,11 @@ chmod 600 .env.vps
 ```
 
 Edit `.env.vps` and fill in:
-- `DOMAIN` — your domain without `https://` (e.g. `entsiegelung.example.org`)
-- `ACME_EMAIL` — your email for Let's Encrypt certificate expiry notices
-- `POSTGRES_PASSWORD` — strong random password (`openssl rand -hex 24` — avoid `#`, `?`, or `/` characters so the connection URI needs no URL-encoding)
-- `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` — credentials for the email account that sends registration confirmation and password recovery links
-- `CORS_ORIGIN` — `https://<your-domain>`
+- `DOMAIN` - your domain without `https://` (e.g. `entsiegelung.example.org`)
+- `ACME_EMAIL` - your email for Let's Encrypt certificate expiry notices
+- `POSTGRES_PASSWORD` - strong random password (`openssl rand -hex 24` - avoid `#`, `?`, or `/` characters so the connection URI needs no URL-encoding)
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` - credentials for the email account that sends registration confirmation and password recovery links
+- `CORS_ORIGIN` - `https://<your-domain>`
 
 ### 3. (Optional) Export the Static Web Frontend
 
@@ -83,7 +83,7 @@ curl -I https://entsiegelung.example.org/auth/privacy
 ## Promoting Your Admin Account
 
 Only `admin` accounts can:
-- Mark a polygon as **`✓ Entsiegelt` (`finished`)** (or reopen it to `proposed`), and
+- Set a polygon status to **`⟳ Wird entsiegelt` (`in_progress`)** or **`✓ Entsiegelt` (`finished`)** (or reopen it to `proposed`), and
 - Bulk-import `.geojson` or `.gpkg` polygon datasets.
 
 1. Register your normal account inside the app and click the confirmation link sent to your email.

@@ -1,14 +1,23 @@
 import {
+  COMMENT_LIMITS,
   GEOMETRY_LIMITS,
+  POLYGON_FLAG_REASONS,
+  POLYGON_STATUSES,
   SURFACE_TYPES,
+  type CommentVoteResponse,
+  type CreatePolygonCommentRequest,
+  type FlagPolygonResponse,
   type PatchPolygonRequest,
   type PhotoVoteResponse,
+  type PolygonComment,
+  type PolygonCommentListResponse,
   type PolygonFeature,
+  type PolygonFlagReason,
   type PolygonPhoto,
   type PolygonStatus,
   type SurfaceType,
 } from '@entsiegelung/shared';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -27,7 +36,16 @@ import {
   localizeError,
   type Locale,
 } from '../i18n/translations';
-import { MIN_TOUCH_TARGET_DP } from '../state/viewModels';
+import {
+  buildCommentDisplayModel,
+  deriveInspectorOverviewMeta,
+  formatInspectorDate,
+  MIN_TOUCH_TARGET_DP,
+  pruneDeletedCommentSubtree,
+  type CommentDisplayModel,
+  type CommentThreadNode,
+  type InspectorOverviewMetaModel,
+} from '../state/viewModels';
 import {
   MONO_FONT_FAMILY,
   PALETTE,
@@ -36,7 +54,16 @@ import {
   TABULAR_NUMS_STYLE,
 } from '../theme/tokens';
 
-export type InspectorTab = 'overview' | 'photos' | 'manage';
+export type InspectorTab = 'overview' | 'comments' | 'photos' | 'manage';
+export {
+  buildCommentDisplayModel,
+  deriveInspectorOverviewMeta,
+  formatInspectorDate,
+  pruneDeletedCommentSubtree,
+  type CommentDisplayModel,
+  type CommentThreadNode,
+  type InspectorOverviewMetaModel,
+};
 
 export interface PolygonInspectorSheetProps {
   feature: PolygonFeature | null;
@@ -75,6 +102,20 @@ export interface PolygonInspectorSheetProps {
   ) => Promise<PhotoVoteResponse>;
   onClearPhotoVote?: (photoId: string) => Promise<PhotoVoteResponse>;
   onDeletePhoto?: (photoId: string, polygonId: string) => Promise<void>;
+  onListComments?: (polygonId: string) => Promise<PolygonCommentListResponse>;
+  onCreateComment?: (
+    polygonId: string,
+    input: CreatePolygonCommentRequest,
+  ) => Promise<PolygonComment>;
+  onVoteComment?: (commentId: string) => Promise<CommentVoteResponse>;
+  onClearCommentVote?: (commentId: string) => Promise<CommentVoteResponse>;
+  onDeleteComment?: (commentId: string, polygonId: string) => Promise<void>;
+  onFlagPolygon?: (
+    polygonId: string,
+    reason: PolygonFlagReason,
+  ) => Promise<FlagPolygonResponse>;
+  onUnflagPolygon?: (polygonId: string) => Promise<FlagPolygonResponse>;
+  onClearPolygonFlags?: (polygonId: string) => Promise<FlagPolygonResponse>;
 }
 
 export function PolygonInspectorSheet({
@@ -103,6 +144,14 @@ export function PolygonInspectorSheet({
   onVotePhoto,
   onClearPhotoVote,
   onDeletePhoto,
+  onListComments,
+  onCreateComment,
+  onVoteComment,
+  onClearCommentVote,
+  onDeleteComment,
+  onFlagPolygon,
+  onUnflagPolygon,
+  onClearPolygonFlags,
 }: PolygonInspectorSheetProps): React.JSX.Element | null {
   const [activeTab, setActiveTab] = useState<InspectorTab>('overview');
   const [isEditing, setIsEditing] = useState<boolean>(false);
@@ -124,10 +173,31 @@ export function PolygonInspectorSheet({
   >({});
   const [lightboxPhoto, setLightboxPhoto] = useState<PolygonPhoto | null>(null);
 
+  const [comments, setComments] = useState<PolygonComment[]>([]);
+  const [commentsLoadedForId, setCommentsLoadedForId] = useState<string | null>(
+    null,
+  );
+  const [isLoadingComments, setIsLoadingComments] = useState<boolean>(false);
+  const [isSubmittingComment, setIsSubmittingComment] =
+    useState<boolean>(false);
+  const [newCommentBody, setNewCommentBody] = useState<string>('');
+  const [replyTargetId, setReplyTargetId] = useState<string | null>(null);
+  const [replyDraftBody, setReplyDraftBody] = useState<string>('');
+  const [isFlagPickerOpen, setIsFlagPickerOpen] = useState<boolean>(false);
+  const [selectedFlagReason, setSelectedFlagReason] =
+    useState<PolygonFlagReason>('implausible');
+  const [isFlagging, setIsFlagging] = useState<boolean>(false);
+
   const featureId = feature?.id ?? null;
   const featureSurfaceType = feature?.properties.surfaceType ?? 'asphalt';
   const featureNote = feature?.properties.note ?? '';
   const featurePhotoCount = feature?.properties.photoCount ?? 0;
+  const featureCommentCount = feature?.properties.commentCount ?? 0;
+
+  const commentDisplay = useMemo(
+    () => buildCommentDisplayModel(comments),
+    [comments],
+  );
 
   useEffect(() => {
     setActiveTab('overview');
@@ -140,6 +210,14 @@ export function PolygonInspectorSheet({
     setPhotosLoadedForId(null);
     setRevealedFakeIds({});
     setLightboxPhoto(null);
+    setComments([]);
+    setCommentsLoadedForId(null);
+    setNewCommentBody('');
+    setReplyTargetId(null);
+    setReplyDraftBody('');
+    setIsFlagPickerOpen(false);
+    setSelectedFlagReason('implausible');
+    setIsFlagging(false);
   }, [featureId]);
 
   useEffect(() => {
@@ -169,6 +247,26 @@ export function PolygonInspectorSheet({
     [locale, onListPhotos],
   );
 
+  const loadCommentsForFeature = useCallback(
+    async (polygonId: string): Promise<void> => {
+      if (!onListComments) {
+        return;
+      }
+      setIsLoadingComments(true);
+      try {
+        const response = await onListComments(polygonId);
+        setComments(response.comments);
+        setCommentsLoadedForId(polygonId);
+      } catch (err: unknown) {
+        const fallback = getTranslations(locale).inspector.commentErrorFallback;
+        setActionError(localizeError(err, fallback, locale));
+      } finally {
+        setIsLoadingComments(false);
+      }
+    },
+    [locale, onListComments],
+  );
+
   useEffect(() => {
     if (
       featureId !== null &&
@@ -187,6 +285,24 @@ export function PolygonInspectorSheet({
     photosLoadedForId,
   ]);
 
+  useEffect(() => {
+    if (
+      featureId !== null &&
+      activeTab === 'comments' &&
+      commentsLoadedForId !== featureId &&
+      onListComments
+    ) {
+      void loadCommentsForFeature(featureId);
+    }
+  }, [
+    activeTab,
+    commentsLoadedForId,
+    featureCommentCount,
+    featureId,
+    loadCommentsForFeature,
+    onListComments,
+  ]);
+
   if (feature === null) {
     return null;
   }
@@ -200,6 +316,7 @@ export function PolygonInspectorSheet({
   const { properties } = feature;
   const swatch = SURFACE_SWATCHES[properties.surfaceType];
   const isFinished = properties.status === 'finished';
+  const isInProgress = properties.status === 'in_progress';
   const effectiveOverlapCount = Math.max(1, overlapCount);
   const displayOverlapPosition = Math.min(
     effectiveOverlapCount,
@@ -207,21 +324,29 @@ export function PolygonInspectorSheet({
   );
   const displayedPhotoCount =
     photosLoadedForId === feature.id ? photos.length : properties.photoCount;
+  const displayedCommentCount =
+    commentsLoadedForId === feature.id
+      ? comments.length
+      : properties.commentCount;
 
   const scoreToneStyle = isFinished
     ? styles.scoreBadgeFinished
-    : properties.score > 0
-      ? styles.scoreBadgePositive
-      : properties.score < 0
-        ? styles.scoreBadgeNegative
-        : styles.scoreBadgeNeutral;
+    : isInProgress
+      ? styles.scoreBadgeInProgress
+      : properties.score > 0
+        ? styles.scoreBadgePositive
+        : properties.score < 0
+          ? styles.scoreBadgeNegative
+          : styles.scoreBadgeNeutral;
   const scoreTextToneStyle = isFinished
     ? styles.scoreBadgeTextFinished
-    : properties.score > 0
-      ? styles.scoreBadgeTextPositive
-      : properties.score < 0
-        ? styles.scoreBadgeTextNegative
-        : styles.scoreBadgeTextNeutral;
+    : isInProgress
+      ? styles.scoreBadgeTextInProgress
+      : properties.score > 0
+        ? styles.scoreBadgeTextPositive
+        : properties.score < 0
+          ? styles.scoreBadgeTextNegative
+          : styles.scoreBadgeTextNeutral;
 
   const toPhotoUrl = (rawUrl: string): string =>
     resolveUploadUrl ? resolveUploadUrl(rawUrl) : rawUrl;
@@ -269,13 +394,12 @@ export function PolygonInspectorSheet({
       });
   };
 
-  const handleToggleStatus = (): void => {
-    if (!onPatchPolygonStatus) {
+  const handleSetStatus = (nextStatus: PolygonStatus): void => {
+    if (!onPatchPolygonStatus || nextStatus === properties.status) {
       return;
     }
     setActionError(null);
     setIsBusy(true);
-    const nextStatus: PolygonStatus = isFinished ? 'proposed' : 'finished';
 
     void onPatchPolygonStatus(feature.id, nextStatus)
       .catch((err: unknown) => {
@@ -391,6 +515,348 @@ export function PolygonInspectorSheet({
       });
   };
 
+  const handleCreateCommentSubmit = (parentId: string | null): void => {
+    if (!onCreateComment) {
+      return;
+    }
+    if (!isAuthenticated) {
+      onOpenAuth?.();
+      return;
+    }
+    const rawBody = parentId === null ? newCommentBody : replyDraftBody;
+    const trimmed = rawBody.trim();
+    if (trimmed.length === 0) {
+      return;
+    }
+
+    setActionError(null);
+    setIsSubmittingComment(true);
+    void onCreateComment(feature.id, {
+      body: trimmed,
+      parentId,
+    })
+      .then((created) => {
+        setComments((prev) => [
+          created,
+          ...prev.filter((item) => item.id !== created.id),
+        ]);
+        setCommentsLoadedForId(feature.id);
+        if (parentId === null) {
+          setNewCommentBody('');
+        } else {
+          setReplyTargetId(null);
+          setReplyDraftBody('');
+        }
+      })
+      .catch((err: unknown) => {
+        setActionError(localizeError(err, t.commentErrorFallback, locale));
+      })
+      .finally(() => {
+        setIsSubmittingComment(false);
+      });
+  };
+
+  const handleCommentVotePress = (comment: PolygonComment): void => {
+    if (!isAuthenticated) {
+      onOpenAuth?.();
+      return;
+    }
+    if (!onVoteComment || !onClearCommentVote) {
+      return;
+    }
+
+    setActionError(null);
+    setIsBusy(true);
+    const task =
+      comment.myVote === 1
+        ? onClearCommentVote(comment.id)
+        : onVoteComment(comment.id);
+
+    void task
+      .then((res) => {
+        setComments((prev) =>
+          prev.map((item) =>
+            item.id === res.commentId
+              ? {
+                  ...item,
+                  upvotes: res.upvotes,
+                  myVote: res.myVote,
+                }
+              : item,
+          ),
+        );
+      })
+      .catch((err: unknown) => {
+        setActionError(localizeError(err, t.commentErrorFallback, locale));
+      })
+      .finally(() => {
+        setIsBusy(false);
+      });
+  };
+
+  const handleDeleteCommentPress = (commentId: string): void => {
+    if (!onDeleteComment) {
+      return;
+    }
+    setActionError(null);
+    setIsBusy(true);
+    void onDeleteComment(commentId, feature.id)
+      .then(() => {
+        setComments((prev) => pruneDeletedCommentSubtree(prev, commentId));
+        if (replyTargetId === commentId) {
+          setReplyTargetId(null);
+          setReplyDraftBody('');
+        }
+      })
+      .catch((err: unknown) => {
+        setActionError(localizeError(err, t.commentErrorFallback, locale));
+      })
+      .finally(() => {
+        setIsBusy(false);
+      });
+  };
+
+  const handleFlagSubmit = (): void => {
+    if (!onFlagPolygon) {
+      return;
+    }
+    if (!isAuthenticated) {
+      onOpenAuth?.();
+      return;
+    }
+    setActionError(null);
+    setIsFlagging(true);
+    void onFlagPolygon(feature.id, selectedFlagReason)
+      .then(() => {
+        setIsFlagPickerOpen(false);
+      })
+      .catch((err: unknown) => {
+        setActionError(localizeError(err, t.flagErrorFallback, locale));
+      })
+      .finally(() => {
+        setIsFlagging(false);
+      });
+  };
+
+  const handleUnflagPress = (): void => {
+    if (!onUnflagPolygon) {
+      return;
+    }
+    if (!isAuthenticated) {
+      onOpenAuth?.();
+      return;
+    }
+    setActionError(null);
+    setIsFlagging(true);
+    void onUnflagPolygon(feature.id)
+      .catch((err: unknown) => {
+        setActionError(localizeError(err, t.flagErrorFallback, locale));
+      })
+      .finally(() => {
+        setIsFlagging(false);
+      });
+  };
+
+  const handleClearFlagsAdminPress = (): void => {
+    if (!onClearPolygonFlags) {
+      return;
+    }
+    setActionError(null);
+    setIsFlagging(true);
+    void onClearPolygonFlags(feature.id)
+      .catch((err: unknown) => {
+        setActionError(localizeError(err, t.flagErrorFallback, locale));
+      })
+      .finally(() => {
+        setIsFlagging(false);
+      });
+  };
+
+  const overviewMeta = deriveInspectorOverviewMeta(feature, locale);
+  const entryDateText = overviewMeta.entryDateText;
+  const authorLastLoginText = overviewMeta.authorLastLoginText;
+  const displayAuthorHandle = overviewMeta.displayAuthorHandle;
+
+  const formatCommentTimestamp = (iso: string): string => {
+    const parsed = new Date(iso);
+    if (Number.isNaN(parsed.getTime())) {
+      return '';
+    }
+    return parsed.toISOString().slice(0, 10);
+  };
+
+  const renderCommentThreadNode = (
+    node: CommentThreadNode,
+  ): React.JSX.Element => {
+    const { comment, parentAuthorPseudonym, depth, replies } = node;
+    const isTopComment = commentDisplay.topCommentId === comment.id;
+    const isReplyingHere = replyTargetId === comment.id;
+    const canReply = depth + 1 < COMMENT_LIMITS.MAX_REPLY_DEPTH;
+    const indentPx = Math.min(depth, 3) * 14;
+    const formattedDate = formatCommentTimestamp(comment.createdAt);
+
+    return (
+      <View key={comment.id} style={styles.commentThreadGroup}>
+        <View
+          style={[
+            styles.commentCard,
+            depth > 0 ? { marginLeft: indentPx } : null,
+            depth > 0 ? styles.commentReplyCard : null,
+            isTopComment ? styles.commentCardTopRated : null,
+          ]}
+        >
+          {isTopComment || parentAuthorPseudonym !== null ? (
+            <View style={styles.commentBadgesRow}>
+              {isTopComment ? (
+                <View style={styles.topCommentBadge}>
+                  <Text style={styles.topCommentBadgeLabel}>
+                    {t.topCommentBadge}
+                  </Text>
+                </View>
+              ) : null}
+              {parentAuthorPseudonym !== null ? (
+                <Text style={styles.replyingToMeta}>
+                  {t.replyingToLabel(parentAuthorPseudonym)}
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
+
+          <View style={styles.commentHeaderRow}>
+            <Text style={styles.commentAuthorLabel}>
+              {t.commentAuthorLabel(comment.authorPseudonym, comment.isAuthor)}
+            </Text>
+            {formattedDate ? (
+              <Text style={styles.commentDateLabel}>{formattedDate}</Text>
+            ) : null}
+          </View>
+
+          <Text style={styles.commentBodyText}>{comment.body}</Text>
+
+          <View style={styles.commentActionsRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t.upvoteCommentA11y(comment.upvotes)}
+              accessibilityState={{
+                selected: comment.myVote === 1,
+                disabled: isBusy,
+              }}
+              disabled={isBusy}
+              onPress={() => handleCommentVotePress(comment)}
+              style={[
+                styles.photoVotePill,
+                comment.myVote === 1 ? styles.photoVotePillRealActive : null,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.photoVoteLabel,
+                  comment.myVote === 1 ? styles.photoVoteLabelActive : null,
+                ]}
+              >
+                ▲ {comment.upvotes}
+              </Text>
+            </Pressable>
+
+            {canReply && onCreateComment ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t.replyButton}
+                disabled={isSubmittingComment}
+                onPress={() => {
+                  if (!isAuthenticated) {
+                    onOpenAuth?.();
+                    return;
+                  }
+                  if (isReplyingHere) {
+                    setReplyTargetId(null);
+                    setReplyDraftBody('');
+                  } else {
+                    setReplyTargetId(comment.id);
+                    setReplyDraftBody('');
+                  }
+                }}
+                style={styles.commentReplyPill}
+              >
+                <Text style={styles.commentReplyPillLabel}>
+                  {isReplyingHere ? t.cancelReplyButton : t.replyButton}
+                </Text>
+              </Pressable>
+            ) : null}
+
+            {(comment.isAuthor || isAdmin) && onDeleteComment ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t.deleteCommentA11y}
+                disabled={isBusy}
+                onPress={() => handleDeleteCommentPress(comment.id)}
+                style={styles.photoDeletePill}
+              >
+                <Text style={styles.photoDeleteLabel}>{t.deleteComment}</Text>
+              </Pressable>
+            ) : null}
+          </View>
+
+          {isReplyingHere && isAuthenticated ? (
+            <View style={styles.replyComposerBox}>
+              <TextInput
+                accessibilityLabel={t.replyInputPlaceholder(
+                  comment.authorPseudonym,
+                )}
+                value={replyDraftBody}
+                onChangeText={setReplyDraftBody}
+                maxLength={COMMENT_LIMITS.MAX_BODY_LENGTH}
+                multiline
+                placeholder={t.replyInputPlaceholder(comment.authorPseudonym)}
+                placeholderTextColor={PALETTE.inkMuted}
+                style={styles.commentInput}
+              />
+              <View style={styles.buttonRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isSubmittingComment}
+                  onPress={() => {
+                    setReplyTargetId(null);
+                    setReplyDraftBody('');
+                  }}
+                  style={[styles.touchButton, styles.secondaryButton]}
+                >
+                  <Text style={styles.secondaryButtonLabel}>
+                    {t.cancelReplyButton}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={
+                    isSubmittingComment || replyDraftBody.trim().length === 0
+                  }
+                  onPress={() => handleCreateCommentSubmit(comment.id)}
+                  style={[
+                    styles.touchButton,
+                    styles.primaryButton,
+                    replyDraftBody.trim().length === 0
+                      ? styles.disabledButton
+                      : null,
+                  ]}
+                >
+                  <Text style={styles.primaryButtonLabel}>
+                    {isSubmittingComment ? t.postingComment : t.postReply}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+        </View>
+
+        {replies.length > 0 ? (
+          <View style={styles.commentRepliesStack}>
+            {replies.map((replyNode) => renderCommentThreadNode(replyNode))}
+          </View>
+        ) : null}
+      </View>
+    );
+  };
+
   return (
     <View
       style={[styles.sheet, compact ? styles.sheetCompact : null]}
@@ -415,7 +881,9 @@ export function PolygonInspectorSheet({
                 styles.statusBadge,
                 isFinished
                   ? styles.statusBadgeFinished
-                  : styles.statusBadgeProposed,
+                  : isInProgress
+                    ? styles.statusBadgeInProgress
+                    : styles.statusBadgeProposed,
               ]}
             >
               <Text
@@ -423,18 +891,39 @@ export function PolygonInspectorSheet({
                   styles.statusBadgeLabel,
                   isFinished
                     ? styles.statusBadgeLabelFinished
-                    : styles.statusBadgeLabelProposed,
+                    : isInProgress
+                      ? styles.statusBadgeLabelInProgress
+                      : styles.statusBadgeLabelProposed,
                 ]}
               >
-                {isFinished ? t.statusFinishedBadge : t.statusProposedBadge}
+                {isFinished
+                  ? t.statusFinishedBadge
+                  : isInProgress
+                    ? t.statusInProgressBadge
+                    : t.statusProposedBadge}
               </Text>
             </View>
+            {properties.isFlagged ? (
+              <View
+                testID="needs-review-badge"
+                style={styles.needsReviewBadge}
+              >
+                <Text style={styles.needsReviewBadgeLabel}>
+                  {t.needsReviewBadge(properties.flagCount)}
+                </Text>
+              </View>
+            ) : null}
           </View>
 
           <View style={styles.metaSubtitleRow}>
             <Text style={styles.authorMeta}>
               {t.proposedBy(properties.authorPseudonym, properties.isAuthor)}
             </Text>
+            {entryDateText ? (
+              <Text testID="header-entry-date" style={styles.entryDateMeta}>
+                · {entryDateText}
+              </Text>
+            ) : null}
             {properties.municipalityName ? (
               <View style={styles.municipalityChip}>
                 <Text numberOfLines={1} style={styles.municipalityChipLabel}>
@@ -552,10 +1041,32 @@ export function PolygonInspectorSheet({
             numberOfLines={1}
             style={[
               styles.tabButtonLabel,
+              compact ? styles.tabButtonLabelCompact : null,
               activeTab === 'overview' ? styles.tabButtonLabelActive : null,
             ]}
           >
             {t.tabOverview}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="tab"
+          accessibilityState={{ selected: activeTab === 'comments' }}
+          onPress={() => setActiveTab('comments')}
+          style={[
+            styles.tabButton,
+            activeTab === 'comments' ? styles.tabButtonActive : null,
+          ]}
+        >
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.tabButtonLabel,
+              compact ? styles.tabButtonLabelCompact : null,
+              activeTab === 'comments' ? styles.tabButtonLabelActive : null,
+            ]}
+          >
+            {t.tabComments(displayedCommentCount)}
           </Text>
         </Pressable>
 
@@ -572,6 +1083,7 @@ export function PolygonInspectorSheet({
             numberOfLines={1}
             style={[
               styles.tabButtonLabel,
+              compact ? styles.tabButtonLabelCompact : null,
               activeTab === 'photos' ? styles.tabButtonLabelActive : null,
             ]}
           >
@@ -592,6 +1104,7 @@ export function PolygonInspectorSheet({
             numberOfLines={1}
             style={[
               styles.tabButtonLabel,
+              compact ? styles.tabButtonLabelCompact : null,
               activeTab === 'manage' ? styles.tabButtonLabelActive : null,
             ]}
           >
@@ -616,9 +1129,172 @@ export function PolygonInspectorSheet({
             </Text>
           </View>
 
+          <View
+            testID="inspector-creator-card"
+            style={styles.creatorInfoCard}
+          >
+            <View style={styles.creatorHeaderRow}>
+              <Text style={styles.creatorInfoLabel}>
+                {t.creatorSectionLabel}:{' '}
+                <Text style={styles.creatorInfoValue}>
+                  @{displayAuthorHandle}
+                  {properties.isAuthor
+                    ? locale === 'de'
+                      ? ' · Du'
+                      : ' · You'
+                    : ''}
+                </Text>
+              </Text>
+              {properties.authorIsNewUser ? (
+                <View
+                  testID="new-contributor-badge"
+                  style={styles.newContributorBadge}
+                >
+                  <Text style={styles.newContributorBadgeLabel}>
+                    {t.newContributorBadge}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+            <View style={styles.creatorMetaRow}>
+              <Text testID="overview-entry-date" style={styles.creatorMetaItem}>
+                {t.entryDateLabel}:{' '}
+                <Text style={styles.creatorMetaMono}>
+                  {entryDateText ?? '—'}
+                </Text>
+              </Text>
+              <Text
+                testID="overview-author-last-login"
+                style={styles.creatorMetaItem}
+              >
+                {t.creatorLastLoginLabel}:{' '}
+                <Text style={styles.creatorMetaMono}>
+                  {authorLastLoginText ?? t.creatorLastLoginUnknown}
+                </Text>
+              </Text>
+            </View>
+          </View>
+
+          {!properties.isAuthor && (onFlagPolygon || onUnflagPolygon) ? (
+            <View style={styles.flagReviewCard}>
+              {properties.myFlag && onUnflagPolygon ? (
+                <Pressable
+                  testID="unflag-polygon-button"
+                  accessibilityRole="button"
+                  accessibilityLabel={t.removeFlagA11y}
+                  disabled={isFlagging}
+                  onPress={handleUnflagPress}
+                  style={[styles.touchButton, styles.flagActiveButton]}
+                >
+                  <Text style={styles.flagActiveButtonLabel}>
+                    {isFlagging ? t.submittingFlag : t.removeFlagButton}
+                  </Text>
+                </Pressable>
+              ) : isFlagPickerOpen && onFlagPolygon ? (
+                <View style={styles.flagPickerBox}>
+                  <Text style={styles.flagReasonPromptText}>
+                    {t.flagReasonPrompt}
+                  </Text>
+                  <View
+                    style={styles.surfaceChoiceRow}
+                    accessibilityRole="radiogroup"
+                  >
+                    {POLYGON_FLAG_REASONS.map((reasonOption) => {
+                      const selected = selectedFlagReason === reasonOption;
+                      const label = t.flagReasonLabels[reasonOption];
+                      return (
+                        <Pressable
+                          key={reasonOption}
+                          testID={`flag-reason-${reasonOption}`}
+                          accessibilityRole="radio"
+                          accessibilityLabel={label}
+                          accessibilityState={{
+                            checked: selected,
+                            disabled: isFlagging,
+                          }}
+                          disabled={isFlagging}
+                          onPress={() => setSelectedFlagReason(reasonOption)}
+                          style={[
+                            styles.surfaceChip,
+                            selected ? styles.flagReasonChipSelected : null,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.surfaceChipLabel,
+                              selected
+                                ? styles.flagReasonChipLabelSelected
+                                : null,
+                            ]}
+                          >
+                            {label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  <View style={styles.buttonRow}>
+                    <Pressable
+                      accessibilityRole="button"
+                      disabled={isFlagging}
+                      onPress={() => setIsFlagPickerOpen(false)}
+                      style={[styles.touchButton, styles.secondaryButton]}
+                    >
+                      <Text style={styles.secondaryButtonLabel}>
+                        {t.cancelFlagButton}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      testID="submit-flag-button"
+                      accessibilityRole="button"
+                      disabled={isFlagging}
+                      onPress={handleFlagSubmit}
+                      style={[styles.touchButton, styles.flagSubmitButton]}
+                    >
+                      <Text style={styles.primaryButtonLabel}>
+                        {isFlagging ? t.submittingFlag : t.submitFlagButton}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : onFlagPolygon ? (
+                <Pressable
+                  testID="open-flag-picker-button"
+                  accessibilityRole="button"
+                  accessibilityLabel={t.flagForReviewA11y}
+                  disabled={isFlagging}
+                  onPress={() => {
+                    if (!isAuthenticated) {
+                      onOpenAuth?.();
+                      return;
+                    }
+                    setIsFlagPickerOpen(true);
+                  }}
+                  style={[styles.touchButton, styles.flagOutlineButton]}
+                >
+                  <Text style={styles.flagOutlineButtonLabel}>
+                    {t.flagForReviewButton}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
+
+          {displayedCommentCount > 0 ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setActiveTab('comments')}
+              style={styles.commentsShortcutCard}
+            >
+              <Text style={styles.commentsShortcutText}>
+                {t.openCommentsBanner(displayedCommentCount)}
+              </Text>
+            </Pressable>
+          ) : null}
+
           {properties.municipalityName &&
           properties.score > 0 &&
-          !isFinished ? (
+          properties.status === 'proposed' ? (
             <View style={styles.municipalityScaleCard}>
               <Text style={styles.municipalityScaleText}>
                 {t.municipalityRankHint(
@@ -638,6 +1314,155 @@ export function PolygonInspectorSheet({
               {localizedDisclaimer}
             </Text>
           </View>
+        </View>
+      ) : null}
+
+      {activeTab === 'comments' ? (
+        <View style={styles.tabSection}>
+          {isAuthenticated && onCreateComment ? (
+            <View style={styles.commentComposerBox}>
+              <TextInput
+                accessibilityLabel={t.commentInputA11y}
+                value={newCommentBody}
+                onChangeText={setNewCommentBody}
+                maxLength={COMMENT_LIMITS.MAX_BODY_LENGTH}
+                multiline
+                placeholder={t.commentInputPlaceholder}
+                placeholderTextColor={PALETTE.inkMuted}
+                style={styles.commentInput}
+              />
+              <View style={styles.commentComposerFooter}>
+                <Text style={styles.commentCharCounter}>
+                  {newCommentBody.length}/{COMMENT_LIMITS.MAX_BODY_LENGTH}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t.postComment}
+                  disabled={
+                    isSubmittingComment || newCommentBody.trim().length === 0
+                  }
+                  onPress={() => handleCreateCommentSubmit(null)}
+                  style={[
+                    styles.touchButton,
+                    styles.primaryButton,
+                    newCommentBody.trim().length === 0
+                      ? styles.disabledButton
+                      : null,
+                  ]}
+                >
+                  <Text style={styles.primaryButtonLabel}>
+                    {isSubmittingComment ? t.postingComment : t.postComment}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : !isAuthenticated ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => onOpenAuth?.()}
+              style={styles.photoSignInBanner}
+            >
+              <Text style={styles.photoSignInBannerText}>
+                {t.commentSignInPrompt}
+              </Text>
+            </Pressable>
+          ) : null}
+
+          {isLoadingComments ? (
+            <View style={styles.photosLoadingBox}>
+              <ActivityIndicator size="small" color={PALETTE.accentPrimary} />
+            </View>
+          ) : commentDisplay.roots.length === 0 ? (
+            <View style={styles.emptyPhotosBox}>
+              <Text style={styles.emptyPhotosText}>{t.noCommentsYet}</Text>
+            </View>
+          ) : (
+            <View style={styles.commentsStack}>
+              {commentDisplay.pinnedTopReply !== null ? (
+                <View
+                  key={`pinned-${commentDisplay.pinnedTopReply.comment.id}`}
+                  style={[styles.commentCard, styles.commentCardTopRated]}
+                >
+                  <View style={styles.commentBadgesRow}>
+                    <View style={styles.topCommentBadge}>
+                      <Text style={styles.topCommentBadgeLabel}>
+                        {t.topCommentBadge}
+                      </Text>
+                    </View>
+                    {commentDisplay.pinnedTopReply.parentAuthorPseudonym !==
+                    null ? (
+                      <Text style={styles.replyingToMeta}>
+                        {t.replyingToLabel(
+                          commentDisplay.pinnedTopReply.parentAuthorPseudonym,
+                        )}
+                      </Text>
+                    ) : null}
+                  </View>
+
+                  <View style={styles.commentHeaderRow}>
+                    <Text style={styles.commentAuthorLabel}>
+                      {t.commentAuthorLabel(
+                        commentDisplay.pinnedTopReply.comment.authorPseudonym,
+                        commentDisplay.pinnedTopReply.comment.isAuthor,
+                      )}
+                    </Text>
+                    <Text style={styles.commentDateLabel}>
+                      {formatCommentTimestamp(
+                        commentDisplay.pinnedTopReply.comment.createdAt,
+                      )}
+                    </Text>
+                  </View>
+
+                  <Text style={styles.commentBodyText}>
+                    {commentDisplay.pinnedTopReply.comment.body}
+                  </Text>
+
+                  <View style={styles.commentActionsRow}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={t.upvoteCommentA11y(
+                        commentDisplay.pinnedTopReply.comment.upvotes,
+                      )}
+                      accessibilityState={{
+                        selected:
+                          commentDisplay.pinnedTopReply.comment.myVote === 1,
+                        disabled: isBusy,
+                      }}
+                      disabled={isBusy}
+                      onPress={() => {
+                        if (commentDisplay.pinnedTopReply) {
+                          handleCommentVotePress(
+                            commentDisplay.pinnedTopReply.comment,
+                          );
+                        }
+                      }}
+                      style={[
+                        styles.photoVotePill,
+                        commentDisplay.pinnedTopReply.comment.myVote === 1
+                          ? styles.photoVotePillRealActive
+                          : null,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.photoVoteLabel,
+                          commentDisplay.pinnedTopReply.comment.myVote === 1
+                            ? styles.photoVoteLabelActive
+                            : null,
+                        ]}
+                      >
+                        ▲ {commentDisplay.pinnedTopReply.comment.upvotes}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
+
+              {commentDisplay.roots.map((rootNode) =>
+                renderCommentThreadNode(rootNode),
+              )}
+            </View>
+          )}
         </View>
       ) : null}
 
@@ -835,36 +1660,89 @@ export function PolygonInspectorSheet({
 
       {activeTab === 'manage' ? (
         <View style={styles.tabSection}>
-          {isAdmin && onPatchPolygonStatus ? (
+          {isAdmin &&
+          (onPatchPolygonStatus ||
+            (properties.flagCount > 0 && onClearPolygonFlags)) ? (
             <View style={styles.manageCard}>
               <Text style={styles.manageSectionTitle}>
                 {t.adminSectionTitle}
               </Text>
-              <Pressable
-                accessibilityRole="button"
-                disabled={isBusy}
-                onPress={handleToggleStatus}
-                style={[
-                  styles.touchButton,
-                  isFinished
-                    ? styles.secondaryButton
-                    : styles.finishedActionButton,
-                ]}
-              >
-                <Text
-                  style={
-                    isFinished
-                      ? styles.secondaryButtonLabel
-                      : styles.primaryButtonLabel
-                  }
+              {onPatchPolygonStatus ? (
+                <>
+                  <Text style={styles.immutableNotice}>
+                    {t.statusSelectorLabel}
+                  </Text>
+                  <View
+                    style={styles.surfaceChoiceRow}
+                    accessibilityRole="radiogroup"
+                  >
+                    {POLYGON_STATUSES.map((statusOption) => {
+                      const selected = properties.status === statusOption;
+                      const optionLabel =
+                        statusOption === 'finished'
+                          ? t.setStatusFinished
+                          : statusOption === 'in_progress'
+                            ? t.setStatusInProgress
+                            : t.setStatusProposed;
+                      return (
+                        <Pressable
+                          key={statusOption}
+                          accessibilityRole="radio"
+                          accessibilityLabel={optionLabel}
+                          accessibilityState={{
+                            checked: selected,
+                            disabled: isBusy,
+                          }}
+                          disabled={isBusy}
+                          onPress={() => handleSetStatus(statusOption)}
+                          style={[
+                            styles.surfaceChip,
+                            selected && statusOption === 'finished'
+                              ? styles.statusOptionChipFinished
+                              : selected && statusOption === 'in_progress'
+                                ? styles.statusOptionChipInProgress
+                                : selected
+                                  ? styles.surfaceChipSelected
+                                  : null,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.surfaceChipLabel,
+                              selected && statusOption === 'finished'
+                                ? styles.statusBadgeLabelFinished
+                                : selected && statusOption === 'in_progress'
+                                  ? styles.statusBadgeLabelInProgress
+                                  : selected
+                                    ? styles.surfaceChipLabelSelected
+                                    : null,
+                            ]}
+                          >
+                            {isBusy && selected
+                              ? t.updatingStatus
+                              : optionLabel}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </>
+              ) : null}
+              {properties.flagCount > 0 && onClearPolygonFlags ? (
+                <Pressable
+                  testID="admin-clear-flags-button"
+                  accessibilityRole="button"
+                  disabled={isFlagging}
+                  onPress={handleClearFlagsAdminPress}
+                  style={[styles.touchButton, styles.secondaryButton]}
                 >
-                  {isBusy
-                    ? t.updatingStatus
-                    : isFinished
-                      ? t.markProposedButton
-                      : t.markFinishedButton}
-                </Text>
-              </Pressable>
+                  <Text style={styles.secondaryButtonLabel}>
+                    {isFlagging
+                      ? t.clearingFlags
+                      : t.clearFlagsAdminButton(properties.flagCount)}
+                  </Text>
+                </Pressable>
+              ) : null}
             </View>
           ) : null}
 
@@ -1138,6 +2016,10 @@ const styles = StyleSheet.create({
     backgroundColor: PALETTE.bgSubtle,
     borderColor: PALETTE.borderStrong,
   },
+  statusBadgeInProgress: {
+    backgroundColor: PALETTE.inProgressBg,
+    borderColor: PALETTE.inProgressBorder,
+  },
   statusBadgeFinished: {
     backgroundColor: PALETTE.finishedBg,
     borderColor: PALETTE.finishedBorder,
@@ -1149,8 +2031,24 @@ const styles = StyleSheet.create({
   statusBadgeLabelProposed: {
     color: PALETTE.inkSecondary,
   },
+  statusBadgeLabelInProgress: {
+    color: PALETTE.inProgressText,
+  },
   statusBadgeLabelFinished: {
     color: PALETTE.finishedText,
+  },
+  needsReviewBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: RADII.pill,
+    borderWidth: 1,
+    backgroundColor: PALETTE.neutralBg,
+    borderColor: PALETTE.neutralBorder,
+  },
+  needsReviewBadgeLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: PALETTE.neutralText,
   },
   metaSubtitleRow: {
     flexDirection: 'row',
@@ -1160,6 +2058,12 @@ const styles = StyleSheet.create({
   },
   authorMeta: {
     fontSize: 12,
+    color: PALETTE.inkMuted,
+  },
+  entryDateMeta: {
+    ...TABULAR_NUMS_STYLE,
+    fontFamily: MONO_FONT_FAMILY,
+    fontSize: 11.5,
     color: PALETTE.inkMuted,
   },
   municipalityChip: {
@@ -1244,6 +2148,10 @@ const styles = StyleSheet.create({
     backgroundColor: PALETTE.dangerBg,
     borderColor: PALETTE.dangerBorder,
   },
+  scoreBadgeInProgress: {
+    backgroundColor: PALETTE.inProgressBg,
+    borderColor: PALETTE.inProgressBorder,
+  },
   scoreBadgeFinished: {
     backgroundColor: PALETTE.finishedBg,
     borderColor: PALETTE.finishedBorder,
@@ -1267,6 +2175,9 @@ const styles = StyleSheet.create({
   scoreBadgeTextNegative: {
     color: PALETTE.dangerText,
   },
+  scoreBadgeTextInProgress: {
+    color: PALETTE.inProgressText,
+  },
   scoreBadgeTextFinished: {
     color: PALETTE.finishedText,
   },
@@ -1286,7 +2197,7 @@ const styles = StyleSheet.create({
   tabButton: {
     flex: 1,
     minHeight: 40,
-    paddingHorizontal: 8,
+    paddingHorizontal: 5,
     paddingVertical: 7,
     borderRadius: RADII.sm,
     alignItems: 'center',
@@ -1298,13 +2209,164 @@ const styles = StyleSheet.create({
     borderColor: PALETTE.borderStrong,
   },
   tabButtonLabel: {
-    fontSize: 12.5,
+    fontSize: 12,
     fontWeight: '600',
     color: PALETTE.inkSecondary,
+  },
+  tabButtonLabelCompact: {
+    fontSize: 11,
   },
   tabButtonLabelActive: {
     color: PALETTE.inkPrimary,
     fontWeight: '700',
+  },
+  commentsShortcutCard: {
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    borderRadius: RADII.md,
+    backgroundColor: PALETTE.infoBg,
+    borderWidth: 1,
+    borderColor: PALETTE.infoBorder,
+  },
+  commentsShortcutText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: PALETTE.infoText,
+  },
+  commentComposerBox: {
+    padding: 10,
+    borderRadius: RADII.md,
+    backgroundColor: PALETTE.bgSubtle,
+    borderWidth: 1,
+    borderColor: PALETTE.borderSubtle,
+    gap: 8,
+  },
+  commentComposerFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  commentCharCounter: {
+    ...TABULAR_NUMS_STYLE,
+    fontFamily: MONO_FONT_FAMILY,
+    fontSize: 11,
+    color: PALETTE.inkMuted,
+  },
+  commentInput: {
+    minHeight: 58,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: RADII.md,
+    borderWidth: 1,
+    borderColor: PALETTE.borderStrong,
+    backgroundColor: PALETTE.bgSurface,
+    fontSize: 13,
+    color: PALETTE.inkPrimary,
+    textAlignVertical: 'top',
+  },
+  disabledButton: {
+    opacity: 0.5,
+  },
+  commentsStack: {
+    gap: 8,
+  },
+  commentThreadGroup: {
+    gap: 6,
+  },
+  commentRepliesStack: {
+    gap: 6,
+  },
+  commentCard: {
+    padding: 10,
+    borderRadius: RADII.md,
+    borderWidth: 1,
+    borderColor: PALETTE.borderSubtle,
+    backgroundColor: PALETTE.bgSurface,
+    gap: 6,
+  },
+  commentReplyCard: {
+    backgroundColor: PALETTE.bgSubtle,
+    borderLeftWidth: 3,
+    borderLeftColor: PALETTE.borderStrong,
+  },
+  commentCardTopRated: {
+    borderColor: PALETTE.positiveBorder,
+    backgroundColor: PALETTE.positiveBg,
+  },
+  commentBadgesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+  },
+  topCommentBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: RADII.pill,
+    backgroundColor: PALETTE.accentPrimary,
+  },
+  topCommentBadgeLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: PALETTE.inkOnAccent,
+  },
+  replyingToMeta: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: PALETTE.inkSecondary,
+  },
+  commentHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  commentAuthorLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: PALETTE.inkPrimary,
+  },
+  commentDateLabel: {
+    ...TABULAR_NUMS_STYLE,
+    fontFamily: MONO_FONT_FAMILY,
+    fontSize: 11,
+    color: PALETTE.inkMuted,
+  },
+  commentBodyText: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: PALETTE.inkPrimary,
+  },
+  commentActionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
+  },
+  commentReplyPill: {
+    minHeight: 34,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: RADII.pill,
+    borderWidth: 1,
+    borderColor: PALETTE.borderStrong,
+    backgroundColor: PALETTE.bgSurface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  commentReplyPillLabel: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: PALETTE.inkSecondary,
+  },
+  replyComposerBox: {
+    marginTop: 6,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: PALETTE.borderSubtle,
+    gap: 8,
   },
   tabSection: {
     gap: 10,
@@ -1360,6 +2422,110 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     lineHeight: 19,
     color: PALETTE.inkPrimary,
+  },
+  creatorInfoCard: {
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    borderRadius: RADII.md,
+    backgroundColor: PALETTE.bgSubtle,
+    borderWidth: 1,
+    borderColor: PALETTE.borderSubtle,
+    gap: 6,
+  },
+  creatorHeaderRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+  creatorInfoLabel: {
+    fontSize: 12.5,
+    color: PALETTE.inkSecondary,
+  },
+  creatorInfoValue: {
+    fontWeight: '700',
+    color: PALETTE.inkPrimary,
+  },
+  newContributorBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: RADII.pill,
+    backgroundColor: PALETTE.infoBg,
+    borderWidth: 1,
+    borderColor: PALETTE.infoBorder,
+  },
+  newContributorBadgeLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: PALETTE.infoText,
+  },
+  creatorMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  creatorMetaItem: {
+    fontSize: 12,
+    color: PALETTE.inkMuted,
+  },
+  creatorMetaMono: {
+    ...TABULAR_NUMS_STYLE,
+    fontFamily: MONO_FONT_FAMILY,
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: PALETTE.inkSecondary,
+  },
+  flagReviewCard: {
+    gap: 6,
+  },
+  flagPickerBox: {
+    padding: 10,
+    borderRadius: RADII.md,
+    backgroundColor: PALETTE.bgSubtle,
+    borderWidth: 1,
+    borderColor: PALETTE.borderStrong,
+    gap: 8,
+  },
+  flagReasonPromptText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: PALETTE.inkPrimary,
+  },
+  flagReasonChipSelected: {
+    borderColor: PALETTE.neutralDot,
+    backgroundColor: PALETTE.neutralBg,
+  },
+  flagReasonChipLabelSelected: {
+    color: PALETTE.neutralText,
+    fontWeight: '700',
+  },
+  flagOutlineButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: PALETTE.bgSurface,
+    borderWidth: 1,
+    borderColor: PALETTE.borderStrong,
+  },
+  flagOutlineButtonLabel: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: PALETTE.inkSecondary,
+  },
+  flagActiveButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: PALETTE.neutralBg,
+    borderWidth: 1,
+    borderColor: PALETTE.neutralBorder,
+  },
+  flagActiveButtonLabel: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: PALETTE.neutralText,
+  },
+  flagSubmitButton: {
+    backgroundColor: PALETTE.neutralDot,
   },
   photoUploadBar: {
     flexDirection: 'row',
@@ -1545,6 +2711,14 @@ const styles = StyleSheet.create({
   },
   finishedActionButton: {
     backgroundColor: PALETTE.finishedSolid,
+  },
+  statusOptionChipInProgress: {
+    borderColor: PALETTE.inProgressSolid,
+    backgroundColor: PALETTE.inProgressBg,
+  },
+  statusOptionChipFinished: {
+    borderColor: PALETTE.finishedSolid,
+    backgroundColor: PALETTE.finishedBg,
   },
   editSection: {
     gap: 8,

@@ -121,3 +121,21 @@ export function normalizeRateLimitIp(ip: string): string {
 
   return cleaned.toLowerCase();
 }
+
+export function normalizeRateLimitSubnet(ip: string): string {
+  const normalized = normalizeRateLimitIp(ip);
+  if (normalized === 'unknown') {
+    return 'unknown';
+  }
+  const octets = normalized.split('.');
+  if (octets.length === 4 && octets.every((o) => /^\d{1,3}$/.test(o))) {
+    return `${octets[0]}.${octets[1]}.${octets[2]}.0/24`;
+  }
+  if (normalized.endsWith('::/64')) {
+    const groups = normalized.slice(0, -5).split(':');
+    if (groups.length >= 3) {
+      return `${groups.slice(0, 3).join(':')}::/48`;
+    }
+  }
+  return normalized;
+}

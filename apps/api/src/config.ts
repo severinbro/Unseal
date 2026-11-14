@@ -1,11 +1,18 @@
+import crypto from 'node:crypto';
 import path from 'node:path';
 
 import {
   AUTH_LIMITS,
   GEOMETRY_LIMITS,
   RuntimeConfigSchema,
+  TRUST_AND_MODERATION_LIMITS,
   type RuntimeConfig,
 } from '@entsiegelung/shared';
+
+import {
+  DEFAULT_DOP20_ATTRIBUTION,
+  GERMANY_DOP20_BOUNDS,
+} from './routes/dop20Tiles.js';
 
 export interface SmtpConfig {
   host: string | null;
@@ -24,6 +31,7 @@ export interface EnvConfig {
   corsOrigin: string;
   publicBaseUrl: string;
   uploadsDir: string;
+  apkFilePath: string;
   smtp: SmtpConfig;
   autoSeedVg250: boolean;
   osmStyleUrl: string;
@@ -34,12 +42,26 @@ export interface EnvConfig {
   disclaimerText: string;
   abuseContact: string | null;
   privacyPolicyUrl: string;
+  apkDownloadUrl: string | null;
+  authCaptchaEnabled: boolean;
+  authCaptchaSecret: string;
+  authCaptchaMaxNumber: number;
+  disposableEmailBlocklistExtra: string[];
+  requireJurisdiction: 'when_seeded' | 'strict' | 'off';
+  staleUnratedPruneDays: number;
+  newUserMinAccountDays: number;
+  newUserMinCleanPolygons: number;
   runtimeConfig: RuntimeConfig;
 }
 
+const EPHEMERAL_FALLBACK_CAPTCHA_SECRET = crypto
+  .randomBytes(32)
+  .toString('hex');
+
 const DEFAULT_DISCLAIMER_TEXT =
-  'Community unsealing suggestions — non-binding public input, regardless of property ownership.';
+  'Community unsealing suggestions - non-binding public input, regardless of property ownership.';
 const DEFAULT_OSM_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
+const DISABLED_SETTING_RE = /^(?:none|off|false|disabled|0)$/i;
 const STRICT_NUMBER_RE = /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 
 function parseFiniteNumber(raw: string | undefined, fallback: number, name: string): number {
@@ -148,6 +170,7 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
   const corsOrigin = env.CORS_ORIGIN?.trim() || '*';
   const osmStyleUrl = env.OSM_STYLE_URL?.trim() || DEFAULT_OSM_STYLE_URL;
 
+  const hasExplicitPublicBaseUrl = Boolean(env.PUBLIC_BASE_URL?.trim());
   const defaultBasePort = port === 80 || port === 443 ? '' : `:${port || 3000}`;
   const rawPublicBaseUrl =
     env.PUBLIC_BASE_URL?.trim() || `http://127.0.0.1${defaultBasePort}`;
@@ -156,6 +179,9 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
   const uploadsDir = env.UPLOADS_DIR?.trim()
     ? path.resolve(env.UPLOADS_DIR.trim())
     : path.resolve(process.cwd(), 'uploads');
+  const apkFilePath = env.APK_FILE_PATH?.trim()
+    ? path.resolve(env.APK_FILE_PATH.trim())
+    : path.join(uploadsDir, 'unseal.apk');
 
   const smtpHostRaw = env.SMTP_HOST?.trim() ?? '';
   const smtpPort = parseIntSetting(env.SMTP_PORT, 587, 'SMTP_PORT');
@@ -191,7 +217,9 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
   const orthophotoUrlTemplate = env.ORTHOPHOTO_URL_TEMPLATE?.trim() ?? '';
 
   let orthophoto: RuntimeConfig['orthophoto'] = null;
-  if (orthophotoUrlTemplate.length > 0) {
+  if (DISABLED_SETTING_RE.test(orthophotoUrlTemplate)) {
+    orthophoto = null;
+  } else if (orthophotoUrlTemplate.length > 0) {
     if (
       !orthophotoUrlTemplate.includes('{z}/{x}/{y}') &&
       !orthophotoUrlTemplate.includes('{bbox-epsg-3857}')
@@ -207,10 +235,21 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
       bounds: orthophotoBounds,
       maxZoom: orthophotoMaxZoom,
     };
+  } else {
+    const builtinDop20Path = '/api/v1/tiles/dop20/{z}/{x}/{y}.png';
+    orthophoto = {
+      urlTemplate: hasExplicitPublicBaseUrl
+        ? `${publicBaseUrl}${builtinDop20Path}`
+        : builtinDop20Path,
+      tileSize,
+      attribution: orthophotoAttribution || DEFAULT_DOP20_ATTRIBUTION,
+      bounds: orthophotoBounds ?? GERMANY_DOP20_BOUNDS,
+      maxZoom: orthophotoMaxZoom,
+    };
   }
 
-  const initialLng = parseFiniteNumber(env.INITIAL_LNG, 9.9937, 'INITIAL_LNG');
-  const initialLat = parseFiniteNumber(env.INITIAL_LAT, 53.5511, 'INITIAL_LAT');
+  const initialLng = parseFiniteNumber(env.INITIAL_LNG, 8.2739, 'INITIAL_LNG');
+  const initialLat = parseFiniteNumber(env.INITIAL_LAT, 49.9989, 'INITIAL_LAT');
   const initialZoom = parseFiniteNumber(env.INITIAL_ZOOM, 15, 'INITIAL_ZOOM');
 
   const maxDailyPolygonsPerUser = parseIntSetting(
@@ -233,6 +272,79 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
   const privacyPolicyUrl =
     env.PRIVACY_POLICY_URL?.trim() || `${publicBaseUrl}/auth/privacy`;
 
+  const rawApkDownloadUrl = env.APK_DOWNLOAD_URL?.trim() ?? '';
+  const defaultApkPath = '/downloads/unseal.apk';
+  const apkDownloadUrl = DISABLED_SETTING_RE.test(rawApkDownloadUrl)
+    ? null
+    : rawApkDownloadUrl.length > 0
+      ? rawApkDownloadUrl
+      : hasExplicitPublicBaseUrl
+        ? `${publicBaseUrl}${defaultApkPath}`
+        : defaultApkPath;
+
+  const authCaptchaEnabled = parseBooleanSetting(
+    env.AUTH_CAPTCHA_ENABLED,
+    false,
+    'AUTH_CAPTCHA_ENABLED',
+  );
+  const authCaptchaSecret =
+    env.AUTH_CAPTCHA_SECRET?.trim() || EPHEMERAL_FALLBACK_CAPTCHA_SECRET;
+  const authCaptchaMaxNumber = parseIntSetting(
+    env.AUTH_CAPTCHA_MAX_NUMBER,
+    15_000,
+    'AUTH_CAPTCHA_MAX_NUMBER',
+  );
+  if (authCaptchaMaxNumber < 100) {
+    throw new Error('AUTH_CAPTCHA_MAX_NUMBER must be at least 100.');
+  }
+
+  const disposableEmailBlocklistExtra = (
+    env.DISPOSABLE_EMAIL_DOMAINS_EXTRA ?? ''
+  )
+    .split(',')
+    .map((d) => d.trim().toLowerCase())
+    .filter((d) => d.length > 0);
+
+  const rawRequireJurisdiction =
+    env.REQUIRE_JURISDICTION?.trim().toLowerCase() ?? '';
+  let requireJurisdiction: 'when_seeded' | 'strict' | 'off' = 'when_seeded';
+  if (
+    rawRequireJurisdiction === '' ||
+    rawRequireJurisdiction === 'true' ||
+    rawRequireJurisdiction === '1' ||
+    rawRequireJurisdiction === 'when_seeded'
+  ) {
+    requireJurisdiction = 'when_seeded';
+  } else if (rawRequireJurisdiction === 'strict') {
+    requireJurisdiction = 'strict';
+  } else if (DISABLED_SETTING_RE.test(rawRequireJurisdiction)) {
+    requireJurisdiction = 'off';
+  } else {
+    throw new Error(
+      `REQUIRE_JURISDICTION must be "when_seeded", "strict", "true", or "false" (received "${env.REQUIRE_JURISDICTION}").`,
+    );
+  }
+
+  const staleUnratedPruneDays = parseIntSetting(
+    env.STALE_UNRATED_PRUNE_DAYS,
+    TRUST_AND_MODERATION_LIMITS.STALE_UNRATED_PRUNE_DAYS,
+    'STALE_UNRATED_PRUNE_DAYS',
+  );
+  if (staleUnratedPruneDays < 1) {
+    throw new Error('STALE_UNRATED_PRUNE_DAYS must be at least 1.');
+  }
+
+  const newUserMinAccountDays = parseIntSetting(
+    env.NEW_USER_MIN_ACCOUNT_DAYS,
+    TRUST_AND_MODERATION_LIMITS.NEW_USER_MIN_ACCOUNT_DAYS,
+    'NEW_USER_MIN_ACCOUNT_DAYS',
+  );
+  const newUserMinCleanPolygons = parseIntSetting(
+    env.NEW_USER_MIN_CLEAN_POLYGONS,
+    TRUST_AND_MODERATION_LIMITS.NEW_USER_MIN_CLEAN_POLYGONS,
+    'NEW_USER_MIN_CLEAN_POLYGONS',
+  );
+
   const runtimeConfig = RuntimeConfigSchema.parse({
     osmStyleUrl,
     orthophoto,
@@ -253,6 +365,8 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     disclaimerText,
     abuseContact,
     privacyPolicyUrl,
+    apkDownloadUrl,
+    authCaptchaRequired: authCaptchaEnabled,
   });
 
   return {
@@ -263,6 +377,7 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     corsOrigin,
     publicBaseUrl,
     uploadsDir,
+    apkFilePath,
     smtp,
     autoSeedVg250,
     osmStyleUrl: runtimeConfig.osmStyleUrl,
@@ -273,6 +388,15 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     disclaimerText: runtimeConfig.disclaimerText,
     abuseContact: runtimeConfig.abuseContact,
     privacyPolicyUrl,
+    apkDownloadUrl: runtimeConfig.apkDownloadUrl,
+    authCaptchaEnabled,
+    authCaptchaSecret,
+    authCaptchaMaxNumber,
+    disposableEmailBlocklistExtra,
+    requireJurisdiction,
+    staleUnratedPruneDays,
+    newUserMinAccountDays,
+    newUserMinCleanPolygons,
     runtimeConfig,
   };
 }

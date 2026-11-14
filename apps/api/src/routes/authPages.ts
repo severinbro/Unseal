@@ -1,6 +1,6 @@
 import { ZodError } from 'zod';
 
-import { AUTH_LIMITS, ApiError } from '@entsiegelung/shared';
+import { AUTH_LIMITS, ApiError, PHOTO_LIMITS } from '@entsiegelung/shared';
 
 import {
   consumePasswordResetToken,
@@ -201,22 +201,23 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
 
   app.get('/auth/privacy', async (_request, reply) => {
     const contactLine = app.config.abuseContact
-      ? `<p><strong>Kontakt / Datenschutzanfragen:</strong> ${escapeHtml(app.config.abuseContact)}</p>`
-      : '';
+      ? `<p><strong>Verantwortlicher Kontakt / Datenschutz- &amp; Missbrauchsanfragen:</strong> ${escapeHtml(app.config.abuseContact)}</p>`
+      : `<p><strong>Kontakt:</strong> Bitte wende dich bei Fragen zum Datenschutz an die im Impressum bzw. auf der Startseite genannte Betreiberstelle dieser Unseal-Instanz.</p>`;
     return sendHostedHtml(
       reply,
       200,
       'Datenschutzerklärung',
       `<h1>Datenschutzerklärung (DSGVO)</h1>
-       <p>Unseal ist ein Open-Source-Bürgerbeteiligungsprojekt (PPGIS) zur Kartierung versiegelter Flächen.</p>
+       <p>Unseal ist ein datensparsames Open-Source-Bürgerbeteiligungsprojekt (PPGIS) zur gemeinschaftlichen Kartierung versiegelter Flächen.</p>
        <ul>
-         <li><strong>Konto &amp; E-Mail:</strong> Deine E-Mail-Adresse wird ausschließlich für die Registrierungsbestätigung und die Passwortwiederherstellung gespeichert und <strong>niemals öffentlich</strong> auf der Karte oder im GeoJSON-Export angezeigt. Öffentlich erscheint ausschließlich dein gewähltes Pseudonym.</li>
-         <li><strong>Passwörter &amp; Sitzungen:</strong> Passwörter werden ausschließlich als Argon2id-Hash gespeichert.</li>
-         <li><strong>Fotos &amp; EXIF-Schutz:</strong> Hochgeladene Fotos werden serverseitig in WebP umgewandelt; sämtliche EXIF-Metadaten (Gerätekennungen, Roh-GPS-Koordinaten, Zeitstempel) werden vor der Speicherung vollständig entfernt. Es wird lediglich ein Wahrheitswert (<em>GPS verified</em>) gespeichert, falls das Foto im Umkreis von ${250} m zur Fläche aufgenommen wurde.</li>
-         <li><strong>Kontolöschung (Art. 17 DSGVO):</strong> Du kannst dein Konto samt E-Mail-Adresse und Stimmen jederzeit direkt in der App unter <em>Konto → Konto löschen</em> entfernen.</li>
+         <li><strong>Konto, Pseudonym &amp; E-Mail (Art. 6 Abs. 1 lit. a/b DSGVO):</strong> Bei der Registrierung werden ein selbst gewähltes Pseudonym, deine E-Mail-Adresse (nur für Bestätigungs- und Wiederherstellungslinks) sowie der Zeitpunkt deiner Datenschutzzustimmung gespeichert. Deine E-Mail-Adresse wird <strong>niemals öffentlich</strong> auf der Karte, bei Fotos oder im GeoJSON-Export ausgegeben. Unbestätigte Registrierungen ohne gültigen Token werden nach 48 Stunden automatisch gelöscht.</li>
+         <li><strong>Passwörter, Sitzungen &amp; lokaler Speicher (§ 25 Abs. 2 TDDDG):</strong> Passwörter werden ausschließlich als Argon2id-Hash gespeichert. Nach der Anmeldung wird ein zufälliges Sitzungs-Token technisch notwendig im Gerätespeicher (Web: <code>localStorage</code>, Mobil-App: geschützter Systemspeicher) abgelegt und serverseitig nur als SHA-256-Hash für maximal ${app.config.sessionTtlDays} Tage vorgehalten.</li>
+         <li><strong>Fotos &amp; EXIF-Schutz (Art. 6 Abs. 1 lit. a/e/f DSGVO):</strong> Hochgeladene Fotos werden serverseitig in WebP umgewandelt; sämtliche EXIF-/XMP-/IPTC-Metadaten (Gerätekennungen, Roh-GPS-Koordinaten, Aufnahmezeitstempel) werden vor der Speicherung vollständig entfernt. Es wird lediglich ein Wahrheitswert (<em>GPS verified</em>) gespeichert, sofern die Aufnahme innerhalb der kartierten Fläche (inkl. ${PHOTO_LIMITS.GPS_VERIFY_DISTANCE_M} m Toleranzpuffer) erfolgte. Bitte lade keine Aufnahmen hoch, auf denen Personen oder Kfz-Kennzeichen erkennbar sind.</li>
+         <li><strong>Kartendienste &amp; IP-Minimierung (Art. 6 Abs. 1 lit. f DSGVO):</strong> Der Unseal-Server speichert keine Zugriffs-IP-Protokolle und kürzt IPv6-Adressen für das Missbrauchs-Ratelimiting im Arbeitsspeicher auf <code>/64</code>. Zum Laden der Straßenkarte ruft dein Endgerät Vektorkacheln direkt von <em>OpenFreeMap</em> (Daten: © OpenStreetMap-Mitwirkende) ab, wobei technisch bedingt deine IP-Adresse an den Kachelserver übermittelt wird. DOP20-Luftbilder der Bundesländer werden hingegen datenschutzfreundlich über diesen Unseal-Server abgerufen.</li>
+         <li><strong>Kontolöschung &amp; Betroffenenrechte (Art. 15-21, 77 DSGVO):</strong> Du kannst dein Konto samt E-Mail-Adresse, Sitzungen und Abstimmungen jederzeit selbst unter <em>Konto -> Konto löschen</em> vollständig entfernen; bestehende Flächenvorschläge, Diskussionskommentare und EXIF-bereinigte Fotos bleiben anonymisiert unter <code>deleted</code> erhalten (oder können zuvor gelöscht werden). Bei Kontosperrungen wegen Missbrauchs wird lediglich ein nicht umkehrbarer SHA-256-Sperrwert gespeichert (Art. 6 Abs. 1 lit. f DSGVO). Dir stehen Auskunfts-, Berichtigungs-, Löschungs-, Einschränkungs- und Widerspruchsrechte sowie das Beschwerderecht bei einer Datenschutz-Aufsichtsbehörde zu.</li>
        </ul>
        ${contactLine}
-       <p class="en-sub"><strong>English summary:</strong> Your email address is stored solely for registration confirmation and password recovery and is never exposed publicly or in GeoJSON exports. Uploaded photos have all EXIF metadata stripped server-side before storage. You may permanently delete your account at any time inside the app.</p>`,
+       <p class="en-sub"><strong>English summary:</strong> Your email address is stored solely for registration confirmation and password recovery (unconfirmed accounts are purged after 48h) and is never exposed publicly or in GeoJSON exports. Passwords use Argon2id; session tokens are stored locally for sign-in only (TTL: ${app.config.sessionTtlDays} days). Uploaded photos have 100% of EXIF/GPS metadata stripped server-side before WebP storage, keeping only a boolean <em>GPS verified</em> flag (checked inside the polygon with a ${PHOTO_LIMITS.GPS_VERIFY_DISTANCE_M} m buffer). Vector street tiles load from OpenFreeMap, whereas DOP20 orthophotos are proxied via this server. You can permanently delete your account at any time inside the app and exercise GDPR Art. 15-21 &amp; 77 rights.</p>`,
     );
   });
 

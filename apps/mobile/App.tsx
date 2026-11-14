@@ -9,10 +9,16 @@
  */
 import {
   ApiError,
+  type CommentVoteResponse,
+  type CreatePolygonCommentRequest,
+  type FlagPolygonResponse,
   type LoginRequest,
   type PatchPolygonRequest,
   type PhotoVoteResponse,
+  type PolygonComment,
+  type PolygonCommentListResponse,
   type PolygonFeature,
+  type PolygonFlagReason,
   type PolygonPhoto,
   type PolygonStatus,
   type RegisterRequest,
@@ -27,7 +33,9 @@ import React, {
 } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   KeyboardAvoidingView,
+  PanResponder,
   Platform,
   Pressable,
   SafeAreaView,
@@ -39,6 +47,7 @@ import {
 } from 'react-native';
 
 import { PpgisApiClient } from './src/api/client';
+import { AboutModal } from './src/components/AboutModal';
 import { AuthAndAccountModal } from './src/components/AuthAndAccountModal';
 import { DisclaimerBanner } from './src/components/DisclaimerBanner';
 import { DrawingToolbar } from './src/components/DrawingToolbar';
@@ -83,6 +92,7 @@ import {
   deriveAuthModalModel,
   deriveDrawingToolbarModel,
   deriveMapControlsModel,
+  MIN_TOUCH_TARGET_DP,
 } from './src/state/viewModels';
 import { platformSessionStorage } from './src/storage/secureStorage';
 import {
@@ -90,7 +100,13 @@ import {
   SESSION_TOKEN_KEY,
   type SessionStorage,
 } from './src/storage/tokenStorage';
-import { deriveResponsiveLayout, PALETTE, RADII } from './src/theme/tokens';
+import {
+  deriveResponsiveLayout,
+  MONO_FONT_FAMILY,
+  PALETTE,
+  RADII,
+  TABULAR_NUMS_STYLE,
+} from './src/theme/tokens';
 import {
   injectWebCraftStyles,
   syncWebDocumentLocale,
@@ -98,6 +114,20 @@ import {
 
 const DEFAULT_API_BASE_URL = 'http://127.0.0.1:3000';
 const LOCATE_ME_TARGET_ZOOM = 17;
+const COARSE_WEB_ACCURACY_NOTICE_M = 2_500;
+
+function zoomForAccuracyMeters(accuracyMeters: number | undefined): number {
+  if (accuracyMeters === undefined || accuracyMeters <= 500) {
+    return LOCATE_ME_TARGET_ZOOM;
+  }
+  if (accuracyMeters <= 2_500) {
+    return 15;
+  }
+  if (accuracyMeters <= 10_000) {
+    return 13;
+  }
+  return 12;
+}
 
 export const mapStylePrimitives = {
   ORTHOPHOTO_SOURCE_ID,
@@ -148,6 +178,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
   });
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [isImporting, setIsImporting] = useState<boolean>(false);
+  const [aboutModalOpen, setAboutModalOpen] = useState<boolean>(false);
   const [locationNotice, setLocationNotice] = useState<string | null>(null);
 
   const localeRef = useRef<Locale>(state.locale);
@@ -247,10 +278,15 @@ export function App(props: AppProps = {}): React.JSX.Element {
 
     let cancelled = false;
     const bbox = state.viewport.bbox;
+    const authorType = state.authorFilter;
+    const unratedFlaggedOnly = state.unratedFlaggedOnly;
 
     void (async () => {
       try {
-        const collection = await apiClient.listPolygons(bbox);
+        const collection = await apiClient.listPolygons(bbox, {
+          authorType,
+          unratedFlaggedOnly,
+        });
         if (!cancelled) {
           dispatch({
             type: 'VIEWPORT_FEATURES_LOADED',
@@ -279,6 +315,8 @@ export function App(props: AppProps = {}): React.JSX.Element {
     state.configStatus,
     state.viewport,
     state.spanTooWide,
+    state.authorFilter,
+    state.unratedFlaggedOnly,
     state.viewportRefreshSeq,
   ]);
 
@@ -387,6 +425,84 @@ export function App(props: AppProps = {}): React.JSX.Element {
     );
   }, [state.features, state.mode, state.selectedFeatureId]);
 
+  const sheetDragY = useRef(new Animated.Value(0)).current;
+  const drawingVisibleRef = useRef<boolean>(drawingToolbar.visible);
+  drawingVisibleRef.current = drawingToolbar.visible;
+  const drawingCollapsedRef = useRef<boolean>(drawingToolbar.collapsed);
+  drawingCollapsedRef.current = drawingToolbar.collapsed;
+  const selectedFeatureRef = useRef<PolygonFeature | null>(selectedFeature);
+  selectedFeatureRef.current = selectedFeature;
+
+  const resetSheetDragPosition = useCallback((): void => {
+    Animated.spring(sheetDragY, {
+      toValue: 0,
+      useNativeDriver: Platform.OS !== 'web',
+      bounciness: 0,
+    }).start();
+  }, [sheetDragY]);
+
+  const sheetLatchPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (_evt, gestureState) =>
+          Math.abs(gestureState.dy) > 6 &&
+          Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
+        onPanResponderMove: (_evt, gestureState) => {
+          if (drawingVisibleRef.current && drawingCollapsedRef.current) {
+            sheetDragY.setValue(Math.max(-96, Math.min(0, gestureState.dy)));
+          } else {
+            sheetDragY.setValue(Math.max(0, Math.min(260, gestureState.dy)));
+          }
+        },
+        onPanResponderRelease: (_evt, gestureState) => {
+          if (drawingVisibleRef.current) {
+            if (drawingCollapsedRef.current) {
+              if (gestureState.dy < -22 || gestureState.vy < -0.3) {
+                sheetDragY.setValue(0);
+                dispatch({
+                  type: 'SET_DRAWING_SHEET_COLLAPSED',
+                  collapsed: false,
+                });
+                return;
+              }
+            } else if (gestureState.dy > 26 || gestureState.vy > 0.3) {
+              sheetDragY.setValue(0);
+              dispatch({
+                type: 'SET_DRAWING_SHEET_COLLAPSED',
+                collapsed: true,
+              });
+              return;
+            }
+          } else if (
+            selectedFeatureRef.current !== null &&
+            (gestureState.dy > 36 || gestureState.vy > 0.4)
+          ) {
+            sheetDragY.setValue(0);
+            dispatch({ type: 'SELECT_FEATURES_AT_TAP', featureIds: [] });
+            return;
+          }
+          resetSheetDragPosition();
+        },
+        onPanResponderTerminate: () => {
+          resetSheetDragPosition();
+        },
+      }),
+    [resetSheetDragPosition, sheetDragY],
+  );
+
+  const handleSheetLatchPress = useCallback((): void => {
+    sheetDragY.setValue(0);
+    if (drawingVisibleRef.current) {
+      dispatch({
+        type: 'SET_DRAWING_SHEET_COLLAPSED',
+        collapsed: !drawingCollapsedRef.current,
+      });
+    } else if (selectedFeatureRef.current !== null) {
+      dispatch({ type: 'SELECT_FEATURES_AT_TAP', featureIds: [] });
+    }
+  }, [sheetDragY]);
+
   const handleViewportChange = useCallback<MapCanvasProps['onViewportChange']>(
     ({ bbox, zoom }) => {
       dispatch({ type: 'SET_VIEWPORT', bbox, zoom });
@@ -430,8 +546,23 @@ export function App(props: AppProps = {}): React.JSX.Element {
             type: 'SET_CAMERA_TARGET',
             lng: gpsResult.lng,
             lat: gpsResult.lat,
-            zoom: LOCATE_ME_TARGET_ZOOM,
+            zoom: zoomForAccuracyMeters(gpsResult.accuracyMeters),
           });
+          if (
+            Platform.OS === 'web' &&
+            gpsResult.accuracyMeters !== undefined &&
+            gpsResult.accuracyMeters > COARSE_WEB_ACCURACY_NOTICE_M
+          ) {
+            const approxKm = Math.max(
+              1,
+              Math.round(gpsResult.accuracyMeters / 1000),
+            );
+            setLocationNotice(
+              getTranslations(
+                localeRef.current,
+              ).location.webApproximateLocationNotice(approxKm),
+            );
+          }
         } else {
           setLocationNotice(gpsResult.reason);
         }
@@ -772,6 +903,143 @@ export function App(props: AppProps = {}): React.JSX.Element {
     [apiClient, handleSessionExpiredError],
   );
 
+  const handleListPolygonComments = useCallback(
+    async (polygonId: string): Promise<PolygonCommentListResponse> => {
+      const response = await apiClient.listPolygonComments(polygonId);
+      dispatch({
+        type: 'POLYGON_COMMENT_COUNT_SET',
+        polygonId,
+        commentCount: response.comments.length,
+      });
+      return response;
+    },
+    [apiClient],
+  );
+
+  const handleCreatePolygonComment = useCallback(
+    async (
+      polygonId: string,
+      input: CreatePolygonCommentRequest,
+    ): Promise<PolygonComment> => {
+      try {
+        const created = await apiClient.createPolygonComment(polygonId, input);
+        const currentCount =
+          featuresRef.current.find((f) => f.id === polygonId)?.properties
+            .commentCount ?? 0;
+        dispatch({
+          type: 'POLYGON_COMMENT_COUNT_SET',
+          polygonId,
+          commentCount: currentCount + 1,
+        });
+        return created;
+      } catch (err: unknown) {
+        await handleSessionExpiredError(err);
+        throw err;
+      }
+    },
+    [apiClient, handleSessionExpiredError],
+  );
+
+  const handleVoteComment = useCallback(
+    async (commentId: string): Promise<CommentVoteResponse> => {
+      try {
+        return await apiClient.putCommentVote(commentId);
+      } catch (err: unknown) {
+        await handleSessionExpiredError(err);
+        throw err;
+      }
+    },
+    [apiClient, handleSessionExpiredError],
+  );
+
+  const handleClearCommentVote = useCallback(
+    async (commentId: string): Promise<CommentVoteResponse> => {
+      try {
+        return await apiClient.deleteCommentVote(commentId);
+      } catch (err: unknown) {
+        await handleSessionExpiredError(err);
+        throw err;
+      }
+    },
+    [apiClient, handleSessionExpiredError],
+  );
+
+  const handleDeleteComment = useCallback(
+    async (commentId: string, polygonId: string): Promise<void> => {
+      try {
+        await apiClient.deleteComment(commentId);
+        try {
+          const refreshed = await apiClient.listPolygonComments(polygonId);
+          dispatch({
+            type: 'POLYGON_COMMENT_COUNT_SET',
+            polygonId,
+            commentCount: refreshed.comments.length,
+          });
+        } catch {
+          const currentCount =
+            featuresRef.current.find((f) => f.id === polygonId)?.properties
+              .commentCount ?? 1;
+          dispatch({
+            type: 'POLYGON_COMMENT_COUNT_SET',
+            polygonId,
+            commentCount: Math.max(0, currentCount - 1),
+          });
+        }
+      } catch (err: unknown) {
+        if (await handleSessionExpiredError(err)) {
+          return;
+        }
+        throw err;
+      }
+    },
+    [apiClient, handleSessionExpiredError],
+  );
+
+  const handleFlagPolygon = useCallback(
+    async (
+      polygonId: string,
+      reason: PolygonFlagReason,
+    ): Promise<FlagPolygonResponse> => {
+      try {
+        const flag = await apiClient.flagPolygon(polygonId, { reason });
+        dispatch({ type: 'POLYGON_FLAG_UPDATED', flag });
+        return flag;
+      } catch (err: unknown) {
+        await handleSessionExpiredError(err);
+        throw err;
+      }
+    },
+    [apiClient, handleSessionExpiredError],
+  );
+
+  const handleUnflagPolygon = useCallback(
+    async (polygonId: string): Promise<FlagPolygonResponse> => {
+      try {
+        const flag = await apiClient.unflagPolygon(polygonId);
+        dispatch({ type: 'POLYGON_FLAG_UPDATED', flag });
+        return flag;
+      } catch (err: unknown) {
+        await handleSessionExpiredError(err);
+        throw err;
+      }
+    },
+    [apiClient, handleSessionExpiredError],
+  );
+
+  const handleClearPolygonFlags = useCallback(
+    async (polygonId: string): Promise<FlagPolygonResponse> => {
+      try {
+        const flag = await apiClient.clearPolygonFlags(polygonId);
+        dispatch({ type: 'POLYGON_FLAG_UPDATED', flag });
+        return flag;
+      } catch (err: unknown) {
+        await handleSessionExpiredError(err);
+        throw err;
+      }
+    },
+    [apiClient, handleSessionExpiredError],
+  );
+
   const resolveUploadUrl = useCallback(
     (relativePath: string) => apiClient.resolveUploadUrl(relativePath),
     [apiClient],
@@ -810,6 +1078,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
   }
 
   const hasActivePanel = drawingToolbar.visible || selectedFeature !== null;
+  const isDrawingCollapsed = drawingToolbar.visible && drawingToolbar.collapsed;
   const activeMaxHeight = drawingToolbar.visible
     ? layout.drawingSheetMaxHeightPx
     : layout.sheetMaxHeightPx;
@@ -825,68 +1094,128 @@ export function App(props: AppProps = {}): React.JSX.Element {
   const privacyPolicyUrl =
     state.config.privacyPolicyUrl ?? apiClient.getPrivacyPolicyUrl();
 
-  const activePanelContent = hasActivePanel ? (
-    <ScrollView
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator
-      contentContainerStyle={styles.panelScrollContent}
-    >
-      <DrawingToolbar
-        toolbar={drawingToolbar}
-        locale={state.locale}
-        compact={layout.isCompact}
-        onUndoVertex={() => dispatch({ type: 'UNDO_VERTEX' })}
-        onCloseRing={() => dispatch({ type: 'CLOSE_RING' })}
-        onAdvanceToDetails={() => dispatch({ type: 'ADVANCE_TO_DETAILS' })}
-        onBackToGeometry={() => dispatch({ type: 'BACK_TO_GEOMETRY' })}
-        onSelectSurfaceType={(surfaceType) =>
-          dispatch({ type: 'SET_DRAFT_META', surfaceType })
-        }
-        onChangeNote={(note) => dispatch({ type: 'SET_DRAFT_META', note })}
-        onTakeDraftPhoto={handleTakeDraftPhoto}
-        onPickDraftPhoto={handlePickDraftPhoto}
-        onRemoveDraftPhoto={(photoId) =>
-          dispatch({ type: 'REMOVE_DRAFT_PHOTO', photoId })
-        }
-        onRequestDiscard={() => dispatch({ type: 'REQUEST_DISCARD_DRAFT' })}
-        onCancelDiscard={() => dispatch({ type: 'CANCEL_DISCARD_DRAFT' })}
-        onConfirmDiscard={() => dispatch({ type: 'CONFIRM_DISCARD_DRAFT' })}
-        onSubmit={() => dispatch({ type: 'SUBMIT_DRAFT' })}
-      />
+  const latchA11yLabel = drawingToolbar.visible
+    ? isDrawingCollapsed
+      ? dict.drawing.expandSheetA11y
+      : dict.drawing.minimizeSheetA11y
+    : dict.inspector.closeA11y;
 
-      <PolygonInspectorSheet
-        feature={selectedFeature}
-        overlapIndex={state.overlapIndex}
-        overlapCount={state.overlappingFeatureIds.length}
-        disclaimerText={state.config.disclaimerText}
-        abuseContact={state.config.abuseContact}
-        isAuthenticated={mapControls.isAuthenticated}
-        isAdmin={mapControls.isAdmin}
-        locale={state.locale}
-        compact={layout.isCompact}
-        resolveUploadUrl={resolveUploadUrl}
-        onOpenAuth={() => dispatch({ type: 'OPEN_AUTH_MODAL', view: 'login' })}
-        onCycleOverlap={() => dispatch({ type: 'CYCLE_OVERLAP_FEATURE' })}
-        onClose={() =>
-          dispatch({ type: 'SELECT_FEATURES_AT_TAP', featureIds: [] })
+  const sheetLatchHeader = (
+    <View
+      {...sheetLatchPanResponder.panHandlers}
+      style={styles.sheetLatchContainer}
+    >
+      <Pressable
+        testID="sheet-grab-latch"
+        accessibilityRole="button"
+        accessibilityLabel={latchA11yLabel}
+        accessibilityState={
+          drawingToolbar.visible
+            ? { expanded: !isDrawingCollapsed }
+            : undefined
         }
-        onVoteIntent={(polygonId, value) =>
-          dispatch({ type: 'CAST_VOTE', polygonId, value })
-        }
-        onCastVote={handleCastVote}
-        onClearVote={handleClearVote}
-        onPatchPolygon={handlePatchPolygon}
-        onPatchPolygonStatus={handlePatchPolygonStatus}
-        onDeletePolygon={handleDeletePolygon}
-        onListPhotos={handleListPolygonPhotos}
-        onUploadPhotoFromCamera={handleInspectorUploadCamera}
-        onUploadPhotoFromLibrary={handleInspectorUploadLibrary}
-        onVotePhoto={handleVotePhoto}
-        onClearPhotoVote={handleClearPhotoVote}
-        onDeletePhoto={handleDeletePhoto}
-      />
-    </ScrollView>
-  ) : null;
+        hitSlop={{ top: 8, bottom: 8, left: 16, right: 16 }}
+        onPress={handleSheetLatchPress}
+        style={({ pressed }) => [
+          styles.sheetGrabHeader,
+          isDrawingCollapsed ? styles.sheetGrabHeaderCollapsed : null,
+          pressed ? styles.sheetGrabHeaderPressed : null,
+        ]}
+      >
+        <View style={styles.sheetGrabPill} />
+        {isDrawingCollapsed ? (
+          <View style={styles.collapsedSummaryRow}>
+            <View style={styles.collapsedStepBadge}>
+              <Text style={styles.collapsedStepBadgeLabel}>
+                {drawingToolbar.step === 'geometry'
+                  ? dict.drawing.stepGeometryLabel
+                  : dict.drawing.stepDetailsLabel}
+              </Text>
+            </View>
+            <Text style={styles.collapsedTelemetryText}>
+              {drawingToolbar.distinctVertexCount}/{drawingToolbar.maxVertices}{' '}
+              · {drawingToolbar.areaM2.toFixed(1)} m²
+            </Text>
+            <Text style={styles.collapsedExpandLabel}>
+              ▲ {dict.drawing.detailsToggle}
+            </Text>
+          </View>
+        ) : null}
+      </Pressable>
+    </View>
+  );
+
+  const activePanelContent =
+    hasActivePanel && !isDrawingCollapsed ? (
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator
+        contentContainerStyle={styles.panelScrollContent}
+      >
+        <DrawingToolbar
+          toolbar={drawingToolbar}
+          locale={state.locale}
+          compact={layout.isCompact || drawingToolbar.visible}
+          onUndoVertex={() => dispatch({ type: 'UNDO_VERTEX' })}
+          onCloseRing={() => dispatch({ type: 'CLOSE_RING' })}
+          onAdvanceToDetails={() => dispatch({ type: 'ADVANCE_TO_DETAILS' })}
+          onBackToGeometry={() => dispatch({ type: 'BACK_TO_GEOMETRY' })}
+          onSelectSurfaceType={(surfaceType) =>
+            dispatch({ type: 'SET_DRAFT_META', surfaceType })
+          }
+          onChangeNote={(note) => dispatch({ type: 'SET_DRAFT_META', note })}
+          onTakeDraftPhoto={handleTakeDraftPhoto}
+          onPickDraftPhoto={handlePickDraftPhoto}
+          onRemoveDraftPhoto={(photoId) =>
+            dispatch({ type: 'REMOVE_DRAFT_PHOTO', photoId })
+          }
+          onRequestDiscard={() => dispatch({ type: 'REQUEST_DISCARD_DRAFT' })}
+          onCancelDiscard={() => dispatch({ type: 'CANCEL_DISCARD_DRAFT' })}
+          onConfirmDiscard={() => dispatch({ type: 'CONFIRM_DISCARD_DRAFT' })}
+          onSubmit={() => dispatch({ type: 'SUBMIT_DRAFT' })}
+        />
+
+        <PolygonInspectorSheet
+          feature={selectedFeature}
+          overlapIndex={state.overlapIndex}
+          overlapCount={state.overlappingFeatureIds.length}
+          disclaimerText={state.config.disclaimerText}
+          abuseContact={state.config.abuseContact}
+          isAuthenticated={mapControls.isAuthenticated}
+          isAdmin={mapControls.isAdmin}
+          locale={state.locale}
+          compact={layout.isCompact}
+          resolveUploadUrl={resolveUploadUrl}
+          onOpenAuth={() => dispatch({ type: 'OPEN_AUTH_MODAL', view: 'login' })}
+          onCycleOverlap={() => dispatch({ type: 'CYCLE_OVERLAP_FEATURE' })}
+          onClose={() =>
+            dispatch({ type: 'SELECT_FEATURES_AT_TAP', featureIds: [] })
+          }
+          onVoteIntent={(polygonId, value) =>
+            dispatch({ type: 'CAST_VOTE', polygonId, value })
+          }
+          onCastVote={handleCastVote}
+          onClearVote={handleClearVote}
+          onPatchPolygon={handlePatchPolygon}
+          onPatchPolygonStatus={handlePatchPolygonStatus}
+          onDeletePolygon={handleDeletePolygon}
+          onListPhotos={handleListPolygonPhotos}
+          onUploadPhotoFromCamera={handleInspectorUploadCamera}
+          onUploadPhotoFromLibrary={handleInspectorUploadLibrary}
+          onVotePhoto={handleVotePhoto}
+          onClearPhotoVote={handleClearPhotoVote}
+          onDeletePhoto={handleDeletePhoto}
+          onListComments={handleListPolygonComments}
+          onCreateComment={handleCreatePolygonComment}
+          onVoteComment={handleVoteComment}
+          onClearCommentVote={handleClearCommentVote}
+          onDeleteComment={handleDeleteComment}
+          onFlagPolygon={handleFlagPolygon}
+          onUnflagPolygon={handleUnflagPolygon}
+          onClearPolygonFlags={handleClearPolygonFlags}
+        />
+      </ScrollView>
+    ) : null;
 
   return (
     <SafeAreaView
@@ -900,8 +1229,18 @@ export function App(props: AppProps = {}): React.JSX.Element {
         isImporting={isImporting}
         tier={layout.tier}
         onToggleLocale={handleToggleLocale}
+        onOpenAbout={() => setAboutModalOpen(true)}
         onSetBasemapMode={(mode) =>
           dispatch({ type: 'SET_BASEMAP_MODE', mode })
+        }
+        onSetAuthorFilter={(filter) =>
+          dispatch({ type: 'SET_AUTHOR_FILTER', filter })
+        }
+        onToggleUnratedFlaggedOnly={() =>
+          dispatch({
+            type: 'SET_UNRATED_FLAGGED_ONLY',
+            enabled: !state.unratedFlaggedOnly,
+          })
         }
         onStartDraw={() => dispatch({ type: 'START_DRAW' })}
         onOpenAccount={() => dispatch({ type: 'OPEN_AUTH_MODAL' })}
@@ -998,6 +1337,15 @@ export function App(props: AppProps = {}): React.JSX.Element {
               <View
                 style={[
                   styles.legendSwatch,
+                  { backgroundColor: PALETTE.inProgressDot },
+                ]}
+              />
+              <Text style={styles.legendLabel}>{tApp.legendInProgress}</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View
+                style={[
+                  styles.legendSwatch,
                   { backgroundColor: PALETTE.finishedDot },
                 ]}
               />
@@ -1006,18 +1354,42 @@ export function App(props: AppProps = {}): React.JSX.Element {
           </View>
         )}
 
+        {Platform.OS !== 'web' ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={dict.controls.aboutButtonA11y}
+            onPress={() => setAboutModalOpen(true)}
+            style={styles.nativeAttributionPill}
+          >
+            <Text numberOfLines={1} style={styles.nativeAttributionText}>
+              {mapControls.basemapMode === 'orthophoto'
+                ? tApp.nativeAttributionOrtho
+                : tApp.nativeAttributionOsm}
+            </Text>
+          </Pressable>
+        ) : null}
+
         {hasActivePanel && layout.isDocked ? (
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={[
               styles.sideDockShell,
+              drawingToolbar.visible ? styles.sideDockDrawingShell : null,
               {
                 width: layout.dockWidth,
                 maxHeight: activeMaxHeight,
               },
             ]}
           >
-            {activePanelContent}
+            <Animated.View
+              style={[
+                styles.sheetAnimatedContainer,
+                { transform: [{ translateY: sheetDragY }] },
+              ]}
+            >
+              {drawingToolbar.visible ? sheetLatchHeader : null}
+              {activePanelContent}
+            </Animated.View>
           </KeyboardAvoidingView>
         ) : null}
       </View>
@@ -1027,11 +1399,56 @@ export function App(props: AppProps = {}): React.JSX.Element {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={[styles.bottomSheetShell, { maxHeight: activeMaxHeight }]}
         >
-          <View style={styles.sheetGrabHeader} accessible={false}>
-            <View style={styles.sheetGrabPill} />
-          </View>
-          {activePanelContent}
+          <Animated.View
+            style={[
+              styles.sheetAnimatedContainer,
+              { transform: [{ translateY: sheetDragY }] },
+            ]}
+          >
+            {sheetLatchHeader}
+            {activePanelContent}
+          </Animated.View>
         </KeyboardAvoidingView>
+      ) : null}
+
+      {aboutModalOpen ? (
+        <View
+          style={[
+            styles.modalBackdropOverlay,
+            layout.isCompact ? styles.modalBackdropCompact : null,
+          ]}
+        >
+          <Pressable
+            accessible={false}
+            onPress={() => setAboutModalOpen(false)}
+            style={styles.modalBackdropScrim}
+          />
+          <View
+            style={[
+              styles.modalDialogWrapper,
+              { maxWidth: Math.max(layout.modalMaxWidth, 520) },
+            ]}
+          >
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.modalScrollContent}
+            >
+              <AboutModal
+                visible={aboutModalOpen}
+                locale={state.locale}
+                compact={layout.isCompact}
+                privacyPolicyUrl={privacyPolicyUrl}
+                apkDownloadUrl={mapControls.apkDownloadUrl}
+                abuseContact={state.config.abuseContact}
+                onClose={() => setAboutModalOpen(false)}
+                onDownloadError={(msg) => {
+                  setAboutModalOpen(false);
+                  setLocationNotice(msg);
+                }}
+              />
+            </ScrollView>
+          </View>
+        </View>
       ) : null}
 
       {authModal.visible ? (
@@ -1194,6 +1611,23 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: PALETTE.inkPrimary,
   },
+  nativeAttributionPill: {
+    position: 'absolute',
+    left: 10,
+    bottom: 8,
+    maxWidth: '78%',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: RADII.sm,
+    backgroundColor: 'rgba(255, 255, 255, 0.88)',
+    borderWidth: 1,
+    borderColor: PALETTE.borderSubtle,
+    zIndex: 10,
+  },
+  nativeAttributionText: {
+    fontSize: 10,
+    color: PALETTE.inkSecondary,
+  },
   bottomSheetShell: {
     width: '100%',
     backgroundColor: PALETTE.bgSurface,
@@ -1201,17 +1635,66 @@ const styles = StyleSheet.create({
     borderTopColor: PALETTE.borderStrong,
     overflow: 'hidden',
   },
+  sheetAnimatedContainer: {
+    width: '100%',
+    flexShrink: 1,
+  },
+  sheetLatchContainer: {
+    width: '100%',
+  },
   sheetGrabHeader: {
+    width: '100%',
+    minHeight: 28,
     alignItems: 'center',
     justifyContent: 'center',
     paddingTop: 8,
-    paddingBottom: 2,
+    paddingBottom: 6,
+    paddingHorizontal: 14,
+  },
+  sheetGrabHeaderCollapsed: {
+    minHeight: MIN_TOUCH_TARGET_DP,
+    paddingBottom: 10,
+    gap: 6,
+  },
+  sheetGrabHeaderPressed: {
+    backgroundColor: PALETTE.bgTinted,
   },
   sheetGrabPill: {
-    width: 38,
+    width: 42,
     height: 4,
     borderRadius: 2,
     backgroundColor: PALETTE.borderStrong,
+  },
+  collapsedSummaryRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  collapsedStepBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: RADII.pill,
+    backgroundColor: PALETTE.accentPrimary,
+  },
+  collapsedStepBadgeLabel: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: PALETTE.inkOnAccent,
+  },
+  collapsedTelemetryText: {
+    ...TABULAR_NUMS_STYLE,
+    fontFamily: MONO_FONT_FAMILY,
+    fontSize: 12,
+    fontWeight: '700',
+    color: PALETTE.inkPrimary,
+    flex: 1,
+  },
+  collapsedExpandLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: PALETTE.accentPrimary,
   },
   sideDockShell: {
     position: 'absolute',
@@ -1220,6 +1703,11 @@ const styles = StyleSheet.create({
     zIndex: 20,
     borderRadius: RADII.lg,
     overflow: 'hidden',
+  },
+  sideDockDrawingShell: {
+    backgroundColor: PALETTE.bgSurface,
+    borderWidth: 1,
+    borderColor: PALETTE.borderSubtle,
   },
   panelScrollContent: {
     flexGrow: 0,
