@@ -93,6 +93,7 @@ export interface MapControlsModel {
   locale: Locale;
   showOrthophotoToggle: boolean;
   basemapMode: BasemapMode;
+  polygonOpacity: number;
   authorFilter: PolygonAuthorFilter;
   unratedFlaggedOnly: boolean;
   orthophotoAttribution: string | null;
@@ -164,6 +165,7 @@ export function deriveMapControlsModel(state: AppState): MapControlsModel {
     locale: state.locale,
     showOrthophotoToggle,
     basemapMode: effectiveBasemapMode,
+    polygonOpacity: state.polygonOpacity,
     authorFilter: state.authorFilter,
     unratedFlaggedOnly: state.unratedFlaggedOnly,
     orthophotoAttribution: state.config?.orthophoto?.attribution ?? null,

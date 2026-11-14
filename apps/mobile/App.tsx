@@ -1083,9 +1083,6 @@ export function App(props: AppProps = {}): React.JSX.Element {
     ? layout.drawingSheetMaxHeightPx
     : layout.sheetMaxHeightPx;
   const hasVisibleBanner =
-    (mapControls.showFirstVisitDisclaimer &&
-      mapControls.disclaimerText !== null &&
-      mapControls.disclaimerText.length > 0) ||
     (mapControls.tileWarning !== null && mapControls.tileWarning.length > 0) ||
     (locationNotice !== null && locationNotice.length > 0) ||
     mapControls.showZoomInPrompt ||
@@ -1233,6 +1230,9 @@ export function App(props: AppProps = {}): React.JSX.Element {
         onSetBasemapMode={(mode) =>
           dispatch({ type: 'SET_BASEMAP_MODE', mode })
         }
+        onSetPolygonOpacity={(opacity) =>
+          dispatch({ type: 'SET_POLYGON_OPACITY', opacity })
+        }
         onSetAuthorFilter={(filter) =>
           dispatch({ type: 'SET_AUTHOR_FILTER', filter })
         }
@@ -1258,6 +1258,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
             draftVertices={state.draftVertices}
             isRingClosed={state.isRingClosed}
             selectedFeatureId={state.selectedFeatureId}
+            polygonOpacity={state.polygonOpacity}
             cameraTarget={state.cameraTarget}
             onViewportChange={handleViewportChange}
             onMapTap={handleMapTap}
@@ -1613,7 +1614,7 @@ const styles = StyleSheet.create({
   },
   nativeAttributionPill: {
     position: 'absolute',
-    left: 10,
+    right: 8,
     bottom: 8,
     maxWidth: '78%',
     paddingHorizontal: 8,

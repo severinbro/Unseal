@@ -20,6 +20,17 @@ export const PROPOSALS_POLYGON_SOURCE_ID = 'proposals-polygon-source';
 export const PROPOSALS_CENTROID_SOURCE_ID = 'proposals-centroid-source';
 export const DRAFT_SOURCE_ID = 'draft-source';
 
+export const MIN_POLYGON_OPACITY = 0;
+export const MAX_POLYGON_OPACITY = 1;
+export const DEFAULT_POLYGON_OPACITY = 0.35;
+
+export function clampPolygonOpacity(value: number): number {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_POLYGON_OPACITY;
+  }
+  return Math.min(MAX_POLYGON_OPACITY, Math.max(MIN_POLYGON_OPACITY, value));
+}
+
 export const INTERACTIVE_PROPOSAL_LAYER_IDS = [
   'proposals-fill',
   'proposals-outline',
@@ -225,6 +236,7 @@ export interface ProposalOutlineLayerSpec {
   paint: {
     'line-color': SelectedOutlineColorExpression;
     'line-width': OutlineWidthCaseExpression;
+    'line-opacity': number;
   };
 }
 
@@ -235,8 +247,10 @@ export interface ProposalCentroidLayerSpec {
   paint: {
     'circle-color': ScoreColorCaseExpression;
     'circle-radius': SelectedNumberCaseExpression;
+    'circle-opacity': number;
     'circle-stroke-color': SelectedColorCaseExpression;
     'circle-stroke-width': SelectedNumberCaseExpression;
+    'circle-stroke-opacity': number;
   };
 }
 
@@ -489,7 +503,34 @@ export function buildProposalGeoJson(
   };
 }
 
-export function buildPolygonLayerSpecs(): PolygonLayerSpecsTuple {
+function scaleOpacityChannel(
+  normalizedSliderOpacity: number,
+  defaultTarget: number,
+): number {
+  const clamped = clampPolygonOpacity(normalizedSliderOpacity);
+  if (clamped <= 0) {
+    return 0;
+  }
+  const raw =
+    clamped <= DEFAULT_POLYGON_OPACITY
+      ? (clamped / DEFAULT_POLYGON_OPACITY) * defaultTarget
+      : defaultTarget +
+        ((clamped - DEFAULT_POLYGON_OPACITY) /
+          (MAX_POLYGON_OPACITY - DEFAULT_POLYGON_OPACITY)) *
+          (MAX_POLYGON_OPACITY - defaultTarget);
+  return Math.round(Math.min(1, Math.max(0, raw)) * 1000) / 1000;
+}
+
+export function buildPolygonLayerSpecs(
+  polygonOpacity: number = DEFAULT_POLYGON_OPACITY,
+): PolygonLayerSpecsTuple {
+  const op = clampPolygonOpacity(polygonOpacity);
+  const baseFillOpacity = scaleOpacityChannel(op, DEFAULT_POLYGON_OPACITY);
+  const inProgressFillOpacity = scaleOpacityChannel(op, 0.42);
+  const finishedFillOpacity = scaleOpacityChannel(op, 0.46);
+  const selectedFillOpacity = scaleOpacityChannel(op, 0.58);
+  const strokeAndMarkerOpacity = scaleOpacityChannel(op, 1);
+
   const positiveGradient: NormalizedPositiveFillExpression = [
     'interpolate',
     ['linear'],
@@ -534,12 +575,12 @@ export function buildPolygonLayerSpecs(): PolygonLayerSpecsTuple {
       'fill-opacity': [
         'case',
         ['boolean', ['get', 'selected'], false],
-        0.58,
+        selectedFillOpacity,
         ['==', ['get', 'status'], 'finished'],
-        0.44,
+        finishedFillOpacity,
         ['==', ['get', 'status'], 'in_progress'],
-        0.4,
-        0.32,
+        inProgressFillOpacity,
+        baseFillOpacity,
       ],
     },
   };
@@ -577,6 +618,7 @@ export function buildPolygonLayerSpecs(): PolygonLayerSpecsTuple {
         2.5,
         2,
       ],
+      'line-opacity': strokeAndMarkerOpacity,
     },
   };
 
@@ -587,6 +629,7 @@ export function buildPolygonLayerSpecs(): PolygonLayerSpecsTuple {
     paint: {
       'circle-color': scoreColor,
       'circle-radius': ['case', ['boolean', ['get', 'selected'], false], 7, 5],
+      'circle-opacity': strokeAndMarkerOpacity,
       'circle-stroke-color': [
         'case',
         ['boolean', ['get', 'selected'], false],
@@ -599,6 +642,7 @@ export function buildPolygonLayerSpecs(): PolygonLayerSpecsTuple {
         3,
         1.5,
       ],
+      'circle-stroke-opacity': strokeAndMarkerOpacity,
     },
   };
 

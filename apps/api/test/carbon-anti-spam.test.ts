@@ -882,6 +882,23 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
         'FORBIDDEN_SELF_FLAG',
       );
 
+      const bbox = '9.975,53.548,10.000,53.555';
+
+      // Before flagging: unratedFlaggedOnly=true already includes unrated orange proposals (newPolyUnrated: 0 votes, 0 flags)
+      // while excluding rated unflagged proposals (vetPolys & newPolyContested)
+      const preFlagUnratedRes = await app.inject({
+        method: 'GET',
+        url: `/api/v1/polygons?bbox=${bbox}&unratedFlaggedOnly=true`,
+      });
+      assert.equal(preFlagUnratedRes.statusCode, 200);
+      const preFlagUnrated = PolygonCollectionResponseSchema.parse(
+        preFlagUnratedRes.json(),
+      );
+      assert.deepEqual(
+        preFlagUnrated.features.map((f) => f.id),
+        [newPolyUnrated.id],
+      );
+
       // Reviewer flags BOTH newPolyUnrated and newPolyContested
       for (const polyId of [newPolyUnrated.id, newPolyContested.id]) {
         const flagRes = await app.inject({
@@ -897,8 +914,6 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
         assert.equal(parsedFlag.isFlagged, true);
         assert.equal(parsedFlag.myFlag, true);
       }
-
-      const bbox = '9.975,53.548,10.000,53.555';
 
       // Filter: authorType=established -> returns only VeteranMapper's 3 polygons with authorIsNewUser === false
       const estListRes = await app.inject({
@@ -920,7 +935,8 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
       assert.equal(newList.features.length, 2);
       assert.ok(newList.features.every((f) => f.properties.authorIsNewUser === true));
 
-      // Filter: unratedFlaggedOnly=true -> returns ONLY newPolyUnrated (upvotes=0 & downvotes=0 & flag_count>0), NOT newPolyContested (+1/-1)
+      // Filter: unratedFlaggedOnly=true -> returns unrated proposals OR flagged proposals (both newPolyUnrated and flagged newPolyContested),
+      // while excluding the 3 rated unflagged vetPolys
       const unratedFlaggedRes = await app.inject({
         method: 'GET',
         url: `/api/v1/polygons?bbox=${bbox}&unratedFlaggedOnly=true`,
@@ -930,9 +946,12 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
       const unratedFlagged = PolygonCollectionResponseSchema.parse(
         unratedFlaggedRes.json(),
       );
-      assert.equal(unratedFlagged.features.length, 1);
-      assert.equal(unratedFlagged.features[0]!.id, newPolyUnrated.id);
-      assert.equal(unratedFlagged.features[0]!.properties.myFlag, true);
+      assert.equal(unratedFlagged.features.length, 2);
+      assert.deepEqual(
+        new Set(unratedFlagged.features.map((f) => f.id)),
+        new Set([newPolyUnrated.id, newPolyContested.id]),
+      );
+      assert.ok(unratedFlagged.features.every((f) => f.properties.myFlag === true));
 
       // Attach a photo to newPolyUnrated, age BOTH newPolyUnrated and newPolyContested to 15 days old, and prune!
       const jpegBuf = await sharp({

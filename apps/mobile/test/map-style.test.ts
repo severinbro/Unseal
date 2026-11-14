@@ -17,6 +17,8 @@ import {
   buildOrthophotoSourceSpec,
   buildPolygonLayerSpecs,
   buildProposalGeoJson,
+  clampPolygonOpacity,
+  DEFAULT_POLYGON_OPACITY,
   dedupeFeatureIdsPreservingOrder,
   DRAFT_SOURCE_ID,
   extractRenderedFeatureRawIds,
@@ -544,5 +546,71 @@ describe('styleBuilder and MapCanvas contract', () => {
     // Type-level check that MapCanvasProps contract matches expected props
     const verifyPropsType = (props: MapCanvasProps): string => props.config.osmStyleUrl;
     assert.equal(typeof verifyPropsType, 'function');
+  });
+
+  it('scales polygon fill, outline, and centroid opacities dynamically from 0% to 100% while passing MapLibre style-spec validation', () => {
+    assert.equal(clampPolygonOpacity(-0.5), 0);
+    assert.equal(clampPolygonOpacity(1.8), 1);
+    assert.equal(clampPolygonOpacity(Number.NaN), DEFAULT_POLYGON_OPACITY);
+
+    for (const op of [0, 0.15, DEFAULT_POLYGON_OPACITY, 0.75, 1]) {
+      const layers = buildPolygonLayerSpecs(op);
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {
+          [PROPOSALS_POLYGON_SOURCE_ID]: {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: [] },
+          },
+          [PROPOSALS_CENTROID_SOURCE_ID]: {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: [] },
+          },
+        },
+        layers,
+      };
+      assert.deepEqual(validateStyleMin(style), []);
+    }
+
+    const [zeroFill, zeroOutline, zeroCentroid] = buildPolygonLayerSpecs(0);
+    const [defaultFill, defaultOutline, defaultCentroid] =
+      buildPolygonLayerSpecs(DEFAULT_POLYGON_OPACITY);
+    const [fullFill, fullOutline, fullCentroid] = buildPolygonLayerSpecs(1);
+
+    assert.equal(zeroOutline.paint['line-opacity'], 0);
+    assert.equal(zeroCentroid.paint['circle-opacity'], 0);
+    assert.equal(zeroCentroid.paint['circle-stroke-opacity'], 0);
+
+    assert.equal(defaultOutline.paint['line-opacity'], 1);
+    assert.equal(defaultCentroid.paint['circle-opacity'], 1);
+    assert.equal(defaultCentroid.paint['circle-stroke-opacity'], 1);
+
+    assert.equal(fullOutline.paint['line-opacity'], 1);
+    assert.equal(fullCentroid.paint['circle-opacity'], 1);
+
+    const fillOpacitySpec = styleSpecLatest['paint_fill'][
+      'fill-opacity'
+    ] as Parameters<typeof styleExpression.createPropertyExpression>[1];
+
+    const evalBaseFill = (exprSpec: typeof defaultFill.paint['fill-opacity']): number => {
+      const compiled = styleExpression.createPropertyExpression(
+        exprSpec,
+        fillOpacitySpec,
+      );
+      assert.equal(compiled.result, 'success');
+      return Number(
+        compiled.value.evaluate(
+          { zoom: 16 },
+          { type: 'Polygon', properties: { status: 'proposed', selected: false } },
+        ),
+      );
+    };
+
+    assert.equal(evalBaseFill(zeroFill.paint['fill-opacity']), 0);
+    assert.equal(
+      evalBaseFill(defaultFill.paint['fill-opacity']),
+      DEFAULT_POLYGON_OPACITY,
+    );
+    assert.equal(evalBaseFill(fullFill.paint['fill-opacity']), 1);
   });
 });

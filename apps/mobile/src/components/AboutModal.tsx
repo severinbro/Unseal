@@ -16,7 +16,7 @@ import {
 } from '../i18n/translations';
 import { MIN_TOUCH_TARGET_DP } from '../state/viewModels';
 import { PALETTE, RADII } from '../theme/tokens';
-import { triggerApkDownload } from './MapControlsBar';
+import { AndroidGlyph, triggerApkDownload } from './MapControlsBar';
 
 export interface AboutModalProps {
   visible: boolean;
@@ -58,7 +58,7 @@ export function AboutModal({
 
   const dict = getTranslations(locale);
   const t = dict.about;
-  const showApkSection =
+  const showApkButton =
     Platform.OS === 'web' &&
     apkDownloadUrl !== null &&
     apkDownloadUrl.length > 0;
@@ -87,6 +87,7 @@ export function AboutModal({
         <View style={styles.headerTextGroup}>
           <Text style={styles.title}>{t.title}</Text>
           <Text style={styles.subtitle}>{t.subtitle}</Text>
+          <Text style={styles.introText}>{t.introBody}</Text>
         </View>
         <Pressable
           testID="about-modal-close"
@@ -103,123 +104,172 @@ export function AboutModal({
       </View>
 
       <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>{t.missionTitle}</Text>
-        <Text style={styles.bodyText}>{t.missionBody}</Text>
-      </View>
-
-      <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>{t.workflowTitle}</Text>
-        <View style={styles.statusList}>
-          <View style={styles.statusItem}>
-            <View
-              style={[
-                styles.statusDot,
-                { backgroundColor: PALETTE.positiveDot },
-              ]}
-            />
-            <Text style={styles.statusText}>{t.statusProposedDesc}</Text>
+        <Text style={styles.sectionTitle}>{t.featuresTitle}</Text>
+        <View style={styles.bulletList}>
+          <View style={styles.bulletRow}>
+            <Text style={styles.bulletMarker}>•</Text>
+            <Text style={styles.bulletText}>{t.featureMapBullet}</Text>
           </View>
-          <View style={styles.statusItem}>
-            <View
-              style={[
-                styles.statusDot,
-                { backgroundColor: PALETTE.inProgressDot },
-              ]}
-            />
-            <Text style={styles.statusText}>{t.statusInProgressDesc}</Text>
+          <View style={styles.bulletRow}>
+            <Text style={styles.bulletMarker}>•</Text>
+            <Text style={styles.bulletText}>{t.featureReviewBullet}</Text>
           </View>
-          <View style={styles.statusItem}>
-            <View
-              style={[
-                styles.statusDot,
-                { backgroundColor: PALETTE.finishedDot },
-              ]}
-            />
-            <Text style={styles.statusText}>{t.statusFinishedDesc}</Text>
+          <View style={styles.bulletRow}>
+            <Text style={styles.bulletMarker}>•</Text>
+            <Text style={styles.bulletText}>{t.featureControlsBullet}</Text>
+          </View>
+          <View style={styles.bulletRow}>
+            <Text style={styles.bulletMarker}>•</Text>
+            <Text style={styles.bulletText}>{t.featureDataBullet}</Text>
           </View>
         </View>
-        <Text style={styles.subtleNote}>{t.photoRuleBody}</Text>
       </View>
 
       <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>{t.attributionTitle}</Text>
-        <Pressable
-          accessibilityRole="link"
-          onPress={() => openExternalUrl('https://www.openstreetmap.org/copyright')}
-          style={({ pressed }) => [
-            styles.attributionLinkRow,
-            pressed ? styles.buttonPressed : null,
-          ]}
-        >
-          <Text style={styles.attributionItemText}>{t.attributionOsmLabel}</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="link"
-          onPress={() => openExternalUrl('https://www.govdata.de/dl-de/by-2-0')}
-          style={({ pressed }) => [
-            styles.attributionLinkRow,
-            pressed ? styles.buttonPressed : null,
-          ]}
-        >
-          <Text style={styles.attributionItemText}>
-            {t.attributionDop20Label}
-          </Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="link"
-          onPress={() => openExternalUrl('https://www.govdata.de/dl-de/by-2-0')}
-          style={({ pressed }) => [
-            styles.attributionLinkRow,
-            pressed ? styles.buttonPressed : null,
-          ]}
-        >
-          <Text style={styles.attributionItemText}>
-            {t.attributionVg250Label}
-          </Text>
-        </Pressable>
+        <Text style={styles.sectionTitle}>{t.legendTitle}</Text>
+        <View style={styles.bulletList}>
+          <View style={styles.statusItem}>
+            <View style={styles.dotGroup}>
+              <View
+                style={[
+                  styles.statusDot,
+                  { backgroundColor: PALETTE.positiveDot },
+                ]}
+              />
+            </View>
+            <Text style={styles.bulletText}>{t.legendSupported}</Text>
+          </View>
+          <View style={styles.statusItem}>
+            <View style={styles.dotGroup}>
+              <View
+                style={[
+                  styles.statusDot,
+                  { backgroundColor: PALETTE.neutralDot },
+                ]}
+              />
+              <View
+                style={[
+                  styles.statusDot,
+                  { backgroundColor: PALETTE.dangerDot },
+                ]}
+              />
+            </View>
+            <Text style={styles.bulletText}>{t.legendNewContested}</Text>
+          </View>
+          <View style={styles.statusItem}>
+            <View style={styles.dotGroup}>
+              <View
+                style={[
+                  styles.statusDot,
+                  { backgroundColor: PALETTE.inProgressDot },
+                ]}
+              />
+              <View
+                style={[
+                  styles.statusDot,
+                  { backgroundColor: PALETTE.finishedDot },
+                ]}
+              />
+            </View>
+            <Text style={styles.bulletText}>{t.legendLifecycle}</Text>
+          </View>
+        </View>
       </View>
 
       <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>{t.privacyAndLicenseTitle}</Text>
-        <Text style={styles.bodyText}>{t.privacySummary}</Text>
-        <Text style={styles.subtleNote}>{t.licenseSummary}</Text>
+        <Text style={styles.sectionTitle}>{t.footerTitle}</Text>
+        <Text style={styles.subtleNote}>{t.privacyAndLicenseBody}</Text>
         {abuseContact && abuseContact.trim().length > 0 ? (
           <Text style={styles.subtleNote}>
             {dict.inspector.abuseContactPrefix} {abuseContact}
           </Text>
         ) : null}
-        <Pressable
-          accessibilityRole="link"
-          onPress={() => openExternalUrl(privacyPolicyUrl)}
-          style={({ pressed }) => [
-            styles.touchButton,
-            styles.secondaryButton,
-            pressed ? styles.buttonPressed : null,
-          ]}
-        >
-          <Text style={styles.secondaryButtonLabel}>{t.privacyLinkLabel}</Text>
-        </Pressable>
-      </View>
 
-      {showApkSection ? (
-        <View style={[styles.sectionCard, styles.apkCard]}>
-          <Text style={styles.sectionTitle}>{t.apkSectionTitle}</Text>
-          <Text style={styles.bodyText}>{t.apkSectionHint}</Text>
+        <View style={styles.attributionChipsRow}>
           <Pressable
-            testID="about-download-apk-button"
-            accessibilityRole="button"
-            accessibilityLabel={dict.controls.apkDownloadA11y}
-            onPress={handleApkPress}
+            accessibilityRole="link"
+            onPress={() =>
+              openExternalUrl('https://www.openstreetmap.org/copyright')
+            }
             style={({ pressed }) => [
-              styles.touchButton,
-              styles.primaryButton,
-              pressed ? styles.primaryButtonPressed : null,
+              styles.attributionChip,
+              pressed ? styles.buttonPressed : null,
             ]}
           >
-            <Text style={styles.primaryButtonLabel}>{t.apkDownloadButton}</Text>
+            <Text style={styles.attributionChipText}>
+              {t.attributionOsmShort}
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="link"
+            onPress={() =>
+              openExternalUrl('https://www.govdata.de/dl-de/by-2-0')
+            }
+            style={({ pressed }) => [
+              styles.attributionChip,
+              pressed ? styles.buttonPressed : null,
+            ]}
+          >
+            <Text style={styles.attributionChipText}>
+              {t.attributionDop20Short}
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="link"
+            onPress={() =>
+              openExternalUrl('https://www.govdata.de/dl-de/by-2-0')
+            }
+            style={({ pressed }) => [
+              styles.attributionChip,
+              pressed ? styles.buttonPressed : null,
+            ]}
+          >
+            <Text style={styles.attributionChipText}>
+              {t.attributionVg250Short}
+            </Text>
           </Pressable>
         </View>
-      ) : null}
+
+        <View style={styles.actionRow}>
+          <Pressable
+            accessibilityRole="link"
+            onPress={() => openExternalUrl(privacyPolicyUrl)}
+            style={({ pressed }) => [
+              styles.touchButton,
+              styles.secondaryButton,
+              pressed ? styles.buttonPressed : null,
+            ]}
+          >
+            <Text style={styles.secondaryButtonLabel}>
+              {t.privacyLinkLabel}
+            </Text>
+          </Pressable>
+
+          {showApkButton ? (
+            <Pressable
+              testID="about-download-apk-button"
+              accessibilityRole="button"
+              accessibilityLabel={dict.controls.apkDownloadA11y}
+              onPress={handleApkPress}
+              style={({ pressed }) => [
+                styles.touchButton,
+                styles.primaryButton,
+                styles.apkButtonRow,
+                pressed ? styles.primaryButtonPressed : null,
+              ]}
+            >
+              <AndroidGlyph
+                color={PALETTE.inkOnAccent}
+                eyeColor={PALETTE.accentPrimary}
+                size={18}
+              />
+              <Text style={styles.primaryButtonLabel}>
+                {t.apkDownloadButton}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
     </View>
   );
 }
@@ -227,16 +277,16 @@ export function AboutModal({
 const styles = StyleSheet.create({
   card: {
     width: '100%',
-    padding: 18,
+    padding: 15,
     borderRadius: RADII.sheet,
     backgroundColor: PALETTE.bgSurface,
     borderWidth: 1,
     borderColor: PALETTE.borderStrong,
-    gap: 12,
+    gap: 10,
   },
   cardCompact: {
-    padding: 14,
-    gap: 10,
+    padding: 12,
+    gap: 8,
   },
   headerRow: {
     flexDirection: 'row',
@@ -249,20 +299,27 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   title: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
     letterSpacing: -0.3,
     color: PALETTE.inkPrimary,
   },
   subtitle: {
-    fontSize: 12.5,
-    color: PALETTE.inkMuted,
+    fontSize: 12,
+    fontWeight: '600',
+    color: PALETTE.positiveText,
+  },
+  introText: {
+    fontSize: 12,
+    lineHeight: 16.5,
+    color: PALETTE.inkSecondary,
+    marginTop: 1,
   },
   closeButton: {
     minHeight: MIN_TOUCH_TARGET_DP,
     minWidth: MIN_TOUCH_TARGET_DP,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
     borderRadius: RADII.md,
     borderWidth: 1,
     borderColor: PALETTE.borderStrong,
@@ -271,77 +328,97 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   closeButtonLabel: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '600',
     color: PALETTE.inkPrimary,
   },
   sectionCard: {
-    padding: 12,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
     borderRadius: RADII.md,
     backgroundColor: PALETTE.bgSubtle,
     borderWidth: 1,
     borderColor: PALETTE.borderSubtle,
-    gap: 8,
-  },
-  apkCard: {
-    backgroundColor: PALETTE.bgTinted,
-    borderColor: PALETTE.positiveBorder,
+    gap: 6,
   },
   sectionTitle: {
-    fontSize: 13.5,
+    fontSize: 12.5,
     fontWeight: '700',
     color: PALETTE.inkPrimary,
   },
-  bodyText: {
-    fontSize: 13,
-    lineHeight: 18.5,
-    color: PALETTE.inkSecondary,
+  bulletList: {
+    gap: 4,
   },
-  subtleNote: {
+  bulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+  },
+  bulletMarker: {
     fontSize: 12,
     lineHeight: 17,
-    color: PALETTE.inkMuted,
+    fontWeight: '700',
+    color: PALETTE.accentPrimary,
   },
-  statusList: {
-    gap: 6,
+  bulletText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 16.5,
+    color: PALETTE.inkSecondary,
   },
   statusItem: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
+    alignItems: 'center',
+    gap: 7,
   },
-  statusDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    marginTop: 5,
+  dotGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    minWidth: 20,
     flexShrink: 0,
   },
-  statusText: {
-    flex: 1,
-    fontSize: 12.5,
-    lineHeight: 18,
-    color: PALETTE.inkPrimary,
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    flexShrink: 0,
   },
-  attributionLinkRow: {
-    paddingVertical: 4,
-    paddingHorizontal: 6,
+  subtleNote: {
+    fontSize: 11.5,
+    lineHeight: 16,
+    color: PALETTE.inkMuted,
+  },
+  attributionChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 5,
+  },
+  attributionChip: {
+    paddingVertical: 3,
+    paddingHorizontal: 7,
     borderRadius: RADII.sm,
     backgroundColor: PALETTE.bgSurface,
     borderWidth: 1,
     borderColor: PALETTE.borderSubtle,
   },
-  attributionItemText: {
-    fontSize: 12,
-    lineHeight: 17,
-    color: PALETTE.inkPrimary,
+  attributionChipText: {
+    fontSize: 11,
+    lineHeight: 15,
+    color: PALETTE.inkSecondary,
     textDecorationLine: 'underline',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 2,
   },
   touchButton: {
     minHeight: MIN_TOUCH_TARGET_DP,
     minWidth: MIN_TOUCH_TARGET_DP,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: RADII.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -351,11 +428,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: PALETTE.accentPrimaryStrong,
   },
+  apkButtonRow: {
+    flexDirection: 'row',
+    gap: 7,
+  },
   primaryButtonPressed: {
     backgroundColor: PALETTE.accentPrimaryStrong,
   },
   primaryButtonLabel: {
-    fontSize: 13.5,
+    fontSize: 12.5,
     fontWeight: '700',
     color: PALETTE.inkOnAccent,
   },
@@ -365,7 +446,7 @@ const styles = StyleSheet.create({
     borderColor: PALETTE.borderStrong,
   },
   secondaryButtonLabel: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '600',
     color: PALETTE.inkPrimary,
   },

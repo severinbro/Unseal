@@ -1104,7 +1104,8 @@ export class PolygonRepository {
          )
            AND (
              NOT $10::boolean
-             OR (p.upvotes = 0 AND p.downvotes = 0 AND p.flag_count > 0)
+             OR p.flag_count > 0
+             OR (p.status = 'proposed' AND p.upvotes = 0 AND p.downvotes = 0)
            )
            AND (
              $9::text = 'all'

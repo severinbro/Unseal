@@ -32,7 +32,6 @@ import {
 import {
   DEFAULT_LOCALE,
   getTranslations,
-  localizeDisclaimerText,
   localizeError,
   type Locale,
 } from '../i18n/translations';
@@ -69,7 +68,7 @@ export interface PolygonInspectorSheetProps {
   feature: PolygonFeature | null;
   overlapIndex: number;
   overlapCount: number;
-  disclaimerText: string;
+  disclaimerText?: string;
   abuseContact: string | null;
   isAuthenticated: boolean;
   isAdmin?: boolean;
@@ -122,7 +121,6 @@ export function PolygonInspectorSheet({
   feature,
   overlapIndex,
   overlapCount,
-  disclaimerText,
   abuseContact,
   isAuthenticated,
   isAdmin = false,
@@ -310,8 +308,6 @@ export function PolygonInspectorSheet({
   const dict = getTranslations(locale);
   const t = dict.inspector;
   const surfaceCopy = dict.surfaces;
-  const localizedDisclaimer =
-    localizeDisclaimerText(disclaimerText, locale) ?? disclaimerText;
 
   const { properties } = feature;
   const swatch = SURFACE_SWATCHES[properties.surfaceType];
@@ -1305,15 +1301,6 @@ export function PolygonInspectorSheet({
               </Text>
             </View>
           ) : null}
-
-          <View
-            style={styles.permanentDisclaimerBox}
-            accessibilityLabel={t.permanentDisclaimerA11y}
-          >
-            <Text style={styles.permanentDisclaimerText}>
-              {localizedDisclaimer}
-            </Text>
-          </View>
         </View>
       ) : null}
 

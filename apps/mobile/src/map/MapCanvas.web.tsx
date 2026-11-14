@@ -17,6 +17,7 @@ import {
   buildOrthophotoSourceSpec,
   buildPolygonLayerSpecs,
   buildProposalGeoJson,
+  DEFAULT_POLYGON_OPACITY,
   dedupeFeatureIdsPreservingOrder,
   DRAFT_SOURCE_ID,
   extractRenderedFeatureRawIds,
@@ -97,6 +98,7 @@ export function MapCanvas({
   draftVertices,
   isRingClosed,
   selectedFeatureId,
+  polygonOpacity = DEFAULT_POLYGON_OPACITY,
   cameraTarget,
   onViewportChange,
   onMapTap,
@@ -119,6 +121,8 @@ export function MapCanvas({
   featuresRef.current = features;
   const selectedFeatureIdRef = useRef(selectedFeatureId);
   selectedFeatureIdRef.current = selectedFeatureId;
+  const polygonOpacityRef = useRef(polygonOpacity);
+  polygonOpacityRef.current = polygonOpacity;
   const draftVerticesRef = useRef(draftVertices);
   draftVerticesRef.current = draftVertices;
   const isRingClosedRef = useRef(isRingClosed);
@@ -156,15 +160,18 @@ export function MapCanvas({
     mapRef.current = map;
     styleReadyRef.current = false;
 
-    map.addControl(
-      new NavigationControl({ showCompass: false }),
-      'bottom-right',
-    );
+    // In MapLibre GL JS, 'bottom-*' positions insert each newly added control
+    // before firstChild. Register AttributionControl first so it stays pinned
+    // to the bottom-right corner and NavigationControl stacks above it.
     map.addControl(
       new AttributionControl({
         compact: false,
         customAttribution: 'VG250: © GeoBasis-DE / BKG (dl-de/by-2-0)',
       }),
+      'bottom-right',
+    );
+    map.addControl(
+      new NavigationControl({ showCompass: false }),
       'bottom-right',
     );
 
@@ -211,7 +218,9 @@ export function MapCanvas({
       }
 
       // 1. Proposal layers above basemap
-      for (const proposalLayer of buildPolygonLayerSpecs()) {
+      for (const proposalLayer of buildPolygonLayerSpecs(
+        polygonOpacityRef.current,
+      )) {
         if (!map.getLayer(proposalLayer.id)) {
           map.addLayer(proposalLayer);
         }
@@ -372,6 +381,41 @@ export function MapCanvas({
     );
     centroidSource?.setData(proposalGeoJson.centroids);
   }, [features, selectedFeatureId]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleReadyRef.current) {
+      return;
+    }
+    const [fillSpec, outlineSpec, centroidSpec] =
+      buildPolygonLayerSpecs(polygonOpacity);
+    if (map.getLayer(fillSpec.id)) {
+      map.setPaintProperty(
+        fillSpec.id,
+        'fill-opacity',
+        fillSpec.paint['fill-opacity'],
+      );
+    }
+    if (map.getLayer(outlineSpec.id)) {
+      map.setPaintProperty(
+        outlineSpec.id,
+        'line-opacity',
+        outlineSpec.paint['line-opacity'],
+      );
+    }
+    if (map.getLayer(centroidSpec.id)) {
+      map.setPaintProperty(
+        centroidSpec.id,
+        'circle-opacity',
+        centroidSpec.paint['circle-opacity'],
+      );
+      map.setPaintProperty(
+        centroidSpec.id,
+        'circle-stroke-opacity',
+        centroidSpec.paint['circle-stroke-opacity'],
+      );
+    }
+  }, [polygonOpacity]);
 
   useEffect(() => {
     const map = mapRef.current;

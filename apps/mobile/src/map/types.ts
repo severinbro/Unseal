@@ -27,6 +27,7 @@ export interface MapCanvasProps {
   draftVertices: [number, number][];
   isRingClosed: boolean;
   selectedFeatureId: string | null;
+  polygonOpacity?: number;
   cameraTarget: CameraTarget | null;
   onViewportChange: (viewport: ViewportState) => void;
   onMapTap: (point: [number, number]) => void;

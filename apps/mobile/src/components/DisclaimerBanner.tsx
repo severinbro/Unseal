@@ -3,7 +3,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import {
   getTranslations,
-  localizeDisclaimerText,
   localizeSystemNotice,
 } from '../i18n/translations';
 import {
@@ -17,7 +16,7 @@ export interface DisclaimerBannerProps {
   bboxFeatureLimit: number;
   locationNotice: string | null;
   compact?: boolean;
-  onDismissDisclaimer: () => void;
+  onDismissDisclaimer?: () => void;
   onDismissTileWarning: () => void;
   onDismissLocationNotice: () => void;
 }
@@ -27,26 +26,17 @@ export function DisclaimerBanner({
   bboxFeatureLimit,
   locationNotice,
   compact = false,
-  onDismissDisclaimer,
   onDismissTileWarning,
   onDismissLocationNotice,
 }: DisclaimerBannerProps): React.JSX.Element | null {
   const locale = controls.locale;
   const t = getTranslations(locale).banners;
 
-  const localizedDisclaimer = localizeDisclaimerText(
-    controls.disclaimerText,
-    locale,
-  );
   const localizedTileWarning = localizeSystemNotice(
     controls.tileWarning,
     locale,
   );
 
-  const showDisclaimer =
-    controls.showFirstVisitDisclaimer &&
-    localizedDisclaimer !== null &&
-    localizedDisclaimer.length > 0;
   const showTileWarning =
     localizedTileWarning !== null && localizedTileWarning.length > 0;
   const showLocationNotice =
@@ -55,7 +45,6 @@ export function DisclaimerBanner({
   const showTruncated = controls.showTruncatedNotice;
 
   if (
-    !showDisclaimer &&
     !showTileWarning &&
     !showLocationNotice &&
     !showZoomPrompt &&
@@ -66,30 +55,6 @@ export function DisclaimerBanner({
 
   return (
     <View style={[styles.stackContainer, compact ? styles.stackCompact : null]}>
-      {showDisclaimer ? (
-        <View
-          style={styles.disclaimerBanner}
-          accessibilityRole="alert"
-          accessibilityLabel={t.disclaimerA11y}
-        >
-          <View style={styles.bannerCopyRow}>
-            <View style={styles.positiveDot} />
-            <Text style={styles.disclaimerText}>{localizedDisclaimer}</Text>
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t.dismissDisclaimerA11y}
-            onPress={onDismissDisclaimer}
-            style={({ pressed }) => [
-              styles.dismissButton,
-              pressed ? styles.dismissButtonPressed : null,
-            ]}
-          >
-            <Text style={styles.dismissButtonLabel}>{t.gotIt}</Text>
-          </Pressable>
-        </View>
-      ) : null}
-
       {showTileWarning ? (
         <View
           style={styles.warningBanner}

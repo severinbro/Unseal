@@ -134,6 +134,8 @@ export interface TranslationDictionary {
     readonly filterUnratedFlaggedCompact: string;
     readonly filterUnratedFlaggedFull: string;
     readonly filterUnratedFlaggedA11y: string;
+    readonly polygonOpacityLabel: string;
+    readonly polygonOpacityA11y: string;
   };
   readonly banners: {
     readonly disclaimerA11y: string;
@@ -426,23 +428,22 @@ export interface TranslationDictionary {
     readonly subtitle: string;
     readonly closeA11y: string;
     readonly close: string;
-    readonly missionTitle: string;
-    readonly missionBody: string;
-    readonly workflowTitle: string;
-    readonly statusProposedDesc: string;
-    readonly statusInProgressDesc: string;
-    readonly statusFinishedDesc: string;
-    readonly photoRuleBody: string;
-    readonly attributionTitle: string;
-    readonly attributionOsmLabel: string;
-    readonly attributionDop20Label: string;
-    readonly attributionVg250Label: string;
-    readonly privacyAndLicenseTitle: string;
-    readonly privacySummary: string;
+    readonly introBody: string;
+    readonly featuresTitle: string;
+    readonly featureMapBullet: string;
+    readonly featureReviewBullet: string;
+    readonly featureControlsBullet: string;
+    readonly featureDataBullet: string;
+    readonly legendTitle: string;
+    readonly legendSupported: string;
+    readonly legendNewContested: string;
+    readonly legendLifecycle: string;
+    readonly footerTitle: string;
+    readonly privacyAndLicenseBody: string;
+    readonly attributionOsmShort: string;
+    readonly attributionDop20Short: string;
+    readonly attributionVg250Short: string;
     readonly privacyLinkLabel: string;
-    readonly licenseSummary: string;
-    readonly apkSectionTitle: string;
-    readonly apkSectionHint: string;
     readonly apkDownloadButton: string;
   };
 }
@@ -528,7 +529,9 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       filterUnratedFlaggedCompact: 'Prüfbedarf',
       filterUnratedFlaggedFull: 'Prüfbedarf & unbewertet',
       filterUnratedFlaggedA11y:
-        'Nur unbewertete Flächen mit Prüfbedarf anzeigen',
+        'Unbewertete Flächen oder Flächen mit Prüfbedarf anzeigen',
+      polygonOpacityLabel: 'Deckkraft',
+      polygonOpacityA11y: 'Deckkraft der Polygone anpassen',
     },
     banners: {
       disclaimerA11y: 'Hinweis zur Öffentlichkeitsbeteiligung',
@@ -913,38 +916,35 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
     about: {
       modalA11y: 'Über Unseal',
       title: 'Über Unseal',
-      subtitle: 'Offenes Beteiligungsregister zur Flächenentsiegelung (PPGIS)',
+      subtitle: 'Offene Entsiegelungskartierung (PPGIS)',
       closeA11y: 'Infofenster schließen',
       close: 'Schließen',
-      missionTitle: 'Worum geht es?',
-      missionBody:
-        'Unseal ermöglicht Bürgerinnen, Bürgern und Initiativen, versiegelte Flächen (Asphalt, Beton, Pflaster) einzuzeichnen, vor Ort mit Fotos zu dokumentieren und gemeinschaftlich zu bewerten. Alle Einträge sind unverbindliche Hinweise der Öffentlichkeit - unabhängig von den Eigentumsverhältnissen.',
-      workflowTitle: 'Status & Bewertung',
-      statusProposedDesc:
-        'Vorgeschlagen - Eingereichte Fläche, offen für +1/-1-Stimmen. Positive Vorschläge werden relativ zum Höchstwert derselben Gemeinde eingefärbt.',
-      statusInProgressDesc:
-        'Wird entsiegelt - Fläche befindet sich aktuell im Rückbau oder in der Entsiegelungsumsetzung.',
-      statusFinishedDesc:
-        'Entsiegelt - Erfolgreich entsiegelte Fläche als sichtbarer Nachweis umgesetzter Maßnahmen.',
-      photoRuleBody:
-        'Beim Foto-Upload werden sämtliche EXIF-Metadaten serverseitig entfernt. Lag die GPS-Koordinate der Aufnahme innerhalb des Polygons (inkl. 3 m Puffer), erhält das Bild das Merkmal „GPS verified“.',
-      attributionTitle: 'Kartendaten & Quellenangaben',
-      attributionOsmLabel:
-        'Straßenkarte: © OpenStreetMap-Mitwirkende (ODbL) · Vektorkacheln: OpenFreeMap / OpenMapTiles',
-      attributionDop20Label:
-        'Luftbilder (DOP20): © GeoBasis-DE / Landesvermessungsämter der Bundesländer (Datenlizenz Deutschland - Namensnennung - Version 2.0, dl-de/by-2-0)',
-      attributionVg250Label:
-        'Gemeindegrenzen (VG250): © GeoBasis-DE / BKG (dl-de/by-2-0)',
-      privacyAndLicenseTitle: 'Datenschutz & Open Source',
-      privacySummary:
-        'Unseal speichert öffentlich nur dein gewähltes Pseudonym - E-Mail-Adressen dienen ausschließlich der Kontobestätigung und Passwortwiederherstellung und sind jederzeit nach Art. 17 DSGVO löschbar.',
-      privacyLinkLabel: 'Datenschutzerklärung öffnen',
-      licenseSummary:
-        'Quelloffene Software: API-Server unter AGPL-3.0-or-later, Mobil-/Web-App und geteilte Schemata unter MPL-2.0.',
-      apkSectionTitle: 'Android-App direkt installieren',
-      apkSectionHint:
-        'Lade die signierte Android-Paketdatei (.apk) direkt herunter, falls du kein Google-Play-Konto nutzt.',
-      apkDownloadButton: 'Download Android APK',
+      introBody:
+        'Unverbindliche Bürgervorschläge zur Flächenentsiegelung - unabhängig von Eigentumsverhältnissen.',
+      featuresTitle: 'Funktionen im Überblick',
+      featureMapBullet:
+        'Kartieren & Fotos: Flächen in 2 Schritten umreißen, Belag wählen, Vor-Ort-Fotos anhängen (EXIF entfernt, „GPS verified“ im 3-m-Puffer) und kommentieren.',
+      featureReviewBullet:
+        'Bewerten & Prüfen: Vorschläge mit +1/−1 gewichten, Fotos als Echt/Fake einstufen oder Unstimmigkeiten zur Prüfung melden.',
+      featureControlsBullet:
+        'Ansicht & Filter: Straßenkarte/Luftbild (DOP20), stufenloser Deckkraft-Regler sowie Filter für Neue/Etablierte Beitragende und „Prüfbedarf & unbewertet“.',
+      featureDataBullet:
+        'Offene Geodaten: Ein-Klick-GeoJSON-Export (sowie .geojson/.gpkg-Import für Admins).',
+      legendTitle: 'Farben & Status',
+      legendSupported:
+        '+ Unterstützt: Positiver Saldo (Grünton skaliert am Gemeindehöchstwert)',
+      legendNewContested:
+        '0 Neu / − Umstritten: Unbewertet (orange) bzw. negativer Saldo (rot)',
+      legendLifecycle:
+        '⟳ Wird entsiegelt / ✓ Entsiegelt: Im Rückbau (blau) bzw. umgesetzt (türkis)',
+      footerTitle: 'Datenschutz, Quellen & App',
+      privacyAndLicenseBody:
+        'Öffentlich erscheint nur dein Pseudonym; E-Mails dienen nur Bestätigung & Recovery (jederzeit nach Art. 17 DSGVO löschbar). Quelloffen unter AGPL-3.0 (API) & MPL-2.0 (App).',
+      attributionOsmShort: '© OpenStreetMap / OpenFreeMap (ODbL)',
+      attributionDop20Short: 'DOP20 © Länder (dl-de/by-2-0)',
+      attributionVg250Short: 'VG250 © BKG (dl-de/by-2-0)',
+      privacyLinkLabel: 'Datenschutzerklärung',
+      apkDownloadButton: 'Android-APK herunterladen',
     },
   },
   en: {
@@ -1022,7 +1022,9 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       filterUnratedFlaggedCompact: 'Needs review',
       filterUnratedFlaggedFull: 'Needs review & unrated',
       filterUnratedFlaggedA11y:
-        'Show only unrated polygons flagged for review',
+        'Show unrated polygons or polygons flagged for review',
+      polygonOpacityLabel: 'Opacity',
+      polygonOpacityA11y: 'Adjust polygon opacity',
     },
     banners: {
       disclaimerA11y: 'Public participation disclaimer',
@@ -1386,37 +1388,34 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
     about: {
       modalA11y: 'About Unseal',
       title: 'About Unseal',
-      subtitle: 'Open Civic Ground-Unsealing Registry (PPGIS)',
+      subtitle: 'Open Civic Ground-Unsealing Map (PPGIS)',
       closeA11y: 'Close About dialog',
       close: 'Close',
-      missionTitle: 'What is Unseal?',
-      missionBody:
-        'Unseal enables residents and civic initiatives to map sealed surfaces (asphalt, concrete, pavers), document sites with photos, and prioritize unsealing candidates through community voting. All entries are non-binding public input - regardless of property ownership.',
-      workflowTitle: 'Statuses & Scoring',
-      statusProposedDesc:
-        'Proposed - Community candidate open for +1/-1 voting. Positively rated sites are color-scaled relative to the highest score within the same municipality.',
-      statusInProgressDesc:
-        'In progress - Unsealing or depaving work is actively underway on site.',
-      statusFinishedDesc:
-        'Finished - Completed unsealing site preserved on the map as a public record.',
-      photoRuleBody:
-        'All EXIF metadata is stripped server-side upon upload. If the capture coordinates fall inside the polygon (within a 3 m buffer), the photo receives a “GPS verified” badge.',
-      attributionTitle: 'Map Data & Attributions',
-      attributionOsmLabel:
-        'Street basemap: © OpenStreetMap contributors (ODbL) · Vector tiles: OpenFreeMap / OpenMapTiles',
-      attributionDop20Label:
-        'Aerial orthophotos (DOP20): © GeoBasis-DE / German State Survey Offices (Data licence Germany - attribution - Version 2.0, dl-de/by-2-0)',
-      attributionVg250Label:
-        'Municipal boundaries (VG250): © GeoBasis-DE / BKG (dl-de/by-2-0)',
-      privacyAndLicenseTitle: 'Privacy & Open Source',
-      privacySummary:
-        'Unseal displays only your chosen pseudonym publicly - email addresses are used strictly for account confirmation and password recovery and can be erased at any time under GDPR Art. 17.',
-      privacyLinkLabel: 'Open Privacy Policy',
-      licenseSummary:
-        'Open-source software: API server licensed under AGPL-3.0-or-later; mobile/web client and shared schemas under MPL-2.0.',
-      apkSectionTitle: 'Direct Android App Install',
-      apkSectionHint:
-        'Download the signed Android package (.apk) directly for sideloading without Google Play.',
+      introBody:
+        'Non-binding public unsealing suggestions — regardless of property ownership.',
+      featuresTitle: 'Key Features',
+      featureMapBullet:
+        'Map & document: Outline sites in 2 steps, pick surface material, attach on-site photos (EXIF stripped, “GPS verified” within 3 m), and comment.',
+      featureReviewBullet:
+        'Vote & review: Score proposals +1/−1, rate photos Real/Fake, or flag questionable entries for community review.',
+      featureControlsBullet:
+        'View & filters: Street/DOP20 aerial toggle, dynamic polygon opacity slider, plus contributor (New/Established) and “Needs review & unrated” filters.',
+      featureDataBullet:
+        'Open geodata: One-click GeoJSON export (plus .geojson/.gpkg import for admins).',
+      legendTitle: 'Colors & Status',
+      legendSupported:
+        '+ Backed: Positive net score (green scaled to municipal maximum)',
+      legendNewContested:
+        '0 New / − Contested: Unrated (amber) or negative score (red)',
+      legendLifecycle:
+        '⟳ In progress / ✓ Finished: Active depaving (blue) or completed (mint)',
+      footerTitle: 'Privacy, Data & App',
+      privacyAndLicenseBody:
+        'Only your pseudonym is public; emails are used strictly for confirmation & recovery (erasable anytime under GDPR Art. 17). Open source under AGPL-3.0 (API) & MPL-2.0 (App).',
+      attributionOsmShort: '© OpenStreetMap / OpenFreeMap (ODbL)',
+      attributionDop20Short: 'DOP20 © State Surveys (dl-de/by-2-0)',
+      attributionVg250Short: 'VG250 © BKG (dl-de/by-2-0)',
+      privacyLinkLabel: 'Privacy Policy',
       apkDownloadButton: 'Download Android APK',
     },
   },

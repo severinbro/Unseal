@@ -1,6 +1,7 @@
 import type { PolygonAuthorFilter } from '@entsiegelung/shared';
 import React from 'react';
 import {
+  ActivityIndicator,
   Image,
   Linking,
   Platform,
@@ -16,6 +17,7 @@ import {
   localizeError,
   type Locale,
 } from '../i18n/translations';
+import { clampPolygonOpacity } from '../map/styleBuilder';
 import type { BasemapMode } from '../state/appState';
 import {
   MIN_TOUCH_TARGET_DP,
@@ -93,6 +95,7 @@ export interface MapControlsBarProps {
   onToggleLocale?: () => void;
   onOpenAbout?: () => void;
   onSetBasemapMode: (mode: BasemapMode) => void;
+  onSetPolygonOpacity?: (opacity: number) => void;
   onSetAuthorFilter?: (filter: PolygonAuthorFilter) => void;
   onToggleUnratedFlaggedOnly?: () => void;
   onStartDraw: () => void;
@@ -103,6 +106,388 @@ export interface MapControlsBarProps {
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const UNSEAL_HEADER_LOGO = require('../../assets/header-logo.png') as number;
+
+export function AndroidGlyph({
+  color = PALETTE.accentPrimary,
+  eyeColor = PALETTE.bgSurface,
+  size = 20,
+}: {
+  color?: string;
+  eyeColor?: string;
+  size?: number;
+}): React.JSX.Element {
+  if (Platform.OS === 'web') {
+    return React.createElement(
+      'svg',
+      {
+        width: size,
+        height: size,
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        'aria-hidden': 'true',
+        style: {
+          flexShrink: 0,
+          display: 'block',
+        },
+      },
+      React.createElement('path', {
+        d: 'M8.5 6.2L6.8 3.4M15.5 6.2L17.2 3.4',
+        stroke: color,
+        strokeWidth: '1.7',
+        strokeLinecap: 'round',
+      }),
+      React.createElement('path', {
+        d: 'M6 11C6 7.686 8.686 5 12 5C15.314 5 18 7.686 18 11H6Z',
+        fill: color,
+      }),
+      React.createElement('circle', {
+        cx: '9.6',
+        cy: '8.6',
+        r: '1',
+        fill: eyeColor,
+      }),
+      React.createElement('circle', {
+        cx: '14.4',
+        cy: '8.6',
+        r: '1',
+        fill: eyeColor,
+      }),
+      React.createElement('rect', {
+        x: '6',
+        y: '12',
+        width: '12',
+        height: '6.8',
+        rx: '1.5',
+        fill: color,
+      }),
+      React.createElement('rect', {
+        x: '3.2',
+        y: '12',
+        width: '1.8',
+        height: '5.4',
+        rx: '0.9',
+        fill: color,
+      }),
+      React.createElement('rect', {
+        x: '19',
+        y: '12',
+        width: '1.8',
+        height: '5.4',
+        rx: '0.9',
+        fill: color,
+      }),
+      React.createElement('rect', {
+        x: '8.5',
+        y: '18.4',
+        width: '2',
+        height: '3.4',
+        rx: '1',
+        fill: color,
+      }),
+      React.createElement('rect', {
+        x: '13.5',
+        y: '18.4',
+        width: '2',
+        height: '3.4',
+        rx: '1',
+        fill: color,
+      }),
+    );
+  }
+
+  return (
+    <View
+      accessible={false}
+      style={[
+        styles.androidFallbackFrame,
+        { width: size, height: size },
+      ]}
+    >
+      <View style={[styles.androidFallbackHead, { backgroundColor: color }]}>
+        <View
+          style={[styles.androidFallbackEye, { backgroundColor: eyeColor }]}
+        />
+        <View
+          style={[styles.androidFallbackEye, { backgroundColor: eyeColor }]}
+        />
+      </View>
+      <View style={[styles.androidFallbackBody, { backgroundColor: color }]} />
+    </View>
+  );
+}
+
+function withWebTooltip(
+  tooltip: string,
+  child: React.JSX.Element,
+): React.JSX.Element {
+  if (Platform.OS !== 'web') {
+    return child;
+  }
+  return React.createElement(
+    'div',
+    {
+      title: tooltip,
+      style: { display: 'inline-flex', flexShrink: 0 },
+    },
+    child,
+  );
+}
+
+export function ExportGlyph({
+  color = PALETTE.inkPrimary,
+  size = 20,
+}: {
+  color?: string;
+  size?: number;
+}): React.JSX.Element {
+  if (Platform.OS === 'web') {
+    return React.createElement(
+      'svg',
+      {
+        width: size,
+        height: size,
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        'aria-hidden': 'true',
+        style: {
+          flexShrink: 0,
+          display: 'block',
+        },
+      },
+      React.createElement('path', {
+        d: 'M12 3.75V15.25',
+        stroke: color,
+        strokeWidth: '1.9',
+        strokeLinecap: 'round',
+      }),
+      React.createElement('path', {
+        d: 'M7.5 10.75L12 15.25L16.5 10.75',
+        stroke: color,
+        strokeWidth: '1.9',
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+      }),
+      React.createElement('path', {
+        d: 'M4.5 16.5V18.5C4.5 19.605 5.395 20.5 6.5 20.5H17.5C18.605 20.5 19.5 19.605 19.5 18.5V16.5',
+        stroke: color,
+        strokeWidth: '1.9',
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+      }),
+    );
+  }
+
+  return (
+    <View
+      accessible={false}
+      style={[styles.trayGlyphFrame, { width: size, height: size }]}
+    >
+      <View style={[styles.trayGlyphShaft, { backgroundColor: color }]} />
+      <View
+        style={[
+          styles.trayGlyphChevronDown,
+          { borderBottomColor: color, borderRightColor: color },
+        ]}
+      />
+      <View style={[styles.trayGlyphBase, { borderColor: color }]} />
+    </View>
+  );
+}
+
+export function ImportGlyph({
+  color = PALETTE.finishedText,
+  size = 20,
+}: {
+  color?: string;
+  size?: number;
+}): React.JSX.Element {
+  if (Platform.OS === 'web') {
+    return React.createElement(
+      'svg',
+      {
+        width: size,
+        height: size,
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        'aria-hidden': 'true',
+        style: {
+          flexShrink: 0,
+          display: 'block',
+        },
+      },
+      React.createElement('path', {
+        d: 'M12 15.25V3.75',
+        stroke: color,
+        strokeWidth: '1.9',
+        strokeLinecap: 'round',
+      }),
+      React.createElement('path', {
+        d: 'M7.5 8.25L12 3.75L16.5 8.25',
+        stroke: color,
+        strokeWidth: '1.9',
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+      }),
+      React.createElement('path', {
+        d: 'M4.5 16.5V18.5C4.5 19.605 5.395 20.5 6.5 20.5H17.5C18.605 20.5 19.5 19.605 19.5 18.5V16.5',
+        stroke: color,
+        strokeWidth: '1.9',
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+      }),
+    );
+  }
+
+  return (
+    <View
+      accessible={false}
+      style={[styles.trayGlyphFrame, { width: size, height: size }]}
+    >
+      <View
+        style={[
+          styles.trayGlyphChevronUp,
+          { borderTopColor: color, borderLeftColor: color },
+        ]}
+      />
+      <View
+        style={[
+          styles.trayGlyphShaft,
+          styles.trayGlyphShaftUp,
+          { backgroundColor: color },
+        ]}
+      />
+      <View style={[styles.trayGlyphBase, { borderColor: color }]} />
+    </View>
+  );
+}
+
+function PolygonOpacitySlider({
+  opacity,
+  compact,
+  label,
+  accessibilityLabel,
+  onChange,
+}: {
+  opacity: number;
+  compact: boolean;
+  label: string;
+  accessibilityLabel: string;
+  onChange?: (nextOpacity: number) => void;
+}): React.JSX.Element {
+  const clamped = clampPolygonOpacity(opacity);
+  const percent = Math.round(clamped * 100);
+  const trackWidthRef = React.useRef<number>(compact ? 76 : 96);
+
+  const updateFromOffsetX = (locationX: number): void => {
+    if (!onChange) {
+      return;
+    }
+    const width = Math.max(1, trackWidthRef.current);
+    const ratio = clampPolygonOpacity(locationX / width);
+    onChange(Math.round(ratio * 100) / 100);
+  };
+
+  return (
+    <View
+      testID="polygon-opacity-control"
+      style={[
+        styles.opacityPill,
+        compact ? styles.opacityPillCompact : null,
+      ]}
+    >
+      <Text
+        numberOfLines={1}
+        style={[
+          styles.filterChipLabel,
+          compact ? styles.filterChipLabelCompact : null,
+        ]}
+      >
+        {label}
+      </Text>
+      {Platform.OS === 'web' ? (
+        React.createElement('input', {
+          type: 'range',
+          min: 0,
+          max: 100,
+          step: 1,
+          value: percent,
+          'aria-label': `${accessibilityLabel} (${percent}%)`,
+          'data-testid': 'polygon-opacity-slider',
+          title: `${label}: ${percent}%`,
+          className: 'entsiegelung-opacity-slider',
+          onChange: (event: { target?: { value?: string } }) => {
+            if (!onChange) {
+              return;
+            }
+            const parsed = Number(event.target?.value);
+            if (Number.isFinite(parsed)) {
+              onChange(clampPolygonOpacity(parsed / 100));
+            }
+          },
+          onPointerDown: (event: { stopPropagation?: () => void }) => {
+            event.stopPropagation?.();
+          },
+          onTouchStart: (event: { stopPropagation?: () => void }) => {
+            event.stopPropagation?.();
+          },
+          style: {
+            width: compact ? '76px' : '96px',
+          },
+        })
+      ) : (
+        <View
+          testID="polygon-opacity-slider-native"
+          accessible
+          accessibilityRole="adjustable"
+          accessibilityLabel={accessibilityLabel}
+          accessibilityValue={{
+            min: 0,
+            max: 100,
+            now: percent,
+            text: `${percent}%`,
+          }}
+          onLayout={(event) => {
+            const measured = event.nativeEvent.layout.width;
+            if (measured > 0) {
+              trackWidthRef.current = measured;
+            }
+          }}
+          onStartShouldSetResponder={() => true}
+          onMoveShouldSetResponder={() => true}
+          onResponderTerminationRequest={() => false}
+          onResponderGrant={(event) => {
+            updateFromOffsetX(event.nativeEvent.locationX);
+          }}
+          onResponderMove={(event) => {
+            updateFromOffsetX(event.nativeEvent.locationX);
+          }}
+          style={[
+            styles.nativeSliderTouchArea,
+            compact ? styles.nativeSliderTouchAreaCompact : null,
+          ]}
+        >
+          <View style={styles.nativeSliderTrack}>
+            <View
+              style={[
+                styles.nativeSliderTrackFill,
+                { width: `${percent}%` },
+              ]}
+            />
+          </View>
+          <View
+            style={[
+              styles.nativeSliderThumb,
+              { left: `${percent}%` },
+            ]}
+          />
+        </View>
+      )}
+      <Text numberOfLines={1} style={styles.opacityValueLabel}>
+        {percent}%
+      </Text>
+    </View>
+  );
+}
 
 function ParcelUnsealMark({
   compact,
@@ -220,6 +605,7 @@ export function MapControlsBar({
   onToggleLocale,
   onOpenAbout,
   onSetBasemapMode,
+  onSetPolygonOpacity,
   onSetAuthorFilter,
   onToggleUnratedFlaggedOnly,
   onStartDraw,
@@ -468,83 +854,77 @@ export function MapControlsBar({
           </Pressable>
         ) : null}
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t.exportA11y}
-          onPress={handleExportPress}
-          style={({ pressed }) => [
-            styles.controlButton,
-            isCompact ? styles.controlButtonCompact : null,
-            styles.secondaryButton,
-            pressed ? styles.buttonPressed : null,
-          ]}
-        >
-          <Text
-            numberOfLines={1}
-            style={[
-              styles.secondaryButtonLabel,
-              isCompact ? styles.compactButtonLabel : null,
-            ]}
-          >
-            {isCompact ? t.exportCompact : t.exportFull}
-          </Text>
-        </Pressable>
-
-        {showApkDownloadButton ? (
+        {withWebTooltip(
+          t.exportFull,
           <Pressable
-            testID="download-apk-button"
+            testID="export-geojson-button"
             accessibilityRole="button"
-            accessibilityLabel={t.apkDownloadA11y}
-            onPress={handleApkDownloadPress}
+            accessibilityLabel={t.exportFull}
+            accessibilityHint={t.exportA11y}
+            onPress={handleExportPress}
             style={({ pressed }) => [
               styles.controlButton,
-              isCompact ? styles.controlButtonCompact : null,
+              styles.iconControlButton,
               styles.secondaryButton,
               pressed ? styles.buttonPressed : null,
             ]}
           >
-            <Text
-              numberOfLines={1}
-              style={[
-                styles.secondaryButtonLabel,
-                isCompact ? styles.compactButtonLabel : null,
-              ]}
-            >
-              {isCompact ? t.apkDownloadCompact : t.apkDownloadFull}
-            </Text>
-          </Pressable>
-        ) : null}
+            <ExportGlyph color={PALETTE.inkPrimary} size={20} />
+          </Pressable>,
+        )}
 
-        {controls.isAdmin && onImportPress ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t.importA11y}
-            accessibilityState={{ disabled: isImporting, busy: isImporting }}
-            disabled={isImporting}
-            onPress={onImportPress}
-            style={({ pressed }) => [
-              styles.controlButton,
-              isCompact ? styles.controlButtonCompact : null,
-              styles.adminImportButton,
-              isImporting ? styles.buttonDisabled : null,
-              pressed && !isImporting ? styles.buttonPressed : null,
-            ]}
-          >
-            <Text
-              numberOfLines={1}
-              style={[
-                styles.adminImportLabel,
-                isCompact ? styles.compactButtonLabel : null,
-              ]}
-            >
-              {isImporting
-                ? t.importingBusy
-                : isCompact
-                  ? t.importCompact
-                  : t.importFull}
-            </Text>
-          </Pressable>
-        ) : null}
+        {showApkDownloadButton
+          ? withWebTooltip(
+              t.apkDownloadFull,
+              <Pressable
+                testID="download-apk-button"
+                accessibilityRole="button"
+                accessibilityLabel={t.apkDownloadFull}
+                accessibilityHint={t.apkDownloadA11y}
+                onPress={handleApkDownloadPress}
+                style={({ pressed }) => [
+                  styles.controlButton,
+                  styles.iconControlButton,
+                  styles.secondaryButton,
+                  pressed ? styles.buttonPressed : null,
+                ]}
+              >
+                <AndroidGlyph
+                  color={PALETTE.accentPrimary}
+                  eyeColor={PALETTE.bgSurface}
+                  size={20}
+                />
+              </Pressable>,
+            )
+          : null}
+
+        {controls.isAdmin && onImportPress
+          ? withWebTooltip(
+              isImporting ? t.importingBusy : t.importFull,
+              <Pressable
+                testID="import-polygons-button"
+                accessibilityRole="button"
+                accessibilityLabel={isImporting ? t.importingBusy : t.importFull}
+                accessibilityHint={t.importA11y}
+                accessibilityState={{ disabled: isImporting, busy: isImporting }}
+                disabled={isImporting}
+                onPress={onImportPress}
+                style={({ pressed }) => [
+                  styles.controlButton,
+                  styles.iconControlButton,
+                  styles.adminImportButton,
+                  isImporting ? styles.buttonDisabled : null,
+                  pressed && !isImporting ? styles.buttonPressed : null,
+                ]}
+              >
+                {isImporting ? (
+                  <ActivityIndicator size="small" color={PALETTE.finishedText} />
+                ) : (
+                  <ImportGlyph color={PALETTE.finishedText} size={20} />
+                )}
+              </Pressable>,
+            )
+          : null}
 
         <Pressable
           accessibilityRole="button"
@@ -760,6 +1140,16 @@ export function MapControlsBar({
               : t.filterUnratedFlaggedFull}
           </Text>
         </Pressable>
+
+        <View style={styles.filterDivider} />
+
+        <PolygonOpacitySlider
+          opacity={controls.polygonOpacity}
+          compact={isCompact}
+          label={t.polygonOpacityLabel}
+          accessibilityLabel={t.polygonOpacityA11y}
+          {...(onSetPolygonOpacity ? { onChange: onSetPolygonOpacity } : {})}
+        />
       </ScrollView>
     </View>
   );
@@ -845,6 +1235,133 @@ const styles = StyleSheet.create({
     height: 20,
     backgroundColor: PALETTE.borderSubtle,
     marginHorizontal: 2,
+  },
+  opacityPill: {
+    minHeight: MIN_TOUCH_TARGET_DP,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: RADII.pill,
+    borderWidth: 1,
+    borderColor: PALETTE.borderStrong,
+    backgroundColor: PALETTE.bgSubtle,
+    flexShrink: 0,
+  },
+  opacityPillCompact: {
+    gap: 6,
+    paddingHorizontal: 10,
+  },
+  opacityValueLabel: {
+    ...TABULAR_NUMS_STYLE,
+    minWidth: 34,
+    textAlign: 'right',
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: PALETTE.inkPrimary,
+  },
+  nativeSliderTouchArea: {
+    width: 96,
+    height: 28,
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  nativeSliderTouchAreaCompact: {
+    width: 76,
+  },
+  nativeSliderTrack: {
+    width: '100%',
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: PALETTE.borderStrong,
+    overflow: 'hidden',
+  },
+  nativeSliderTrackFill: {
+    height: '100%',
+    backgroundColor: PALETTE.accentPrimary,
+  },
+  nativeSliderThumb: {
+    position: 'absolute',
+    width: 16,
+    height: 16,
+    marginLeft: -8,
+    borderRadius: 8,
+    backgroundColor: PALETTE.accentPrimary,
+    borderWidth: 2,
+    borderColor: PALETTE.bgSurface,
+  },
+  iconControlButton: {
+    paddingHorizontal: 10,
+    flexGrow: 0,
+    flexShrink: 0,
+  },
+  trayGlyphFrame: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  trayGlyphShaft: {
+    width: 2,
+    height: 9,
+    borderRadius: 1,
+    marginTop: -3,
+  },
+  trayGlyphShaftUp: {
+    marginTop: -2,
+  },
+  trayGlyphChevronDown: {
+    width: 6,
+    height: 6,
+    borderBottomWidth: 2,
+    borderRightWidth: 2,
+    transform: [{ rotate: '45deg' }],
+    marginTop: -5,
+  },
+  trayGlyphChevronUp: {
+    width: 6,
+    height: 6,
+    borderTopWidth: 2,
+    borderLeftWidth: 2,
+    transform: [{ rotate: '45deg' }],
+    marginTop: -2,
+  },
+  trayGlyphBase: {
+    position: 'absolute',
+    bottom: 2,
+    width: 14,
+    height: 5,
+    borderLeftWidth: 2,
+    borderRightWidth: 2,
+    borderBottomWidth: 2,
+    borderBottomLeftRadius: 3,
+    borderBottomRightRadius: 3,
+  },
+  androidFallbackFrame: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 1.5,
+  },
+  androidFallbackHead: {
+    width: 12,
+    height: 6,
+    borderTopLeftRadius: 6,
+    borderTopRightRadius: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-evenly',
+    paddingTop: 1,
+  },
+  androidFallbackEye: {
+    width: 2,
+    height: 2,
+    borderRadius: 1,
+  },
+  androidFallbackBody: {
+    width: 12,
+    height: 8,
+    borderBottomLeftRadius: 2,
+    borderBottomRightRadius: 2,
   },
   brandAndAccountRow: {
     flexDirection: 'row',

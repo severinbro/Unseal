@@ -39,6 +39,7 @@ import {
   deriveResponsiveLayout,
   formatRecoveryCodeBlocks,
 } from '../src/theme/tokens';
+import { WEB_CRAFT_CSS } from '../src/theme/webStyles';
 
 const SAMPLE_CONFIG: RuntimeConfig = {
   osmStyleUrl: 'https://tiles.openfreemap.org/styles/liberty',
@@ -381,15 +382,14 @@ describe('UI sheet, banner, and GPS camera state transitions', () => {
       config: SAMPLE_CONFIG,
     });
 
-    // First-visit disclaimer is shown initially and dismissed cleanly
+    // Disclaimer info box is suppressed by default (consolidated into AboutModal)
     let controls = deriveMapControlsModel(state);
-    assert.equal(controls.showFirstVisitDisclaimer, true);
+    assert.equal(controls.showFirstVisitDisclaimer, false);
     assert.equal(controls.disclaimerText, SAMPLE_CONFIG.disclaimerText);
 
     state = appReducer(state, { type: 'DISMISS_FIRST_VISIT_DISCLAIMER' });
     controls = deriveMapControlsModel(state);
     assert.equal(controls.showFirstVisitDisclaimer, false);
-    // Permanent disclaimerText remains available for PolygonInspectorSheet
     assert.equal(state.config?.disclaimerText, SAMPLE_CONFIG.disclaimerText);
 
     // GPS LocateMe success updates cameraTarget sequence
@@ -567,7 +567,55 @@ describe('German default localization and DE <-> EN switching', () => {
     assert.equal(getTranslations('de').inspector.statusInProgressBadge, '⟳ Wird entsiegelt');
     assert.equal(getTranslations('en').inspector.statusInProgressBadge, '⟳ In progress');
     assert.equal(getTranslations('en').controls.apkDownloadFull, 'Download Android APK');
+    assert.equal(getTranslations('de').controls.apkDownloadFull, 'Android-APK herunterladen');
+    assert.equal(getTranslations('de').about.apkDownloadButton, 'Android-APK herunterladen');
+    assert.equal(getTranslations('de').controls.polygonOpacityLabel, 'Deckkraft');
+    assert.equal(getTranslations('en').controls.polygonOpacityLabel, 'Opacity');
     assert.equal(getTranslations('de').about.title, 'Über Unseal');
+    assert.match(getTranslations('de').about.featureControlsBullet, /Deckkraft-Regler/);
+    assert.match(getTranslations('en').about.featureControlsBullet, /opacity slider/);
+    assert.match(getTranslations('de').about.featureDataBullet, /GeoJSON-Export/);
+    assert.match(getTranslations('en').about.featureDataBullet, /GeoJSON export/);
+
+    // Opacity slider state transitions & clamping + bottom-right attribution CSS rules
+    assert.equal(controlsDe.polygonOpacity, 0.35);
+    const highOpacityState = appReducer(state, {
+      type: 'SET_POLYGON_OPACITY',
+      opacity: 0.82,
+    });
+    assert.equal(deriveMapControlsModel(highOpacityState).polygonOpacity, 0.82);
+    const clampedOpacityState = appReducer(state, {
+      type: 'SET_POLYGON_OPACITY',
+      opacity: 2.5,
+    });
+    assert.equal(deriveMapControlsModel(clampedOpacityState).polygonOpacity, 1);
+
+    assert.match(WEB_CRAFT_CSS, /\.maplibregl-ctrl-bottom-right\s*\{/);
+    assert.match(WEB_CRAFT_CSS, /\.entsiegelung-opacity-slider\s*\{/);
+
+    // Voting on an unrated unflagged proposal while unratedFlaggedOnly=true triggers viewportRefreshSeq
+    const unratedPoly = makeSampleFeature('44444444-4444-4444-8444-444444444444', 0);
+    let filteredState = appReducer(state, {
+      type: 'VIEWPORT_FEATURES_LOADED',
+      features: [unratedPoly],
+      truncated: false,
+    });
+    filteredState = appReducer(filteredState, {
+      type: 'SET_UNRATED_FLAGGED_ONLY',
+      enabled: true,
+    });
+    const seqBeforeVote = filteredState.viewportRefreshSeq;
+    filteredState = appReducer(filteredState, {
+      type: 'VOTE_UPDATED',
+      vote: {
+        polygonId: unratedPoly.id,
+        upvotes: 1,
+        downvotes: 0,
+        score: 1,
+        myVote: 1,
+      },
+    });
+    assert.equal(filteredState.viewportRefreshSeq, seqBeforeVote + 1);
 
     // Built-in English server disclaimer translates to German in 'de', while custom operator overrides stay verbatim
     assert.equal(

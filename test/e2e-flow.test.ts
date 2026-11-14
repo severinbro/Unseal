@@ -243,7 +243,7 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     const initialControls = deriveMapControlsModel(state);
     assert.equal(state.locale, 'de');
     assert.equal(initialControls.locale, 'de');
-    assert.equal(initialControls.showFirstVisitDisclaimer, true);
+    assert.equal(initialControls.showFirstVisitDisclaimer, false);
     assert.equal(initialControls.showOrthophotoToggle, true);
     assert.equal(initialControls.isAuthenticated, false);
     assert.equal(initialControls.isAdmin, false);
@@ -1067,20 +1067,23 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     assert.equal(flagRes.isFlagged, true);
     assert.equal(flagRes.myFlag, true);
 
-    // Filter: new_user + unratedFlaggedOnly returns ONLY basePoly (unclippedPoly is unflagged)
+    // Filter: new_user + unratedFlaggedOnly returns BOTH basePoly (flagged & unrated) and unclippedPoly (unrated orange proposal)
     const filteredUnratedFlagged = await reviewerClient.listPolygons(
       HAMBURG_BBOX,
       { authorType: 'new_user', unratedFlaggedOnly: true },
     );
-    assert.equal(filteredUnratedFlagged.features.length, 1);
-    assert.equal(filteredUnratedFlagged.features[0]?.id, basePoly.id);
+    assert.equal(filteredUnratedFlagged.features.length, 2);
+    assert.deepEqual(
+      new Set(filteredUnratedFlagged.features.map((f) => f.id)),
+      new Set([basePoly.id, unclippedPoly.id]),
+    );
 
     const establishedOnly = await reviewerClient.listPolygons(HAMBURG_BBOX, {
       authorType: 'established',
     });
     assert.equal(establishedOnly.features.length, 0);
 
-    // Once basePoly receives +1 and -1 (net score = 0, but total ratings = 2), unratedFlaggedOnly excludes it
+    // Once basePoly receives +1 and -1 (net score = 0, total ratings = 2), it stays in unratedFlaggedOnly ONLY while flagged
     await newcomerClient.putVote(basePoly.id, 1);
     await reviewerClient.putVote(basePoly.id, -1);
     const ratedZeroNet = await reviewerClient.getPolygon(basePoly.id);
@@ -1088,17 +1091,26 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     assert.equal(ratedZeroNet.properties.upvotes, 1);
     assert.equal(ratedZeroNet.properties.downvotes, 1);
 
-    const afterVotesUnratedFlagged = await reviewerClient.listPolygons(
+    const whileFlaggedList = await reviewerClient.listPolygons(
       HAMBURG_BBOX,
       { unratedFlaggedOnly: true },
     );
-    assert.equal(afterVotesUnratedFlagged.features.length, 0);
+    assert.equal(whileFlaggedList.features.length, 2);
 
-    // Promote reviewer to admin -> clear flags on basePoly
+    // Promote reviewer to admin -> clear flags on basePoly -> now basePoly is rated & unflagged, so only unrated unclippedPoly remains in unratedFlaggedOnly
     await app.runAdminCommand(['grant-admin', 'civic_reviewer']);
     const cleared = await reviewerClient.clearPolygonFlags(basePoly.id);
     assert.equal(cleared.flagCount, 0);
     assert.equal(cleared.isFlagged, false);
+
+    const afterClearUnratedFlagged = await reviewerClient.listPolygons(
+      HAMBURG_BBOX,
+      { unratedFlaggedOnly: true },
+    );
+    assert.deepEqual(
+      afterClearUnratedFlagged.features.map((f) => f.id),
+      [unclippedPoly.id],
+    );
 
     // Backdate BOTH polygons to 15 days ago: prune-stale-polygons deletes unclippedPoly (0 ratings)
     // and keeps basePoly (2 ratings, net score 0)

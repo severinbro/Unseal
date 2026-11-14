@@ -23,6 +23,7 @@ import {
   buildOrthophotoSourceSpec,
   buildPolygonLayerSpecs,
   buildProposalGeoJson,
+  DEFAULT_POLYGON_OPACITY,
   dedupeFeatureIdsPreservingOrder,
   DRAFT_SOURCE_ID,
   extractRenderedFeatureRawIds,
@@ -92,6 +93,7 @@ export function MapCanvas({
   draftVertices,
   isRingClosed,
   selectedFeatureId,
+  polygonOpacity = DEFAULT_POLYGON_OPACITY,
   cameraTarget,
   onViewportChange,
   onMapTap,
@@ -157,8 +159,8 @@ export function MapCanvas({
     [basemapMode],
   );
   const [proposalFillSpec, proposalOutlineSpec, proposalCentroidSpec] = useMemo(
-    () => buildPolygonLayerSpecs(),
-    [],
+    () => buildPolygonLayerSpecs(polygonOpacity),
+    [polygonOpacity],
   );
   const [draftFillSpec, draftLineSpec, draftVerticesSpec] = useMemo(
     () => buildDraftLayerSpecs(),
@@ -373,6 +375,7 @@ export function MapCanvas({
               lineJoin: proposalOutlineSpec.layout['line-join'],
               lineColor: proposalOutlineSpec.paint['line-color'],
               lineWidth: proposalOutlineSpec.paint['line-width'],
+              lineOpacity: proposalOutlineSpec.paint['line-opacity'],
             }}
           />
         </ShapeSource>
@@ -387,10 +390,13 @@ export function MapCanvas({
             style={{
               circleColor: proposalCentroidSpec.paint['circle-color'],
               circleRadius: proposalCentroidSpec.paint['circle-radius'],
+              circleOpacity: proposalCentroidSpec.paint['circle-opacity'],
               circleStrokeColor:
                 proposalCentroidSpec.paint['circle-stroke-color'],
               circleStrokeWidth:
                 proposalCentroidSpec.paint['circle-stroke-width'],
+              circleStrokeOpacity:
+                proposalCentroidSpec.paint['circle-stroke-opacity'],
             }}
           />
         </ShapeSource>

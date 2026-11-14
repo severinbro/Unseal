@@ -25,6 +25,10 @@ import {
   translateValidationMessage,
   type Locale,
 } from '../i18n/translations';
+import {
+  clampPolygonOpacity,
+  DEFAULT_POLYGON_OPACITY,
+} from '../map/styleBuilder';
 
 export { DEFAULT_LOCALE, type Locale } from '../i18n/translations';
 
@@ -78,6 +82,7 @@ export interface AppState {
   configError: string | null;
   firstVisitDisclaimerDismissed: boolean;
   basemapMode: BasemapMode;
+  polygonOpacity: number;
   authorFilter: PolygonAuthorFilter;
   unratedFlaggedOnly: boolean;
   tileWarning: string | null;
@@ -118,6 +123,7 @@ export type AppAction =
   | { type: 'DISMISS_FIRST_VISIT_DISCLAIMER' }
   | { type: 'DISMISS_TILE_WARNING' }
   | { type: 'SET_BASEMAP_MODE'; mode: BasemapMode }
+  | { type: 'SET_POLYGON_OPACITY'; opacity: number }
   | { type: 'SET_AUTHOR_FILTER'; filter: PolygonAuthorFilter }
   | { type: 'SET_UNRATED_FLAGGED_ONLY'; enabled: boolean }
   | { type: 'TILE_LOAD_ERROR'; reason?: string }
@@ -184,8 +190,9 @@ export const initialAppState: AppState = {
   configStatus: 'loading',
   config: null,
   configError: null,
-  firstVisitDisclaimerDismissed: false,
+  firstVisitDisclaimerDismissed: true,
   basemapMode: 'osm',
+  polygonOpacity: DEFAULT_POLYGON_OPACITY,
   authorFilter: 'all',
   unratedFlaggedOnly: false,
   tileWarning: null,
@@ -453,6 +460,17 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         ...state,
         basemapMode: action.mode,
         tileWarning: action.mode === 'orthophoto' ? null : state.tileWarning,
+      };
+    }
+
+    case 'SET_POLYGON_OPACITY': {
+      const nextOpacity = clampPolygonOpacity(action.opacity);
+      if (state.polygonOpacity === nextOpacity) {
+        return state;
+      }
+      return {
+        ...state,
+        polygonOpacity: nextOpacity,
       };
     }
 
@@ -1023,10 +1041,25 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         state.pendingIntent?.type === 'CAST_VOTE' &&
         state.pendingIntent.polygonId === action.vote.polygonId;
 
+      const prevWasUnrated =
+        targetFeature !== undefined &&
+        targetFeature.properties.upvotes === 0 &&
+        targetFeature.properties.downvotes === 0;
+      const nextIsUnrated =
+        action.vote.upvotes === 0 && action.vote.downvotes === 0;
+      const shouldRefreshUnratedFilter =
+        state.unratedFlaggedOnly &&
+        targetFeature !== undefined &&
+        !targetFeature.properties.isFlagged &&
+        prevWasUnrated !== nextIsUnrated;
+
       return {
         ...state,
         features: nextFeatures,
         pendingIntent: shouldClearPending ? null : state.pendingIntent,
+        viewportRefreshSeq: shouldRefreshUnratedFilter
+          ? state.viewportRefreshSeq + 1
+          : state.viewportRefreshSeq,
       };
     }
 
