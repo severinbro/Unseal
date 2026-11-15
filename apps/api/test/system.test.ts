@@ -393,6 +393,68 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
     }
   });
 
+  it('passes every API setting from the env examples into the api container of both compose files', async () => {
+    const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
+    const configSource = await fs.readFile(
+      fileURLToPath(new URL('../src/config.ts', import.meta.url)),
+      'utf8',
+    );
+    const keysReadByApi = new Set(
+      Array.from(configSource.matchAll(/env\.([A-Z][A-Z0-9_]+)/g), (m) => m[1]!),
+    );
+    // Compose itself turns these into DATABASE_URL; they are not read inside the container.
+    const composeOnly = new Set(['POSTGRES_USER', 'POSTGRES_PASSWORD', 'POSTGRES_DB']);
+
+    for (const [envFile, composeFile] of [
+      ['.env.vps.example', 'docker-compose.vps.yml'],
+      ['.env.example', 'docker-compose.yml'],
+    ] as const) {
+      const envKeys = (await fs.readFile(path.join(repoRoot, envFile), 'utf8'))
+        .split('\n')
+        .map((line) => /^([A-Z][A-Z0-9_]*)=/.exec(line)?.[1])
+        .filter((key): key is string => key !== undefined);
+      const compose = await fs.readFile(path.join(repoRoot, composeFile), 'utf8');
+      const apiStart = compose.indexOf('\n  api:\n');
+      assert.ok(apiStart >= 0, `${composeFile} has an api service`);
+      const nextService = compose.slice(apiStart + 1).search(/\n  [a-z][a-z0-9_-]*:\n/);
+      const apiBlock =
+        nextService === -1
+          ? compose.slice(apiStart)
+          : compose.slice(apiStart, apiStart + 1 + nextService);
+      const passedKeys = new Set(
+        Array.from(apiBlock.matchAll(/^ {6}([A-Z][A-Z0-9_]*):/gm), (m) => m[1]!),
+      );
+
+      const missing = envKeys.filter(
+        (key) => keysReadByApi.has(key) && !composeOnly.has(key) && !passedKeys.has(key),
+      );
+      assert.deepEqual(missing, [], `${composeFile} does not pass ${missing.join(', ')} to the api`);
+    }
+  });
+
+  it('honours DISPOSABLE_EMAIL_BLOCKLIST_EXTRA (and the legacy name) and never uses the example captcha secret', () => {
+    assert.deepEqual(
+      loadEnvConfig({ DISPOSABLE_EMAIL_BLOCKLIST_EXTRA: 'Trash.example, junk.example' })
+        .disposableEmailBlocklistExtra,
+      ['trash.example', 'junk.example'],
+    );
+    assert.deepEqual(
+      loadEnvConfig({ DISPOSABLE_EMAIL_DOMAINS_EXTRA: 'legacy.example' })
+        .disposableEmailBlocklistExtra,
+      ['legacy.example'],
+    );
+    const strongCaptchaSecret = 'c'.repeat(64);
+    assert.equal(
+      loadEnvConfig({ AUTH_CAPTCHA_SECRET: strongCaptchaSecret }).authCaptchaSecret,
+      strongCaptchaSecret,
+    );
+    const placeholderConfig = loadEnvConfig({
+      AUTH_CAPTCHA_SECRET: 'CHANGE_ME_WITH_OPENSSL_RAND_HEX_32',
+    });
+    assert.notEqual(placeholderConfig.authCaptchaSecret, 'CHANGE_ME_WITH_OPENSSL_RAND_HEX_32');
+    assert.equal(placeholderConfig.authCaptchaSecret, loadEnvConfig({}).authCaptchaSecret);
+  });
+
   it('requires a strong TOMBSTONE_SECRET in production and validates PSEUDONYM_RESERVATION_DAYS', () => {
     assert.throws(
       () => loadEnvConfig({ NODE_ENV: 'production' }),

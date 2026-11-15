@@ -471,8 +471,14 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     false,
     'AUTH_CAPTCHA_ENABLED',
   );
+  // A publicly known secret would let anyone sign their own trivially solvable
+  // challenge, so the example placeholder is treated like an unset value
+  // (random per-process secret; only in-flight challenges are lost on restart).
+  const rawCaptchaSecret = env.AUTH_CAPTCHA_SECRET?.trim() ?? '';
   const authCaptchaSecret =
-    env.AUTH_CAPTCHA_SECRET?.trim() || EPHEMERAL_FALLBACK_CAPTCHA_SECRET;
+    rawCaptchaSecret.length > 0 && !/^change[_-]?me/i.test(rawCaptchaSecret)
+      ? rawCaptchaSecret
+      : EPHEMERAL_FALLBACK_CAPTCHA_SECRET;
   const authCaptchaMaxNumber = parseIntSetting(
     env.AUTH_CAPTCHA_MAX_NUMBER,
     15_000,
@@ -507,8 +513,12 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     }
   }
 
+  // DISPOSABLE_EMAIL_BLOCKLIST_EXTRA is the documented name; the older
+  // DISPOSABLE_EMAIL_DOMAINS_EXTRA is still accepted for existing deployments.
   const disposableEmailBlocklistExtra = (
-    env.DISPOSABLE_EMAIL_DOMAINS_EXTRA ?? ''
+    env.DISPOSABLE_EMAIL_BLOCKLIST_EXTRA?.trim() ||
+    env.DISPOSABLE_EMAIL_DOMAINS_EXTRA ||
+    ''
   )
     .split(',')
     .map((d) => d.trim().toLowerCase())
