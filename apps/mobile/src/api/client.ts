@@ -666,6 +666,19 @@ export class PpgisApiClient {
     return AuthUserSchema.parse(json);
   }
 
+  /**
+   * GDPR Art. 15/20 self-service download: returns the raw JSON export of all
+   * data stored about the signed-in account.
+   */
+  public async exportMyData(): Promise<string> {
+    const response = await this.executeFetch({
+      method: 'GET',
+      path: '/api/v1/auth/me/export',
+      includeAuth: true,
+    });
+    return response.text();
+  }
+
   public async deleteMe(): Promise<void> {
     await this.requestVoid({
       method: 'DELETE',

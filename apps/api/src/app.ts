@@ -184,6 +184,7 @@ export async function buildApp(
       uploadsDir: config.uploadsDir,
       logger,
       tombstoneSecret: config.tombstoneSecret,
+      publicBaseUrl: config.publicBaseUrl,
     }),
   );
 

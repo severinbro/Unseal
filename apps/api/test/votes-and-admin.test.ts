@@ -1063,4 +1063,221 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
       await app.close();
     }
   });
+
+  it('GET /api/v1/auth/me/export returns only the caller\'s own data (GDPR Art. 15/20) and requires authentication', async () => {
+    const config = loadEnvConfig({ PUBLIC_BASE_URL: 'https://unseal.example.org' });
+    const app = await buildApp(config, pool, {
+      logger: createLogger({ enabled: false }),
+    });
+    try {
+      const anonRes = await app.inject({ method: 'GET', url: '/api/v1/auth/me/export' });
+      assert.equal(anonRes.statusCode, 401);
+
+      const alice = await registerUser(app, 'ExportAlice', '198.51.100.81');
+      const bob = await registerUser(app, 'ExportBob', '198.51.100.82');
+      const alicePoly = await createPolygonForUser(app, alice.sessionToken, {
+        offsetIndex: 0,
+        note: 'Alice courtyard',
+        remoteAddress: '198.51.100.81',
+      });
+      const bobPoly = await createPolygonForUser(app, bob.sessionToken, {
+        offsetIndex: 3,
+        note: 'Bob parking corner',
+        remoteAddress: '198.51.100.82',
+      });
+
+      const voteRes = await app.inject({
+        method: 'PUT',
+        url: `/api/v1/polygons/${bobPoly.id}/vote`,
+        remoteAddress: '198.51.100.81',
+        headers: { authorization: `Bearer ${alice.sessionToken}` },
+        payload: { value: 1 },
+      });
+      assert.equal(voteRes.statusCode, 200);
+      const commentRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/polygons/${bobPoly.id}/comments`,
+        remoteAddress: '198.51.100.81',
+        headers: { authorization: `Bearer ${alice.sessionToken}` },
+        payload: { body: 'Alice agrees with Bob' },
+      });
+      assert.equal(commentRes.statusCode, 201);
+      const bobCommentRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/polygons/${alicePoly.id}/comments`,
+        remoteAddress: '198.51.100.82',
+        headers: { authorization: `Bearer ${bob.sessionToken}` },
+        payload: { body: 'Bob comment that must not leak' },
+      });
+      assert.equal(bobCommentRes.statusCode, 201);
+
+      const exportRes = await app.inject({
+        method: 'GET',
+        url: '/api/v1/auth/me/export',
+        remoteAddress: '198.51.100.81',
+        headers: { authorization: `Bearer ${alice.sessionToken}` },
+      });
+      assert.equal(exportRes.statusCode, 200);
+      assert.equal(exportRes.headers['cache-control'], 'no-store');
+      assert.match(
+        String(exportRes.headers['content-disposition']),
+        /^attachment; filename="unseal-data-export-\d{4}-\d{2}-\d{2}\.json"$/,
+      );
+      const data = exportRes.json() as {
+        format: string;
+        account: { pseudonym: string; email: string; lastActiveDate: string };
+        sessions: unknown[];
+        polygons: Array<{ id: string; note: string; geometry: { type: string } }>;
+        comments: Array<{ body: string; polygonId: string }>;
+        polygonVotes: Array<{ polygonId: string; value: number }>;
+        polygonCreationTimestamps: string[];
+      };
+      assert.equal(data.format, 'unseal-user-data-export');
+      assert.equal(data.account.pseudonym, 'ExportAlice');
+      assert.equal(data.account.email, 'exportalice@example.org');
+      assert.match(data.account.lastActiveDate, /^\d{4}-\d{2}-\d{2}$/);
+      assert.ok(data.sessions.length >= 1);
+      assert.deepEqual(data.polygons.map((p) => p.id), [alicePoly.id]);
+      assert.equal(data.polygons[0]!.note, 'Alice courtyard');
+      assert.equal(data.polygons[0]!.geometry.type, 'Polygon');
+      assert.deepEqual(data.comments.map((c) => c.body), ['Alice agrees with Bob']);
+      assert.deepEqual(data.polygonVotes, [
+        { ...data.polygonVotes[0]!, polygonId: bobPoly.id, value: 1 },
+      ]);
+      assert.equal(data.polygonCreationTimestamps.length, 1);
+
+      const raw = exportRes.body;
+      for (const forbidden of [
+        'ExportBob',
+        'exportbob@example.org',
+        'Bob parking corner',
+        'Bob comment that must not leak',
+        '$argon2',
+      ]) {
+        assert.equal(raw.includes(forbidden), false, `export must not contain ${forbidden}`);
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('admin CLI export-user, set-email, rename-user and lift-ban support GDPR access/rectification requests', async () => {
+    const config = loadEnvConfig({ PUBLIC_BASE_URL: 'https://unseal.example.org' });
+    const app = await buildApp(config, pool, {
+      logger: createLogger({ enabled: false }),
+    });
+    try {
+      const carla = await registerUser(app, 'CarlaRealName', '198.51.100.83');
+      await registerUser(app, 'OtherCitizen', '198.51.100.84');
+      const carlaPoly = await createPolygonForUser(app, carla.sessionToken, {
+        offsetIndex: 1,
+        remoteAddress: '198.51.100.83',
+      });
+
+      // export-user (by email) returns the same structure as the self-service download
+      const exportResult = await app.runAdminCommand([
+        'export-user',
+        'CarlaRealName@example.org',
+      ]);
+      assert.equal(exportResult.command, 'export-user');
+      assert.equal(exportResult.userExport?.account.pseudonym, 'CarlaRealName');
+      assert.equal(exportResult.userExport?.polygons.length, 1);
+      await assert.rejects(
+        () => app.runAdminCommand(['export-user', 'nobody@example.org']),
+        (err: unknown) => err instanceof ApiError && err.statusCode === 404,
+      );
+
+      // set-email: rejects addresses already in use, invalidates pending links
+      await assert.rejects(
+        () =>
+          app.runAdminCommand(['set-email', 'CarlaRealName', 'othercitizen@example.org']),
+        (err: unknown) => err instanceof ApiError && err.code === 'AUTH_EMAIL_TAKEN',
+      );
+      await pool.query(
+        `INSERT INTO email_tokens (user_id, purpose, token_hash, expires_at)
+         VALUES ($1, 'reset_password', $2, NOW() + INTERVAL '1 hour')`,
+        [carla.userId, Buffer.alloc(32, 7)],
+      );
+      const setEmailResult = await app.runAdminCommand([
+        'set-email',
+        'CarlaRealName',
+        'Carla.New@Example.org',
+      ]);
+      assert.equal(setEmailResult.email, 'carla.new@example.org');
+      const pendingTokens = await pool.query(
+        'SELECT 1 FROM email_tokens WHERE user_id = $1 AND consumed_at IS NULL',
+        [carla.userId],
+      );
+      assert.equal(pendingTokens.rowCount, 0);
+      const loginNewEmail = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        remoteAddress: '198.51.100.83',
+        payload: { identifier: 'carla.new@example.org', password: 'valid-password-123' },
+      });
+      assert.equal(loginNewEmail.statusCode, 200);
+
+      // rename-user: the old pseudonym is reserved against impersonation
+      await assert.rejects(
+        () => app.runAdminCommand(['rename-user', 'CarlaRealName', 'OtherCitizen']),
+        (err: unknown) => err instanceof ApiError && err.code === 'AUTH_PSEUDONYM_TAKEN',
+      );
+      const renameResult = await app.runAdminCommand([
+        'rename-user',
+        'carla.new@example.org',
+        'GreenCourtyard',
+      ]);
+      assert.equal(renameResult.pseudonym, 'GreenCourtyard');
+      assert.equal(renameResult.previousPseudonym, 'CarlaRealName');
+      const polyAfterRename = await app.inject({
+        method: 'GET',
+        url: `/api/v1/polygons/${carlaPoly.id}`,
+      });
+      assert.equal(polyAfterRename.statusCode, 200);
+      assert.equal(
+        PolygonFeatureSchema.parse(polyAfterRename.json()).properties.authorPseudonym,
+        'GreenCourtyard',
+      );
+      const impersonationRes = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        remoteAddress: '198.51.100.85',
+        payload: {
+          pseudonym: 'CarlaRealName',
+          email: 'impostor@example.org',
+          password: 'valid-password-123',
+          acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
+        },
+      });
+      assert.equal(impersonationRes.statusCode, 409);
+
+      // lift-ban removes ban tombstones (keyed and legacy) but keeps self-deletion reservations
+      await app.runAdminCommand(['ban-user', 'OtherCitizen', 'spam']);
+      const liftResult = await app.runAdminCommand([
+        'lift-ban',
+        'OtherCitizen',
+        'othercitizen@example.org',
+      ]);
+      assert.equal(liftResult.liftedPseudonymBans, 1);
+      assert.ok((liftResult.liftedEmailBans ?? 0) >= 1);
+      const reRegister = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        remoteAddress: '198.51.100.86',
+        payload: {
+          pseudonym: 'OtherCitizen',
+          email: 'othercitizen@example.org',
+          password: 'valid-password-123',
+          acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
+        },
+      });
+      assert.equal(reRegister.statusCode, 201);
+      const keepReservation = await app.runAdminCommand(['lift-ban', 'CarlaRealName']);
+      assert.equal(keepReservation.liftedPseudonymBans, 0);
+    } finally {
+      await app.close();
+    }
+  });
 });

@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import {
   AUTH_LIMITS,
   ApiError,
+  EmailSchema,
   LAND_COVER_CATEGORIES,
   LAND_COVER_SOURCES,
   RESERVED_PSEUDONYMS,
@@ -14,9 +15,23 @@ import {
   type LandCoverSource,
 } from '@entsiegelung/shared';
 
-import { hashPseudonymTombstone } from '../auth/crypto.js';
+import {
+  emailTombstoneCandidates,
+  hashCanonicalEmail,
+  hashPseudonymTombstone,
+  pseudonymTombstoneCandidates,
+} from '../auth/crypto.js';
+import {
+  assertEmailNotReserved,
+  assertPseudonymNotReserved,
+} from '../auth/tombstones.js';
 import { loadEnvConfig, resolveTombstoneSecret } from '../config.js';
 import { deleteOrBanUserAccount } from '../db/integrity.js';
+import {
+  collectUserData,
+  findUserIdByIdentifier,
+  type UserDataExport,
+} from '../users/dataExport.js';
 import { createDbPool } from '../db/pool.js';
 import { createLogger } from '../logger.js';
 import { loadVg250Municipalities } from '../municipalities/vg250.js';
@@ -35,7 +50,11 @@ export type AdminCommandName =
   | 'revoke-admin'
   | 'load-vg250'
   | 'load-landcover'
-  | 'prune-stale-polygons';
+  | 'prune-stale-polygons'
+  | 'export-user'
+  | 'set-email'
+  | 'rename-user'
+  | 'lift-ban';
 
 export interface AdminCommandResult {
   command: AdminCommandName;
@@ -57,6 +76,10 @@ export interface AdminCommandResult {
   importedLandCoverCount?: number;
   skippedLandCoverCount?: number;
   prunedPolygonIds?: string[];
+  previousPseudonym?: string;
+  userExport?: UserDataExport;
+  liftedPseudonymBans?: number;
+  liftedEmailBans?: number;
 }
 
 async function rollbackPreservingError(
@@ -119,6 +142,8 @@ function parseUserIdentifier(raw: string | undefined): string {
 export interface AdminCommandOptions {
   uploadsDir?: string;
   logger?: FastifyBaseLogger;
+  /** Public origin used for absolute photo URLs in `export-user` (defaults to `PUBLIC_BASE_URL`). */
+  publicBaseUrl?: string;
   /** HMAC key for tombstones; defaults to `TOMBSTONE_SECRET` from the environment. */
   tombstoneSecret?: string;
 }
@@ -519,10 +544,183 @@ export async function runAdminCommand(
     }
   }
 
+  // GDPR Art. 15/20: operator-side data export (e.g. for requests received by email)
+  if (command === 'export-user') {
+    if (argv.length !== 2) {
+      throw new ApiError(422, 'VALIDATION_ERROR', 'Usage: export-user <pseudonym-or-email>');
+    }
+    const userId = await findUserIdByIdentifier(pool, parseUserIdentifier(argv[1]));
+    const userExport = await collectUserData(pool, userId, {
+      publicBaseUrl: options.publicBaseUrl ?? loadEnvConfig().publicBaseUrl,
+    });
+    return {
+      command: 'export-user',
+      pseudonym: userExport.account.pseudonym,
+      userExport,
+    };
+  }
+
+  // GDPR Art. 16: rectify a user's email address after the operator verified the request
+  if (command === 'set-email') {
+    if (argv.length !== 3) {
+      throw new ApiError(
+        422,
+        'VALIDATION_ERROR',
+        'Usage: set-email <pseudonym-or-email> <new-email>',
+      );
+    }
+    const identifier = parseUserIdentifier(argv[1]);
+    const parsedEmail = EmailSchema.safeParse(argv[2]);
+    if (!parsedEmail.success) {
+      throw new ApiError(422, 'VALIDATION_ERROR', 'Please specify a valid new email address.');
+    }
+    const newEmailLower = parsedEmail.data.toLowerCase();
+    const canonicalHash = hashCanonicalEmail(tombstoneSecret, newEmailLower);
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const userId = await findUserIdByIdentifier(client, identifier);
+      await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [userId]);
+      await assertEmailNotReserved(client, tombstoneSecret, newEmailLower);
+      const takenRes = await client.query(
+        `SELECT 1 FROM users
+         WHERE id <> $1 AND (LOWER(email) = $2 OR canonical_email_hash = $3)
+         LIMIT 1`,
+        [userId, newEmailLower, canonicalHash],
+      );
+      if ((takenRes.rowCount ?? 0) > 0) {
+        throw new ApiError(409, 'AUTH_EMAIL_TAKEN', 'This email address is already registered.');
+      }
+      const updatedRes = await client.query<{ pseudonym: string; email: string }>(
+        `UPDATE users
+         SET email = $2,
+             canonical_email_hash = $3,
+             email_verified_at = COALESCE(email_verified_at, clock_timestamp())
+         WHERE id = $1
+         RETURNING pseudonym, email`,
+        [userId, newEmailLower, canonicalHash],
+      );
+      // Pending confirmation/reset links were sent to the previous address
+      await client.query(
+        'DELETE FROM email_tokens WHERE user_id = $1 AND consumed_at IS NULL',
+        [userId],
+      );
+      await client.query('COMMIT');
+      const updated = updatedRes.rows[0]!;
+      return { command: 'set-email', pseudonym: updated.pseudonym, email: updated.email };
+    } catch (err: unknown) {
+      await rollbackPreservingError(client, err);
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  // GDPR Art. 16: rectify a pseudonym (e.g. one that turned out to reveal a real name)
+  if (command === 'rename-user') {
+    if (argv.length !== 3) {
+      throw new ApiError(
+        422,
+        'VALIDATION_ERROR',
+        'Usage: rename-user <pseudonym-or-email> <new-pseudonym>',
+      );
+    }
+    const identifier = parseUserIdentifier(argv[1]);
+    const newPseudonym = argv[2]?.trim() ?? '';
+    if (!AUTH_LIMITS.PSEUDONYM_REGEX.test(newPseudonym)) {
+      throw new ApiError(
+        422,
+        'VALIDATION_ERROR',
+        'Pseudonym must be 3 to 32 characters containing only letters, digits, underscores, or hyphens.',
+      );
+    }
+    const newLower = newPseudonym.toLowerCase();
+    if ((RESERVED_PSEUDONYMS as readonly string[]).includes(newLower)) {
+      throw new ApiError(409, 'AUTH_PSEUDONYM_TAKEN', 'This pseudonym is reserved.');
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const userId = await findUserIdByIdentifier(client, identifier);
+      const currentRes = await client.query<{ pseudonym: string }>(
+        'SELECT pseudonym FROM users WHERE id = $1 FOR UPDATE',
+        [userId],
+      );
+      const previousPseudonym = currentRes.rows[0]!.pseudonym;
+      if (previousPseudonym.toLowerCase() !== newLower) {
+        await assertPseudonymNotReserved(client, tombstoneSecret, newLower);
+        const takenRes = await client.query(
+          'SELECT 1 FROM users WHERE LOWER(pseudonym) = $1 AND id <> $2 LIMIT 1',
+          [newLower, userId],
+        );
+        if ((takenRes.rowCount ?? 0) > 0) {
+          throw new ApiError(409, 'AUTH_PSEUDONYM_TAKEN', 'This pseudonym is already taken.');
+        }
+        // Reserve the old pseudonym like a self-deletion (keyed tombstone, expires
+        // after PSEUDONYM_RESERVATION_DAYS) so nobody can impersonate the user.
+        await client.query(
+          `INSERT INTO reserved_pseudonyms (pseudonym_hash, reason)
+           VALUES ($1, 'self_deleted')
+           ON CONFLICT (pseudonym_hash) DO NOTHING`,
+          [hashPseudonymTombstone(tombstoneSecret, previousPseudonym)],
+        );
+      }
+      await client.query('UPDATE users SET pseudonym = $2 WHERE id = $1', [
+        userId,
+        newPseudonym,
+      ]);
+      await client.query('COMMIT');
+      return { command: 'rename-user', pseudonym: newPseudonym, previousPseudonym };
+    } catch (err: unknown) {
+      await rollbackPreservingError(client, err);
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  // Ban tombstones are kept until lifted (GDPR Art. 17/21: end the restriction when no longer justified)
+  if (command === 'lift-ban') {
+    if (argv.length < 2 || argv.length > 3) {
+      throw new ApiError(422, 'VALIDATION_ERROR', 'Usage: lift-ban <pseudonym> [email]');
+    }
+    const pseudonymInput = parseValidatedPseudonym(argv[1]);
+    let emailInput: string | null = null;
+    if (argv[2] !== undefined) {
+      const parsedEmail = EmailSchema.safeParse(argv[2]);
+      if (!parsedEmail.success) {
+        throw new ApiError(422, 'VALIDATION_ERROR', 'Please specify a valid email address.');
+      }
+      emailInput = parsedEmail.data.toLowerCase();
+    }
+    const pseudoRes = await pool.query(
+      `DELETE FROM reserved_pseudonyms
+       WHERE pseudonym_hash = ANY($1::bytea[])
+         AND reason <> 'self_deleted'`,
+      [pseudonymTombstoneCandidates(tombstoneSecret, pseudonymInput)],
+    );
+    let liftedEmailBans = 0;
+    if (emailInput !== null) {
+      const emailRes = await pool.query(
+        'DELETE FROM reserved_emails WHERE email_hash = ANY($1::bytea[])',
+        [emailTombstoneCandidates(tombstoneSecret, emailInput)],
+      );
+      liftedEmailBans = emailRes.rowCount ?? 0;
+    }
+    return {
+      command: 'lift-ban',
+      pseudonym: pseudonymInput,
+      liftedPseudonymBans: pseudoRes.rowCount ?? 0,
+      liftedEmailBans,
+    };
+  }
+
   throw new ApiError(
     422,
     'VALIDATION_ERROR',
-    'Unsupported admin command. Supported commands: grant-admin <user>, revoke-admin <user>, load-vg250 [source], load-landcover <osm|alkis> <filePath> [defaultCategory] [--replace], prune-stale-polygons [retentionDays], ban-user <pseudonym> [reason], delete-polygon <polygonId>, delete-comment <commentId>, redact-note <polygonId>.',
+    'Unsupported admin command. Supported commands: grant-admin <user>, revoke-admin <user>, load-vg250 [source], load-landcover <osm|alkis> <filePath> [defaultCategory] [--replace], prune-stale-polygons [retentionDays], ban-user <pseudonym> [reason], lift-ban <pseudonym> [email], delete-polygon <polygonId>, delete-comment <commentId>, redact-note <polygonId>, export-user <user>, set-email <user> <newEmail>, rename-user <user> <newPseudonym>.',
   );
 }
 
@@ -539,9 +737,19 @@ if (isDirectExecution) {
     uploadsDir: config.uploadsDir,
     logger,
     tombstoneSecret: config.tombstoneSecret,
+    publicBaseUrl: config.publicBaseUrl,
   })
     .then(async (result) => {
-      logger.info({ result }, 'Admin moderation command completed');
+      if (result.userExport) {
+        // Print the export itself to stdout (redirect to a file); never into the log stream.
+        process.stdout.write(`${JSON.stringify(result.userExport, null, 2)}\n`);
+        logger.info(
+          { command: result.command, pseudonym: result.pseudonym },
+          'Admin data export written to stdout',
+        );
+      } else {
+        logger.info({ result }, 'Admin moderation command completed');
+      }
       await pool.end();
     })
     .catch(async (err: unknown) => {

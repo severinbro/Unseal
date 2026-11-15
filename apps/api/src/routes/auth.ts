@@ -36,6 +36,7 @@ import {
   assertPseudonymNotReserved,
 } from '../auth/tombstones.js';
 import { deleteOrBanUserAccount } from '../db/integrity.js';
+import { collectUserData } from '../users/dataExport.js';
 import {
   normalizeRateLimitIp,
   normalizeRateLimitSubnet,
@@ -1038,6 +1039,30 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     },
     async (request) => {
       return AuthUserSchema.parse(request.auth!.user);
+    },
+  );
+
+  // GDPR Art. 15 (access) & Art. 20 (portability): self-service data download
+  app.get(
+    '/api/v1/auth/me/export',
+    {
+      preHandler: requireAuth,
+      config: {
+        rateLimit: deleteAccountLimit,
+      },
+    },
+    async (request, reply) => {
+      const data = await collectUserData(app.pool, request.auth!.user.id, {
+        publicBaseUrl: app.config.publicBaseUrl,
+      });
+      const datePart = data.exportedAt.slice(0, 10);
+      return reply
+        .header('Cache-Control', 'no-store')
+        .header(
+          'Content-Disposition',
+          `attachment; filename="unseal-data-export-${datePart}.json"`,
+        )
+        .send(data);
     },
   );
 

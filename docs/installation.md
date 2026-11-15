@@ -181,14 +181,26 @@ docker compose exec api node apps/api/dist/cli/admin.js revoke-admin <pseudonym>
 # 2. Seed or refresh German BKG VG250 municipality boundaries (from live BKG WFS or local .geojson)
 docker compose exec api node apps/api/dist/cli/admin.js load-vg250
 
-# 3. Ban an abusive pseudonym (records SHA-256 tombstones, purges user's polygons/photos/votes, recomputes scores)
+# 3. Ban an abusive pseudonym (records keyed HMAC tombstones of pseudonym + email, purges the user's
+#    polygons/photos/comments/votes, recomputes scores) — and lift a ban once it is no longer justified
 docker compose exec api node apps/api/dist/cli/admin.js ban-user <pseudonym> "spam brigading"
+docker compose exec api node apps/api/dist/cli/admin.js lift-ban <pseudonym> [email]
 
 # 4. Delete a specific polygon proposal or comment by UUID, or redact a proposal's free-text note
 docker compose exec api node apps/api/dist/cli/admin.js delete-polygon <polygon-uuid>
 docker compose exec api node apps/api/dist/cli/admin.js delete-comment <comment-uuid>
 docker compose exec api node apps/api/dist/cli/admin.js redact-note <polygon-uuid>
+
+# 5. GDPR data subject requests received by email (verify the requester's identity first!)
+#    Art. 15/20 access & portability: writes the same JSON users can download in the app to stdout
+docker compose exec -T api node apps/api/dist/cli/admin.js export-user <pseudonym-or-email> > export.json
+#    Art. 16 rectification: change the email address (pending email links are invalidated)
+docker compose exec api node apps/api/dist/cli/admin.js set-email <pseudonym-or-email> <new-email>
+#    Art. 16 rectification: rename a pseudonym (the old one stays reserved for PSEUDONYM_RESERVATION_DAYS)
+docker compose exec api node apps/api/dist/cli/admin.js rename-user <pseudonym-or-email> <new-pseudonym>
 ```
+
+Users can download their own data in the app (*Konto → Meine Daten herunterladen*, `GET /api/v1/auth/me/export`) and delete their account themselves; the CLI commands above cover requests that arrive by email.
 
 *(On your production VPS, add `--env-file .env.vps -f docker-compose.vps.yml` right after `docker compose`.)*
 

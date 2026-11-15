@@ -1579,4 +1579,33 @@ describe('appReducer and viewModels v2', () => {
     assert.equal(afterFinishedVoteAttempt.authModalOpen, false);
     assert.equal(afterFinishedVoteAttempt.pendingIntent, null);
   });
+
+  it('exportMyData fetches the authenticated GDPR data export as raw JSON text', async () => {
+    const mem = createMemorySessionStorage();
+    await mem.setToken('tok-export');
+    const calls: { method: string; url: string; auth: string | null }[] = [];
+    const exportBody = JSON.stringify({ format: 'unseal-user-data-export', version: 1 });
+    const client = new PpgisApiClient('https://maps.example.org', mem, async (input, init) => {
+      const headers = new Headers(init?.headers);
+      calls.push({
+        method: init?.method ?? 'GET',
+        url: String(input),
+        auth: headers.get('authorization'),
+      });
+      return new Response(exportBody, {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+
+    const raw = await client.exportMyData();
+    assert.equal(raw, exportBody);
+    assert.deepEqual(calls, [
+      {
+        method: 'GET',
+        url: 'https://maps.example.org/api/v1/auth/me/export',
+        auth: 'Bearer tok-export',
+      },
+    ]);
+  });
 });

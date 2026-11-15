@@ -401,6 +401,12 @@ export interface TranslationDictionary {
     readonly accountSignedInHint: (pseudonym: string) => string;
     readonly adminRoleBadge: string;
     readonly accountEmailLabel: string;
+    readonly exportDataButton: string;
+    readonly exportDataA11y: string;
+    readonly exportingData: string;
+    readonly exportDataHint: string;
+    readonly exportDataDone: string;
+    readonly exportDataFailed: string;
     readonly logoutA11y: string;
     readonly loggingOut: string;
     readonly logout: string;
@@ -948,6 +954,13 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         `Angemeldet als @${pseudonym}. Auf der Karte und im GeoJSON-Export erscheint ausschließlich dein Pseudonym.`,
       adminRoleBadge: 'Administrator',
       accountEmailLabel: 'Bestätigte E-Mail:',
+      exportDataButton: 'Meine Daten herunterladen',
+      exportDataA11y: 'Alle zu deinem Konto gespeicherten Daten als JSON-Datei herunterladen',
+      exportingData: 'Daten werden zusammengestellt…',
+      exportDataHint:
+        'Enthält Konto, Vorschläge, Fotos-Links, Kommentare, Abstimmungen und Meldungen (Art. 15 & 20 DSGVO).',
+      exportDataDone: 'Deine Datenkopie wurde erstellt.',
+      exportDataFailed: 'Datenexport fehlgeschlagen.',
       logoutA11y: 'Aus aktueller Sitzung abmelden',
       loggingOut: 'Abmeldung läuft…',
       logout: 'Abmelden',
@@ -1513,6 +1526,13 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         `Signed in as @${pseudonym}. Only your pseudonym appears publicly on polygons, photos, and GeoJSON exports.`,
       adminRoleBadge: 'Administrator',
       accountEmailLabel: 'Verified email:',
+      exportDataButton: 'Download my data',
+      exportDataA11y: 'Download all data stored for your account as a JSON file',
+      exportingData: 'Preparing your data…',
+      exportDataHint:
+        'Includes account, proposals, photo links, comments, votes and flags (GDPR Art. 15 & 20).',
+      exportDataDone: 'Your data copy has been created.',
+      exportDataFailed: 'Data export failed.',
       logoutA11y: 'Log out of current session',
       loggingOut: 'Signing Out…',
       logout: 'Log Out',

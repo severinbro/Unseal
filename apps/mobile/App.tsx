@@ -48,6 +48,7 @@ import {
 } from 'react-native';
 
 import { PpgisApiClient } from './src/api/client';
+import { saveDataExport } from './src/media/saveDataExport';
 import { AboutModal } from './src/components/AboutModal';
 import { AddressSearchModal } from './src/components/AddressSearchModal';
 import { AuthAndAccountModal } from './src/components/AuthAndAccountModal';
@@ -812,6 +813,18 @@ export function App(props: AppProps = {}): React.JSX.Element {
     try {
       await apiClient.deleteMe();
       dispatch({ type: 'ACCOUNT_DELETED' });
+    } catch (err: unknown) {
+      if (await handleSessionExpiredError(err)) {
+        return;
+      }
+      throw err;
+    }
+  }, [apiClient, handleSessionExpiredError]);
+
+  const handleExportData = useCallback(async (): Promise<void> => {
+    try {
+      const json = await apiClient.exportMyData();
+      await saveDataExport(json);
     } catch (err: unknown) {
       if (await handleSessionExpiredError(err)) {
         return;
@@ -1764,6 +1777,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
                 onForgotPassword={handleForgotPassword}
                 onLogout={handleLogout}
                 onDeleteAccount={handleDeleteAccount}
+                onExportData={handleExportData}
               />
             </ScrollView>
           </View>

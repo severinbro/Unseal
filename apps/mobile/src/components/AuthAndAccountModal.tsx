@@ -43,6 +43,8 @@ export interface AuthAndAccountModalProps {
   onForgotPassword: (email: string) => Promise<void>;
   onLogout: () => Promise<void>;
   onDeleteAccount: () => Promise<void>;
+  /** GDPR Art. 15/20 self-service data download. */
+  onExportData?: () => Promise<void>;
 }
 
 export function AuthAndAccountModal({
@@ -59,6 +61,7 @@ export function AuthAndAccountModal({
   onForgotPassword,
   onLogout,
   onDeleteAccount,
+  onExportData,
 }: AuthAndAccountModalProps): React.JSX.Element | null {
   const [identifier, setIdentifier] = useState<string>('');
   const [pseudonym, setPseudonym] = useState<string>('');
@@ -73,6 +76,7 @@ export function AuthAndAccountModal({
     string | null
   >(null);
   const [infoBanner, setInfoBanner] = useState<string | null>(null);
+  const [isExportingData, setIsExportingData] = useState<boolean>(false);
 
   useEffect(() => {
     setLocalError(null);
@@ -244,6 +248,25 @@ export function AuthAndAccountModal({
       })
       .finally(() => {
         setIsSubmitting(false);
+      });
+  };
+
+  const handleExportDataPress = (): void => {
+    if (!onExportData) {
+      return;
+    }
+    setLocalError(null);
+    setInfoBanner(null);
+    setIsExportingData(true);
+    void onExportData()
+      .then(() => {
+        setInfoBanner(t.exportDataDone);
+      })
+      .catch((err: unknown) => {
+        setLocalError(localizeError(err, t.exportDataFailed, locale));
+      })
+      .finally(() => {
+        setIsExportingData(false);
       });
   };
 
@@ -669,6 +692,24 @@ export function AuthAndAccountModal({
             </View>
           ) : null}
 
+          {onExportData ? (
+            <View style={styles.exportDataBlock}>
+              <Pressable
+                testID="account-export-data"
+                accessibilityRole="button"
+                accessibilityLabel={t.exportDataA11y}
+                disabled={isSubmitting || isExportingData}
+                onPress={handleExportDataPress}
+                style={[styles.touchButton, styles.secondaryButton]}
+              >
+                <Text style={styles.secondaryButtonLabel}>
+                  {isExportingData ? t.exportingData : t.exportDataButton}
+                </Text>
+              </Pressable>
+              <Text style={styles.privacyHint}>{t.exportDataHint}</Text>
+            </View>
+          ) : null}
+
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t.logoutA11y}
@@ -979,6 +1020,9 @@ const styles = StyleSheet.create({
     color: PALETTE.accentPrimary,
     fontWeight: '700',
     textDecorationLine: 'underline',
+  },
+  exportDataBlock: {
+    gap: 6,
   },
   accountEmailBox: {
     padding: 10,
