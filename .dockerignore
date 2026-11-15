@@ -7,6 +7,8 @@ uploads
 .swarm
 .env
 .env.vps
+.env.apk
+papers/
 .expo
 web-build
 apps/mobile/android

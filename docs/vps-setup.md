@@ -129,15 +129,15 @@ When building the Android APK/AAB or iOS build for production devices, pass `EXP
 ```bash
 cd apps/mobile
 EXPO_PUBLIC_API_BASE_URL="https://entsiegelung.example.org" npx expo prebuild
+cd ../..
 
 # Generate a release keystore once (back it up safely outside git!):
 # keytool -genkeypair -v -storetype PKCS12 -keystore unseal-release.keystore -alias unseal-upload -keyalg RSA -keysize 4096 -validity 10000
 
-export UNSEAL_UPLOAD_STORE_FILE="/path/to/unseal-release.keystore"
-export UNSEAL_UPLOAD_STORE_PASSWORD="<store-password>"
-export UNSEAL_UPLOAD_KEY_ALIAS="unseal-upload"
-export UNSEAL_UPLOAD_KEY_PASSWORD="<key-password>"
-(cd android && ./gradlew assembleRelease)
+cp .env.apk.example .env.apk
+chmod 600 .env.apk
+# Edit .env.apk with EXPO_PUBLIC_API_BASE_URL and UNSEAL_UPLOAD_* keystore credentials
+source .env.apk && (cd apps/mobile/android && ./gradlew assembleRelease --no-daemon)
 ```
 
 If you distribute the signed APK via the VPS (`/downloads/unseal.apk`), place it at `<UPLOADS_DIR>/unseal.apk` (or mount it to `APK_FILE_PATH`). The API automatically detects the file and advertises both `apkDownloadUrl` and its SHA-256 checksum (`apkSha256`) on `/api/v1/config`.
