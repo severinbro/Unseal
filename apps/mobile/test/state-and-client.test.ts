@@ -170,10 +170,10 @@ function makePolygonFeature(
       commentCount: overrides?.commentCount ?? 0,
       authorPseudonym: overrides?.authorPseudonym ?? SAMPLE_USER.pseudonym,
       authorIsNewUser: overrides?.authorIsNewUser ?? false,
-      authorLastLoginAt:
-        overrides?.authorLastLoginAt !== undefined
-          ? overrides.authorLastLoginAt
-          : '2026-11-12T09:30:00.000Z',
+      authorRecentlyActive:
+        overrides?.authorRecentlyActive !== undefined
+          ? overrides.authorRecentlyActive
+          : true,
       upvotes: overrides?.upvotes ?? Math.max(score, 0),
       downvotes: overrides?.downvotes ?? Math.max(-score, 0),
       score,
@@ -1449,7 +1449,7 @@ describe('appReducer and viewModels v2', () => {
       id: 'aaaa1111-1111-4111-8111-111111111111',
       isAuthor: true,
       authorIsNewUser: true,
-      authorLastLoginAt: '2026-11-14T10:00:00.000Z',
+      authorRecentlyActive: true,
     });
     const otherPoly = makePolygonFeature({
       id: SAMPLE_POLYGON_ID,
@@ -1522,7 +1522,7 @@ describe('appReducer and viewModels v2', () => {
     );
     assert.equal(deletedAuthored?.properties.authorPseudonym, 'deleted');
     assert.equal(deletedAuthored?.properties.authorIsNewUser, false);
-    assert.equal(deletedAuthored?.properties.authorLastLoginAt, null);
+    assert.equal(deletedAuthored?.properties.authorRecentlyActive, null);
     const deletedOther = deletedState.features.find(
       (f) => f.id === SAMPLE_POLYGON_ID,
     );

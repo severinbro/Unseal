@@ -85,7 +85,7 @@ function makeFeature(params: {
       commentCount: 0,
       authorPseudonym: 'mapper_one',
       authorIsNewUser: false,
-      authorLastLoginAt: '2026-11-12T11:00:00.000Z',
+      authorRecentlyActive: true,
       upvotes,
       downvotes,
       score: params.score,

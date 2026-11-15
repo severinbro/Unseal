@@ -299,8 +299,10 @@ export interface TranslationDictionary {
     readonly entryDateLabel: string;
     readonly creatorSectionLabel: string;
     readonly newContributorBadge: string;
-    readonly creatorLastLoginLabel: string;
-    readonly creatorLastLoginUnknown: string;
+    readonly creatorActivityLabel: string;
+    readonly creatorActivityRecent: (days: number) => string;
+    readonly creatorActivityInactive: string;
+    readonly creatorActivityUnknown: string;
     readonly needsReviewBadge: (count: number) => string;
     readonly flagForReviewButton: string;
     readonly flagForReviewA11y: string;
@@ -814,8 +816,10 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       entryDateLabel: 'Eingetragen am',
       creatorSectionLabel: 'Vorgeschlagen von',
       newContributorBadge: 'Neuer Beitragender',
-      creatorLastLoginLabel: 'Letzte Anmeldung',
-      creatorLastLoginUnknown: 'Unbekannt',
+      creatorActivityLabel: 'Aktivität',
+      creatorActivityRecent: (days) => `Aktiv in den letzten ${days} Tagen`,
+      creatorActivityInactive: 'Länger nicht aktiv',
+      creatorActivityUnknown: 'Unbekannt',
       needsReviewBadge: (count) =>
         count > 1 ? `Prüfbedarf (${count})` : 'Prüfbedarf',
       flagForReviewButton: 'Zur Prüfung melden',
@@ -1379,8 +1383,10 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       entryDateLabel: 'Submitted on',
       creatorSectionLabel: 'Proposed by',
       newContributorBadge: 'New contributor',
-      creatorLastLoginLabel: 'Last login',
-      creatorLastLoginUnknown: 'Unknown',
+      creatorActivityLabel: 'Activity',
+      creatorActivityRecent: (days) => `Active in the last ${days} days`,
+      creatorActivityInactive: 'Not active recently',
+      creatorActivityUnknown: 'Unknown',
       needsReviewBadge: (count) =>
         count > 1 ? `Needs review (${count})` : 'Needs review',
       flagForReviewButton: 'Flag for review',

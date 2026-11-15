@@ -43,7 +43,9 @@ interface SessionLookupRow {
   created_at: Date;
 }
 
-const SESSION_LAST_LOGIN_REFRESH_MS = 15 * 60 * 1000;
+// Activity is stored with day precision only (GDPR Art. 5(1)(c)), so at most one
+// write per user and day is needed.
+const LAST_ACTIVITY_REFRESH_MS = 24 * 60 * 60 * 1000;
 
 interface InsertedSessionRow {
   id: string;
@@ -108,7 +110,7 @@ async function createSessionWithClient(
   }
 
   await client.query(
-    'UPDATE users SET last_login_at = clock_timestamp() WHERE id = $1',
+    "UPDATE users SET last_login_at = date_trunc('day', clock_timestamp()) WHERE id = $1",
     [userId],
   );
 
@@ -201,15 +203,15 @@ async function resolveSessionFromRequest(
 
   if (
     row.last_login_at === null ||
-    Date.now() - row.last_login_at.getTime() >= SESSION_LAST_LOGIN_REFRESH_MS
+    Date.now() - row.last_login_at.getTime() >= LAST_ACTIVITY_REFRESH_MS
   ) {
     await request.server.pool.query(
       `UPDATE users
-       SET last_login_at = clock_timestamp()
+       SET last_login_at = date_trunc('day', clock_timestamp())
        WHERE id = $1
          AND (
            last_login_at IS NULL
-           OR last_login_at <= clock_timestamp() - INTERVAL '15 minutes'
+           OR last_login_at < date_trunc('day', clock_timestamp())
          )`,
       [row.user_id],
     );

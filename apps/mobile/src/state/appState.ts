@@ -1223,9 +1223,9 @@ export function appReducer(state: AppState, action: AppAction): AppState {
             authorIsNewUser: f.properties.isAuthor
               ? false
               : f.properties.authorIsNewUser,
-            authorLastLoginAt: f.properties.isAuthor
+            authorRecentlyActive: f.properties.isAuthor
               ? null
-              : f.properties.authorLastLoginAt,
+              : f.properties.authorRecentlyActive,
             isAuthor: false,
             myVote: 0 as const,
             flagCount: nextFlagCount,

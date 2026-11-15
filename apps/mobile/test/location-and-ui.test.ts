@@ -119,7 +119,7 @@ function makeSampleFeature(id: string, score: number): PolygonFeature {
       commentCount: 0,
       authorPseudonym: 'citizen_a',
       authorIsNewUser: true,
-      authorLastLoginAt: '2026-11-14T08:30:00.000Z',
+      authorRecentlyActive: true,
       upvotes: score > 0 ? score : 0,
       downvotes: score < 0 ? Math.abs(score) : 0,
       score,
@@ -806,7 +806,7 @@ describe('German default localization and DE <-> EN switching', () => {
       properties: {
         ...makeSampleFeature('33333333-3333-4333-8333-333333333333', 0).properties,
         authorIsNewUser: true,
-        authorLastLoginAt: '2026-11-14T08:30:00.000Z',
+        authorRecentlyActive: true,
         flagCount: 2,
         isFlagged: true,
         myFlag: true,
@@ -816,7 +816,7 @@ describe('German default localization and DE <-> EN switching', () => {
     assert.equal(metaDe.displayAuthorHandle, 'citizen_a');
     assert.equal(metaDe.newContributorBadgeText, 'Neuer Beitragender');
     assert.equal(metaDe.entryDateText, '12.11.2026');
-    assert.equal(metaDe.authorLastLoginText, '14.11.2026');
+    assert.equal(metaDe.authorActivityText, 'Aktiv in den letzten 30 Tagen');
     assert.equal(metaDe.needsReviewBadgeText, 'Prüfbedarf (2)');
     assert.equal(metaDe.canFlagOrUnflag, true);
 
@@ -827,7 +827,7 @@ describe('German default localization and DE <-> EN switching', () => {
           ...flaggedNewFeature.properties,
           authorPseudonym: 'deleted',
           authorIsNewUser: false,
-          authorLastLoginAt: null,
+          authorRecentlyActive: null,
           isAuthor: true,
         },
       },
@@ -836,7 +836,7 @@ describe('German default localization and DE <-> EN switching', () => {
     assert.equal(metaEn.displayAuthorHandle, 'deleted');
     assert.equal(metaEn.newContributorBadgeText, null);
     assert.equal(metaEn.entryDateText, '2026-11-12');
-    assert.equal(metaEn.authorLastLoginText, 'Unknown');
+    assert.equal(metaEn.authorActivityText, 'Unknown');
     assert.equal(metaEn.needsReviewBadgeText, 'Needs review (2)');
     assert.equal(metaEn.canFlagOrUnflag, false);
   });

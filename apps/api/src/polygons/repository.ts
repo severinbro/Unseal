@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import {
+  AUTHOR_ACTIVITY,
   ApiError,
   GEOMETRY_LIMITS,
   IMPORT_LIMITS,
@@ -124,7 +125,7 @@ interface PolygonQueryRow {
   comment_count: number;
   author_pseudonym: string;
   author_is_new_user: boolean;
-  author_last_login_at: Date | null;
+  author_recently_active: boolean | null;
   flag_count: number;
   my_flag: boolean;
   upvotes: number;
@@ -291,9 +292,7 @@ function mapRowToPolygonFeature(row: PolygonQueryRow): PolygonFeature {
       commentCount: Math.max(0, Number(row.comment_count ?? 0)),
       authorPseudonym: row.author_pseudonym,
       authorIsNewUser: Boolean(row.author_is_new_user),
-      authorLastLoginAt: row.author_last_login_at
-        ? row.author_last_login_at.toISOString()
-        : null,
+      authorRecentlyActive: row.author_recently_active ?? null,
       flagCount: Math.max(0, Number(row.flag_count ?? 0)),
       isFlagged: Number(row.flag_count ?? 0) > 0,
       myFlag: Boolean(row.my_flag),
@@ -338,7 +337,7 @@ function mapExportRowToPolygonFeature(row: ExportPolygonRow): PolygonFeature {
       commentCount: Math.max(0, Number(row.comment_count ?? 0)),
       authorPseudonym: row.author_pseudonym,
       authorIsNewUser: Boolean(row.author_is_new_user),
-      authorLastLoginAt: null,
+      authorRecentlyActive: null,
       flagCount: Math.max(0, Number(row.flag_count ?? 0)),
       isFlagged: Number(row.flag_count ?? 0) > 0,
       myFlag: false,
@@ -365,6 +364,20 @@ async function rollbackPreservingError(
     }
   }
 }
+
+/**
+ * GDPR data minimisation (Art. 5(1)(c), Art. 25): the author's activity date is
+ * never published. Public responses only carry whether the author was active
+ * within the last `AUTHOR_ACTIVITY.RECENT_DAYS` days (NULL for deleted authors).
+ * Expects the users table to be joined as `u`.
+ */
+const AUTHOR_RECENTLY_ACTIVE_SQL = `CASE
+    WHEN u.id IS NULL THEN NULL
+    ELSE COALESCE(
+      u.last_login_at >= date_trunc('day', NOW()) - make_interval(days => ${Number(AUTHOR_ACTIVITY.RECENT_DAYS)}),
+      FALSE
+    )
+  END`;
 
 function buildAuthorIsNewUserSql(
   userAlias: string,
@@ -421,7 +434,7 @@ async function querySinglePolygonById(
        p.comment_count,
        COALESCE(u.pseudonym, 'deleted') AS author_pseudonym,
        ${buildAuthorIsNewUserSql('u', '$3', '$4')} AS author_is_new_user,
-       u.last_login_at AS author_last_login_at,
+       ${AUTHOR_RECENTLY_ACTIVE_SQL} AS author_recently_active,
        p.flag_count,
        CASE
          WHEN $2::uuid IS NOT NULL THEN EXISTS (
@@ -1068,7 +1081,7 @@ export class PolygonRepository {
            p.comment_count,
            COALESCE(u.pseudonym, 'deleted') AS author_pseudonym,
            ${authorIsNewSql} AS author_is_new_user,
-           u.last_login_at AS author_last_login_at,
+           ${AUTHOR_RECENTLY_ACTIVE_SQL} AS author_recently_active,
            p.flag_count,
            CASE
              WHEN $5::uuid IS NOT NULL THEN EXISTS (
@@ -1140,7 +1153,7 @@ export class PolygonRepository {
          bp.comment_count,
          bp.author_pseudonym,
          bp.author_is_new_user,
-         bp.author_last_login_at,
+         bp.author_recently_active,
          bp.flag_count,
          bp.my_flag,
          bp.upvotes,

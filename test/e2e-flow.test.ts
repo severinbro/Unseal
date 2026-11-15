@@ -1141,7 +1141,7 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     });
     assert.equal(basePoly.properties.authorPseudonym, 'newcomer_hh');
     assert.equal(basePoly.properties.authorIsNewUser, true);
-    assert.ok(basePoly.properties.authorLastLoginAt);
+    assert.equal(basePoly.properties.authorRecentlyActive, true);
 
     const metaDe = deriveInspectorOverviewMeta(basePoly, 'de');
     assert.equal(metaDe.displayAuthorHandle, 'newcomer_hh');
@@ -1149,14 +1149,14 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     assert.ok(metaDe.newContributorBadgeText);
     assert.equal(metaDe.needsReviewBadgeText, null);
     assert.ok(metaDe.entryDateText && metaDe.entryDateText.length >= 8);
-    assert.notEqual(metaDe.authorLastLoginText, 'Unbekannt');
+    assert.equal(metaDe.authorActivityText, 'Aktiv in den letzten 30 Tagen');
 
-    // Public GeoJSON export redacts authorLastLoginAt to null
+    // Public GeoJSON export carries no author activity information
     const exportRes = await fetch(newcomerClient.getExportGeoJsonUrl());
     const exported = parseStreamedGeoJson(await exportRes.text());
     const exportedPoly = exported.features.find((f) => f.id === basePoly.id);
     assert.ok(exportedPoly);
-    assert.equal(exportedPoly.properties.authorLastLoginAt, null);
+    assert.equal('authorLastLoginAt' in exportedPoly.properties, false);
 
     // >= 50% overlap is blocked (409 POLYGON_OVERLAP)
     await assert.rejects(

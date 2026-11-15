@@ -1,4 +1,5 @@
 import {
+  AUTHOR_ACTIVITY,
   findTopRatedCommentId,
   GEOMETRY_LIMITS,
   PHOTO_LIMITS,
@@ -47,7 +48,7 @@ export interface InspectorOverviewMetaModel {
   authorIsNewUser: boolean;
   newContributorBadgeText: string | null;
   entryDateText: string | null;
-  authorLastLoginText: string;
+  authorActivityText: string;
   isFlagged: boolean;
   needsReviewBadgeText: string | null;
   canFlagOrUnflag: boolean;
@@ -65,10 +66,12 @@ export function deriveInspectorOverviewMeta(
       ? 'gelöscht'
       : properties.authorPseudonym;
   const entryDateText = formatInspectorDate(properties.createdAt, locale);
-  const formattedLastLogin = formatInspectorDate(
-    properties.authorLastLoginAt,
-    locale,
-  );
+  const authorActivityText =
+    properties.authorRecentlyActive === true
+      ? t.creatorActivityRecent(AUTHOR_ACTIVITY.RECENT_DAYS)
+      : properties.authorRecentlyActive === false
+        ? t.creatorActivityInactive
+        : t.creatorActivityUnknown;
 
   return {
     displayAuthorHandle,
@@ -77,7 +80,7 @@ export function deriveInspectorOverviewMeta(
       ? t.newContributorBadge
       : null,
     entryDateText,
-    authorLastLoginText: formattedLastLogin ?? t.creatorLastLoginUnknown,
+    authorActivityText,
     isFlagged: properties.isFlagged,
     needsReviewBadgeText: properties.isFlagged
       ? t.needsReviewBadge(properties.flagCount)

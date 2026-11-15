@@ -756,7 +756,7 @@ export const PolygonFeatureSchema = z.object({
     commentCount: z.number().int().nonnegative().optional().default(0),
     authorPseudonym: z.string().min(1),
     authorIsNewUser: z.boolean().optional().default(false),
-    authorLastLoginAt: IsoDateTimeSchema.nullable().optional().default(null),
+    authorRecentlyActive: z.boolean().nullable().optional().default(null),
     flagCount: z.number().int().nonnegative().optional().default(0),
     isFlagged: z.boolean().optional().default(false),
     myFlag: z.boolean().optional().default(false),

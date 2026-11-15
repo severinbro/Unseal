@@ -118,6 +118,14 @@ export const TRUST_AND_MODERATION_LIMITS = {
   MAX_FLAG_NOTE_LENGTH: 300,
 } as const;
 
+/**
+ * GDPR data minimisation: author activity is stored with day precision only and
+ * published solely as a coarse "active within the last N days" flag.
+ */
+export const AUTHOR_ACTIVITY = {
+  RECENT_DAYS: 30,
+} as const;
+
 export const DISPOSABLE_EMAIL_DOMAINS = [
   '10minutemail.com',
   'dispostable.com',

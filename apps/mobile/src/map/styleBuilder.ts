@@ -78,7 +78,7 @@ export interface ProposalFeatureProperties {
   commentCount: number;
   authorPseudonym: string;
   authorIsNewUser: boolean;
-  authorLastLoginAt: string | null;
+  authorRecentlyActive: boolean | null;
   upvotes: number;
   downvotes: number;
   score: number;

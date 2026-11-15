@@ -722,7 +722,7 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
         'RATE_LIMITED',
       );
 
-      // 6. Verify email, log in, create polygon -> authorLastLoginAt is populated on API responses & omitted on bulk GeoJSON export
+      // 6. Verify email, log in, create polygon -> only a coarse authorRecentlyActive flag is public; the stored activity date has day precision
       await pool.query(
         "UPDATE users SET email_verified_at = clock_timestamp() WHERE LOWER(pseudonym) = 'gmailoriginal'",
       );
@@ -755,10 +755,16 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
       const created = PolygonFeatureSchema.parse(polyRes.json());
       assert.equal(created.properties.authorPseudonym, 'GmailOriginal');
       assert.equal(created.properties.authorIsNewUser, true);
-      assert.ok(
-        typeof created.properties.authorLastLoginAt === 'string' &&
-          created.properties.authorLastLoginAt.length > 0,
+      assert.equal(created.properties.authorRecentlyActive, true);
+      assert.equal('authorLastLoginAt' in created.properties, false);
+      const rawCreated = polyRes.json() as { properties: Record<string, unknown> };
+      assert.equal('authorLastLoginAt' in rawCreated.properties, false);
+      const storedActivityRes = await pool.query<{ is_day_precision: boolean }>(
+        `SELECT last_login_at = date_trunc('day', last_login_at) AS is_day_precision
+         FROM users WHERE id = $1`,
+        [session.user.id],
       );
+      assert.equal(storedActivityRes.rows[0]!.is_day_precision, true);
 
       // Simulate pre-005 existing 30-day session with last_login_at = NULL:
       // any authenticated bearer request (e.g. GET /api/v1/auth/me or GET /api/v1/polygons)
@@ -778,9 +784,20 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
       });
       assert.equal(refreshedPolyRes.statusCode, 200);
       const refreshedPoly = PolygonFeatureSchema.parse(refreshedPolyRes.json());
-      assert.ok(
-        typeof refreshedPoly.properties.authorLastLoginAt === 'string' &&
-          refreshedPoly.properties.authorLastLoginAt.length > 0,
+      assert.equal(refreshedPoly.properties.authorRecentlyActive, true);
+
+      // Authors inactive for longer than AUTHOR_ACTIVITY.RECENT_DAYS are shown as inactive
+      await pool.query(
+        "UPDATE users SET last_login_at = date_trunc('day', NOW()) - INTERVAL '45 days' WHERE id = $1",
+        [session.user.id],
+      );
+      const inactivePolyRes = await app.inject({
+        method: 'GET',
+        url: `/api/v1/polygons/${created.id}`,
+      });
+      assert.equal(
+        PolygonFeatureSchema.parse(inactivePolyRes.json()).properties.authorRecentlyActive,
+        false,
       );
 
       const exportRes = await app.inject({
@@ -792,7 +809,7 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
         features: PolygonFeature[];
       };
       assert.equal(exported.features.length, 1);
-      assert.equal(exported.features[0]!.properties.authorLastLoginAt, null);
+      assert.equal('authorLastLoginAt' in exported.features[0]!.properties, false);
     } finally {
       await app.close();
     }

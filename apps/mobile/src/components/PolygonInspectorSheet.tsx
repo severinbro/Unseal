@@ -689,7 +689,7 @@ export function PolygonInspectorSheet({
 
   const overviewMeta = deriveInspectorOverviewMeta(feature, locale);
   const entryDateText = overviewMeta.entryDateText;
-  const authorLastLoginText = overviewMeta.authorLastLoginText;
+  const authorActivityText = overviewMeta.authorActivityText;
   const displayAuthorHandle = overviewMeta.displayAuthorHandle;
 
   const formatCommentTimestamp = (iso: string): string => {
@@ -1181,12 +1181,12 @@ export function PolygonInspectorSheet({
                 </Text>
               </Text>
               <Text
-                testID="overview-author-last-login"
+                testID="overview-author-activity"
                 style={styles.creatorMetaItem}
               >
-                {t.creatorLastLoginLabel}:{' '}
+                {t.creatorActivityLabel}:{' '}
                 <Text style={styles.creatorMetaMono}>
-                  {authorLastLoginText ?? t.creatorLastLoginUnknown}
+                  {authorActivityText}
                 </Text>
               </Text>
             </View>
