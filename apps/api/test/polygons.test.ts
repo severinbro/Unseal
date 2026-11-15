@@ -5,6 +5,7 @@ import { after, before, beforeEach, describe, it } from 'node:test';
 import {
   ApiErrorEnvelopeSchema,
   PolygonCollectionResponseSchema,
+  ExportPolygonFeatureSchema,
   PolygonFeatureSchema,
   RegisterResponseSchema,
   SessionResponseSchema,
@@ -1056,20 +1057,27 @@ describe('PPGIS-4: PostGIS polygon CRUD, authoritative validation, span/sliver c
       assert.equal(exported.features.length, 1050);
 
       const seenIds = new Set<string>();
-      let deletedAuthorCount = 0;
       for (const rawFeat of exported.features) {
-        const feat = PolygonFeatureSchema.parse(rawFeat);
+        // Strict schema: the CC0 export carries no author pseudonym, author
+        // trust/activity signal or viewer-specific fields (GDPR Art. 5(1)(c), 17(2)).
+        const feat = ExportPolygonFeatureSchema.parse(rawFeat);
         assert.equal(feat.id, feat.properties.id);
-        assert.equal(feat.properties.myVote, 0);
-        assert.equal(feat.properties.isAuthor, false);
-        if (feat.properties.authorPseudonym === 'deleted') {
-          deletedAuthorCount += 1;
+        const rawProps = (rawFeat as { properties: Record<string, unknown> }).properties;
+        for (const forbiddenKey of [
+          'authorPseudonym',
+          'authorIsNewUser',
+          'authorRecentlyActive',
+          'myVote',
+          'myFlag',
+          'isAuthor',
+        ]) {
+          assert.equal(forbiddenKey in rawProps, false, `export must not contain ${forbiddenKey}`);
         }
         assertMaxSixDecimals(feat.geometry.coordinates[0]!);
         seenIds.add(feat.id);
       }
       assert.equal(seenIds.size, 1050, 'All 1,050 keyset-paginated IDs must be unique');
-      assert.equal(deletedAuthorCount, 1);
+      assert.equal(exportRes.body.includes('"deleted"'), false);
       assert.equal(exportSemaphore.active, 0);
 
       // Prove BoundedSemaphore(2, 0, 'SERVICE_UNAVAILABLE') saturation & release over live TCP streams

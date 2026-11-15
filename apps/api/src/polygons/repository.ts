@@ -13,6 +13,7 @@ import {
   computeMunicipalityNormalizedScore,
   type BboxBounds,
   type CreatePolygonRequest,
+  type ExportPolygonFeature,
   type FlagPolygonResponse,
   type ImportPolygonsResponse,
   type LandCoverCategory,
@@ -105,7 +106,7 @@ export interface ExportCursor {
 }
 
 export interface ExportBatchResult {
-  features: PolygonFeature[];
+  features: ExportPolygonFeature[];
   nextCursor: ExportCursor | undefined;
 }
 
@@ -150,8 +151,6 @@ interface ExportPolygonRow {
   municipality_max_score: number;
   photo_count: number;
   comment_count: number;
-  author_pseudonym: string;
-  author_is_new_user: boolean;
   flag_count: number;
   upvotes: number;
   downvotes: number;
@@ -307,7 +306,7 @@ function mapRowToPolygonFeature(row: PolygonQueryRow): PolygonFeature {
   };
 }
 
-function mapExportRowToPolygonFeature(row: ExportPolygonRow): PolygonFeature {
+function mapExportRowToExportFeature(row: ExportPolygonRow): ExportPolygonFeature {
   const status = coercePolygonStatus(row.status);
   const municipalityAgs = row.municipality_ags ?? null;
   const municipalityMaxScore = Math.max(0, Number(row.municipality_max_score ?? 0));
@@ -335,17 +334,11 @@ function mapExportRowToPolygonFeature(row: ExportPolygonRow): PolygonFeature {
       municipalityNormalizedScore,
       photoCount: Math.max(0, Number(row.photo_count ?? 0)),
       commentCount: Math.max(0, Number(row.comment_count ?? 0)),
-      authorPseudonym: row.author_pseudonym,
-      authorIsNewUser: Boolean(row.author_is_new_user),
-      authorRecentlyActive: null,
       flagCount: Math.max(0, Number(row.flag_count ?? 0)),
       isFlagged: Number(row.flag_count ?? 0) > 0,
-      myFlag: false,
       upvotes: row.upvotes,
       downvotes: row.downvotes,
       score: row.score,
-      myVote: 0,
-      isAuthor: false,
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
     },
@@ -1822,8 +1815,6 @@ export class PolygonRepository {
                m.name AS municipality_name,
                p.photo_count,
                p.comment_count,
-               COALESCE(u.pseudonym, 'deleted') AS author_pseudonym,
-               ${buildAuthorIsNewUserSql('u', '$4', '$5')} AS author_is_new_user,
                p.flag_count,
                p.upvotes,
                p.downvotes,
@@ -1832,7 +1823,6 @@ export class PolygonRepository {
                p.updated_at,
                p.created_at::text AS cursor_created_at
              FROM polygons p
-             LEFT JOIN users u ON u.id = p.user_id
              LEFT JOIN municipalities m ON m.id = p.municipality_id
              WHERE (p.created_at, p.id) > ($1::timestamptz, $2::uuid)
              ORDER BY p.created_at ASC, p.id ASC
@@ -1852,8 +1842,6 @@ export class PolygonRepository {
                m.name AS municipality_name,
                p.photo_count,
                p.comment_count,
-               COALESCE(u.pseudonym, 'deleted') AS author_pseudonym,
-               ${buildAuthorIsNewUserSql('u', '$2', '$3')} AS author_is_new_user,
                p.flag_count,
                p.upvotes,
                p.downvotes,
@@ -1862,7 +1850,6 @@ export class PolygonRepository {
                p.updated_at,
                p.created_at::text AS cursor_created_at
              FROM polygons p
-             LEFT JOIN users u ON u.id = p.user_id
              LEFT JOIN municipalities m ON m.id = p.municipality_id
              ORDER BY p.created_at ASC, p.id ASC
              LIMIT $1
@@ -1891,18 +1878,12 @@ export class PolygonRepository {
             cursor.createdAtRaw,
             cursor.id,
             batchSize,
-            this.trust.minAccountDays,
-            this.trust.minCleanPolygons,
           ])
-        : await client.query<ExportPolygonRow>(baseCte + tailSql, [
-            batchSize,
-            this.trust.minAccountDays,
-            this.trust.minCleanPolygons,
-          ]);
+        : await client.query<ExportPolygonRow>(baseCte + tailSql, [batchSize]);
 
       await client.query('COMMIT');
 
-      const features = res.rows.map((row) => mapExportRowToPolygonFeature(row));
+      const features = res.rows.map((row) => mapExportRowToExportFeature(row));
       const lastRow = res.rows[res.rows.length - 1];
       const nextCursor =
         res.rows.length === batchSize && lastRow

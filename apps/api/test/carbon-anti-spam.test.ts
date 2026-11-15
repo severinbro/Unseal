@@ -810,6 +810,8 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
       };
       assert.equal(exported.features.length, 1);
       assert.equal('authorLastLoginAt' in exported.features[0]!.properties, false);
+      assert.equal('authorPseudonym' in exported.features[0]!.properties, false);
+      assert.equal(exportRes.body.includes('GmailOriginal'), false);
     } finally {
       await app.close();
     }

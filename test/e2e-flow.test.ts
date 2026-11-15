@@ -8,10 +8,11 @@ import sharp from 'sharp';
 
 import {
   ApiError,
+  ExportPolygonFeatureSchema,
   HealthResponseSchema,
   PolygonFeatureSchema,
   type BboxBounds,
-  type PolygonFeature,
+  type ExportPolygonFeature,
 } from '@entsiegelung/shared';
 import {
   appReducer,
@@ -89,7 +90,7 @@ const MAINZ_MUNICIPALITY_GEOJSON = JSON.stringify({
 
 interface StreamedGeoJsonCollection {
   type: 'FeatureCollection';
-  features: PolygonFeature[];
+  features: ExportPolygonFeature[];
 }
 
 function parseStreamedGeoJson(raw: string): StreamedGeoJsonCollection {
@@ -101,7 +102,7 @@ function parseStreamedGeoJson(raw: string): StreamedGeoJsonCollection {
   assert.ok(Array.isArray(parsed.features));
   return {
     type: 'FeatureCollection',
-    features: parsed.features.map((item) => PolygonFeatureSchema.parse(item)),
+    features: parsed.features.map((item) => ExportPolygonFeatureSchema.parse(item)),
   };
 }
 
@@ -797,6 +798,7 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     const exportRaw = await exportRes.text();
     assert.equal(exportRaw.includes('courtyard_author@example.org'), false);
     assert.equal(exportRaw.includes('umweltamt@example.org'), false);
+    assert.equal(exportRaw.includes('courtyard_author'), false);
     const exportedCollection = parseStreamedGeoJson(exportRaw);
     const exportedHamburg = exportedCollection.features.find(
       (f) => f.id === polygonId,
@@ -1157,6 +1159,7 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     const exportedPoly = exported.features.find((f) => f.id === basePoly.id);
     assert.ok(exportedPoly);
     assert.equal('authorLastLoginAt' in exportedPoly.properties, false);
+    assert.equal('authorPseudonym' in exportedPoly.properties, false);
 
     // >= 50% overlap is blocked (409 POLYGON_OVERLAP)
     await assert.rejects(

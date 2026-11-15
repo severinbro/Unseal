@@ -182,6 +182,7 @@ export interface TranslationDictionary {
     readonly noteSectionTitle: string;
     readonly noteInputA11y: string;
     readonly notePlaceholder: string;
+    readonly notePublicHint: string;
     readonly discardConfirmTitle: string;
     readonly keepEditingA11y: string;
     readonly keepEditing: string;
@@ -668,6 +669,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       noteInputA11y: 'Optionaler Standorthinweis',
       notePlaceholder:
         'Ungenutzte Parkecke, Hitzeinsel oder Versickerungspotenzial (keine Klarnamen oder Kontaktdaten)',
+      notePublicHint:
+        'Wird öffentlich als gemeinfreie Daten (CC0) veröffentlicht – bitte keine personenbezogenen Daten eintragen.',
       discardConfirmTitle:
         'Noch nicht eingereichten Flächenentwurf verwerfen?',
       keepEditingA11y: 'Flächenentwurf weiter bearbeiten',
@@ -1249,6 +1252,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       noteInputA11y: 'Optional site context note',
       notePlaceholder:
         'Unused paved corner, heat island, or drainage potential (no personal names or contact data)',
+      notePublicHint:
+        'Published openly as public-domain data (CC0) – please do not enter any personal data.',
       discardConfirmTitle: 'Discard your unsubmitted polygon draft?',
       keepEditingA11y: 'Keep editing polygon draft',
       keepEditing: 'Keep Editing',

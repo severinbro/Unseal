@@ -14,7 +14,7 @@ import {
   UuidParamSchema,
   checkBboxSpan,
   type PolygonCollectionResponse,
-  type PolygonFeature,
+  type ExportPolygonFeature,
 } from '@entsiegelung/shared';
 
 import { optionalAuth, requireAdmin, requireAuth } from '../auth/session.js';
@@ -47,7 +47,7 @@ function applyOptionalAuthCacheHeaders(
 }
 
 function serializeFeatureBatch(
-  features: readonly PolygonFeature[],
+  features: readonly ExportPolygonFeature[],
   isFirstFeature: boolean,
 ): { chunk: string; nextIsFirstFeature: boolean } {
   let chunk = '';

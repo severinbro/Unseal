@@ -772,6 +772,31 @@ export const PolygonFeatureSchema = z.object({
 
 export type PolygonFeature = z.output<typeof PolygonFeatureSchema>;
 
+/**
+ * Feature of the public CC0 bulk export (`GET /api/v1/polygons/export.geojson`).
+ *
+ * GDPR data minimisation (Art. 5(1)(c)) and erasure (Art. 17(2)): exported copies
+ * leave the operator's control, so the export carries no author pseudonym, author
+ * trust/activity signal or viewer-specific fields. Unknown keys are rejected.
+ */
+export const ExportPolygonFeatureSchema = z.object({
+  type: z.literal('Feature'),
+  id: z.string().uuid(),
+  geometry: PolygonResponseGeometrySchema,
+  properties: PolygonFeatureSchema.shape.properties
+    .omit({
+      authorPseudonym: true,
+      authorIsNewUser: true,
+      authorRecentlyActive: true,
+      myVote: true,
+      myFlag: true,
+      isAuthor: true,
+    })
+    .strict(),
+});
+
+export type ExportPolygonFeature = z.output<typeof ExportPolygonFeatureSchema>;
+
 export const PolygonCollectionResponseSchema = z.object({
   type: z.literal('FeatureCollection'),
   features: z.array(PolygonFeatureSchema),

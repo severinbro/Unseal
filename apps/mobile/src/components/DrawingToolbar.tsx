@@ -402,6 +402,9 @@ export function DrawingToolbar({
               placeholderTextColor={PALETTE.inkMuted}
               style={styles.noteInput}
             />
+            <Text testID="draft-note-public-hint" style={styles.notePublicHint}>
+              {t.notePublicHint}
+            </Text>
           </View>
 
           {onTakeDraftPhoto || onPickDraftPhoto ? (
@@ -764,6 +767,12 @@ const styles = StyleSheet.create({
   charCounterExceeded: {
     color: PALETTE.dangerText,
     fontWeight: '700',
+  },
+  notePublicHint: {
+    marginTop: 4,
+    fontSize: 11,
+    lineHeight: 14,
+    color: PALETTE.inkMuted,
   },
   noteInput: {
     minHeight: 54,
