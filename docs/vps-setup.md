@@ -10,7 +10,9 @@ All backend services run inside isolated Docker networks defined in [`docker-com
    - Stores both the spatial GIS tables (`polygons`, German BKG VG250 `municipalities`, `polygon_photos`) and the user/authentication tables (`users`, `sessions`, `email_tokens`, `votes`, `photo_votes`, `reserved_pseudonyms`, `reserved_emails`).
    - Air-gapped on an `internal: true` Docker network with **zero host ports exposed**.
 2. **`api` (`apps/api/Dockerfile` on `db_internal` + `edge_net`):**
-   - Runs numbered SQL migrations (`001_initial_schema.sql` through `007_legal_terms_consent.sql`) automatically on boot.
+   - Runs numbered SQL migrations (`001_initial_schema.sql` through `008_privacy_hardening.sql`) automatically on boot and re-keys canonical email hashes with `TOMBSTONE_SECRET`.
+   - Runs an hourly privacy retention job (unconfirmed sign-ups after 48 h, expired sessions, stale email links, expired pseudonym reservations).
+   - Logs only request id, method, URL path, status and timing — no client IPs, headers or query strings. Container logs are rotated (3 × 10 MB per service).
    - Automatically downloads and seeds Germany's **BKG VG250 OpenData municipality boundaries** (`vg250_gem`, `~11,000` municipalities) on first startup when `AUTO_SEED_VG250=true`.
    - Hosts the **clickable web pages** for email confirmation (`GET/POST /auth/verify-email?token=...`), password recovery (`GET/POST /auth/reset-password?token=...`), and legal/GDPR pages (`/auth/impressum`, `/auth/privacy`, `/auth/terms`, `/auth/licenses`).
    - Processes uploaded site photos (`<= 3 m` EXIF GPS polygon tolerance check -> `"GPS verified"`, followed by 100% EXIF stripping and WebP conversion) onto the persistent `uploads_data` Docker volume (`/uploads/*`), and optionally serves `/downloads/unseal.apk`.
@@ -40,7 +42,9 @@ Edit `.env.vps` and fill in:
 - `DOMAIN` - your domain without `https://` (e.g. `entsiegelung.example.org`)
 - `ACME_EMAIL` - your email for Let's Encrypt certificate expiry notices
 - `POSTGRES_PASSWORD` - strong random password (`openssl rand -hex 24` - avoid `#`, `?`, or `/` characters so the connection URI needs no URL-encoding)
-- `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` - credentials for the email account that sends registration confirmation and password recovery links
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` - credentials for the email account that sends registration confirmation and password recovery links (`SMTP_REQUIRE_TLS=true` keeps them off unencrypted connections)
+- `TOMBSTONE_SECRET` - **required**: `openssl rand -hex 32`. Keys the hashes of deleted pseudonyms and banned emails; keep it stable and back it up with `.env.vps` (rotating it lifts existing bans)
+- `PRIVACY_HOSTING_PROVIDER`, `PRIVACY_EMAIL_PROVIDER`, `BACKUP_RETENTION_DAYS` - shown on `/auth/privacy` (processors and how long backups are kept)
 - `CORS_ORIGIN` - `https://<your-domain>`
 - `OPERATOR_NAME`, `OPERATOR_ADDRESS`, `OPERATOR_EMAIL`, `ABUSE_CONTACT`, `BUG_REPORT_TO` - legal operator contact details rendered on `/auth/impressum`, `/auth/privacy`, `/auth/terms`, and used as bug-report recipient / Nominatim contact (and `SOURCE_CODE_URL` for your AGPLv3/MPL-2.0 repository fork if applicable)
 
@@ -142,14 +146,38 @@ If you distribute the signed APK via the VPS (`/downloads/unseal.apk`), place it
 
 ## Backups (PostGIS + Uploaded Photos)
 
-Back up both the PostGIS database and the `uploads_data` WebP photo volume regularly:
+Back up both the PostGIS database and the `uploads_data` WebP photo volume regularly. Backups contain the same personal data as the live system (email addresses, pseudonyms, photos), so **encrypt them** and **delete them after `BACKUP_RETENTION_DAYS`** — the privacy policy states that period, and data a user deleted only disappears from backups once they expire.
 
 ```bash
-# 1. Logical PostGIS dump (includes users, polygons, municipalities, votes, and photo metadata)
+# 1. Logical PostGIS dump (users, polygons, municipalities, votes, photo metadata), encrypted with a passphrase
 docker compose --env-file .env.vps -f docker-compose.vps.yml exec -T postgis \
-  pg_dump -U ppgis -Fc ppgis > backup-db-$(date +%Y%m%d).dump
+  pg_dump -U ppgis -Fc ppgis \
+  | gpg --symmetric --cipher-algo AES256 --batch --passphrase-file /root/.backup-passphrase \
+  > /var/backups/unseal/backup-db-$(date +%Y%m%d).dump.gpg
 
-# 2. Compressed archive of EXIF-stripped WebP site photos
+# 2. EXIF-stripped WebP site photos, encrypted the same way
 docker compose --env-file .env.vps -f docker-compose.vps.yml exec -T api \
-  tar -C /var/lib/entsiegelung/uploads -czf - . > backup-photos-$(date +%Y%m%d).tar.gz
+  tar -C /var/lib/entsiegelung/uploads -czf - . \
+  | gpg --symmetric --cipher-algo AES256 --batch --passphrase-file /root/.backup-passphrase \
+  > /var/backups/unseal/backup-photos-$(date +%Y%m%d).tar.gz.gpg
+
+# 3. Delete backups older than BACKUP_RETENTION_DAYS (here: 14)
+find /var/backups/unseal -name 'backup-*' -mtime +14 -delete
 ```
+
+Run these from a daily cron job, keep `/root/.backup-passphrase` (`chmod 600`) and `.env.vps` (contains `TOMBSTONE_SECRET`) somewhere safe outside the VPS, and store off-site copies only with a provider you have a processing agreement with.
+
+---
+
+## GDPR Checklist for Operators
+
+The code keeps data collection small, but running a public instance makes you the controller (Art. 4(7) GDPR). Before going live:
+
+- [ ] **Legal notice & controller:** fill in `OPERATOR_NAME`, `OPERATOR_ADDRESS`, `OPERATOR_EMAIL` and a privacy contact (`ABUSE_CONTACT`); check `/auth/impressum` and `/auth/privacy`.
+- [ ] **Processing agreements (Art. 28):** sign data processing agreements with your VPS host and your SMTP provider, and name them in `PRIVACY_HOSTING_PROVIDER` / `PRIVACY_EMAIL_PROVIDER`.
+- [ ] **Third parties:** if you change `OSM_STYLE_URL` or `ORTHOPHOTO_URL_TEMPLATE`, `/auth/privacy` names the new hosts automatically — check that provider's own privacy terms and whether it transfers data outside the EU/EEA.
+- [ ] **Record of processing activities (Art. 30):** document the processing described on `/auth/privacy` (accounts, contributions, abuse prevention, logs, bug reports).
+- [ ] **Security (Art. 32):** set `TOMBSTONE_SECRET` and a strong `POSTGRES_PASSWORD`; keep the VPS patched; encrypt backups.
+- [ ] **Retention:** set `BACKUP_RETENTION_DAYS` and delete bug-report emails once handled.
+- [ ] **Data subject requests:** users can download (*Konto → Meine Daten herunterladen*) and delete their data themselves; for requests by email use `admin export-user`, `set-email` and `rename-user` (see [`installation.md`](./installation.md#4-operator-moderation--administration-cli-admints)) after verifying the requester's identity. Answer within one month (Art. 12(3)).
+- [ ] **Data breaches:** know that a breach involving personal data must be reported to your supervisory authority within 72 hours (Art. 33).

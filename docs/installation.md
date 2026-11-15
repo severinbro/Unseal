@@ -233,6 +233,8 @@ Users can download their own data in the app (*Konto → Meine Daten herunterlad
 | `SESSION_TTL_DAYS` | `30` | Bearer session lifetime in days. |
 | `AUTH_CAPTCHA_ENABLED` / `SECRET` | `true` / *(ephemeral)* | Enable ALTCHA registration PoW challenge and persistent HMAC secret (`openssl rand -hex 32`). |
 | `TOMBSTONE_SECRET` | *(required in production; fixed dev value otherwise)* | HMAC-SHA256 key (`openssl rand -hex 32`, ≥ 32 chars) for the tombstones of self-deleted pseudonyms, banned emails and canonical email aliases (GDPR Art. 32 pseudonymisation). Keep it stable: rotating it lifts existing email bans and pseudonym reservations. The API refuses to start with `NODE_ENV=production` if it is missing or still the example placeholder. |
+| `PRIVACY_HOSTING_PROVIDER` / `PRIVACY_EMAIL_PROVIDER` | *(empty)* | Name (and seat) of your hosting and SMTP providers, listed as processors (Art. 28 GDPR) on `/auth/privacy`. |
+| `BACKUP_RETENTION_DAYS` | *(empty → operator warning on `/auth/privacy`)* | How long backups are kept before deletion; stated in the privacy policy. |
 | `PSEUDONYM_RESERVATION_DAYS` | `365` | Days a self-deleted pseudonym stays reserved against impersonation before its tombstone is purged. Ban tombstones stay until lifted with `admin lift-ban`. |
 | `DISPOSABLE_EMAIL_BLOCKLIST_EXTRA` | *(empty)* | Comma-separated extra disposable email domains to block at signup. |
 | `REQUIRE_JURISDICTION` / `STALE_UNRATED_PRUNE_DAYS` / `NEW_USER_*` | `when_seeded` / `14` / `14`, `3` | VG250 jurisdiction enforcement, stale unrated proposal pruning days, and new-user badge thresholds. |

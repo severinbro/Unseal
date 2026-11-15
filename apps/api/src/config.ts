@@ -66,6 +66,11 @@ export interface EnvConfig {
   authCaptchaMaxNumber: number;
   tombstoneSecret: string;
   pseudonymReservationDays: number;
+  /** Named in the privacy policy as processors (Art. 13(1)(e) GDPR); optional. */
+  privacyHostingProvider: string | null;
+  privacyEmailProvider: string | null;
+  /** Backup retention stated in the privacy policy; null shows an operator warning. */
+  backupRetentionDays: number | null;
   disposableEmailBlocklistExtra: string[];
   requireJurisdiction: 'when_seeded' | 'strict' | 'off';
   staleUnratedPruneDays: number;
@@ -487,6 +492,21 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     throw new Error('PSEUDONYM_RESERVATION_DAYS must be at least 1.');
   }
 
+  const privacyHostingProvider = env.PRIVACY_HOSTING_PROVIDER?.trim() || null;
+  const privacyEmailProvider = env.PRIVACY_EMAIL_PROVIDER?.trim() || null;
+  const rawBackupRetention = env.BACKUP_RETENTION_DAYS?.trim() ?? '';
+  let backupRetentionDays: number | null = null;
+  if (rawBackupRetention.length > 0) {
+    backupRetentionDays = parseIntSetting(
+      rawBackupRetention,
+      0,
+      'BACKUP_RETENTION_DAYS',
+    );
+    if (backupRetentionDays < 1) {
+      throw new Error('BACKUP_RETENTION_DAYS must be at least 1 when set.');
+    }
+  }
+
   const disposableEmailBlocklistExtra = (
     env.DISPOSABLE_EMAIL_DOMAINS_EXTRA ?? ''
   )
@@ -602,6 +622,9 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     authCaptchaMaxNumber,
     tombstoneSecret,
     pseudonymReservationDays,
+    privacyHostingProvider,
+    privacyEmailProvider,
+    backupRetentionDays,
     disposableEmailBlocklistExtra,
     requireJurisdiction,
     staleUnratedPruneDays,

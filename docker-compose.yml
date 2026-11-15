@@ -83,6 +83,9 @@ services:
       APK_SHA256: "${APK_SHA256:-}"
       TOMBSTONE_SECRET: "${TOMBSTONE_SECRET:-dev-only-insecure-tombstone-secret-not-for-production}"
       PSEUDONYM_RESERVATION_DAYS: "${PSEUDONYM_RESERVATION_DAYS:-365}"
+      PRIVACY_HOSTING_PROVIDER: "${PRIVACY_HOSTING_PROVIDER:-}"
+      PRIVACY_EMAIL_PROVIDER: "${PRIVACY_EMAIL_PROVIDER:-}"
+      BACKUP_RETENTION_DAYS: "${BACKUP_RETENTION_DAYS:-}"
     volumes:
       - uploads_data:/var/lib/entsiegelung/uploads
     depends_on:

@@ -1,6 +1,11 @@
 import { ZodError } from 'zod';
 
-import { AUTH_LIMITS, ApiError, PHOTO_LIMITS } from '@entsiegelung/shared';
+import {
+  AUTHOR_ACTIVITY,
+  AUTH_LIMITS,
+  ApiError,
+  PHOTO_LIMITS,
+} from '@entsiegelung/shared';
 
 import {
   consumePasswordResetToken,
@@ -256,6 +261,149 @@ function buildOperatorIdentityHtml(app: FastifyInstance): string {
   return `<p>${parts.join('<br />')}</p>`;
 }
 
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).host;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Third-party data flows depend on this instance's configuration, so the
+ * privacy policy describes the *configured* basemap and aerial imagery sources
+ * instead of hard-coded defaults (GDPR Art. 13(1)(e)).
+ */
+function buildThirdPartyItemsHtml(app: FastifyInstance): string {
+  const items: string[] = [];
+  const config = app.config;
+
+  const hosting = config.privacyHostingProvider
+    ? escapeHtml(config.privacyHostingProvider)
+    : 'ein Server-Hosting-Anbieter (VPS)';
+  items.push(
+    `<li><strong>Hosting (Auftragsverarbeitung, Art. 28 DSGVO):</strong> ${hosting} betreibt den Server, auf dem Datenbank, Fotos und diese Seiten liegen.</li>`,
+  );
+
+  const mailProvider = config.privacyEmailProvider
+    ? escapeHtml(config.privacyEmailProvider)
+    : 'ein E-Mail-Dienst (SMTP)';
+  const tlsNote = config.smtp.requireTls || config.smtp.secure
+    ? ' E-Mails werden nur über eine verschlüsselte Verbindung an den Mailserver übergeben.'
+    : '';
+  items.push(
+    `<li><strong>E-Mail-Versand (Auftragsverarbeitung, Art. 28 DSGVO):</strong> ${mailProvider} versendet Bestätigungs- und Wiederherstellungslinks sowie Fehlermeldungen an die Betreiberstelle.${tlsNote}</li>`,
+  );
+
+  const styleHost = hostOf(config.osmStyleUrl);
+  if (styleHost === null) {
+    items.push(
+      '<li><strong>Basiskarte:</strong> Kartenstil, Schriften und Vektorkacheln werden von diesem Server geladen.</li>',
+    );
+  } else {
+    const provider =
+      styleHost === 'tiles.openfreemap.org'
+        ? '<em>OpenFreeMap</em> (<a href="https://openfreemap.org" target="_blank" rel="noopener noreferrer">openfreemap.org</a>, Kartendaten © OpenStreetMap-Mitwirkende)'
+        : `<code>${escapeHtml(styleHost)}</code>`;
+    items.push(
+      `<li><strong>Basiskarte (Art. 6 Abs. 1 lit. f DSGVO):</strong> Dein Endgerät lädt Kartenstil, Schriften und Vektorkacheln <strong>direkt</strong> von ${provider} (bzw. den dort im Kartenstil angegebenen Servern). Dabei wird technisch bedingt deine IP-Adresse an diesen Anbieter übermittelt, der dafür selbst verantwortlich ist. Unser Interesse: eine funktionierende Kartendarstellung.</li>`,
+    );
+  }
+
+  const ortho = config.orthophoto;
+  if (ortho === null) {
+    items.push('<li><strong>Luftbilder:</strong> Auf dieser Instanz deaktiviert.</li>');
+  } else if (ortho.urlTemplate.includes('/api/v1/tiles/dop20/')) {
+    items.push(
+      '<li><strong>Luftbilder (DOP20):</strong> Werden über diesen Server von den Vermessungsverwaltungen der Bundesländer abgerufen. Diese erhalten nur Kachelkoordinaten, nicht deine IP-Adresse.</li>',
+    );
+  } else {
+    const orthoHost = hostOf(ortho.urlTemplate);
+    items.push(
+      orthoHost === null
+        ? '<li><strong>Luftbilder:</strong> Werden von diesem Server geladen.</li>'
+        : `<li><strong>Luftbilder (Art. 6 Abs. 1 lit. f DSGVO):</strong> Dein Endgerät lädt Luftbildkacheln <strong>direkt</strong> von <code>${escapeHtml(orthoHost)}</code>; dabei wird deine IP-Adresse an diesen Anbieter übermittelt.</li>`,
+    );
+  }
+
+  items.push(
+    '<li><strong>Adresssuche:</strong> Suchanfragen werden über diesen Server an OpenStreetMap Nominatim (OpenStreetMap Foundation, Vereinigtes Königreich – Angemessenheitsbeschluss der EU-Kommission) weitergeleitet. Übermittelt wird nur der Suchtext, nicht deine IP-Adresse. Ergebnisse werden bis zu 10 Minuten im Arbeitsspeicher zwischengespeichert; Suchtexte werden nicht protokolliert.</li>',
+  );
+
+  return items.join('\n         ');
+}
+
+function buildPrivacyPolicyHtml(app: FastifyInstance): string {
+  const config = app.config;
+  const controllerBlock = buildOperatorIdentityHtml(app);
+  const contactLine = config.abuseContact
+    ? `<p><strong>Kontakt für Datenschutzanfragen:</strong> ${escapeHtml(config.abuseContact)}</p>`
+    : `<p><strong>Kontakt:</strong> Bitte wende dich bei Fragen zum Datenschutz an die oben bzw. im <a href="${escapeHtml(config.impressumUrl)}">Impressum</a> genannte verantwortliche Stelle.</p>`;
+  const recentDays = AUTHOR_ACTIVITY.RECENT_DAYS;
+  const backupLine =
+    config.backupRetentionDays !== null
+      ? `<li><strong>Datensicherungen:</strong> werden nach ${config.backupRetentionDays} Tagen gelöscht. Gelöschte Daten verschwinden daher spätestens nach dieser Frist auch aus den Sicherungen.</li>`
+      : `<li><div class="alert-warn"><strong>Hinweis für Betreibende:</strong> Bitte <code>BACKUP_RETENTION_DAYS</code> setzen, damit hier die Aufbewahrungsdauer von Datensicherungen angegeben wird.</div></li>`;
+
+  return `<h1>Datenschutzerklärung (DSGVO)</h1>
+       <p>Unseal ist ein datensparsames Open-Source-Bürgerbeteiligungsprojekt (PPGIS) zur gemeinschaftlichen Kartierung versiegelter Flächen. Hier steht, welche personenbezogenen Daten diese Instanz verarbeitet, wozu und wie lange. Es gibt keine Cookies, kein Tracking und keine Analyse- oder Werbedienste.</p>
+
+       <h2>1. Verantwortliche Stelle (Art. 13 Abs. 1 lit. a DSGVO)</h2>
+       ${controllerBlock}
+       ${contactLine}
+
+       <h2>2. Was öffentlich sichtbar ist</h2>
+       <ul>
+         <li>Dein <strong>Pseudonym</strong> bei deinen Flächenvorschlägen, Fotos und Kommentaren. Deine E-Mail-Adresse wird nie öffentlich angezeigt.</li>
+         <li>Ob du in den letzten ${recentDays} Tagen aktiv warst („Aktiv in den letzten ${recentDays} Tagen“). Gespeichert wird dafür nur das <em>Datum</em> deiner letzten Aktivität, keine Uhrzeit.</li>
+         <li>Der Hinweis „Neuer Beitragender“, solange dein Konto jünger als ${config.newUserMinAccountDays} Tage ist oder weniger als ${config.newUserMinCleanPolygons} positiv bewertete, nicht gemeldete Vorschläge hat.</li>
+         <li>Deine Beiträge: Flächen, Belagsart, Notizen, Fotos, Kommentare sowie die Summe der Abstimmungen.</li>
+         <li>Der öffentliche GeoJSON-Gesamtexport (CC0) enthält Geometrien, Belagsart, Notizen, Status, Gemeinde, Abstimmungszahlen und Zeitstempel, aber <strong>kein Pseudonym</strong> und keine sonstigen Kontodaten.</li>
+       </ul>
+
+       <h2>3. Verarbeitete Daten, Zwecke und Rechtsgrundlagen</h2>
+       <ul>
+         <li><strong>Konto (Art. 6 Abs. 1 lit. b DSGVO, Bereitstellung der Plattform):</strong> Pseudonym, E-Mail-Adresse (für Bestätigungs- und Wiederherstellungslinks sowie einen Hinweis, falls jemand sich erneut mit deiner Adresse registrieren will), Passwort ausschließlich als Argon2id-Hash, Rolle, Zeitpunkte von Registrierung, E-Mail-Bestätigung, Kenntnisnahme dieser Erklärung und Annahme der Nutzungsbedingungen sowie das Datum deiner letzten Aktivität. Sitzungen werden serverseitig nur als SHA-256-Hash des Tokens gespeichert.</li>
+         <li><strong>Beiträge (Art. 6 Abs. 1 lit. b DSGVO):</strong> Flächen, Notizen, Fotos, Kommentare, Abstimmungen und Meldungen mit Zeitstempeln. Die Lizenzen ergeben sich aus den <a href="${escapeHtml(config.termsUrl)}">Nutzungsbedingungen</a>.</li>
+         <li><strong>Fotos &amp; Metadaten:</strong> Das Foto wird mit seinen Metadaten hochgeladen. Der Server prüft im Arbeitsspeicher, ob die darin enthaltene GPS-Position in der kartierten Fläche (inkl. ${PHOTO_LIMITS.GPS_VERIFY_DISTANCE_M} m Puffer) liegt, speichert nur dieses Ergebnis (<em>GPS verified</em>) und entfernt <strong>alle</strong> EXIF-/XMP-/IPTC-Metadaten (Gerät, Koordinaten, Aufnahmezeit), bevor das Bild als WebP gespeichert wird. Bitte lade keine Aufnahmen hoch, auf denen Personen, Gesichter oder Kfz-Kennzeichen erkennbar sind.</li>
+         <li><strong>Missbrauchsschutz (Art. 6 Abs. 1 lit. f DSGVO; Interesse: Schutz vor Spam, Mehrfachkonten und Identitätsmissbrauch):</strong> Anfragebegrenzungen anhand der IP-Adresse ausschließlich im Arbeitsspeicher (IPv6 auf /64 gekürzt, Zeitfenster höchstens 1 Stunde); eine Rechenaufgabe (Proof-of-Work, ohne Drittanbieter) bei der Registrierung; ein mit einem geheimen Serverschlüssel gebildeter Hash (HMAC-SHA-256) deiner normalisierten E-Mail-Adresse, um Doppelkonten über Alias-Adressen zu verhindern.</li>
+         <li><strong>Server-Protokolle (Art. 6 Abs. 1 lit. f DSGVO; Interesse: sicherer Betrieb, Fehleranalyse):</strong> Anfrage-ID, Methode, Pfad ohne Parameter, Statuscode, Antwortzeit und Fehlermeldungen. <strong>Keine</strong> IP-Adressen, Browserkennungen (User-Agent) oder Referrer. Der vorgeschaltete Webserver schreibt keine Zugriffsprotokolle.</li>
+         <li><strong>Fehlermeldungen (Art. 6 Abs. 1 lit. f DSGVO; optionale Kontakt-E-Mail: Art. 6 Abs. 1 lit. a DSGVO):</strong> Beschreibung, optionale Kontakt-E-Mail, Plattform, Seiten-URL, Zeitpunkt und, falls angemeldet, Pseudonym und Konto-ID gehen per E-Mail an die Betreiberstelle.</li>
+         <li><strong>Standort, Kamera &amp; Mediathek:</strong> nur nach deiner Freigabe auf dem Gerät. Deine Live-Position wird nicht an den Server übertragen (zu Fotos siehe oben).</li>
+         <li><strong>Speicher auf deinem Gerät (§ 25 Abs. 2 Nr. 2 TDDDG):</strong> Sitzungs-Token (Web: <code>localStorage</code>, App: geschützter Systemspeicher), zuletzt angezeigter Kartenausschnitt und gewählte Sprache. Diese Angaben bleiben auf deinem Gerät.</li>
+       </ul>
+
+       <h2>4. Empfänger &amp; Drittanbieter (Art. 13 Abs. 1 lit. e, f DSGVO)</h2>
+       <ul>
+         ${buildThirdPartyItemsHtml(app)}
+       </ul>
+
+       <h2>5. Speicherdauer</h2>
+       <ul>
+         <li><strong>Konto:</strong> bis du es löschst. Unbestätigte Registrierungen werden nach 48 Stunden gelöscht.</li>
+         <li><strong>Beiträge:</strong> bis du sie oder dein Konto (mit der Option „alle Beiträge mitlöschen“) löschst. Vorschläge, die nach ${config.staleUnratedPruneDays} Tagen noch keine einzige Stimme erhalten haben, werden automatisch entfernt.</li>
+         <li><strong>Sitzungen:</strong> höchstens ${config.sessionTtlDays} Tage; abgelaufene Sitzungen werden stündlich gelöscht.</li>
+         <li><strong>E-Mail-Links:</strong> gültig ${AUTH_LIMITS.EMAIL_VERIFY_TTL_HOURS} Stunden (Bestätigung) bzw. ${AUTH_LIMITS.PASSWORD_RESET_TTL_MINUTES} Minuten (Passwort); die Datensätze werden 7 Tage nach Nutzung oder Ablauf gelöscht.</li>
+         <li><strong>Pseudonym-Reservierung nach Kontolöschung:</strong> ${config.pseudonymReservationDays} Tage, gespeichert nur als HMAC-Wert, damit sich niemand als du ausgeben kann. Bei einer Sperrung wegen Missbrauchs werden HMAC-Werte von Pseudonym und E-Mail-Adresse gespeichert, bis die Sperre aufgehoben wird.</li>
+         <li><strong>Server-Protokolle:</strong> werden fortlaufend überschrieben (höchstens 3 × 10 MB je Dienst).</li>
+         <li><strong>Fehlermeldungen:</strong> werden nach Abschluss der Bearbeitung aus dem Postfach der Betreiberstelle gelöscht.</li>
+         ${backupLine}
+       </ul>
+
+       <h2>6. Deine Rechte</h2>
+       <ul>
+         <li><strong>Auskunft &amp; Datenübertragbarkeit (Art. 15, 20 DSGVO):</strong> In der App unter <em>Konto → Meine Daten herunterladen</em> erhältst du alle zu deinem Konto gespeicherten Daten als JSON-Datei. Alternativ über die Kontaktstelle.</li>
+         <li><strong>Berichtigung (Art. 16 DSGVO):</strong> Änderungen von E-Mail-Adresse oder Pseudonym über die Kontaktstelle.</li>
+         <li><strong>Löschung (Art. 17 DSGVO):</strong> Unter <em>Konto → Konto löschen</em> werden E-Mail-Adresse, Zugangsdaten, Sitzungen und Stimmen sofort gelöscht. Deine Beiträge bleiben dann anonym als „gelöscht“ sichtbar, außer du wählst, sie mitzulöschen. Einzelne Fotos, Kommentare und Vorschläge kannst du jederzeit selbst löschen.</li>
+         <li><strong>Einschränkung (Art. 18), Widerspruch gegen Verarbeitungen nach Art. 6 Abs. 1 lit. f (Art. 21) und Widerruf einer Einwilligung</strong> mit Wirkung für die Zukunft (Art. 7 Abs. 3 DSGVO) über die Kontaktstelle.</li>
+         <li><strong>Beschwerde</strong> bei einer Datenschutz-Aufsichtsbehörde (Art. 77 DSGVO).</li>
+       </ul>
+       <p>Es finden keine automatisierten Einzelentscheidungen im Sinne von Art. 22 DSGVO statt.</p>
+
+       <p class="en-sub"><strong>English summary:</strong> Public: your pseudonym, your contributions, whether you were active in the last ${recentDays} days (only the date of your last activity is stored) and a "new contributor" hint; the CC0 GeoJSON export contains no pseudonym. Your email is used only for account links and never shown. Accounts and contributions are processed under Art. 6(1)(b) GDPR; abuse prevention and logs under Art. 6(1)(f). Server logs contain no IP addresses, user agents or referrers; rate limiting keeps IPs in memory only. Photo metadata is checked in memory and fully stripped before storage. Third parties are listed in section 4 according to this instance's configuration. Retention: unconfirmed accounts 48 h, sessions up to ${config.sessionTtlDays} days, email links 7 days after use, pseudonym reservation after deletion ${config.pseudonymReservationDays} days (keyed hash only). Rights: download your data in the app, delete your account with or without your contributions, and contact the operator for corrections, restriction, objection or a complaint to a supervisory authority.</p>
+       ${buildLegalNavHtml(app)}`;
+}
+
 export function registerAuthPageRoutes(app: FastifyInstance): void {
   const pageLimit = app.rateLimitOverrides.recover ?? {
     max: 20,
@@ -300,7 +448,7 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
        <ul>
          <li><strong>Unverbindliche Bürgerbeteiligung:</strong> ${escapeHtml(app.config.disclaimerText)} Ein Eintrag begründet keinen Rechtsanspruch auf Entsiegelung und greift nicht in bestehende Eigentumsrechte ein.</li>
          <li><strong>Lizenz für Flächenvorschläge &amp; Notizen (CC0 1.0):</strong> Alle von dir eingezeichneten Polygon-Geometrien, Belagsangaben und Beschreibungstexte stellst du unter der Verzichtserklärung <a href="https://creativecommons.org/publicdomain/zero/1.0/deed.de" target="_blank" rel="noopener noreferrer"><strong>Creative Commons Zero 1.0 (CC0 1.0 Universal)</strong></a> gemeinfrei zur Verfügung, sodass Kommunen, Forschung und Öffentlichkeit den GeoJSON-Export frei weiterverwenden können.</li>
-         <li><strong>Lizenz für Vor-Ort-Fotos &amp; Kommentare (CC BY 4.0):</strong> Hochgeladene Fotos und Diskussionskommentare lizenzierst du unter <a href="https://creativecommons.org/licenses/by/4.0/deed.de" target="_blank" rel="noopener noreferrer"><strong>Creative Commons Namensnennung 4.0 International (CC BY 4.0)</strong></a> mit Namensnennung deines öffentlichen Pseudonyms (bzw. anonymisiert als <code>deleted</code> nach Kontolöschung).</li>
+         <li><strong>Lizenz für Vor-Ort-Fotos &amp; Kommentare (CC BY 4.0):</strong> Hochgeladene Fotos und Diskussionskommentare lizenzierst du unter <a href="https://creativecommons.org/licenses/by/4.0/deed.de" target="_blank" rel="noopener noreferrer"><strong>Creative Commons Namensnennung 4.0 International (CC BY 4.0)</strong></a> mit Namensnennung deines öffentlichen Pseudonyms (bzw. anonymisiert als <code>deleted</code> nach Kontolöschung, sofern du deine Beiträge dabei nicht mitlöschst).</li>
          <li><strong>Zulässige Inhalte &amp; Fotorechte (§ 59 UrhG / § 22 KUG / DSGVO):</strong> Du darfst nur eigene Fotos hochladen, die von öffentlich zugänglichen Wegen oder Plätzen aus aufgenommen wurden (Panoramafreiheit) oder für die eine ausdrückliche Erlaubnis der Berechtigten vorliegt. Lade <strong>keine</strong> Aufnahmen hoch, auf denen erkennbare Personen, Gesichter, Kfz-Kennzeichen oder nicht öffentlich einsehbare Privatbereiche (z. B. über Zäune hinweg oder per Drohne) abgebildet sind.</li>
          <li><strong>Moderation &amp; Meldeverfahren (DSA):</strong> Rechtswidrige, beleidigende, irreführende oder Spam-Beiträge können entfernt und Konten gesperrt werden. ${abuseNote}</li>
        </ul>
@@ -335,32 +483,11 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
   });
 
   app.get('/auth/privacy', async (_request, reply) => {
-    const controllerBlock = buildOperatorIdentityHtml(app);
-    const contactLine = app.config.abuseContact
-      ? `<p><strong>Verantwortlicher Kontakt / Datenschutz- &amp; Missbrauchsanfragen:</strong> ${escapeHtml(app.config.abuseContact)}</p>`
-      : `<p><strong>Kontakt:</strong> Bitte wende dich bei Fragen zum Datenschutz an die oben bzw. im <a href="${escapeHtml(app.config.impressumUrl)}">Impressum</a> genannte verantwortliche Stelle.</p>`;
     return sendHostedHtml(
       reply,
       200,
       'Datenschutzerklärung',
-      `<h1>Datenschutzerklärung (DSGVO)</h1>
-       <p>Unseal ist ein datensparsames Open-Source-Bürgerbeteiligungsprojekt (PPGIS) zur gemeinschaftlichen Kartierung versiegelter Flächen.</p>
-       <h2>Verantwortliche Stelle (Art. 13 Abs. 1 lit. a DSGVO)</h2>
-       ${controllerBlock}
-       ${contactLine}
-       <h2>Verarbeitete Daten &amp; Rechtsgrundlagen</h2>
-       <ul>
-         <li><strong>Konto, Pseudonym, E-Mail &amp; Einwilligungen (Art. 6 Abs. 1 lit. a/b/f DSGVO):</strong> Bei der Registrierung werden dein gewähltes Pseudonym, deine E-Mail-Adresse (nur für Bestätigungs- und Wiederherstellungslinks, intern auch als kanonisierter Hash zur Missbrauchsabwehr) sowie die Zeitpunkte deiner Zustimmung zu Datenschutzerklärung und Nutzungsbedingungen gespeichert. Deine E-Mail-Adresse wird <strong>niemals öffentlich</strong> auf der Karte, bei Fotos oder im GeoJSON-Export ausgegeben. Zudem wird der Zeitpunkt deiner letzten Anmeldung (<code>last_login_at</code>) gespeichert und auf deinen Vorschlägen als Aktivitätshinweis öffentlich angezeigt. Unbestätigte Registrierungen werden nach 48 Stunden automatisch gelöscht.</li>
-         <li><strong>Passwörter, Sitzungen &amp; lokaler Speicher (§ 25 Abs. 2 TDDDG):</strong> Passwörter werden ausschließlich als Argon2id-Hash gespeichert. Nach der Anmeldung wird ein zufälliges Sitzungs-Token technisch notwendig im Gerätespeicher (Web: <code>localStorage</code>, Mobil-App: geschützter Systemspeicher) abgelegt und serverseitig nur als SHA-256-Hash für maximal ${app.config.sessionTtlDays} Tage vorgehalten.</li>
-         <li><strong>Fotos, Kamera &amp; EXIF-Schutz (Art. 6 Abs. 1 lit. a/e/f DSGVO):</strong> Hochgeladene Fotos werden serverseitig in WebP umgewandelt; sämtliche EXIF-/XMP-/IPTC-Metadaten (Gerätekennungen, Roh-GPS-Koordinaten, Aufnahmezeitstempel) werden vor der Speicherung vollständig entfernt. Es wird lediglich ein Wahrheitswert (<em>GPS verified</em>) gespeichert, sofern die Aufnahme innerhalb der kartierten Fläche (inkl. ${PHOTO_LIMITS.GPS_VERIFY_DISTANCE_M} m Toleranzpuffer) erfolgte. Bitte lade keine Aufnahmen hoch, auf denen Personen oder Kfz-Kennzeichen erkennbar sind.</li>
-         <li><strong>Standortfunktion (GNSS) &amp; Geräteberechtigungen:</strong> Die optionale Standortzentrierung sowie Kamera-/Galeriezugriffe erfolgen ausschließlich nach deiner aktiven Freigabe; deine Live-GNSS-Position wird nicht an den Unseal-Server übertragen oder gespeichert.</li>
-         <li><strong>Kartendienste, Adresssuche &amp; IP-Minimierung (Art. 6 Abs. 1 lit. f DSGVO):</strong> Der Unseal-Server speichert keine Zugriffs-IP-Protokolle und kürzt IPv6-Adressen für das Missbrauchs-Ratelimiting im Arbeitsspeicher auf <code>/64</code>. Zum Laden der Straßenkarte ruft dein Endgerät Vektorkacheln direkt von <em>OpenFreeMap</em> (Daten: © OpenStreetMap-Mitwirkende) ab, wobei technisch bedingt deine IP-Adresse an den Kachelserver übermittelt wird. DOP20-Luftbilder der Bundesländer sowie Adresssuchen (via OpenStreetMap Nominatim) werden hingegen über diesen Unseal-Server geleitet, sodass deine IP-Adresse nicht an die Landesvermessungsämter oder Nominatim weitergegeben wird.</li>
-         <li><strong>Fehlermeldungen (Bug-Reports, Art. 6 Abs. 1 lit. a/f DSGVO):</strong> Wenn du über das Formular einen Fehler meldest, werden deine Beschreibung, eine optional angegebene Kontakt-E-Mail, Plattform, Seiten-URL, Zeitstempel sowie (falls angemeldet) dein Pseudonym und deine interne Konto-ID per E-Mail an die Betreiberstelle übermittelt.</li>
-         <li><strong>Empfänger &amp; Auftragsverarbeiter (Art. 13 Abs. 1 lit. e DSGVO):</strong> Zur technischen Bereitstellung werden ein VPS-Hosting-Anbieter sowie ein ausgehender E-Mail-Dienst (SMTP) eingesetzt.</li>
-         <li><strong>Kontolöschung &amp; Betroffenenrechte (Art. 15–21, 77 DSGVO):</strong> Du kannst dein Konto samt E-Mail-Adresse, Sitzungen und Abstimmungen jederzeit selbst unter <em>Konto -&gt; Konto löschen</em> vollständig entfernen; bestehende Flächenvorschläge, Diskussionskommentare und EXIF-bereinigte Fotos bleiben anonymisiert unter <code>deleted</code> erhalten (oder können zuvor gelöscht werden). Um Nachahmung zu verhindern, wird bei Selbstlöschung ein nicht umkehrbarer SHA-256-Hash deines Pseudonyms in <code>reserved_pseudonyms</code> gespeichert; bei Kontosperrungen wegen Missbrauchs zusätzlich ein SHA-256-Hash der E-Mail-Adresse (Art. 6 Abs. 1 lit. f DSGVO). Dir stehen Auskunfts-, Berichtigungs-, Löschungs-, Einschränkungs- und Widerspruchsrechte sowie das Beschwerderecht bei einer Datenschutz-Aufsichtsbehörde zu.</li>
-       </ul>
-       <p class="en-sub"><strong>English summary:</strong> Your email address is stored solely for registration confirmation and password recovery (unconfirmed accounts are purged after 48h) and is never exposed publicly or in GeoJSON exports; your last login timestamp is shown as an activity indicator on your proposals. Passwords use Argon2id; session tokens are stored locally for sign-in only (TTL: ${app.config.sessionTtlDays} days). Uploaded photos have 100% of EXIF/GPS metadata stripped server-side before WebP storage, keeping only a boolean <em>GPS verified</em> flag (checked inside the polygon with a ${PHOTO_LIMITS.GPS_VERIFY_DISTANCE_M} m buffer). Vector street tiles load from OpenFreeMap, whereas DOP20 orthophotos and Nominatim address lookups are proxied via this server. Bug reports transmit your message, optional contact email, platform/URL, and signed-in pseudonym to the instance operator. You can permanently delete your account at any time inside the app (retaining only a SHA-256 pseudonym tombstone to prevent impersonation) and exercise GDPR Art. 15–21 &amp; 77 rights.</p>
-       ${buildLegalNavHtml(app)}`,
+      buildPrivacyPolicyHtml(app),
       { wide: true },
     );
   });

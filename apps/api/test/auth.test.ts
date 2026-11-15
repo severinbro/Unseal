@@ -1187,6 +1187,49 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
     }
   });
 
+  it('/auth/privacy describes the configured basemap, aerial imagery, processors and backup retention', async () => {
+    const app = await buildApp(
+      loadEnvConfig({
+        OSM_STYLE_URL: 'https://maps.thirdparty.example/styles/basic.json',
+        ORTHOPHOTO_URL_TEMPLATE: 'https://ortho.thirdparty.example/{z}/{x}/{y}.png',
+        PRIVACY_HOSTING_PROVIDER: 'Beispiel Hosting GmbH, Nürnberg',
+        PRIVACY_EMAIL_PROVIDER: 'Beispiel Mail AG, Berlin',
+        BACKUP_RETENTION_DAYS: '21',
+        PSEUDONYM_RESERVATION_DAYS: '180',
+      }),
+      pool,
+      { logger: createLogger({ enabled: false }), mailer: createMemoryMailer() },
+    );
+    try {
+      const res = await app.inject({ method: 'GET', url: '/auth/privacy' });
+      assert.equal(res.statusCode, 200);
+      const html = res.body;
+      assert.match(html, /<code>maps\.thirdparty\.example<\/code>/);
+      assert.equal(html.includes('OpenFreeMap'), false);
+      assert.match(html, /<code>ortho\.thirdparty\.example<\/code>; dabei wird deine IP-Adresse/);
+      assert.equal(html.includes('Luftbilder (DOP20)'), false);
+      assert.match(html, /Beispiel Hosting GmbH, Nürnberg/);
+      assert.match(html, /Beispiel Mail AG, Berlin/);
+      assert.match(html, /nach 21 Tagen gelöscht/);
+      assert.equal(html.includes('BACKUP_RETENTION_DAYS'), false);
+      assert.match(html, /180 Tage/);
+    } finally {
+      await app.close();
+    }
+
+    const noOrthoApp = await buildApp(
+      loadEnvConfig({ ORTHOPHOTO_URL_TEMPLATE: 'none' }),
+      pool,
+      { logger: createLogger({ enabled: false }), mailer: createMemoryMailer() },
+    );
+    try {
+      const res = await noOrthoApp.inject({ method: 'GET', url: '/auth/privacy' });
+      assert.match(res.body, /Luftbilder:<\/strong> Auf dieser Instanz deaktiviert/);
+    } finally {
+      await noOrthoApp.close();
+    }
+  });
+
   it('serves /auth/impressum, /auth/terms, /auth/licenses, updated /auth/privacy, persists terms_accepted_at, guards unconfigured bug-reports, and sets CC0 headers on GeoJSON export', async () => {
     // 1. Minimal config without OPERATOR_* or BUG_REPORT_TO -> Impressum notice + 503 on bug-reports
     const unconfiguredApp = await buildApp(loadEnvConfig({}), pool, {
@@ -1254,8 +1297,20 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
       assert.equal(privRes.statusCode, 200);
       assert.match(privRes.body, /Entsiegelung Musterverein e\.V\./);
       assert.match(privRes.body, /Datenschutzerklärung/);
-      assert.match(privRes.body, /reserved_pseudonyms/);
       assert.match(privRes.body, /Nominatim/);
+      // Statements that must match what the code does
+      assert.match(privRes.body, /HMAC/);
+      assert.equal(privRes.body.includes('nicht umkehrbar'), false);
+      assert.match(privRes.body, /<strong>Keine<\/strong> IP-Adressen/);
+      assert.match(privRes.body, /Art\. 6 Abs\. 1 lit\. b DSGVO/);
+      assert.match(privRes.body, /<strong>kein Pseudonym<\/strong>/);
+      assert.match(privRes.body, /Meine Daten herunterladen/);
+      assert.match(privRes.body, /Aktiv in den letzten 30 Tagen/);
+      // Default config: OpenFreeMap loaded directly, DOP20 proxied, backup warning for operators
+      assert.match(privRes.body, /OpenFreeMap/);
+      assert.match(privRes.body, /Luftbilder \(DOP20\):<\/strong> Werden über diesen Server/);
+      assert.match(privRes.body, /BACKUP_RETENTION_DAYS/);
+      assert.equal(privRes.body.includes('last_login_at'), false);
 
       assert.equal(termsRes.statusCode, 200);
       assert.match(termsRes.body, /CC0 1\.0/);
