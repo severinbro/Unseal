@@ -60,6 +60,8 @@ export interface EnvConfig {
   authCaptchaEnabled: boolean;
   authCaptchaSecret: string;
   authCaptchaMaxNumber: number;
+  tombstoneSecret: string;
+  pseudonymReservationDays: number;
   disposableEmailBlocklistExtra: string[];
   requireJurisdiction: 'when_seeded' | 'strict' | 'off';
   staleUnratedPruneDays: number;
@@ -71,6 +73,39 @@ export interface EnvConfig {
 const EPHEMERAL_FALLBACK_CAPTCHA_SECRET = crypto
   .randomBytes(32)
   .toString('hex');
+
+/** Deterministic development/test fallback; never accepted when NODE_ENV=production. */
+export const DEV_TOMBSTONE_SECRET = 'unseal-dev-only-insecure-tombstone-secret';
+const MIN_TOMBSTONE_SECRET_LENGTH = 32;
+const DEFAULT_PSEUDONYM_RESERVATION_DAYS = 365;
+
+/**
+ * Resolves the HMAC key for pseudonym/email tombstones (GDPR Art. 32 pseudonymisation).
+ * It must stay stable across restarts: rotating it lifts existing email bans and
+ * pseudonym reservations, so production refuses to start without an explicit value.
+ */
+export function resolveTombstoneSecret(env: NodeJS.ProcessEnv = process.env): string {
+  const raw = env.TOMBSTONE_SECRET?.trim() ?? '';
+  if (raw.length > 0) {
+    if (/^change[_-]?me/i.test(raw)) {
+      throw new Error(
+        'TOMBSTONE_SECRET still contains the example placeholder; generate one with: openssl rand -hex 32.',
+      );
+    }
+    if (raw.length < MIN_TOMBSTONE_SECRET_LENGTH) {
+      throw new Error(
+        `TOMBSTONE_SECRET must be at least ${MIN_TOMBSTONE_SECRET_LENGTH} characters (generate one with: openssl rand -hex 32).`,
+      );
+    }
+    return raw;
+  }
+  if (env.NODE_ENV === 'production') {
+    throw new Error(
+      'TOMBSTONE_SECRET must be set in production (generate one with: openssl rand -hex 32). It keys the HMAC tombstones of deleted pseudonyms and banned email addresses.',
+    );
+  }
+  return DEV_TOMBSTONE_SECRET;
+}
 
 const DEFAULT_DISCLAIMER_TEXT =
   'Community unsealing suggestions - non-binding public input, regardless of property ownership.';
@@ -431,6 +466,16 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     throw new Error('AUTH_CAPTCHA_MAX_NUMBER must be at least 100.');
   }
 
+  const tombstoneSecret = resolveTombstoneSecret(env);
+  const pseudonymReservationDays = parseIntSetting(
+    env.PSEUDONYM_RESERVATION_DAYS,
+    DEFAULT_PSEUDONYM_RESERVATION_DAYS,
+    'PSEUDONYM_RESERVATION_DAYS',
+  );
+  if (pseudonymReservationDays < 1) {
+    throw new Error('PSEUDONYM_RESERVATION_DAYS must be at least 1.');
+  }
+
   const disposableEmailBlocklistExtra = (
     env.DISPOSABLE_EMAIL_DOMAINS_EXTRA ?? ''
   )
@@ -544,6 +589,8 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     authCaptchaEnabled,
     authCaptchaSecret,
     authCaptchaMaxNumber,
+    tombstoneSecret,
+    pseudonymReservationDays,
     disposableEmailBlocklistExtra,
     requireJurisdiction,
     staleUnratedPruneDays,

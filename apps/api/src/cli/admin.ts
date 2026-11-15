@@ -15,7 +15,7 @@ import {
 } from '@entsiegelung/shared';
 
 import { hashPseudonymTombstone } from '../auth/crypto.js';
-import { loadEnvConfig } from '../config.js';
+import { loadEnvConfig, resolveTombstoneSecret } from '../config.js';
 import { deleteOrBanUserAccount } from '../db/integrity.js';
 import { createDbPool } from '../db/pool.js';
 import { createLogger } from '../logger.js';
@@ -116,12 +116,20 @@ function parseUserIdentifier(raw: string | undefined): string {
   return trimmed.toLowerCase();
 }
 
+export interface AdminCommandOptions {
+  uploadsDir?: string;
+  logger?: FastifyBaseLogger;
+  /** HMAC key for tombstones; defaults to `TOMBSTONE_SECRET` from the environment. */
+  tombstoneSecret?: string;
+}
+
 export async function runAdminCommand(
   pool: pg.Pool,
   argv: string[],
-  options: { uploadsDir?: string; logger?: FastifyBaseLogger } = {},
+  options: AdminCommandOptions = {},
 ): Promise<AdminCommandResult> {
   const command = argv[0];
+  const tombstoneSecret = options.tombstoneSecret ?? resolveTombstoneSecret();
 
   if (command === 'grant-admin' || command === 'revoke-admin') {
     if (argv.length !== 2) {
@@ -290,6 +298,7 @@ export async function runAdminCommand(
           pseudonymLower,
           mode: 'ban',
           reason: resolvedReason,
+          tombstoneSecret,
         });
         deletedPhotoFiles = banResult.deletedPhotoFiles;
         await client.query('COMMIT');
@@ -312,7 +321,7 @@ export async function runAdminCommand(
         };
       }
 
-      const tombstoneHash = hashPseudonymTombstone(pseudonymLower);
+      const tombstoneHash = hashPseudonymTombstone(tombstoneSecret, pseudonymLower);
       const upsertRes = await client.query<{ reason: string }>(
         `INSERT INTO reserved_pseudonyms (pseudonym_hash, reason)
          VALUES ($1, $2)
@@ -529,6 +538,7 @@ if (isDirectExecution) {
   runAdminCommand(pool, process.argv.slice(2), {
     uploadsDir: config.uploadsDir,
     logger,
+    tombstoneSecret: config.tombstoneSecret,
   })
     .then(async (result) => {
       logger.info({ result }, 'Admin moderation command completed');

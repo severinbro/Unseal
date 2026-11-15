@@ -17,19 +17,23 @@ import {
   generateEmailActionToken,
   generateRecoveryCode,
   generateSessionToken,
+  hashCanonicalEmail,
   hashEmailTombstone,
   hashOpaqueToken,
   hashPassword,
   hashPseudonymTombstone,
+  legacyEmailTombstoneDigest,
+  legacyPseudonymTombstoneDigest,
   verifyPassword,
 } from '../src/auth/crypto.js';
+import { rekeyCanonicalEmailHashes } from '../src/auth/tombstones.js';
 import {
   createSession,
   optionalAuth,
   requireAdmin,
   requireAuth,
 } from '../src/auth/session.js';
-import { loadEnvConfig } from '../src/config.js';
+import { DEV_TOMBSTONE_SECRET, loadEnvConfig } from '../src/config.js';
 import {
   deleteOrBanUserAccount,
   lockUserForWrite,
@@ -120,7 +124,38 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
     }
   });
 
-  it('generates URL-safe email action tokens, session tokens, SHA-256 pseudonym/email tombstones, and Argon2id hashes', async () => {
+  it('re-keys legacy SHA-256 canonical email hashes with the HMAC secret at startup and leaves NULL hashes untouched', async () => {
+    const passwordHash = await hashPassword('valid-password-123');
+    const legacyRes = await pool.query<{ id: string }>(
+      `INSERT INTO users (pseudonym, email, canonical_email_hash, password_hash, email_verified_at)
+       VALUES ('LegacyHashUser', 'legacy.user+tag@gmail.com', $1, $2, NOW())
+       RETURNING id`,
+      [legacyEmailTombstoneDigest('legacyuser@gmail.com'), passwordHash],
+    );
+    const nullRes = await pool.query<{ id: string }>(
+      `INSERT INTO users (pseudonym, email, canonical_email_hash, password_hash, email_verified_at)
+       VALUES ('PreCanonicalUser', 'pre.canonical@example.org', NULL, $1, NOW())
+       RETURNING id`,
+      [passwordHash],
+    );
+
+    assert.equal(await rekeyCanonicalEmailHashes(pool, DEV_TOMBSTONE_SECRET), 1);
+    // Idempotent: a second run changes nothing
+    assert.equal(await rekeyCanonicalEmailHashes(pool, DEV_TOMBSTONE_SECRET), 0);
+
+    const rows = await pool.query<{ id: string; canonical_email_hash: Buffer | null }>(
+      'SELECT id, canonical_email_hash FROM users WHERE id = ANY($1::uuid[])',
+      [[legacyRes.rows[0]!.id, nullRes.rows[0]!.id]],
+    );
+    const byId = new Map(rows.rows.map((r) => [r.id, r.canonical_email_hash]));
+    assert.deepEqual(
+      byId.get(legacyRes.rows[0]!.id),
+      hashCanonicalEmail(DEV_TOMBSTONE_SECRET, 'legacy.user+tag@gmail.com'),
+    );
+    assert.equal(byId.get(nullRes.rows[0]!.id), null);
+  });
+
+  it('generates URL-safe email action tokens, session tokens, keyed HMAC pseudonym/email tombstones, and Argon2id hashes', async () => {
     const emailToken = generateEmailActionToken();
     assert.ok(emailToken.length >= 40);
     assert.equal(Buffer.from(emailToken, 'base64url').byteLength, 32);
@@ -135,15 +170,23 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
     const tokenDigest = hashOpaqueToken(sessionToken);
     assert.equal(tokenDigest.byteLength, 32);
 
-    const tombstoneLower = hashPseudonymTombstone('mapper_one');
-    const tombstoneMixed = hashPseudonymTombstone('Mapper_One');
+    const tombstoneLower = hashPseudonymTombstone(DEV_TOMBSTONE_SECRET, 'mapper_one');
+    const tombstoneMixed = hashPseudonymTombstone(DEV_TOMBSTONE_SECRET, 'Mapper_One');
     assert.equal(tombstoneLower.byteLength, 32);
     assert.deepEqual(tombstoneLower, tombstoneMixed);
 
-    const emailHashA = hashEmailTombstone('  User@Example.ORG ');
-    const emailHashB = hashEmailTombstone('user@example.org');
+    const emailHashA = hashEmailTombstone(DEV_TOMBSTONE_SECRET, '  User@Example.ORG ');
+    const emailHashB = hashEmailTombstone(DEV_TOMBSTONE_SECRET, 'user@example.org');
     assert.equal(emailHashA.byteLength, 32);
     assert.deepEqual(emailHashA, emailHashB);
+
+    // Tombstones are keyed (HMAC): unlike the legacy unsalted SHA-256 they cannot
+    // be confirmed by hashing a known pseudonym/email without the server secret.
+    const otherSecret = 'another-tombstone-secret-0123456789abcdef';
+    assert.notDeepEqual(hashPseudonymTombstone(otherSecret, 'mapper_one'), tombstoneLower);
+    assert.notDeepEqual(legacyPseudonymTombstoneDigest('mapper_one'), tombstoneLower);
+    assert.notDeepEqual(hashEmailTombstone(otherSecret, 'user@example.org'), emailHashA);
+    assert.notDeepEqual(legacyEmailTombstoneDigest('user@example.org'), emailHashA);
 
     const sem = new BoundedSemaphore(2, 4, 'AUTH_BUSY');
     const phc = await hashPassword('correct-horse-battery', sem);
@@ -198,11 +241,20 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
       // Seed banned pseudonym & banned email -> 403 FORBIDDEN_PSEUDONYM_BANNED
       await pool.query(
         'INSERT INTO reserved_pseudonyms (pseudonym_hash, reason) VALUES ($1, $2)',
-        [hashPseudonymTombstone('banned_vandal'), 'vandalism'],
+        [hashPseudonymTombstone(DEV_TOMBSTONE_SECRET, 'banned_vandal'), 'vandalism'],
       );
       await pool.query(
         'INSERT INTO reserved_emails (email_hash, reason) VALUES ($1, $2)',
-        [hashEmailTombstone('vandal@example.org'), 'vandalism'],
+        [hashEmailTombstone(DEV_TOMBSTONE_SECRET, 'vandal@example.org'), 'vandalism'],
+      );
+      // Rows written before keyed hashing (plain SHA-256) must keep blocking
+      await pool.query(
+        'INSERT INTO reserved_pseudonyms (pseudonym_hash, reason) VALUES ($1, $2)',
+        [legacyPseudonymTombstoneDigest('legacy_vandal'), 'vandalism'],
+      );
+      await pool.query(
+        'INSERT INTO reserved_emails (email_hash, reason) VALUES ($1, $2)',
+        [legacyEmailTombstoneDigest('legacy.vandal@example.org'), 'vandalism'],
       );
 
       const bannedPseudoRes = await app.inject({
@@ -240,6 +292,28 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
         ApiErrorEnvelopeSchema.parse(bannedEmailRes.json()).error.code,
         'FORBIDDEN_PSEUDONYM_BANNED',
       );
+
+      for (const legacyPayload of [
+        { pseudonym: 'Legacy_Vandal', email: 'fresh-one@example.org' },
+        { pseudonym: 'FreshAlias', email: 'Legacy.Vandal@example.org' },
+      ]) {
+        const legacyRes = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/register',
+          remoteAddress: '198.51.100.11',
+          payload: {
+            ...legacyPayload,
+            password: 'valid-password-123',
+            acceptedPrivacyPolicy: true,
+            acceptedTerms: true,
+          },
+        });
+        assert.equal(legacyRes.statusCode, 403);
+        assert.equal(
+          ApiErrorEnvelopeSchema.parse(legacyRes.json()).error.code,
+          'FORBIDDEN_PSEUDONYM_BANNED',
+        );
+      }
 
       // Valid registration -> 201 verification_email_sent + email dispatched
       const regRes = await app.inject({
@@ -699,7 +773,7 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
 
       const reservedEmailCnt = await pool.query<{ cnt: number }>(
         'SELECT COUNT(*)::int AS cnt FROM reserved_emails WHERE email_hash = $1',
-        [hashEmailTombstone(anna.email)],
+        [hashEmailTombstone(DEV_TOMBSTONE_SECRET, anna.email)],
       );
       assert.equal(reservedEmailCnt.rows[0]?.cnt, 0);
 
@@ -725,6 +799,7 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
           pseudonymLower: 'voterben',
           mode: 'ban',
           reason: 'coordinated spam',
+          tombstoneSecret: DEV_TOMBSTONE_SECRET,
         });
         await client.query('COMMIT');
       } catch (err) {

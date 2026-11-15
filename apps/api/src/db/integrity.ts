@@ -13,6 +13,8 @@ export interface DeleteOrBanUserParams {
   pseudonymLower: string;
   mode: 'self_delete' | 'ban';
   reason?: string | undefined;
+  /** HMAC key for pseudonym/email tombstones (`EnvConfig.tombstoneSecret`). */
+  tombstoneSecret: string;
 }
 
 export interface DeleteOrBanUserResult {
@@ -212,7 +214,10 @@ export async function deleteOrBanUserAccount(
       );
     }
 
-    const fallbackTombstone = hashPseudonymTombstone(params.pseudonymLower);
+    const fallbackTombstone = hashPseudonymTombstone(
+      params.tombstoneSecret,
+      params.pseudonymLower,
+    );
     await client.query(
       `INSERT INTO reserved_pseudonyms (pseudonym_hash, reason)
        VALUES ($1, $2)
@@ -233,7 +238,7 @@ export async function deleteOrBanUserAccount(
   }
 
   const canonicalLower = userRow.pseudonym.toLowerCase();
-  const tombstoneHash = hashPseudonymTombstone(canonicalLower);
+  const tombstoneHash = hashPseudonymTombstone(params.tombstoneSecret, canonicalLower);
 
   await client.query(
     `INSERT INTO reserved_pseudonyms (pseudonym_hash, reason)
@@ -247,9 +252,12 @@ export async function deleteOrBanUserAccount(
   );
 
   if (params.mode === 'ban' && userRow.email) {
-    const emailHash = hashEmailTombstone(userRow.email);
-    const canonicalHash = hashCanonicalEmail(userRow.email);
-    for (const digest of [emailHash, canonicalHash]) {
+    const emailHash = hashEmailTombstone(params.tombstoneSecret, userRow.email);
+    const canonicalHash = hashCanonicalEmail(params.tombstoneSecret, userRow.email);
+    const digests = emailHash.equals(canonicalHash)
+      ? [emailHash]
+      : [emailHash, canonicalHash];
+    for (const digest of digests) {
       await client.query(
         `INSERT INTO reserved_emails (email_hash, reason)
          VALUES ($1, $2)

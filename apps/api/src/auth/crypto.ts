@@ -82,18 +82,73 @@ export function verifyOpaqueToken(
   return crypto.timingSafeEqual(candidateDigest, storedDigest);
 }
 
-export function hashPseudonymTombstone(pseudonymLower: string): Buffer {
+/*
+ * Tombstones for deleted pseudonyms, banned emails and canonical email aliases.
+ *
+ * GDPR Art. 32 / Art. 4(5) pseudonymisation: pseudonyms and email addresses are
+ * low-entropy, so a plain SHA-256 can be reversed by hashing candidate values.
+ * New digests are therefore keyed HMAC-SHA256 values (`TOMBSTONE_SECRET`).
+ * The `legacy*` SHA-256 variants are only used to *read* rows written before
+ * keyed hashing was introduced; they are never written again.
+ */
+function hmacTombstone(secret: string, domain: string, value: string): Buffer {
+  if (secret.length === 0) {
+    throw new Error('Tombstone HMAC secret must not be empty.');
+  }
   return crypto
-    .createHash('sha256')
-    .update(pseudonymLower.toLowerCase(), 'utf8')
+    .createHmac('sha256', secret)
+    .update(`${domain}:${value}`, 'utf8')
     .digest();
 }
 
-export function hashEmailTombstone(emailLower: string): Buffer {
+function normalizeEmailForTombstone(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+export function hashPseudonymTombstone(secret: string, pseudonym: string): Buffer {
+  return hmacTombstone(secret, 'pseudonym', pseudonym.toLowerCase());
+}
+
+export function hashEmailTombstone(secret: string, email: string): Buffer {
+  return hmacTombstone(secret, 'email', normalizeEmailForTombstone(email));
+}
+
+/** Pre-HMAC digest (unsalted SHA-256); read-only compatibility for old rows. */
+export function legacyPseudonymTombstoneDigest(pseudonym: string): Buffer {
   return crypto
     .createHash('sha256')
-    .update(`email:${emailLower.trim().toLowerCase()}`, 'utf8')
+    .update(pseudonym.toLowerCase(), 'utf8')
     .digest();
+}
+
+/** Pre-HMAC digest (unsalted SHA-256); read-only compatibility for old rows. */
+export function legacyEmailTombstoneDigest(email: string): Buffer {
+  return crypto
+    .createHash('sha256')
+    .update(`email:${normalizeEmailForTombstone(email)}`, 'utf8')
+    .digest();
+}
+
+/** All digests that may identify a reserved pseudonym (keyed first, legacy second). */
+export function pseudonymTombstoneCandidates(
+  secret: string,
+  pseudonym: string,
+): Buffer[] {
+  return [
+    hashPseudonymTombstone(secret, pseudonym),
+    legacyPseudonymTombstoneDigest(pseudonym),
+  ];
+}
+
+/** All digests that may identify a banned email (exact + canonical alias, keyed + legacy). */
+export function emailTombstoneCandidates(secret: string, email: string): Buffer[] {
+  const canonical = canonicalizeEmail(email);
+  return [
+    hashEmailTombstone(secret, email),
+    hashEmailTombstone(secret, canonical),
+    legacyEmailTombstoneDigest(email),
+    legacyEmailTombstoneDigest(canonical),
+  ];
 }
 
 export function canonicalizeEmail(rawEmail: string): string {
@@ -124,8 +179,8 @@ export function canonicalizeEmail(rawEmail: string): string {
   return `${localPart}@${domain}`;
 }
 
-export function hashCanonicalEmail(rawEmail: string): Buffer {
-  return hashEmailTombstone(canonicalizeEmail(rawEmail));
+export function hashCanonicalEmail(secret: string, rawEmail: string): Buffer {
+  return hashEmailTombstone(secret, canonicalizeEmail(rawEmail));
 }
 
 export function isDisposableEmailDomain(

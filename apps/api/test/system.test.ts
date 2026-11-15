@@ -349,6 +349,36 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
     }
   });
 
+  it('requires a strong TOMBSTONE_SECRET in production and validates PSEUDONYM_RESERVATION_DAYS', () => {
+    assert.throws(
+      () => loadEnvConfig({ NODE_ENV: 'production' }),
+      /TOMBSTONE_SECRET must be set in production/,
+    );
+    assert.throws(
+      () => loadEnvConfig({ TOMBSTONE_SECRET: 'too-short' }),
+      /at least 32 characters/,
+    );
+    assert.throws(
+      () => loadEnvConfig({ TOMBSTONE_SECRET: 'CHANGE_ME_WITH_OPENSSL_RAND_HEX_32' }),
+      /placeholder/,
+    );
+    const strongSecret = 'a'.repeat(64);
+    const prodConfig = loadEnvConfig({
+      NODE_ENV: 'production',
+      TOMBSTONE_SECRET: strongSecret,
+    });
+    assert.equal(prodConfig.tombstoneSecret, strongSecret);
+    assert.equal(prodConfig.pseudonymReservationDays, 365);
+    assert.equal(
+      loadEnvConfig({ PSEUDONYM_RESERVATION_DAYS: '90' }).pseudonymReservationDays,
+      90,
+    );
+    assert.throws(
+      () => loadEnvConfig({ PSEUDONYM_RESERVATION_DAYS: '0' }),
+      /PSEUDONYM_RESERVATION_DAYS must be at least 1/,
+    );
+  });
+
   it('GET /api/v1/config serves clean-checkout defaults, supports XYZ & WMS orthophoto templates, and rejects invalid templates/bounds', async () => {
     const defaultConfig = loadEnvConfig({});
     const defaultApp = await buildApp(defaultConfig, pool, {

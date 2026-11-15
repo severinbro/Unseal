@@ -2,6 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { buildApp } from './app.js';
+import { rekeyCanonicalEmailHashes } from './auth/tombstones.js';
 import { loadEnvConfig } from './config.js';
 import { runMigrations } from './db/migrate.js';
 import { createDbPool } from './db/pool.js';
@@ -57,6 +58,16 @@ export async function startServer(): Promise<void> {
   const pool = createDbPool(config.databaseUrl);
 
   await runMigrations(pool);
+  const rekeyedEmailHashes = await rekeyCanonicalEmailHashes(
+    pool,
+    config.tombstoneSecret,
+  );
+  if (rekeyedEmailHashes > 0) {
+    logger.info(
+      { rekeyedEmailHashes },
+      'Re-keyed canonical email hashes with TOMBSTONE_SECRET (HMAC-SHA256)',
+    );
+  }
   const app = await buildApp(config, pool, { logger });
 
   const pruneTimer = setInterval(() => {

@@ -23,7 +23,7 @@ import {
   runAdminCommand,
   type AdminCommandResult,
 } from '../src/app.js';
-import { loadEnvConfig } from '../src/config.js';
+import { DEV_TOMBSTONE_SECRET, loadEnvConfig } from '../src/config.js';
 import {
   deleteOrBanUserAccount,
   lockUserForWrite,
@@ -522,6 +522,7 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
           userId: barrierVoter.userId,
           pseudonymLower: barrierVoter.pseudonym.toLowerCase(),
           mode: 'self_delete',
+          tombstoneSecret: DEV_TOMBSTONE_SECRET,
         });
         await holdClient.query('COMMIT');
       } catch (err: unknown) {

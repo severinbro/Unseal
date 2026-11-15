@@ -80,6 +80,8 @@ services:
       SOURCE_CODE_URL: "${SOURCE_CODE_URL:-https://github.com/severinbro/Unseal}"
       APK_DOWNLOAD_URL: "${APK_DOWNLOAD_URL:-}"
       APK_SHA256: "${APK_SHA256:-}"
+      TOMBSTONE_SECRET: "${TOMBSTONE_SECRET:-dev-only-insecure-tombstone-secret-not-for-production}"
+      PSEUDONYM_RESERVATION_DAYS: "${PSEUDONYM_RESERVATION_DAYS:-365}"
     volumes:
       - uploads_data:/var/lib/entsiegelung/uploads
     depends_on:

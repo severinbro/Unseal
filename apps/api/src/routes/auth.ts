@@ -23,16 +23,18 @@ import {
   createAltchaChallenge,
   generateEmailActionToken,
   hashCanonicalEmail,
-  hashEmailTombstone,
   hashOpaqueToken,
   hashPassword,
-  hashPseudonymTombstone,
   isDisposableEmailDomain,
   verifyAltchaPayload,
   verifyOpaqueToken,
   verifyPassword,
 } from '../auth/crypto.js';
 import { createSession, requireAuth } from '../auth/session.js';
+import {
+  assertEmailNotReserved,
+  assertPseudonymNotReserved,
+} from '../auth/tombstones.js';
 import { deleteOrBanUserAccount } from '../db/integrity.js';
 import {
   normalizeRateLimitIp,
@@ -180,10 +182,6 @@ interface UserAuthRow {
   created_at: Date;
 }
 
-interface ReservedRow {
-  reason: string;
-}
-
 interface EmailTokenLookupRow {
   id: string;
   user_id: string;
@@ -201,52 +199,6 @@ async function rollbackQuietly(
     await client.query('ROLLBACK');
   } catch (rollbackErr: unknown) {
     log?.warn({ err: rollbackErr }, 'Database transaction rollback failed');
-  }
-}
-
-async function checkReservedPseudonymTable(
-  db: pg.Pool | pg.PoolClient,
-  pseudonymLower: string,
-): Promise<void> {
-  const tombstoneHash = hashPseudonymTombstone(pseudonymLower);
-  const reservedRes = await db.query<ReservedRow>(
-    'SELECT reason FROM reserved_pseudonyms WHERE pseudonym_hash = $1 LIMIT 1',
-    [tombstoneHash],
-  );
-  const reservedRow = reservedRes.rows[0];
-  if (!reservedRow) {
-    return;
-  }
-  if (reservedRow.reason !== 'self_deleted') {
-    throw new ApiError(
-      403,
-      'FORBIDDEN_PSEUDONYM_BANNED',
-      'This pseudonym is not permitted.',
-    );
-  }
-  throw new ApiError(
-    409,
-    'AUTH_PSEUDONYM_TAKEN',
-    'This pseudonym is unavailable.',
-  );
-}
-
-async function checkReservedEmailTable(
-  db: pg.Pool | pg.PoolClient,
-  emailLower: string,
-): Promise<void> {
-  const emailHash = hashEmailTombstone(emailLower);
-  const canonicalHash = hashCanonicalEmail(emailLower);
-  const reservedRes = await db.query<ReservedRow>(
-    'SELECT reason FROM reserved_emails WHERE email_hash = $1 OR email_hash = $2 LIMIT 1',
-    [emailHash, canonicalHash],
-  );
-  if ((reservedRes.rowCount ?? 0) > 0) {
-    throw new ApiError(
-      403,
-      'FORBIDDEN_PSEUDONYM_BANNED',
-      'Registration with this email address is not permitted.',
-    );
   }
 }
 
@@ -561,7 +513,10 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       const body = RegisterRequestSchema.parse(request.body);
       const pseudonymLower = body.pseudonym.toLowerCase();
       const emailLower = body.email.toLowerCase();
-      const canonicalEmailHash = hashCanonicalEmail(emailLower);
+      const canonicalEmailHash = hashCanonicalEmail(
+        app.config.tombstoneSecret,
+        emailLower,
+      );
 
       if (
         isDisposableEmailDomain(
@@ -625,8 +580,12 @@ export function registerAuthRoutes(app: FastifyInstance): void {
         );
       }
 
-      await checkReservedPseudonymTable(app.pool, pseudonymLower);
-      await checkReservedEmailTable(app.pool, emailLower);
+      await assertPseudonymNotReserved(
+        app.pool,
+        app.config.tombstoneSecret,
+        pseudonymLower,
+      );
+      await assertEmailNotReserved(app.pool, app.config.tombstoneSecret, emailLower);
 
       const existingPseudonymRes = await app.pool.query<{ exists: number }>(
         'SELECT 1 AS exists FROM users WHERE LOWER(pseudonym) = $1 LIMIT 1',
@@ -662,8 +621,12 @@ export function registerAuthRoutes(app: FastifyInstance): void {
         | undefined;
       try {
         await client.query('BEGIN');
-        await checkReservedPseudonymTable(client, pseudonymLower);
-        await checkReservedEmailTable(client, emailLower);
+        await assertPseudonymNotReserved(
+          client,
+          app.config.tombstoneSecret,
+          pseudonymLower,
+        );
+        await assertEmailNotReserved(client, app.config.tombstoneSecret, emailLower);
 
         try {
           const insertRes = await client.query<{
@@ -1095,6 +1058,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
           userId: auth.user.id,
           pseudonymLower: auth.user.pseudonym.toLowerCase(),
           mode: 'self_delete',
+          tombstoneSecret: app.config.tombstoneSecret,
         });
         await client.query('COMMIT');
         return reply.status(204).send();

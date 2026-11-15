@@ -20,6 +20,8 @@ import {
   hashPassword,
   hashPseudonymTombstone,
   isDisposableEmailDomain,
+  legacyEmailTombstoneDigest,
+  legacyPseudonymTombstoneDigest,
   solveAltchaChallenge,
   verifyAltchaPayload,
   verifyPassword,
@@ -33,6 +35,7 @@ import {
   type MemoryMailer,
 } from './auth/mailer.js';
 import { createSession, optionalAuth, requireAdmin, requireAuth } from './auth/session.js';
+import { rekeyCanonicalEmailHashes } from './auth/tombstones.js';
 import { runAdminCommand, type AdminCommandResult } from './cli/admin.js';
 import { CommentRepository } from './comments/repository.js';
 import { type EnvConfig } from './config.js';
@@ -180,6 +183,7 @@ export async function buildApp(
     runAdminCommand(pool, argv, {
       uploadsDir: config.uploadsDir,
       logger,
+      tombstoneSecret: config.tombstoneSecret,
     }),
   );
 
@@ -418,6 +422,8 @@ export {
   hashPassword,
   hashPseudonymTombstone,
   isDisposableEmailDomain,
+  legacyEmailTombstoneDigest,
+  legacyPseudonymTombstoneDigest,
   loadLandCoverFile,
   loadVg250Municipalities,
   lockUserForWrite,
@@ -427,6 +433,7 @@ export {
   recomputeCommentScores,
   recomputePhotoScores,
   recomputePolygonScores,
+  rekeyCanonicalEmailHashes,
   registerAuthPageRoutes,
   registerAuthRoutes,
   registerBugReportRoutes,
