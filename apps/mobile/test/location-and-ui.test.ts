@@ -579,6 +579,16 @@ describe('German default localization and DE <-> EN switching', () => {
     assert.equal(getTranslations('en').controls.apkDownloadFull, 'Download Android APK');
     assert.equal(getTranslations('de').controls.apkDownloadFull, 'Android-APK herunterladen');
     assert.equal(getTranslations('de').about.apkDownloadButton, 'Android-APK herunterladen');
+    assert.equal(getTranslations('de').controls.installAppFull, 'App installieren (PWA & Android)');
+    assert.equal(getTranslations('en').controls.installAppFull, 'Install App (PWA & Android)');
+    assert.equal(getTranslations('de').about.installAppButton, 'App installieren');
+    assert.equal(getTranslations('en').about.installAppButton, 'Install App');
+    assert.equal(getTranslations('de').installApp.androidPwaSteps.length, 3);
+    assert.equal(getTranslations('de').installApp.iosPwaSteps.length, 3);
+    assert.equal(getTranslations('en').installApp.androidPwaSteps.length, 3);
+    assert.equal(getTranslations('en').installApp.iosPwaSteps.length, 3);
+    assert.equal(getTranslations('de').installApp.apkDownloadButton, 'Android-APK herunterladen');
+    assert.equal(getTranslations('en').installApp.apkDownloadButton, 'Download Android APK');
     assert.equal(getTranslations('de').controls.polygonOpacityLabel, 'Deckkraft');
     assert.equal(getTranslations('en').controls.polygonOpacityLabel, 'Opacity');
     assert.equal(getTranslations('de').about.title, 'Über Unseal');

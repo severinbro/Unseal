@@ -99,6 +99,8 @@ export interface TranslationDictionary {
     readonly apkDownloadCompact: string;
     readonly apkDownloadFull: string;
     readonly apkDownloadErrorFallback: string;
+    readonly installAppA11y: string;
+    readonly installAppFull: string;
     readonly accountSettingsA11y: (pseudonym: string) => string;
     readonly signInOrRegisterA11y: string;
     readonly switchToOrthoA11y: string;
@@ -455,6 +457,21 @@ export interface TranslationDictionary {
     readonly attributionVg250Short: string;
     readonly privacyLinkLabel: string;
     readonly apkDownloadButton: string;
+    readonly installAppButton: string;
+  };
+  readonly installApp: {
+    readonly modalA11y: string;
+    readonly title: string;
+    readonly subtitle: string;
+    readonly closeA11y: string;
+    readonly close: string;
+    readonly androidPwaTitle: string;
+    readonly androidPwaSteps: readonly string[];
+    readonly iosPwaTitle: string;
+    readonly iosPwaSteps: readonly string[];
+    readonly androidApkTitle: string;
+    readonly androidApkBody: string;
+    readonly apkDownloadButton: string;
   };
   readonly search: {
     readonly modalA11y: string;
@@ -532,6 +549,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       apkDownloadCompact: 'APK',
       apkDownloadFull: 'Android-APK herunterladen',
       apkDownloadErrorFallback: 'Android-APK konnte nicht heruntergeladen werden.',
+      installAppA11y: 'Installationshinweise für Web-App (iOS/Android) und Android-APK öffnen',
+      installAppFull: 'App installieren (PWA & Android)',
       accountSettingsA11y: (pseudonym) =>
         `Kontoeinstellungen für ${pseudonym}`,
       signInOrRegisterA11y: 'Anmelden oder Konto erstellen',
@@ -1003,6 +1022,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       attributionVg250Short: 'VG250 © BKG (dl-de/by-2-0)',
       privacyLinkLabel: 'Datenschutzerklärung',
       apkDownloadButton: 'Android-APK herunterladen',
+      installAppButton: 'App installieren',
     },
     search: {
       modalA11y: 'Adresssuche',
@@ -1043,6 +1063,30 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       invalidEmailError: 'Bitte gib eine gültige E-Mail-Adresse ein oder lasse das Feld leer.',
       errorFallback: 'Fehlermeldung konnte nicht gesendet werden.',
     },
+    installApp: {
+      modalA11y: 'Unseal als App installieren',
+      title: 'Unseal installieren',
+      subtitle:
+        'Nutze die Web-App direkt auf deinem Startbildschirm (PWA) oder lade die Android-APK herunter.',
+      closeA11y: 'Installationsdialog schließen',
+      close: 'Schließen',
+      androidPwaTitle: 'Android: Browser-App (PWA) installieren',
+      androidPwaSteps: [
+        'Öffne Unseal in Chrome (oder einem anderen Chromium-Browser wie Edge oder Brave).',
+        'Tippe oben rechts auf das Menü (⋮) und wähle „Zum Startbildschirm hinzufügen“ bzw. „App installieren“.',
+        'Bestätige mit „Installieren“ — danach startet Unseal im Vollbild wie eine eigene App.',
+      ],
+      iosPwaTitle: 'iOS (iPhone / iPad): Browser-App (PWA) installieren',
+      iosPwaSteps: [
+        'Öffne Unseal in Safari.',
+        'Tippe auf das Teilen-Symbol (Quadrat mit Pfeil nach oben in der Browser-Leiste).',
+        'Scrolle nach unten, wähle „Zum Home-Bildschirm“ und bestätige mit „Hinzufügen“.',
+      ],
+      androidApkTitle: 'Android: Direkter APK-Download',
+      androidApkBody:
+        'Alternativ zur Browser-App kannst du die Android-App direkt als APK-Datei installieren (Android fragt ggf. nach der Erlaubnis zum Installieren über deinen Browser).',
+      apkDownloadButton: 'Android-APK herunterladen',
+    },
   },
   en: {
     app: {
@@ -1081,6 +1125,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       apkDownloadCompact: 'APK',
       apkDownloadFull: 'Download Android APK',
       apkDownloadErrorFallback: 'Unable to start Android APK download.',
+      installAppA11y: 'Open installation guide for web app (iOS/Android) and Android APK',
+      installAppFull: 'Install App (PWA & Android)',
       accountSettingsA11y: (pseudonym) => `Account settings for ${pseudonym}`,
       signInOrRegisterA11y: 'Sign in or register account',
       switchToOrthoA11y: 'Switch to aerial orthophoto layer',
@@ -1528,6 +1574,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       attributionVg250Short: 'VG250 © BKG (dl-de/by-2-0)',
       privacyLinkLabel: 'Privacy Policy',
       apkDownloadButton: 'Download Android APK',
+      installAppButton: 'Install App',
     },
     search: {
       modalA11y: 'Address search',
@@ -1565,6 +1612,30 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       tooShortError: 'Please describe the bug in at least 5 characters.',
       invalidEmailError: 'Please enter a valid email address or leave it blank.',
       errorFallback: 'Could not send bug report.',
+    },
+    installApp: {
+      modalA11y: 'Install Unseal app',
+      title: 'Install Unseal',
+      subtitle:
+        'Add the web app (PWA) to your home screen on iOS or Android, or download the Android APK directly.',
+      closeA11y: 'Close install instructions dialog',
+      close: 'Close',
+      androidPwaTitle: 'Android: Install Browser App (PWA)',
+      androidPwaSteps: [
+        'Open Unseal in Chrome (or a Chromium-based browser such as Edge or Brave).',
+        'Tap the menu (⋮) in the top-right corner and select “Add to Home screen” or “Install app”.',
+        'Confirm with “Install” — Unseal will launch full-screen from your home screen.',
+      ],
+      iosPwaTitle: 'iOS (iPhone / iPad): Install Browser App (PWA)',
+      iosPwaSteps: [
+        'Open Unseal in Safari.',
+        'Tap the Share button (the square with an upward arrow in the toolbar).',
+        'Scroll down, tap “Add to Home Screen”, and confirm with “Add”.',
+      ],
+      androidApkTitle: 'Android: Direct APK Download',
+      androidApkBody:
+        'As an alternative to the browser app, Android users can download and install the APK package directly (Android may prompt you to allow installs from your browser).',
+      apkDownloadButton: 'Download Android APK',
     },
   },
 };

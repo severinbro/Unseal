@@ -49,7 +49,7 @@ export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
     boundsWgs84: [7.77, 49.39, 10.24, 51.66],
     baseUrl:
       'https://www.gds-srv.hessen.de/cgi-bin/lika-services/ogc-free-images.ows',
-    layers: 'he_dop20_rgb',
+    layers: 'he_dop_rgb',
   },
   {
     code: 'NW',

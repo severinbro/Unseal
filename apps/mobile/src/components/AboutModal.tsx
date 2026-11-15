@@ -26,6 +26,7 @@ export interface AboutModalProps {
   apkDownloadUrl: string | null;
   abuseContact: string | null;
   onClose: () => void;
+  onOpenInstallApp?: () => void;
   onDownloadError?: (message: string) => void;
 }
 
@@ -50,6 +51,7 @@ export function AboutModal({
   apkDownloadUrl,
   abuseContact,
   onClose,
+  onOpenInstallApp,
   onDownloadError,
 }: AboutModalProps): React.JSX.Element | null {
   if (!visible) {
@@ -58,12 +60,17 @@ export function AboutModal({
 
   const dict = getTranslations(locale);
   const t = dict.about;
+  const hasApkDownloadUrl =
+    apkDownloadUrl !== null && apkDownloadUrl.length > 0;
   const showApkButton =
     Platform.OS === 'web' &&
-    apkDownloadUrl !== null &&
-    apkDownloadUrl.length > 0;
+    (onOpenInstallApp !== undefined || hasApkDownloadUrl);
 
   const handleApkPress = (): void => {
+    if (onOpenInstallApp) {
+      onOpenInstallApp();
+      return;
+    }
     if (!apkDownloadUrl) {
       return;
     }
@@ -249,7 +256,11 @@ export function AboutModal({
             <Pressable
               testID="about-download-apk-button"
               accessibilityRole="button"
-              accessibilityLabel={dict.controls.apkDownloadA11y}
+              accessibilityLabel={
+                onOpenInstallApp
+                  ? dict.controls.installAppA11y
+                  : dict.controls.apkDownloadA11y
+              }
               onPress={handleApkPress}
               style={({ pressed }) => [
                 styles.touchButton,
@@ -264,7 +275,7 @@ export function AboutModal({
                 size={18}
               />
               <Text style={styles.primaryButtonLabel}>
-                {t.apkDownloadButton}
+                {onOpenInstallApp ? t.installAppButton : t.apkDownloadButton}
               </Text>
             </Pressable>
           ) : null}

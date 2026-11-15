@@ -95,6 +95,7 @@ export interface MapControlsBarProps {
   onToggleLocale?: () => void;
   onOpenAbout?: () => void;
   onOpenBugReport?: () => void;
+  onOpenInstallApp?: () => void;
   onSetBasemapMode: (mode: BasemapMode) => void;
   onSetPolygonOpacity?: (opacity: number) => void;
   onSetPolygonFilter?: (filter: PolygonFilter) => void;
@@ -693,6 +694,7 @@ export function MapControlsBar({
   onToggleLocale,
   onOpenAbout,
   onOpenBugReport,
+  onOpenInstallApp,
   onSetBasemapMode,
   onSetPolygonOpacity,
   onSetPolygonFilter,
@@ -718,12 +720,16 @@ export function MapControlsBar({
     );
   };
 
-  const showApkDownloadButton =
-    Platform.OS === 'web' &&
-    controls.apkDownloadUrl !== null &&
-    controls.apkDownloadUrl.length > 0;
+  const hasApkDownloadUrl =
+    controls.apkDownloadUrl !== null && controls.apkDownloadUrl.length > 0;
+  const showInstallButton =
+    Platform.OS === 'web' && (onOpenInstallApp !== undefined || hasApkDownloadUrl);
 
-  const handleApkDownloadPress = (): void => {
+  const handleInstallPress = (): void => {
+    if (onOpenInstallApp) {
+      onOpenInstallApp();
+      return;
+    }
     if (!controls.apkDownloadUrl) {
       return;
     }
@@ -739,15 +745,19 @@ export function MapControlsBar({
 
   const utilityControls = (
     <>
-      {showApkDownloadButton
+      {showInstallButton
         ? withWebTooltip(
-            t.apkDownloadFull,
+            onOpenInstallApp ? t.installAppFull : t.apkDownloadFull,
             <Pressable
               testID="download-apk-button"
               accessibilityRole="button"
-              accessibilityLabel={t.apkDownloadFull}
-              accessibilityHint={t.apkDownloadA11y}
-              onPress={handleApkDownloadPress}
+              accessibilityLabel={
+                onOpenInstallApp ? t.installAppFull : t.apkDownloadFull
+              }
+              accessibilityHint={
+                onOpenInstallApp ? t.installAppA11y : t.apkDownloadA11y
+              }
+              onPress={handleInstallPress}
               style={({ pressed }) => [
                 styles.helpButton,
                 isCompact ? styles.helpButtonCompact : null,

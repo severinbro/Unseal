@@ -60,6 +60,7 @@ import {
   SearchMapButton,
   TopRightMapControls,
 } from './src/components/GnssMapButton';
+import { InstallAppModal } from './src/components/InstallAppModal';
 import { MapControlsBar } from './src/components/MapControlsBar';
 import { PolygonInspectorSheet } from './src/components/PolygonInspectorSheet';
 import {
@@ -193,6 +194,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [isImporting, setIsImporting] = useState<boolean>(false);
   const [aboutModalOpen, setAboutModalOpen] = useState<boolean>(false);
+  const [installModalOpen, setInstallModalOpen] = useState<boolean>(false);
   const [searchModalOpen, setSearchModalOpen] = useState<boolean>(false);
   const [bugModalOpen, setBugModalOpen] = useState<boolean>(false);
   const [locationNotice, setLocationNotice] = useState<string | null>(null);
@@ -1344,6 +1346,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
         onToggleLocale={handleToggleLocale}
         onOpenAbout={() => setAboutModalOpen(true)}
         onOpenBugReport={() => setBugModalOpen(true)}
+        onOpenInstallApp={() => setInstallModalOpen(true)}
         onSetBasemapMode={(mode) =>
           dispatch({ type: 'SET_BASEMAP_MODE', mode })
         }
@@ -1655,8 +1658,50 @@ export function App(props: AppProps = {}): React.JSX.Element {
                 apkDownloadUrl={mapControls.apkDownloadUrl}
                 abuseContact={state.config.abuseContact}
                 onClose={() => setAboutModalOpen(false)}
+                onOpenInstallApp={() => {
+                  setAboutModalOpen(false);
+                  setInstallModalOpen(true);
+                }}
                 onDownloadError={(msg) => {
                   setAboutModalOpen(false);
+                  setLocationNotice(msg);
+                }}
+              />
+            </ScrollView>
+          </View>
+        </View>
+      ) : null}
+
+      {installModalOpen ? (
+        <View
+          style={[
+            styles.modalBackdropOverlay,
+            layout.isCompact ? styles.modalBackdropCompact : null,
+          ]}
+        >
+          <Pressable
+            accessible={false}
+            onPress={() => setInstallModalOpen(false)}
+            style={styles.modalBackdropScrim}
+          />
+          <View
+            style={[
+              styles.modalDialogWrapper,
+              { maxWidth: Math.max(layout.modalMaxWidth, 520) },
+            ]}
+          >
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.modalScrollContent}
+            >
+              <InstallAppModal
+                visible={installModalOpen}
+                locale={state.locale}
+                compact={layout.isCompact}
+                apkDownloadUrl={mapControls.apkDownloadUrl}
+                onClose={() => setInstallModalOpen(false)}
+                onDownloadError={(msg) => {
+                  setInstallModalOpen(false);
                   setLocationNotice(msg);
                 }}
               />

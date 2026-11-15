@@ -657,11 +657,13 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
       .toBuffer();
 
     let wmsFetchCalls = 0;
+    const wmsFetchUrls: string[] = [];
     const config = loadEnvConfig({ UPLOADS_DIR: tmpUploads });
     const app = await buildApp(config, pool, {
       logger: createLogger({ enabled: false }),
-      dop20TileFetch: async () => {
+      dop20TileFetch: async (input) => {
         wmsFetchCalls += 1;
+        wmsFetchUrls.push(String(input));
         return new Response(new Uint8Array(samplePng), {
           status: 200,
           headers: { 'content-type': 'image/png' },
@@ -698,6 +700,20 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
       });
       assert.equal(hhTileRes2.statusCode, 200);
       assert.equal(wmsFetchCalls, callsAfterFirst);
+
+      // Zoom 15 tile over Frankfurt (Hessen) uses Hessen's scale-adaptive he_dop_rgb layer
+      const heTileRes = await app.inject({
+        method: 'GET',
+        url: '/api/v1/tiles/dop20/15/17174/11097.png',
+      });
+      assert.equal(heTileRes.statusCode, 200);
+      assert.ok(
+        wmsFetchUrls.some(
+          (u) =>
+            u.includes('gds-srv.hessen.de') && u.includes('LAYERS=he_dop_rgb'),
+        ),
+        `Expected Hessen DOP20 URL to request LAYERS=he_dop_rgb, got: ${wmsFetchUrls.join(', ')}`,
+      );
 
       // Missing APK -> 404 NOT_FOUND
       const missingApkRes = await app.inject({
