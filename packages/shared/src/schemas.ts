@@ -8,6 +8,7 @@ import {
   POLYGON_AUTHOR_FILTERS,
   POLYGON_FILTERS,
   POLYGON_FLAG_REASONS,
+  POLYGON_ORIGINS,
   POLYGON_STATUSES,
   SURFACE_TYPES,
   TRUST_AND_MODERATION_LIMITS,
@@ -567,6 +568,7 @@ export function findTopRatedCommentId(
 
 export const ImportPolygonsResponseSchema = z.object({
   format: z.enum(['geojson', 'gpkg']),
+  origin: z.enum(POLYGON_ORIGINS).optional(),
   importedCount: z.number().int().nonnegative(),
   skippedCount: z.number().int().nonnegative(),
   errors: z.array(
@@ -757,6 +759,9 @@ export const PolygonFeatureSchema = z.object({
     id: z.string().uuid(),
     surfaceType: z.enum(SURFACE_TYPES).catch('other'),
     status: z.enum(POLYGON_STATUSES).optional().default('proposed'),
+    origin: z.enum(POLYGON_ORIGINS).catch('citizen').optional(),
+    wasAutoClipped: z.boolean().optional(),
+    clippedAreaM2: z.number().finite().nonnegative().optional(),
     finishedAt: IsoDateTimeSchema.nullable().optional().default(null),
     note: z.string().nullable(),
     areaM2: z.number().finite().nonnegative(),

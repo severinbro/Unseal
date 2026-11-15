@@ -50,6 +50,12 @@ import {
   purgeAbandonedUnverifiedAccounts,
   purgeExpiredPersonalData,
 } from './db/retention.js';
+import {
+  collectTelemetryExport,
+  recordTelemetryBestEffort,
+  recordTelemetryCounter,
+  type TelemetryExportReport,
+} from './db/telemetry.js';
 import { resetTestDb, setupTestDb } from './db/testHarness.js';
 import { createLogger } from './logger.js';
 import {
@@ -413,6 +419,7 @@ export {
   VoteRepository,
   canonicalizeEmail,
   classifyLandCoverFeatureProperties,
+  collectTelemetryExport,
   createAltchaChallenge,
   createMemoryMailer,
   createSession,
@@ -440,6 +447,8 @@ export {
   recomputeCommentScores,
   recomputePhotoScores,
   recomputePolygonScores,
+  recordTelemetryBestEffort,
+  recordTelemetryCounter,
   rekeyCanonicalEmailHashes,
   registerAuthPageRoutes,
   registerAuthRoutes,
@@ -469,4 +478,5 @@ export {
   type LoadLandCoverResult,
   type MemoryMailer,
   type MunicipalitySeedInput,
+  type TelemetryExportReport,
 };

@@ -10,6 +10,7 @@ import {
 } from '@entsiegelung/shared';
 
 import { lockUserForWrite } from '../db/integrity.js';
+import { recordTelemetryCounter } from '../db/telemetry.js';
 import type { ProcessedPhotoBuffers } from './processor.js';
 
 import type pg from 'pg';
@@ -247,6 +248,13 @@ export class PhotoRepository {
         'UPDATE polygons SET photo_count = photo_count + 1, updated_at = NOW() WHERE id = $1',
         [params.polygonId],
       );
+
+      const gpsDimension = polyRow.gps_ok
+        ? 'gps_verified'
+        : params.processed.exifGps !== null
+          ? 'gps_outside_polygon'
+          : 'no_exif_gps';
+      await recordTelemetryCounter(client, 'photo_uploaded', gpsDimension);
 
       await client.query('COMMIT');
       return mapRowToPolygonPhoto(inserted);

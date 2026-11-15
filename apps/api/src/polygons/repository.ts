@@ -7,6 +7,7 @@ import {
   GEOMETRY_LIMITS,
   IMPORT_LIMITS,
   LAND_COVER_MAX_OVERLAP_RATIO,
+  POLYGON_ORIGINS,
   POLYGON_STATUSES,
   SURFACE_TYPES,
   TRUST_AND_MODERATION_LIMITS,
@@ -20,11 +21,16 @@ import {
   type PolygonFeature,
   type PolygonFilter,
   type PolygonFlagReason,
+  type PolygonOrigin,
   type PolygonStatus,
   type SurfaceType,
 } from '@entsiegelung/shared';
 
 import { lockUserForWrite } from '../db/integrity.js';
+import {
+  recordTelemetryBestEffort,
+  recordTelemetryCounter,
+} from '../db/telemetry.js';
 import type { ExtractedImportDataset } from './gpkgReader.js';
 
 import type pg from 'pg';
@@ -39,6 +45,7 @@ export interface CreatePolygonParams {
   geometry: CreatePolygonRequest['geometry'];
   surfaceType: SurfaceType;
   note?: string | null | undefined;
+  origin?: PolygonOrigin | undefined;
   maxDailyPolygonsPerUser: number;
   minAreaM2?: number | undefined;
   maxAreaM2?: number | undefined;
@@ -96,6 +103,7 @@ export interface SetPolygonStatusParams {
 export interface ImportPolygonsParams {
   adminUserId: string;
   dataset: ExtractedImportDataset;
+  origin?: PolygonOrigin | undefined;
   minAreaM2?: number | undefined;
   maxAreaM2?: number | undefined;
 }
@@ -116,6 +124,9 @@ interface PolygonQueryRow {
   geom_geojson: string;
   surface_type: string;
   status: string;
+  origin: string;
+  was_auto_clipped: boolean;
+  clipped_area_m2: number;
   finished_at: Date | null;
   note: string | null;
   area_m2: number;
@@ -143,6 +154,9 @@ interface ExportPolygonRow {
   geom_geojson: string;
   surface_type: string;
   status: string;
+  origin: string;
+  was_auto_clipped: boolean;
+  clipped_area_m2: number;
   finished_at: Date | null;
   note: string | null;
   area_m2: number;
@@ -200,6 +214,48 @@ function coercePolygonStatus(raw: string): PolygonStatus {
   return (POLYGON_STATUSES as readonly string[]).includes(raw)
     ? (raw as PolygonStatus)
     : 'proposed';
+}
+
+function coercePolygonOrigin(raw: string): PolygonOrigin {
+  return (POLYGON_ORIGINS as readonly string[]).includes(raw)
+    ? (raw as PolygonOrigin)
+    : 'citizen';
+}
+
+function classifyPolygonRejectionDimension(err: unknown): string | null {
+  if (!(err instanceof ApiError)) {
+    return null;
+  }
+  switch (err.code) {
+    case 'RATE_LIMITED':
+      return 'daily_quota';
+    case 'GEOMETRY_INVALID':
+      return 'geometry_invalid';
+    case 'AREA_OUT_OF_BOUNDS':
+      return 'area_out_of_bounds';
+    case 'GEOMETRY_NOT_COMPACT':
+      return 'geometry_not_compact';
+    case 'GEOMETRY_SLIVER':
+      return 'geometry_sliver';
+    case 'POLYGON_OVERLAP':
+      return 'polygon_overlap';
+    case 'SPATIAL_CLUSTER_LIMIT':
+      return 'spatial_cluster_limit';
+    case 'OUTSIDE_JURISDICTION':
+      return 'outside_jurisdiction';
+    case 'LAND_COVER_EXCLUDED': {
+      const cat =
+        typeof err.details === 'object' &&
+        err.details !== null &&
+        'category' in err.details &&
+        typeof (err.details as { category?: unknown }).category === 'string'
+          ? (err.details as { category: string }).category
+          : 'unknown';
+      return `land_cover:${cat}`;
+    }
+    default:
+      return null;
+  }
 }
 
 function coerceVoteValue(raw: number): -1 | 0 | 1 {
@@ -280,6 +336,9 @@ function mapRowToPolygonFeature(row: PolygonQueryRow): PolygonFeature {
       id: row.id,
       surfaceType: coerceSurfaceType(row.surface_type),
       status,
+      origin: coercePolygonOrigin(row.origin),
+      wasAutoClipped: Boolean(row.was_auto_clipped),
+      clippedAreaM2: Math.max(0, Number(row.clipped_area_m2 ?? 0)),
       finishedAt: row.finished_at ? row.finished_at.toISOString() : null,
       note: row.note,
       areaM2: Number(row.area_m2),
@@ -325,6 +384,9 @@ function mapExportRowToExportFeature(row: ExportPolygonRow): ExportPolygonFeatur
       id: row.id,
       surfaceType: coerceSurfaceType(row.surface_type),
       status,
+      origin: coercePolygonOrigin(row.origin),
+      wasAutoClipped: Boolean(row.was_auto_clipped),
+      clippedAreaM2: Math.max(0, Number(row.clipped_area_m2 ?? 0)),
       finishedAt: row.finished_at ? row.finished_at.toISOString() : null,
       note: row.note,
       areaM2: Number(row.area_m2),
@@ -405,6 +467,9 @@ async function querySinglePolygonById(
        ST_AsGeoJSON(p.geom, 6) AS geom_geojson,
        p.surface_type,
        p.status,
+       p.origin,
+       p.was_auto_clipped,
+       p.clipped_area_m2,
        p.finished_at,
        p.note,
        p.area_m2,
@@ -490,8 +555,11 @@ export class PolygonRepository {
     const minAreaM2 = params.minAreaM2 ?? GEOMETRY_LIMITS.MIN_AREA_M2;
     const maxAreaM2 = params.maxAreaM2 ?? GEOMETRY_LIMITS.MAX_AREA_M2;
     const requireJurisdiction = params.requireJurisdiction ?? 'when_seeded';
+    const origin: PolygonOrigin = params.origin ?? 'citizen';
     const normalizedNote = normalizeNote(params.note);
     const geoJsonInput = JSON.stringify(params.geometry);
+    let wasAutoClipped = false;
+    let clippedAreaM2 = 0;
 
     const client = await this.pool.connect();
     try {
@@ -865,6 +933,11 @@ export class PolygonRepository {
           );
         }
 
+        wasAutoClipped = true;
+        clippedAreaM2 = Math.max(
+          0,
+          Number((areaM2 - clipped.largest_area_m2).toFixed(2)),
+        );
         finalGeoJson = clipped.clipped_geojson;
         areaM2 = clipped.largest_area_m2;
       }
@@ -997,7 +1070,10 @@ export class PolygonRepository {
            surface_type,
            note,
            area_m2,
-           municipality_id
+           municipality_id,
+           origin,
+           was_auto_clipped,
+           clipped_area_m2
          )
          SELECT
            $1,
@@ -1005,7 +1081,10 @@ export class PolygonRepository {
            $3,
            $4,
            $5,
-           $6
+           $6,
+           $7,
+           $8,
+           $9
          FROM prepared
          RETURNING id`,
         [
@@ -1015,6 +1094,9 @@ export class PolygonRepository {
           normalizedNote,
           areaM2,
           matchedMuniId,
+          origin,
+          wasAutoClipped,
+          clippedAreaM2,
         ],
       );
 
@@ -1027,6 +1109,18 @@ export class PolygonRepository {
         'INSERT INTO polygon_creations (user_id) VALUES ($1)',
         [params.userId],
       );
+
+      await recordTelemetryCounter(client, 'polygon_created', origin, {
+        areaM2,
+      });
+      if (wasAutoClipped) {
+        await recordTelemetryCounter(
+          client,
+          'polygon_auto_clipped',
+          'minor_overlap',
+          { areaM2: clippedAreaM2 },
+        );
+      }
 
       const createdFeature = await querySinglePolygonById(
         client,
@@ -1042,6 +1136,14 @@ export class PolygonRepository {
       return createdFeature;
     } catch (err: unknown) {
       await rollbackPreservingError(client, err);
+      const rejectionDim = classifyPolygonRejectionDimension(err);
+      if (rejectionDim !== null) {
+        await recordTelemetryBestEffort(
+          this.pool,
+          'polygon_rejected',
+          rejectionDim,
+        );
+      }
       throw err;
     } finally {
       client.release();
@@ -1064,6 +1166,9 @@ export class PolygonRepository {
            ST_AsGeoJSON(p.geom, 6) AS geom_geojson,
            p.surface_type,
            p.status,
+           p.origin,
+           p.was_auto_clipped,
+           p.clipped_area_m2,
            p.finished_at,
            p.note,
            p.area_m2,
@@ -1136,6 +1241,9 @@ export class PolygonRepository {
          bp.geom_geojson,
          bp.surface_type,
          bp.status,
+         bp.origin,
+         bp.was_auto_clipped,
+         bp.clipped_area_m2,
          bp.finished_at,
          bp.note,
          bp.area_m2,
@@ -1531,8 +1639,10 @@ export class PolygonRepository {
   ): Promise<ImportPolygonsResponse> {
     const minAreaM2 = params.minAreaM2 ?? GEOMETRY_LIMITS.MIN_AREA_M2;
     const maxAreaM2 = params.maxAreaM2 ?? IMPORT_LIMITS.MAX_AREA_M2;
+    const origin: PolygonOrigin = params.origin ?? 'initiative_import';
     const errors = [...params.dataset.preErrors];
     let importedCount = 0;
+    let importedAreaSum = 0;
 
     const client = await this.pool.connect();
     try {
@@ -1671,7 +1781,8 @@ export class PolygonRepository {
                  surface_type,
                  note,
                  area_m2,
-                 municipality_id
+                 municipality_id,
+                 origin
                )
                SELECT
                  $1,
@@ -1684,7 +1795,8 @@ export class PolygonRepository {
                    FROM municipalities m
                    WHERE ST_Covers(m.geom, ST_PointOnSurface(prepared.geom))
                    LIMIT 1
-                 )
+                 ),
+                 $6
                FROM prepared`,
               [
                 params.adminUserId,
@@ -1692,9 +1804,11 @@ export class PolygonRepository {
                 candidate.surfaceType,
                 candidate.note,
                 part.area_m2,
+                origin,
               ],
             );
             importedCount += 1;
+            importedAreaSum += part.area_m2;
             featureInsertedAny = true;
           }
 
@@ -1715,6 +1829,21 @@ export class PolygonRepository {
         }
       }
 
+      if (importedCount > 0) {
+        await recordTelemetryCounter(client, 'polygon_imported', origin, {
+          count: importedCount,
+          areaM2: importedAreaSum,
+        });
+      }
+      if (errors.length > 0) {
+        await recordTelemetryCounter(
+          client,
+          'polygon_import_skipped',
+          origin,
+          { count: errors.length },
+        );
+      }
+
       await client.query('COMMIT');
     } catch (err: unknown) {
       await rollbackPreservingError(client, err);
@@ -1725,6 +1854,7 @@ export class PolygonRepository {
 
     return {
       format: params.dataset.format,
+      origin,
       importedCount,
       skippedCount: errors.length,
       errors,
@@ -1807,6 +1937,9 @@ export class PolygonRepository {
                ST_AsGeoJSON(p.geom, 6) AS geom_geojson,
                p.surface_type,
                p.status,
+               p.origin,
+               p.was_auto_clipped,
+               p.clipped_area_m2,
                p.finished_at,
                p.note,
                p.area_m2,
@@ -1834,6 +1967,9 @@ export class PolygonRepository {
                ST_AsGeoJSON(p.geom, 6) AS geom_geojson,
                p.surface_type,
                p.status,
+               p.origin,
+               p.was_auto_clipped,
+               p.clipped_area_m2,
                p.finished_at,
                p.note,
                p.area_m2,

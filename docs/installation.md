@@ -157,12 +157,14 @@ Inspect `apps/mobile/android/app/src/main/AndroidManifest.xml` and remove `<uses
 
 ### Step 4: Build & Optionally Host the Signed Release APK
 
+Store your APK build and signing exports in a gitignored `.env.apk` file at the repository root (copied from [`.env.apk.example`](../.env.apk.example)):
+
 ```bash
-export UNSEAL_UPLOAD_STORE_FILE="/path/to/unseal-release.keystore"
-export UNSEAL_UPLOAD_STORE_PASSWORD="<store-password>"
-export UNSEAL_UPLOAD_KEY_ALIAS="unseal-upload"
-export UNSEAL_UPLOAD_KEY_PASSWORD="<key-password>"
-(cd apps/mobile/android && ./gradlew assembleRelease)
+cp .env.apk.example .env.apk
+chmod 600 .env.apk
+# Edit .env.apk with your production EXPO_PUBLIC_API_BASE_URL and UNSEAL_UPLOAD_* values
+
+source .env.apk && (cd apps/mobile/android && ./gradlew assembleRelease --no-daemon)
 ```
 
 The signed APK is written to `apps/mobile/android/app/build/outputs/apk/release/app-release.apk`.
@@ -198,6 +200,10 @@ docker compose exec -T api node apps/api/dist/cli/admin.js export-user <pseudony
 docker compose exec api node apps/api/dist/cli/admin.js set-email <pseudonym-or-email> <new-email>
 #    Art. 16 rectification: rename a pseudonym (the old one stays reserved for PSEUDONYM_RESERVATION_DAYS)
 docker compose exec api node apps/api/dist/cli/admin.js rename-user <pseudonym-or-email> <new-pseudonym>
+
+# 6. Research provenance tagging & zero-PII daily telemetry export
+docker compose exec api node apps/api/dist/cli/admin.js set-polygon-origin initiative_import --user <admin-pseudonym>
+docker compose exec -T api node apps/api/dist/cli/admin.js export-telemetry [--since YYYY-MM-DD] [--until YYYY-MM-DD] > telemetry.json
 ```
 
 Users can download their own data in the app (*Konto → Meine Daten herunterladen*, `GET /api/v1/auth/me/export`) and delete their account themselves; the CLI commands above cover requests that arrive by email.

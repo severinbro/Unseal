@@ -7,6 +7,7 @@ import {
 } from '@entsiegelung/shared';
 
 import { lockUserForWrite, recomputePolygonScores } from '../db/integrity.js';
+import { recordTelemetryCounter } from '../db/telemetry.js';
 
 import type pg from 'pg';
 
@@ -83,6 +84,12 @@ export class VoteRepository {
         );
       }
 
+      const prevVoteRes = await client.query<{ value: number }>(
+        'SELECT value FROM votes WHERE polygon_id = $1 AND user_id = $2',
+        [lockedPolygon.id, params.userId],
+      );
+      const prevValue = prevVoteRes.rows[0]?.value;
+
       await client.query(
         `INSERT INTO votes (polygon_id, user_id, value, updated_at)
          VALUES ($1, $2, $3, NOW())
@@ -94,6 +101,20 @@ export class VoteRepository {
       );
 
       await recomputePolygonScores(client, [lockedPolygon.id]);
+
+      if (prevValue === undefined) {
+        await recordTelemetryCounter(
+          client,
+          'vote_cast',
+          params.value === 1 ? 'upvote' : 'downvote',
+        );
+      } else if (prevValue !== params.value) {
+        await recordTelemetryCounter(
+          client,
+          'vote_flipped',
+          params.value === 1 ? 'down_to_up' : 'up_to_down',
+        );
+      }
 
       const totalsRes = await client.query<PolygonVoteTotalsRow>(
         `SELECT id, upvotes, downvotes, score
@@ -154,12 +175,21 @@ export class VoteRepository {
         );
       }
 
-      await client.query(
-        'DELETE FROM votes WHERE polygon_id = $1 AND user_id = $2',
+      const delRes = await client.query<{ value: number }>(
+        'DELETE FROM votes WHERE polygon_id = $1 AND user_id = $2 RETURNING value',
         [lockedPolygon.id, userId],
       );
 
       await recomputePolygonScores(client, [lockedPolygon.id]);
+
+      const deletedVote = delRes.rows[0];
+      if (deletedVote !== undefined) {
+        await recordTelemetryCounter(
+          client,
+          'vote_removed',
+          deletedVote.value === 1 ? 'from_upvote' : 'from_downvote',
+        );
+      }
 
       const totalsRes = await client.query<PolygonVoteTotalsRow>(
         `SELECT id, upvotes, downvotes, score

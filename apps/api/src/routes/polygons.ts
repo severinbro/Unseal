@@ -7,6 +7,7 @@ import {
   FlagPolygonResponseSchema,
   IMPORT_LIMITS,
   ImportPolygonsResponseSchema,
+  POLYGON_ORIGINS,
   PatchPolygonRequestSchema,
   PatchPolygonStatusRequestSchema,
   PolygonFeatureSchema,
@@ -15,9 +16,11 @@ import {
   checkBboxSpan,
   type PolygonCollectionResponse,
   type ExportPolygonFeature,
+  type PolygonOrigin,
 } from '@entsiegelung/shared';
 
 import { optionalAuth, requireAdmin, requireAuth } from '../auth/session.js';
+import { recordTelemetryBestEffort } from '../db/telemetry.js';
 import { extractImportDataset } from '../polygons/gpkgReader.js';
 import { PolygonRepository, type ExportCursor } from '../polygons/repository.js';
 
@@ -327,7 +330,21 @@ export function registerPolygonRoutes(
         );
       }
 
-      const body = CreatePolygonRequestSchema.parse(request.body);
+      const parsedBody = CreatePolygonRequestSchema.safeParse(request.body);
+      if (!parsedBody.success) {
+        const hasGeometryIssue = parsedBody.error.issues.some(
+          (issue) => issue.path[0] === 'geometry',
+        );
+        if (hasGeometryIssue) {
+          await recordTelemetryBestEffort(
+            app.pool,
+            'polygon_rejected',
+            'schema_geometry',
+          );
+        }
+        throw parsedBody.error;
+      }
+      const body = parsedBody.data;
       const created = await repository.create({
         userId: auth.user.id,
         geometry: body.geometry,
@@ -413,6 +430,26 @@ export function registerPolygonRoutes(
         );
       }
 
+      const queryObj =
+        typeof request.query === 'object' && request.query !== null
+          ? (request.query as { origin?: unknown })
+          : {};
+      let importOrigin: PolygonOrigin = 'initiative_import';
+      if (queryObj.origin !== undefined) {
+        const rawOrigin =
+          typeof queryObj.origin === 'string'
+            ? queryObj.origin.trim().toLowerCase()
+            : '';
+        if (!(POLYGON_ORIGINS as readonly string[]).includes(rawOrigin)) {
+          throw new ApiError(
+            422,
+            'VALIDATION_ERROR',
+            'Import origin must be "citizen", "initiative_import", or "remote_sensing".',
+          );
+        }
+        importOrigin = rawOrigin as PolygonOrigin;
+      }
+
       const dataset = await extractImportDataset(
         buffer,
         uploaded.filename || 'import.geojson',
@@ -420,6 +457,7 @@ export function registerPolygonRoutes(
       const imported = await repository.importBatch({
         adminUserId: auth.user.id,
         dataset,
+        origin: importOrigin,
         minAreaM2: app.config.runtimeConfig.limits.minAreaM2,
         maxAreaM2: Math.max(
           IMPORT_LIMITS.MAX_AREA_M2,

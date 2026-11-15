@@ -8,11 +8,13 @@ import {
   EmailSchema,
   LAND_COVER_CATEGORIES,
   LAND_COVER_SOURCES,
+  POLYGON_ORIGINS,
   RESERVED_PSEUDONYMS,
   TRUST_AND_MODERATION_LIMITS,
   UuidParamSchema,
   type LandCoverCategory,
   type LandCoverSource,
+  type PolygonOrigin,
 } from '@entsiegelung/shared';
 
 import {
@@ -27,6 +29,10 @@ import {
 } from '../auth/tombstones.js';
 import { loadEnvConfig, resolveTombstoneSecret } from '../config.js';
 import { deleteOrBanUserAccount } from '../db/integrity.js';
+import {
+  collectTelemetryExport,
+  type TelemetryExportReport,
+} from '../db/telemetry.js';
 import { unlinkUploadFiles } from '../photos/uploadFiles.js';
 import {
   collectUserData,
@@ -55,7 +61,9 @@ export type AdminCommandName =
   | 'export-user'
   | 'set-email'
   | 'rename-user'
-  | 'lift-ban';
+  | 'lift-ban'
+  | 'set-polygon-origin'
+  | 'export-telemetry';
 
 export interface AdminCommandResult {
   command: AdminCommandName;
@@ -81,6 +89,9 @@ export interface AdminCommandResult {
   userExport?: UserDataExport;
   liftedPseudonymBans?: number;
   liftedEmailBans?: number;
+  polygonOrigin?: PolygonOrigin;
+  updatedPolygonCount?: number;
+  telemetryExport?: TelemetryExportReport;
 }
 
 async function rollbackPreservingError(
@@ -138,6 +149,29 @@ function parseUserIdentifier(raw: string | undefined): string {
     );
   }
   return trimmed.toLowerCase();
+}
+
+function parseIsoCalendarDate(raw: string | undefined, flagName: string): string {
+  const trimmed = raw?.trim() ?? '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    throw new ApiError(
+      422,
+      'VALIDATION_ERROR',
+      `${flagName} must be an ISO calendar date in YYYY-MM-DD format.`,
+    );
+  }
+  const parsed = new Date(`${trimmed}T00:00:00.000Z`);
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== trimmed
+  ) {
+    throw new ApiError(
+      422,
+      'VALIDATION_ERROR',
+      `${flagName} is not a valid calendar date.`,
+    );
+  }
+  return trimmed;
 }
 
 export interface AdminCommandOptions {
@@ -714,10 +748,133 @@ export async function runAdminCommand(
     };
   }
 
+  if (command === 'set-polygon-origin') {
+    const rawOrigin = argv[1]?.trim().toLowerCase() ?? '';
+    if (!(POLYGON_ORIGINS as readonly string[]).includes(rawOrigin)) {
+      throw new ApiError(
+        422,
+        'VALIDATION_ERROR',
+        'Usage: set-polygon-origin <citizen|initiative_import|remote_sensing> <--user <pseudonym-or-email> | --before <isoDateOrTimestamp> | --polygon <polygonId> | --all>',
+      );
+    }
+    const polygonOrigin = rawOrigin as PolygonOrigin;
+    const selectorFlag = argv[2]?.trim() ?? '';
+
+    if (selectorFlag === '--all' && argv.length === 3) {
+      const res = await pool.query(
+        'UPDATE polygons SET origin = $1 WHERE origin <> $1',
+        [polygonOrigin],
+      );
+      return {
+        command: 'set-polygon-origin',
+        polygonOrigin,
+        updatedPolygonCount: res.rowCount ?? 0,
+      };
+    }
+
+    if (selectorFlag === '--polygon' && argv.length === 4) {
+      const polygonId = parseValidatedPolygonId(argv[3]);
+      const res = await pool.query(
+        'UPDATE polygons SET origin = $1 WHERE id = $2',
+        [polygonOrigin, polygonId],
+      );
+      if ((res.rowCount ?? 0) === 0) {
+        throw new ApiError(404, 'NOT_FOUND', 'Polygon not found.');
+      }
+      return {
+        command: 'set-polygon-origin',
+        polygonId,
+        polygonOrigin,
+        updatedPolygonCount: res.rowCount ?? 0,
+      };
+    }
+
+    if (selectorFlag === '--user' && argv.length === 4) {
+      const identifier = parseUserIdentifier(argv[3]);
+      const userId = await findUserIdByIdentifier(pool, identifier);
+      const res = await pool.query(
+        'UPDATE polygons SET origin = $1 WHERE user_id = $2',
+        [polygonOrigin, userId],
+      );
+      return {
+        command: 'set-polygon-origin',
+        polygonOrigin,
+        updatedPolygonCount: res.rowCount ?? 0,
+      };
+    }
+
+    if (selectorFlag === '--before' && argv.length === 4) {
+      const rawCutoff = argv[3]?.trim() ?? '';
+      const parsedMs = Date.parse(rawCutoff);
+      if (rawCutoff.length === 0 || Number.isNaN(parsedMs)) {
+        throw new ApiError(
+          422,
+          'VALIDATION_ERROR',
+          '--before requires a valid ISO 8601 date or timestamp (e.g. 2026-11-16 or 2026-11-15T23:59:59Z).',
+        );
+      }
+      const cutoffIso = new Date(parsedMs).toISOString();
+      const res = await pool.query(
+        'UPDATE polygons SET origin = $1 WHERE created_at < $2::timestamptz',
+        [polygonOrigin, cutoffIso],
+      );
+      return {
+        command: 'set-polygon-origin',
+        polygonOrigin,
+        updatedPolygonCount: res.rowCount ?? 0,
+      };
+    }
+
+    throw new ApiError(
+      422,
+      'VALIDATION_ERROR',
+      'Usage: set-polygon-origin <citizen|initiative_import|remote_sensing> <--user <pseudonym-or-email> | --before <isoDateOrTimestamp> | --polygon <polygonId> | --all>',
+    );
+  }
+
+  if (command === 'export-telemetry') {
+    let since: string | null = null;
+    let until: string | null = null;
+    let idx = 1;
+    while (idx < argv.length) {
+      const flag = argv[idx];
+      if (flag === '--since') {
+        since = parseIsoCalendarDate(argv[idx + 1], '--since');
+        idx += 2;
+      } else if (flag === '--until') {
+        until = parseIsoCalendarDate(argv[idx + 1], '--until');
+        idx += 2;
+      } else {
+        throw new ApiError(
+          422,
+          'VALIDATION_ERROR',
+          'Usage: export-telemetry [--since YYYY-MM-DD] [--until YYYY-MM-DD]',
+        );
+      }
+    }
+
+    if (since !== null && until !== null && since > until) {
+      throw new ApiError(
+        422,
+        'VALIDATION_ERROR',
+        '--since must not be later than --until.',
+      );
+    }
+
+    const telemetryExport = await collectTelemetryExport(pool, {
+      since,
+      until,
+    });
+    return {
+      command: 'export-telemetry',
+      telemetryExport,
+    };
+  }
+
   throw new ApiError(
     422,
     'VALIDATION_ERROR',
-    'Unsupported admin command. Supported commands: grant-admin <user>, revoke-admin <user>, load-vg250 [source], load-landcover <osm|alkis> <filePath> [defaultCategory] [--replace], prune-stale-polygons [retentionDays], ban-user <pseudonym> [reason], lift-ban <pseudonym> [email], delete-polygon <polygonId>, delete-comment <commentId>, redact-note <polygonId>, export-user <user>, set-email <user> <newEmail>, rename-user <user> <newPseudonym>.',
+    'Unsupported admin command. Supported commands: grant-admin <user>, revoke-admin <user>, load-vg250 [source], load-landcover <osm|alkis> <filePath> [defaultCategory] [--replace], prune-stale-polygons [retentionDays], ban-user <pseudonym> [reason], lift-ban <pseudonym> [email], delete-polygon <polygonId>, delete-comment <commentId>, redact-note <polygonId>, export-user <user>, set-email <user> <newEmail>, rename-user <user> <newPseudonym>, set-polygon-origin <origin> <--user|--before|--polygon|--all>, export-telemetry [--since YYYY-MM-DD] [--until YYYY-MM-DD].',
   );
 }
 
@@ -743,6 +900,12 @@ if (isDirectExecution) {
         logger.info(
           { command: result.command, pseudonym: result.pseudonym },
           'Admin data export written to stdout',
+        );
+      } else if (result.telemetryExport) {
+        process.stdout.write(`${JSON.stringify(result.telemetryExport, null, 2)}\n`);
+        logger.info(
+          { command: result.command, window: result.telemetryExport.window },
+          'Research telemetry export written to stdout',
         );
       } else {
         logger.info({ result }, 'Admin moderation command completed');

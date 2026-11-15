@@ -6,6 +6,14 @@ export const POLYGON_STATUSES = ['proposed', 'in_progress', 'finished'] as const
 
 export type PolygonStatus = (typeof POLYGON_STATUSES)[number];
 
+export const POLYGON_ORIGINS = [
+  'citizen',
+  'initiative_import',
+  'remote_sensing',
+] as const;
+
+export type PolygonOrigin = (typeof POLYGON_ORIGINS)[number];
+
 export const USER_ROLES = ['user', 'admin'] as const;
 
 export type UserRole = (typeof USER_ROLES)[number];
