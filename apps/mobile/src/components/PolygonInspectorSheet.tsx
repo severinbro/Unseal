@@ -909,17 +909,6 @@ export function PolygonInspectorSheet({
                 </Text>
               </View>
             ) : null}
-          </View>
-
-          <View style={styles.metaSubtitleRow}>
-            <Text style={styles.authorMeta}>
-              {t.proposedBy(properties.authorPseudonym, properties.isAuthor)}
-            </Text>
-            {entryDateText ? (
-              <Text testID="header-entry-date" style={styles.entryDateMeta}>
-                · {entryDateText}
-              </Text>
-            ) : null}
             {properties.municipalityName ? (
               <View style={styles.municipalityChip}>
                 <Text numberOfLines={1} style={styles.municipalityChipLabel}>
@@ -2036,22 +2025,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: PALETTE.neutralText,
-  },
-  metaSubtitleRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 6,
-  },
-  authorMeta: {
-    fontSize: 12,
-    color: PALETTE.inkMuted,
-  },
-  entryDateMeta: {
-    ...TABULAR_NUMS_STYLE,
-    fontFamily: MONO_FONT_FAMILY,
-    fontSize: 11.5,
-    color: PALETTE.inkMuted,
   },
   municipalityChip: {
     paddingHorizontal: 7,

@@ -11,8 +11,8 @@ import {
   type BboxBounds,
   type CreatePolygonRequest,
   type FlagPolygonResponse,
-  type PolygonAuthorFilter,
   type PolygonFeature,
+  type PolygonFilter,
   type RuntimeConfig,
   type SurfaceType,
   type VoteResponse,
@@ -83,8 +83,7 @@ export interface AppState {
   firstVisitDisclaimerDismissed: boolean;
   basemapMode: BasemapMode;
   polygonOpacity: number;
-  authorFilter: PolygonAuthorFilter;
-  unratedFlaggedOnly: boolean;
+  polygonFilter: PolygonFilter;
   tileWarning: string | null;
   viewport: ViewportState | null;
   spanTooWide: boolean;
@@ -124,8 +123,7 @@ export type AppAction =
   | { type: 'DISMISS_TILE_WARNING' }
   | { type: 'SET_BASEMAP_MODE'; mode: BasemapMode }
   | { type: 'SET_POLYGON_OPACITY'; opacity: number }
-  | { type: 'SET_AUTHOR_FILTER'; filter: PolygonAuthorFilter }
-  | { type: 'SET_UNRATED_FLAGGED_ONLY'; enabled: boolean }
+  | { type: 'SET_POLYGON_FILTER'; filter: PolygonFilter }
   | { type: 'TILE_LOAD_ERROR'; reason?: string }
   | { type: 'SET_CAMERA_TARGET'; lng: number; lat: number; zoom?: number }
   | { type: 'SET_VIEWPORT'; bbox: BboxBounds; zoom: number }
@@ -193,8 +191,7 @@ export const initialAppState: AppState = {
   firstVisitDisclaimerDismissed: true,
   basemapMode: 'osm',
   polygonOpacity: DEFAULT_POLYGON_OPACITY,
-  authorFilter: 'all',
-  unratedFlaggedOnly: false,
+  polygonFilter: 'all',
   tileWarning: null,
   viewport: null,
   spanTooWide: false,
@@ -474,24 +471,13 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
     }
 
-    case 'SET_AUTHOR_FILTER': {
-      if (state.authorFilter === action.filter) {
+    case 'SET_POLYGON_FILTER': {
+      if (state.polygonFilter === action.filter) {
         return state;
       }
       return {
         ...state,
-        authorFilter: action.filter,
-        viewportRefreshSeq: state.viewportRefreshSeq + 1,
-      };
-    }
-
-    case 'SET_UNRATED_FLAGGED_ONLY': {
-      if (state.unratedFlaggedOnly === action.enabled) {
-        return state;
-      }
-      return {
-        ...state,
-        unratedFlaggedOnly: action.enabled,
+        polygonFilter: action.filter,
         viewportRefreshSeq: state.viewportRefreshSeq + 1,
       };
     }
@@ -1041,23 +1027,25 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         state.pendingIntent?.type === 'CAST_VOTE' &&
         state.pendingIntent.polygonId === action.vote.polygonId;
 
-      const prevWasUnrated =
+      const prevNeedsReview =
         targetFeature !== undefined &&
+        targetFeature.properties.score === 0 &&
         targetFeature.properties.upvotes === 0 &&
         targetFeature.properties.downvotes === 0;
-      const nextIsUnrated =
-        action.vote.upvotes === 0 && action.vote.downvotes === 0;
-      const shouldRefreshUnratedFilter =
-        state.unratedFlaggedOnly &&
+      const nextNeedsReview =
+        action.vote.score === 0 &&
+        action.vote.upvotes === 0 &&
+        action.vote.downvotes === 0;
+      const shouldRefreshNeedsReviewFilter =
+        state.polygonFilter === 'needs_review' &&
         targetFeature !== undefined &&
-        !targetFeature.properties.isFlagged &&
-        prevWasUnrated !== nextIsUnrated;
+        prevNeedsReview !== nextNeedsReview;
 
       return {
         ...state,
         features: nextFeatures,
         pendingIntent: shouldClearPending ? null : state.pendingIntent,
-        viewportRefreshSeq: shouldRefreshUnratedFilter
+        viewportRefreshSeq: shouldRefreshNeedsReviewFilter
           ? state.viewportRefreshSeq + 1
           : state.viewportRefreshSeq,
       };
@@ -1080,10 +1068,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         features: nextFeatures,
-        viewportRefreshSeq:
-          state.unratedFlaggedOnly && !action.flag.isFlagged
-            ? state.viewportRefreshSeq + 1
-            : state.viewportRefreshSeq,
       };
     }
 

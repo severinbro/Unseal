@@ -34,11 +34,11 @@ import {
   type LoginRequest,
   type PatchPolygonRequest,
   type PhotoVoteResponse,
-  type PolygonAuthorFilter,
   type PolygonCollectionResponse,
   type PolygonComment,
   type PolygonCommentListResponse,
   type PolygonFeature,
+  type PolygonFilter,
   type PolygonPhoto,
   type PolygonPhotoListResponse,
   type PolygonStatus,
@@ -62,8 +62,7 @@ import type { SessionStorage } from '../storage/tokenStorage';
 export { encodeUtf8Base64, sha256Hex, solveAltchaChallengeClient };
 
 export interface PolygonListFilters {
-  readonly authorType?: PolygonAuthorFilter | undefined;
-  readonly unratedFlaggedOnly?: boolean | undefined;
+  readonly filter?: PolygonFilter | undefined;
 }
 
 export type FetchLike = typeof fetch;
@@ -235,11 +234,8 @@ export class PpgisApiClient {
   ): Promise<PolygonCollectionResponse> {
     const bboxParam = encodeURIComponent(formatBboxQueryParam(bbox));
     let query = `bbox=${bboxParam}`;
-    if (filters?.authorType && filters.authorType !== 'all') {
-      query += `&authorType=${encodeURIComponent(filters.authorType)}`;
-    }
-    if (filters?.unratedFlaggedOnly === true) {
-      query += '&unratedFlaggedOnly=true';
+    if (filters?.filter && filters.filter !== 'all') {
+      query += `&filter=${encodeURIComponent(filters.filter)}`;
     }
     const json = await this.requestJson({
       method: 'GET',

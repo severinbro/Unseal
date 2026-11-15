@@ -929,11 +929,6 @@ export function registerAuthRoutes(app: FastifyInstance): void {
 
       failedLoginTracker.clear(compositeKey);
 
-      await app.pool.query(
-        'UPDATE users SET last_login_at = clock_timestamp() WHERE id = $1',
-        [userRow.id],
-      );
-
       const session = await createSession(
         app.pool,
         userRow.id,

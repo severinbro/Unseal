@@ -68,6 +68,15 @@ export const POLYGON_FLAG_REASONS = [
 
 export type PolygonFlagReason = (typeof POLYGON_FLAG_REASONS)[number];
 
+export const POLYGON_FILTERS = [
+  'all',
+  'new',
+  'established',
+  'needs_review',
+] as const;
+
+export type PolygonFilter = (typeof POLYGON_FILTERS)[number];
+
 export const POLYGON_AUTHOR_FILTERS = [
   'all',
   'new_user',

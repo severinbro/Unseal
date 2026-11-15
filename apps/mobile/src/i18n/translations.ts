@@ -123,17 +123,18 @@ export interface TranslationDictionary {
     readonly proposeCompact: string;
     readonly proposeFull: string;
     readonly zoomInPrompt: string;
+    readonly filterGroupA11y: string;
     readonly filterAll: string;
     readonly filterAllA11y: string;
-    readonly filterNewContributorsCompact: string;
-    readonly filterNewContributorsFull: string;
-    readonly filterNewContributorsA11y: string;
+    readonly filterNewCompact: string;
+    readonly filterNewFull: string;
+    readonly filterNewA11y: string;
     readonly filterEstablishedCompact: string;
     readonly filterEstablishedFull: string;
     readonly filterEstablishedA11y: string;
-    readonly filterUnratedFlaggedCompact: string;
-    readonly filterUnratedFlaggedFull: string;
-    readonly filterUnratedFlaggedA11y: string;
+    readonly filterNeedsReviewCompact: string;
+    readonly filterNeedsReviewFull: string;
+    readonly filterNeedsReviewA11y: string;
     readonly polygonOpacityLabel: string;
     readonly polygonOpacityA11y: string;
   };
@@ -516,20 +517,20 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       proposeFull: '+ Fläche vorschlagen',
       zoomInPrompt:
         'Bitte näher heranzoomen, um Vorschläge zu sehen und einzutragen',
+      filterGroupA11y: 'Flächenfilter (Einzelauswahl)',
       filterAll: 'Alle',
-      filterAllA11y: 'Alle Beitragenden anzeigen',
-      filterNewContributorsCompact: 'Neu',
-      filterNewContributorsFull: 'Neue Beitragende',
-      filterNewContributorsA11y:
-        'Nur Flächen neuer Beitragender anzeigen',
+      filterAllA11y: 'Alle Flächen anzeigen',
+      filterNewCompact: 'Neu',
+      filterNewFull: 'Neu (7 Tage)',
+      filterNewA11y: 'Neue Flächen der letzten 7 Tage anzeigen',
       filterEstablishedCompact: 'Etabliert',
-      filterEstablishedFull: 'Etablierte',
+      filterEstablishedFull: 'Etabliert',
       filterEstablishedA11y:
-        'Nur Flächen etablierter Beitragender anzeigen',
-      filterUnratedFlaggedCompact: 'Prüfbedarf',
-      filterUnratedFlaggedFull: 'Prüfbedarf & unbewertet',
-      filterUnratedFlaggedA11y:
-        'Unbewertete Flächen oder Flächen mit Prüfbedarf anzeigen',
+        'Etablierte Flächen (alle außer den letzten 7 Tagen) anzeigen',
+      filterNeedsReviewCompact: 'Prüfbedarf',
+      filterNeedsReviewFull: 'Prüfbedarf',
+      filterNeedsReviewA11y:
+        'Flächen mit Prüfbedarf (Bewertung 0 und ohne Stimmen) anzeigen',
       polygonOpacityLabel: 'Deckkraft',
       polygonOpacityA11y: 'Deckkraft der Polygone anpassen',
     },
@@ -737,7 +738,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       photoErrorFallback: 'Fotoaktion fehlgeschlagen.',
       statusErrorFallback: 'Status konnte nicht geändert werden.',
       entryDateLabel: 'Eingetragen am',
-      creatorSectionLabel: 'Erstellt von',
+      creatorSectionLabel: 'Vorgeschlagen von',
       newContributorBadge: 'Neuer Beitragender',
       creatorLastLoginLabel: 'Letzte Anmeldung',
       creatorLastLoginUnknown: 'Unbekannt',
@@ -927,7 +928,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       featureReviewBullet:
         'Bewerten & Prüfen: Vorschläge mit +1/−1 gewichten, Fotos als Echt/Fake einstufen oder Unstimmigkeiten zur Prüfung melden.',
       featureControlsBullet:
-        'Ansicht & Filter: Straßenkarte/Luftbild (DOP20), stufenloser Deckkraft-Regler sowie Filter für Neue/Etablierte Beitragende und „Prüfbedarf & unbewertet“.',
+        'Ansicht & Filter: Straßenkarte/Luftbild (DOP20), stufenloser Deckkraft-Regler sowie Einzelauswahl-Filter (Alle, Neu: letzte 7 Tage, Etabliert: älter als 7 Tage, Prüfbedarf: Bewertung 0 ohne Stimmen).',
       featureDataBullet:
         'Offene Geodaten: Ein-Klick-GeoJSON-Export (sowie .geojson/.gpkg-Import für Admins).',
       legendTitle: 'Farben & Status',
@@ -1011,18 +1012,20 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       proposeCompact: '+ Propose',
       proposeFull: '+ Propose Unsealing',
       zoomInPrompt: 'Zoom in to view and add proposals',
+      filterGroupA11y: 'Polygon filter (single choice)',
       filterAll: 'All',
-      filterAllA11y: 'Show all contributors',
-      filterNewContributorsCompact: 'New',
-      filterNewContributorsFull: 'New contributors',
-      filterNewContributorsA11y: 'Show only polygons by new contributors',
+      filterAllA11y: 'Show all polygons',
+      filterNewCompact: 'New',
+      filterNewFull: 'New (7d)',
+      filterNewA11y: 'Show new polygons from the past 7 days',
       filterEstablishedCompact: 'Established',
       filterEstablishedFull: 'Established',
-      filterEstablishedA11y: 'Show only polygons by established contributors',
-      filterUnratedFlaggedCompact: 'Needs review',
-      filterUnratedFlaggedFull: 'Needs review & unrated',
-      filterUnratedFlaggedA11y:
-        'Show unrated polygons or polygons flagged for review',
+      filterEstablishedA11y:
+        'Show established polygons (all except past 7 days)',
+      filterNeedsReviewCompact: 'Needs review',
+      filterNeedsReviewFull: 'Needs review',
+      filterNeedsReviewA11y:
+        'Show polygons needing review (score of 0 and no ratings)',
       polygonOpacityLabel: 'Opacity',
       polygonOpacityA11y: 'Adjust polygon opacity',
     },
@@ -1213,7 +1216,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       photoErrorFallback: 'Photo action failed.',
       statusErrorFallback: 'Unable to update polygon status.',
       entryDateLabel: 'Submitted on',
-      creatorSectionLabel: 'Created by',
+      creatorSectionLabel: 'Proposed by',
       newContributorBadge: 'New contributor',
       creatorLastLoginLabel: 'Last login',
       creatorLastLoginUnknown: 'Unknown',
@@ -1399,7 +1402,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       featureReviewBullet:
         'Vote & review: Score proposals +1/−1, rate photos Real/Fake, or flag questionable entries for community review.',
       featureControlsBullet:
-        'View & filters: Street/DOP20 aerial toggle, dynamic polygon opacity slider, plus contributor (New/Established) and “Needs review & unrated” filters.',
+        'View & filters: Street/DOP20 aerial toggle, dynamic polygon opacity slider, plus single-choice filters (All, New: past 7 days, Established: older than 7 days, Needs review: score 0 with no ratings).',
       featureDataBullet:
         'Open geodata: One-click GeoJSON export (plus .geojson/.gpkg import for admins).',
       legendTitle: 'Colors & Status',

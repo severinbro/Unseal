@@ -42,10 +42,10 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
     }
   });
 
-  it('applies 001_initial_schema.sql + 002_v2_features.sql + 003_v3_adjustments.sql + 004_polygon_comments.sql idempotently and resetTestDb truncates all application tables', async () => {
+  it('applies 001..006 migrations idempotently and resetTestDb truncates all application tables', async () => {
     const secondRun = await runMigrations(pool);
     assert.equal(secondRun.applied.length, 0);
-    assert.equal(secondRun.totalApplied, 5);
+    assert.equal(secondRun.totalApplied, 6);
 
     const indexRes = await pool.query<{ indexname: string }>(
       `SELECT indexname FROM pg_indexes WHERE schemaname = 'public'`,
@@ -127,7 +127,7 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
     assert.equal(counts.polygons_cnt, 0);
     assert.equal(counts.creations_cnt, 0);
     assert.equal(counts.votes_cnt, 0);
-    assert.equal(counts.migrations_cnt, 5);
+    assert.equal(counts.migrations_cnt, 6);
   });
 
   it('GET /api/v1/health returns 200 against live PostGIS and 503 SERVICE_UNAVAILABLE when DB fails or migrations are incomplete', async () => {
@@ -145,7 +145,7 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
       assert.ok(okRes.headers['x-request-id']);
       const health = HealthResponseSchema.parse(okRes.json());
       assert.equal(health.status, 'ok');
-      assert.equal(health.migrationsApplied, 5);
+      assert.equal(health.migrationsApplied, 6);
       assert.match(health.postgisVersion, /^3\./);
     } finally {
       await app.close();
@@ -192,12 +192,16 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
       const mig5Path = fileURLToPath(
         new URL('../migrations/005_carbon_anti_spam.sql', import.meta.url),
       );
+      const mig6Path = fileURLToPath(
+        new URL('../migrations/006_backfill_last_login.sql', import.meta.url),
+      );
       await fs.copyFile(mig1Path, path.join(tmpDir, '001_initial_schema.sql'));
       await fs.copyFile(mig2Path, path.join(tmpDir, '002_v2_features.sql'));
       await fs.copyFile(mig3Path, path.join(tmpDir, '003_v3_adjustments.sql'));
       await fs.copyFile(mig4Path, path.join(tmpDir, '004_polygon_comments.sql'));
       await fs.copyFile(mig5Path, path.join(tmpDir, '005_carbon_anti_spam.sql'));
-      await fs.writeFile(path.join(tmpDir, '006_pending.sql'), 'SELECT 1;\n', 'utf8');
+      await fs.copyFile(mig6Path, path.join(tmpDir, '006_backfill_last_login.sql'));
+      await fs.writeFile(path.join(tmpDir, '007_pending.sql'), 'SELECT 1;\n', 'utf8');
 
       const unmigratedApp = await buildApp(config, pool, {
         logger: createLogger({ enabled: false }),

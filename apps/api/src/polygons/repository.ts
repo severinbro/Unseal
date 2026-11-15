@@ -15,8 +15,8 @@ import {
   type FlagPolygonResponse,
   type ImportPolygonsResponse,
   type LandCoverCategory,
-  type PolygonAuthorFilter,
   type PolygonFeature,
+  type PolygonFilter,
   type PolygonFlagReason,
   type PolygonStatus,
   type SurfaceType,
@@ -47,8 +47,7 @@ export interface ListPolygonsByBboxParams {
   bbox: BboxBounds;
   viewerUserId: string | null;
   limit?: number | undefined;
-  authorType?: PolygonAuthorFilter | undefined;
-  unratedFlaggedOnly?: boolean | undefined;
+  filter?: PolygonFilter | undefined;
 }
 
 export interface FlagPolygonParams {
@@ -1048,8 +1047,7 @@ export class PolygonRepository {
   ): Promise<ListPolygonsByBboxResult> {
     const limit = params.limit ?? GEOMETRY_LIMITS.BBOX_FEATURE_LIMIT;
     const queryLimit = limit + 1;
-    const authorType = params.authorType ?? 'all';
-    const unratedFlaggedOnly = Boolean(params.unratedFlaggedOnly);
+    const filter: PolygonFilter = params.filter ?? 'all';
     const authorIsNewSql = buildAuthorIsNewUserSql('u', '$7', '$8');
 
     const res = await this.pool.query<PolygonQueryRow>(
@@ -1103,14 +1101,10 @@ export class PolygonRepository {
            ST_MakeEnvelope($1, $2, $3, $4, 4326)
          )
            AND (
-             NOT $10::boolean
-             OR p.flag_count > 0
-             OR (p.status = 'proposed' AND p.upvotes = 0 AND p.downvotes = 0)
-           )
-           AND (
              $9::text = 'all'
-             OR ($9::text = 'new_user' AND (${authorIsNewSql}) = TRUE)
-             OR ($9::text = 'established' AND p.user_id IS NOT NULL AND (${authorIsNewSql}) = FALSE)
+             OR ($9::text = 'new' AND p.created_at > NOW() - INTERVAL '7 days')
+             OR ($9::text = 'established' AND p.created_at <= NOW() - INTERVAL '7 days')
+             OR ($9::text = 'needs_review' AND p.score = 0 AND p.upvotes = 0 AND p.downvotes = 0)
            )
          ORDER BY p.score DESC, p.created_at DESC, p.id ASC
          LIMIT $6
@@ -1168,8 +1162,7 @@ export class PolygonRepository {
         queryLimit,
         this.trust.minAccountDays,
         this.trust.minCleanPolygons,
-        authorType,
-        unratedFlaggedOnly,
+        filter,
       ],
     );
 

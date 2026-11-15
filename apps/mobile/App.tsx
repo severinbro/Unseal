@@ -278,14 +278,12 @@ export function App(props: AppProps = {}): React.JSX.Element {
 
     let cancelled = false;
     const bbox = state.viewport.bbox;
-    const authorType = state.authorFilter;
-    const unratedFlaggedOnly = state.unratedFlaggedOnly;
+    const filter = state.polygonFilter;
 
     void (async () => {
       try {
         const collection = await apiClient.listPolygons(bbox, {
-          authorType,
-          unratedFlaggedOnly,
+          filter,
         });
         if (!cancelled) {
           dispatch({
@@ -315,8 +313,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
     state.configStatus,
     state.viewport,
     state.spanTooWide,
-    state.authorFilter,
-    state.unratedFlaggedOnly,
+    state.polygonFilter,
     state.viewportRefreshSeq,
   ]);
 
@@ -1233,14 +1230,8 @@ export function App(props: AppProps = {}): React.JSX.Element {
         onSetPolygonOpacity={(opacity) =>
           dispatch({ type: 'SET_POLYGON_OPACITY', opacity })
         }
-        onSetAuthorFilter={(filter) =>
-          dispatch({ type: 'SET_AUTHOR_FILTER', filter })
-        }
-        onToggleUnratedFlaggedOnly={() =>
-          dispatch({
-            type: 'SET_UNRATED_FLAGGED_ONLY',
-            enabled: !state.unratedFlaggedOnly,
-          })
+        onSetPolygonFilter={(filter) =>
+          dispatch({ type: 'SET_POLYGON_FILTER', filter })
         }
         onStartDraw={() => dispatch({ type: 'START_DRAW' })}
         onOpenAccount={() => dispatch({ type: 'OPEN_AUTH_MODAL' })}
@@ -1360,7 +1351,12 @@ export function App(props: AppProps = {}): React.JSX.Element {
             accessibilityRole="button"
             accessibilityLabel={dict.controls.aboutButtonA11y}
             onPress={() => setAboutModalOpen(true)}
-            style={styles.nativeAttributionPill}
+            style={[
+              styles.nativeAttributionPill,
+              hasActivePanel && layout.isCompact && isDrawingCollapsed
+                ? styles.nativeAttributionPillAboveCollapsed
+                : null,
+            ]}
           >
             <Text numberOfLines={1} style={styles.nativeAttributionText}>
               {mapControls.basemapMode === 'orthophoto'
@@ -1372,10 +1368,10 @@ export function App(props: AppProps = {}): React.JSX.Element {
 
         {hasActivePanel && layout.isDocked ? (
           <KeyboardAvoidingView
+            pointerEvents="box-none"
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={[
               styles.sideDockShell,
-              drawingToolbar.visible ? styles.sideDockDrawingShell : null,
               {
                 width: layout.dockWidth,
                 maxHeight: activeMaxHeight,
@@ -1385,7 +1381,11 @@ export function App(props: AppProps = {}): React.JSX.Element {
             <Animated.View
               style={[
                 styles.sheetAnimatedContainer,
-                { transform: [{ translateY: sheetDragY }] },
+                drawingToolbar.visible ? styles.sideDockDrawingShell : null,
+                {
+                  maxHeight: activeMaxHeight,
+                  transform: [{ translateY: sheetDragY }],
+                },
               ]}
             >
               {drawingToolbar.visible ? sheetLatchHeader : null}
@@ -1393,24 +1393,29 @@ export function App(props: AppProps = {}): React.JSX.Element {
             </Animated.View>
           </KeyboardAvoidingView>
         ) : null}
-      </View>
 
-      {hasActivePanel && layout.isCompact ? (
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={[styles.bottomSheetShell, { maxHeight: activeMaxHeight }]}
-        >
-          <Animated.View
-            style={[
-              styles.sheetAnimatedContainer,
-              { transform: [{ translateY: sheetDragY }] },
-            ]}
+        {hasActivePanel && layout.isCompact ? (
+          <KeyboardAvoidingView
+            pointerEvents="box-none"
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.bottomSheetShell}
           >
-            {sheetLatchHeader}
-            {activePanelContent}
-          </Animated.View>
-        </KeyboardAvoidingView>
-      ) : null}
+            <Animated.View
+              style={[
+                styles.sheetAnimatedContainer,
+                styles.compactSheetSurface,
+                {
+                  maxHeight: activeMaxHeight,
+                  transform: [{ translateY: sheetDragY }],
+                },
+              ]}
+            >
+              {sheetLatchHeader}
+              {activePanelContent}
+            </Animated.View>
+          </KeyboardAvoidingView>
+        ) : null}
+      </View>
 
       {aboutModalOpen ? (
         <View
@@ -1625,16 +1630,39 @@ const styles = StyleSheet.create({
     borderColor: PALETTE.borderSubtle,
     zIndex: 10,
   },
+  nativeAttributionPillAboveCollapsed: {
+    bottom: 64,
+  },
   nativeAttributionText: {
     fontSize: 10,
     color: PALETTE.inkSecondary,
   },
   bottomSheetShell: {
-    width: '100%',
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 20,
+    justifyContent: 'flex-end',
+  },
+  compactSheetSurface: {
     backgroundColor: PALETTE.bgSurface,
     borderTopWidth: 1,
     borderTopColor: PALETTE.borderStrong,
+    borderTopLeftRadius: RADII.sheet,
+    borderTopRightRadius: RADII.sheet,
     overflow: 'hidden',
+    ...(Platform.OS === 'web'
+      ? {
+          boxShadow: '0 -4px 16px rgba(18, 32, 25, 0.14)',
+        }
+      : {
+          shadowColor: '#122019',
+          shadowOffset: { width: 0, height: -3 },
+          shadowOpacity: 0.14,
+          shadowRadius: 8,
+          elevation: 8,
+        }),
   },
   sheetAnimatedContainer: {
     width: '100%',
@@ -1702,13 +1730,13 @@ const styles = StyleSheet.create({
     top: 14,
     left: 14,
     zIndex: 20,
-    borderRadius: RADII.lg,
-    overflow: 'hidden',
   },
   sideDockDrawingShell: {
     backgroundColor: PALETTE.bgSurface,
     borderWidth: 1,
     borderColor: PALETTE.borderSubtle,
+    borderRadius: RADII.lg,
+    overflow: 'hidden',
   },
   panelScrollContent: {
     flexGrow: 0,

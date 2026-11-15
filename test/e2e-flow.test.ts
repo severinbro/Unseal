@@ -1067,23 +1067,30 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     assert.equal(flagRes.isFlagged, true);
     assert.equal(flagRes.myFlag, true);
 
-    // Filter: new_user + unratedFlaggedOnly returns BOTH basePoly (flagged & unrated) and unclippedPoly (unrated orange proposal)
-    const filteredUnratedFlagged = await reviewerClient.listPolygons(
-      HAMBURG_BBOX,
-      { authorType: 'new_user', unratedFlaggedOnly: true },
-    );
-    assert.equal(filteredUnratedFlagged.features.length, 2);
+    // Filter: single-choice 'new' (past 7 days) returns BOTH basePoly and unclippedPoly, while 'established' (>7 days) is empty
+    const filteredNew = await reviewerClient.listPolygons(HAMBURG_BBOX, {
+      filter: 'new',
+    });
+    assert.equal(filteredNew.features.length, 2);
     assert.deepEqual(
-      new Set(filteredUnratedFlagged.features.map((f) => f.id)),
+      new Set(filteredNew.features.map((f) => f.id)),
       new Set([basePoly.id, unclippedPoly.id]),
     );
 
-    const establishedOnly = await reviewerClient.listPolygons(HAMBURG_BBOX, {
-      authorType: 'established',
-    });
-    assert.equal(establishedOnly.features.length, 0);
+    const establishedBeforeAging = await reviewerClient.listPolygons(
+      HAMBURG_BBOX,
+      { filter: 'established' },
+    );
+    assert.equal(establishedBeforeAging.features.length, 0);
 
-    // Once basePoly receives +1 and -1 (net score = 0, total ratings = 2), it stays in unratedFlaggedOnly ONLY while flagged
+    // Filter: single-choice 'needs_review' (score = 0 AND no ratings) initially includes both unrated proposals
+    const initialNeedsReview = await reviewerClient.listPolygons(
+      HAMBURG_BBOX,
+      { filter: 'needs_review' },
+    );
+    assert.equal(initialNeedsReview.features.length, 2);
+
+    // Once basePoly receives +1 and -1 (net score = 0, total ratings = 2), it has ratings so it leaves 'needs_review' immediately
     await newcomerClient.putVote(basePoly.id, 1);
     await reviewerClient.putVote(basePoly.id, -1);
     const ratedZeroNet = await reviewerClient.getPolygon(basePoly.id);
@@ -1091,33 +1098,36 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     assert.equal(ratedZeroNet.properties.upvotes, 1);
     assert.equal(ratedZeroNet.properties.downvotes, 1);
 
-    const whileFlaggedList = await reviewerClient.listPolygons(
+    const afterVotesNeedsReview = await reviewerClient.listPolygons(
       HAMBURG_BBOX,
-      { unratedFlaggedOnly: true },
+      { filter: 'needs_review' },
     );
-    assert.equal(whileFlaggedList.features.length, 2);
+    assert.deepEqual(
+      afterVotesNeedsReview.features.map((f) => f.id),
+      [unclippedPoly.id],
+    );
 
-    // Promote reviewer to admin -> clear flags on basePoly -> now basePoly is rated & unflagged, so only unrated unclippedPoly remains in unratedFlaggedOnly
+    // Promote reviewer to admin -> clear flags on basePoly
     await app.runAdminCommand(['grant-admin', 'civic_reviewer']);
     const cleared = await reviewerClient.clearPolygonFlags(basePoly.id);
     assert.equal(cleared.flagCount, 0);
     assert.equal(cleared.isFlagged, false);
 
-    const afterClearUnratedFlagged = await reviewerClient.listPolygons(
-      HAMBURG_BBOX,
-      { unratedFlaggedOnly: true },
-    );
-    assert.deepEqual(
-      afterClearUnratedFlagged.features.map((f) => f.id),
-      [unclippedPoly.id],
-    );
-
-    // Backdate BOTH polygons to 15 days ago: prune-stale-polygons deletes unclippedPoly (0 ratings)
-    // and keeps basePoly (2 ratings, net score 0)
+    // Backdate BOTH polygons to 15 days ago (> 7 days -> 'established', 0 in 'new')
+    // and verify prune-stale-polygons deletes unclippedPoly (0 ratings) while keeping basePoly (2 ratings, net score 0)
     await pool.query(
       `UPDATE polygons SET created_at = NOW() - INTERVAL '15 days' WHERE id = ANY($1::uuid[])`,
       [[basePoly.id, unclippedPoly.id]],
     );
+    const establishedAfterAging = await reviewerClient.listPolygons(
+      HAMBURG_BBOX,
+      { filter: 'established' },
+    );
+    assert.equal(establishedAfterAging.features.length, 2);
+    const newAfterAging = await reviewerClient.listPolygons(HAMBURG_BBOX, {
+      filter: 'new',
+    });
+    assert.equal(newAfterAging.features.length, 0);
     const pruneRes = await app.runAdminCommand(['prune-stale-polygons']);
     assert.equal(pruneRes.deletedPolygonCount, 1);
     assert.deepEqual(pruneRes.prunedPolygonIds, [unclippedPoly.id]);

@@ -1368,11 +1368,20 @@ describe('appReducer and viewModels v2', () => {
 
     await client.listPolygons(
       { minLng: 9.99, minLat: 53.55, maxLng: 10.0, maxLat: 53.56 },
-      { authorType: 'new_user', unratedFlaggedOnly: true },
+      { filter: 'new' },
     );
     assert.equal(
       calls[1]?.url,
-      'https://maps.example.org/api/v1/polygons?bbox=9.99%2C53.55%2C10%2C53.56&authorType=new_user&unratedFlaggedOnly=true',
+      'https://maps.example.org/api/v1/polygons?bbox=9.99%2C53.55%2C10%2C53.56&filter=new',
+    );
+
+    await client.listPolygons(
+      { minLng: 9.99, minLat: 53.55, maxLng: 10.0, maxLat: 53.56 },
+      { filter: 'needs_review' },
+    );
+    assert.equal(
+      calls[2]?.url,
+      'https://maps.example.org/api/v1/polygons?bbox=9.99%2C53.55%2C10%2C53.56&filter=needs_review',
     );
 
     const flaggedRes = await client.flagPolygon(SAMPLE_POLYGON_ID, {
@@ -1420,17 +1429,24 @@ describe('appReducer and viewModels v2', () => {
       truncated: false,
     });
 
+    // Single-choice filter transitions (mutually exclusive: selecting one replaces previous)
+    assert.equal(deriveMapControlsModel(state).polygonFilter, 'all');
     state = appReducer(state, {
-      type: 'SET_AUTHOR_FILTER',
-      filter: 'new_user',
+      type: 'SET_POLYGON_FILTER',
+      filter: 'new',
     });
+    assert.equal(deriveMapControlsModel(state).polygonFilter, 'new');
     state = appReducer(state, {
-      type: 'SET_UNRATED_FLAGGED_ONLY',
-      enabled: true,
+      type: 'SET_POLYGON_FILTER',
+      filter: 'established',
+    });
+    assert.equal(deriveMapControlsModel(state).polygonFilter, 'established');
+    state = appReducer(state, {
+      type: 'SET_POLYGON_FILTER',
+      filter: 'needs_review',
     });
     const controls = deriveMapControlsModel(state);
-    assert.equal(controls.authorFilter, 'new_user');
-    assert.equal(controls.unratedFlaggedOnly, true);
+    assert.equal(controls.polygonFilter, 'needs_review');
 
     state = appReducer(state, {
       type: 'POLYGON_FLAG_UPDATED',

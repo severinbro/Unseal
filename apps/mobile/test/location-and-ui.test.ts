@@ -592,8 +592,11 @@ describe('German default localization and DE <-> EN switching', () => {
 
     assert.match(WEB_CRAFT_CSS, /\.maplibregl-ctrl-bottom-right\s*\{/);
     assert.match(WEB_CRAFT_CSS, /\.entsiegelung-opacity-slider\s*\{/);
+    assert.match(WEB_CRAFT_CSS, /touch-action:\s*none;/);
+    assert.equal(getTranslations('de').inspector.creatorSectionLabel, 'Vorgeschlagen von');
+    assert.equal(getTranslations('en').inspector.creatorSectionLabel, 'Proposed by');
 
-    // Voting on an unrated unflagged proposal while unratedFlaggedOnly=true triggers viewportRefreshSeq
+    // Voting on a score=0 unrated proposal while polygonFilter='needs_review' triggers viewportRefreshSeq
     const unratedPoly = makeSampleFeature('44444444-4444-4444-8444-444444444444', 0);
     let filteredState = appReducer(state, {
       type: 'VIEWPORT_FEATURES_LOADED',
@@ -601,9 +604,10 @@ describe('German default localization and DE <-> EN switching', () => {
       truncated: false,
     });
     filteredState = appReducer(filteredState, {
-      type: 'SET_UNRATED_FLAGGED_ONLY',
-      enabled: true,
+      type: 'SET_POLYGON_FILTER',
+      filter: 'needs_review',
     });
+    assert.equal(deriveMapControlsModel(filteredState).polygonFilter, 'needs_review');
     const seqBeforeVote = filteredState.viewportRefreshSeq;
     filteredState = appReducer(filteredState, {
       type: 'VOTE_UPDATED',

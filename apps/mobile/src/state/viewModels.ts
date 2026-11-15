@@ -5,9 +5,9 @@ import {
   sortPolygonCommentsByRating,
   validateDraftPolygon,
   type AuthUser,
-  type PolygonAuthorFilter,
   type PolygonComment,
   type PolygonFeature,
+  type PolygonFilter,
   type SurfaceType,
 } from '@entsiegelung/shared';
 
@@ -94,8 +94,7 @@ export interface MapControlsModel {
   showOrthophotoToggle: boolean;
   basemapMode: BasemapMode;
   polygonOpacity: number;
-  authorFilter: PolygonAuthorFilter;
-  unratedFlaggedOnly: boolean;
+  polygonFilter: PolygonFilter;
   orthophotoAttribution: string | null;
   apkDownloadUrl: string | null;
   canStartDraw: boolean;
@@ -166,8 +165,7 @@ export function deriveMapControlsModel(state: AppState): MapControlsModel {
     showOrthophotoToggle,
     basemapMode: effectiveBasemapMode,
     polygonOpacity: state.polygonOpacity,
-    authorFilter: state.authorFilter,
-    unratedFlaggedOnly: state.unratedFlaggedOnly,
+    polygonFilter: state.polygonFilter,
     orthophotoAttribution: state.config?.orthophoto?.attribution ?? null,
     apkDownloadUrl: state.config?.apkDownloadUrl ?? null,
     canStartDraw:

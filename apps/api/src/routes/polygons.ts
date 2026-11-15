@@ -129,8 +129,7 @@ export function registerPolygonRoutes(
         bbox: query.bbox,
         viewerUserId,
         limit: app.config.runtimeConfig.limits.bboxFeatureLimit,
-        authorType: query.authorType,
-        unratedFlaggedOnly: query.unratedFlaggedOnly,
+        filter: query.filter,
       });
 
       const response: PolygonCollectionResponse = {

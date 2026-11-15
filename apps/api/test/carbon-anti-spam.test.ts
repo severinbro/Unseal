@@ -752,6 +752,29 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
           created.properties.authorLastLoginAt.length > 0,
       );
 
+      // Simulate pre-005 existing 30-day session with last_login_at = NULL:
+      // any authenticated bearer request (e.g. GET /api/v1/auth/me or GET /api/v1/polygons)
+      // automatically populates last_login_at without requiring re-login!
+      await pool.query('UPDATE users SET last_login_at = NULL WHERE id = $1', [
+        session.user.id,
+      ]);
+      const meRefreshRes = await app.inject({
+        method: 'GET',
+        url: '/api/v1/auth/me',
+        headers: { authorization: `Bearer ${session.sessionToken}` },
+      });
+      assert.equal(meRefreshRes.statusCode, 200);
+      const refreshedPolyRes = await app.inject({
+        method: 'GET',
+        url: `/api/v1/polygons/${created.id}`,
+      });
+      assert.equal(refreshedPolyRes.statusCode, 200);
+      const refreshedPoly = PolygonFeatureSchema.parse(refreshedPolyRes.json());
+      assert.ok(
+        typeof refreshedPoly.properties.authorLastLoginAt === 'string' &&
+          refreshedPoly.properties.authorLastLoginAt.length > 0,
+      );
+
       const exportRes = await app.inject({
         method: 'GET',
         url: '/api/v1/polygons/export.geojson',
@@ -884,18 +907,25 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
 
       const bbox = '9.975,53.548,10.000,53.555';
 
-      // Before flagging: unratedFlaggedOnly=true already includes unrated orange proposals (newPolyUnrated: 0 votes, 0 flags)
-      // while excluding rated unflagged proposals (vetPolys & newPolyContested)
-      const preFlagUnratedRes = await app.inject({
+      // Age VeteranMapper's 3 polygons past 7 days (10 days old) so they fall into filter=established,
+      // while FreshContributor's 2 polygons remain < 7 days old (filter=new).
+      await pool.query(
+        "UPDATE polygons SET created_at = NOW() - INTERVAL '10 days' WHERE id = ANY($1::uuid[])",
+        [vetPolys.map((p) => p.id)],
+      );
+
+      // Single-choice filter=needs_review -> returns ONLY polygons with score = 0 AND no ratings (newPolyUnrated),
+      // excluding rated proposals (vetPolys) AND excluding contested +1/-1 net-zero-score polygons that already have ratings (newPolyContested)
+      const preFlagNeedsReviewRes = await app.inject({
         method: 'GET',
-        url: `/api/v1/polygons?bbox=${bbox}&unratedFlaggedOnly=true`,
+        url: `/api/v1/polygons?bbox=${bbox}&filter=needs_review`,
       });
-      assert.equal(preFlagUnratedRes.statusCode, 200);
-      const preFlagUnrated = PolygonCollectionResponseSchema.parse(
-        preFlagUnratedRes.json(),
+      assert.equal(preFlagNeedsReviewRes.statusCode, 200);
+      const preFlagNeedsReview = PolygonCollectionResponseSchema.parse(
+        preFlagNeedsReviewRes.json(),
       );
       assert.deepEqual(
-        preFlagUnrated.features.map((f) => f.id),
+        preFlagNeedsReview.features.map((f) => f.id),
         [newPolyUnrated.id],
       );
 
@@ -915,43 +945,47 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
         assert.equal(parsedFlag.myFlag, true);
       }
 
-      // Filter: authorType=established -> returns only VeteranMapper's 3 polygons with authorIsNewUser === false
+      // Filter: filter=established (all except past 7 days) -> returns the 3 polygons aged 10 days
       const estListRes = await app.inject({
         method: 'GET',
-        url: `/api/v1/polygons?bbox=${bbox}&authorType=established`,
+        url: `/api/v1/polygons?bbox=${bbox}&filter=established`,
       });
       assert.equal(estListRes.statusCode, 200);
       const estList = PolygonCollectionResponseSchema.parse(estListRes.json());
       assert.equal(estList.features.length, 3);
-      assert.ok(estList.features.every((f) => f.properties.authorIsNewUser === false));
+      assert.deepEqual(
+        new Set(estList.features.map((f) => f.id)),
+        new Set(vetPolys.map((p) => p.id)),
+      );
 
-      // Filter: authorType=new_user -> returns only FreshContributor's 2 polygons with authorIsNewUser === true
+      // Filter: filter=new (past 7 days) -> returns the 2 polygons created within the past 7 days
       const newListRes = await app.inject({
         method: 'GET',
-        url: `/api/v1/polygons?bbox=${bbox}&authorType=new_user`,
+        url: `/api/v1/polygons?bbox=${bbox}&filter=new`,
       });
       assert.equal(newListRes.statusCode, 200);
       const newList = PolygonCollectionResponseSchema.parse(newListRes.json());
       assert.equal(newList.features.length, 2);
-      assert.ok(newList.features.every((f) => f.properties.authorIsNewUser === true));
-
-      // Filter: unratedFlaggedOnly=true -> returns unrated proposals OR flagged proposals (both newPolyUnrated and flagged newPolyContested),
-      // while excluding the 3 rated unflagged vetPolys
-      const unratedFlaggedRes = await app.inject({
-        method: 'GET',
-        url: `/api/v1/polygons?bbox=${bbox}&unratedFlaggedOnly=true`,
-        headers: { authorization: `Bearer ${voterA.sessionToken}` },
-      });
-      assert.equal(unratedFlaggedRes.statusCode, 200);
-      const unratedFlagged = PolygonCollectionResponseSchema.parse(
-        unratedFlaggedRes.json(),
-      );
-      assert.equal(unratedFlagged.features.length, 2);
       assert.deepEqual(
-        new Set(unratedFlagged.features.map((f) => f.id)),
+        new Set(newList.features.map((f) => f.id)),
         new Set([newPolyUnrated.id, newPolyContested.id]),
       );
-      assert.ok(unratedFlagged.features.every((f) => f.properties.myFlag === true));
+
+      // Filter: filter=needs_review -> still strictly score = 0 AND no ratings (only newPolyUnrated; newPolyContested has 2 ratings)
+      const needsReviewAfterFlagRes = await app.inject({
+        method: 'GET',
+        url: `/api/v1/polygons?bbox=${bbox}&filter=needs_review`,
+        headers: { authorization: `Bearer ${voterA.sessionToken}` },
+      });
+      assert.equal(needsReviewAfterFlagRes.statusCode, 200);
+      const needsReviewAfterFlag = PolygonCollectionResponseSchema.parse(
+        needsReviewAfterFlagRes.json(),
+      );
+      assert.deepEqual(
+        needsReviewAfterFlag.features.map((f) => f.id),
+        [newPolyUnrated.id],
+      );
+      assert.equal(needsReviewAfterFlag.features[0]?.properties.myFlag, true);
 
       // Attach a photo to newPolyUnrated, age BOTH newPolyUnrated and newPolyContested to 15 days old, and prune!
       const jpegBuf = await sharp({

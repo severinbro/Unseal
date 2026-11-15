@@ -132,6 +132,7 @@ table, .tabular, [data-metric], [data-num] {
   cursor: pointer;
   margin: 0;
   height: 18px;
+  touch-action: none;
 }
 
 .entsiegelung-opacity-slider:active {

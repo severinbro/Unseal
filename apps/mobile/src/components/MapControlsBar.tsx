@@ -1,4 +1,4 @@
-import type { PolygonAuthorFilter } from '@entsiegelung/shared';
+import type { PolygonFilter } from '@entsiegelung/shared';
 import React from 'react';
 import {
   ActivityIndicator,
@@ -96,8 +96,7 @@ export interface MapControlsBarProps {
   onOpenAbout?: () => void;
   onSetBasemapMode: (mode: BasemapMode) => void;
   onSetPolygonOpacity?: (opacity: number) => void;
-  onSetAuthorFilter?: (filter: PolygonAuthorFilter) => void;
-  onToggleUnratedFlaggedOnly?: () => void;
+  onSetPolygonFilter?: (filter: PolygonFilter) => void;
   onStartDraw: () => void;
   onOpenAccount: () => void;
   onImportPress?: () => void;
@@ -427,12 +426,24 @@ function PolygonOpacitySlider({
           onPointerDown: (event: { stopPropagation?: () => void }) => {
             event.stopPropagation?.();
           },
+          onPointerMove: (event: { stopPropagation?: () => void }) => {
+            event.stopPropagation?.();
+          },
           onTouchStart: (event: { stopPropagation?: () => void }) => {
             event.stopPropagation?.();
           },
-          style: {
-            width: compact ? '76px' : '96px',
+          onTouchMove: (event: { stopPropagation?: () => void }) => {
+            event.stopPropagation?.();
           },
+          style: compact
+            ? {
+                flex: 1,
+                width: '100%',
+                minWidth: '76px',
+              }
+            : {
+                width: '96px',
+              },
         })
       ) : (
         <View
@@ -453,7 +464,9 @@ function PolygonOpacitySlider({
             }
           }}
           onStartShouldSetResponder={() => true}
+          onStartShouldSetResponderCapture={() => true}
           onMoveShouldSetResponder={() => true}
+          onMoveShouldSetResponderCapture={() => true}
           onResponderTerminationRequest={() => false}
           onResponderGrant={(event) => {
             updateFromOffsetX(event.nativeEvent.locationX);
@@ -463,11 +476,14 @@ function PolygonOpacitySlider({
           }}
           style={[
             styles.nativeSliderTouchArea,
-            compact ? styles.nativeSliderTouchAreaCompact : null,
+            compact
+              ? styles.nativeSliderTouchAreaCompact
+              : styles.nativeSliderTouchAreaDesktop,
           ]}
         >
-          <View style={styles.nativeSliderTrack}>
+          <View pointerEvents="none" style={styles.nativeSliderTrack}>
             <View
+              pointerEvents="none"
               style={[
                 styles.nativeSliderTrackFill,
                 { width: `${percent}%` },
@@ -475,6 +491,7 @@ function PolygonOpacitySlider({
             />
           </View>
           <View
+            pointerEvents="none"
             style={[
               styles.nativeSliderThumb,
               { left: `${percent}%` },
@@ -606,8 +623,7 @@ export function MapControlsBar({
   onOpenAbout,
   onSetBasemapMode,
   onSetPolygonOpacity,
-  onSetAuthorFilter,
-  onToggleUnratedFlaggedOnly,
+  onSetPolygonFilter,
   onStartDraw,
   onOpenAccount,
   onImportPress,
@@ -1011,137 +1027,150 @@ export function MapControlsBar({
         </View>
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={[
-          styles.filterStripContent,
-          isCompact ? styles.filterStripContentCompact : null,
-        ]}
+      <View
+        style={
+          isCompact ? styles.filterSectionCompact : styles.filterSectionDesktop
+        }
       >
-        <Pressable
-          testID="filter-author-all"
-          accessibilityRole="button"
-          accessibilityLabel={t.filterAllA11y}
-          accessibilityState={{ selected: controls.authorFilter === 'all' }}
-          onPress={() => onSetAuthorFilter?.('all')}
-          style={({ pressed }) => [
-            styles.filterChip,
-            isCompact ? styles.filterChipCompact : null,
-            controls.authorFilter === 'all' ? styles.filterChipActive : null,
-            pressed ? styles.buttonPressed : null,
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={isCompact ? undefined : styles.filterScrollDesktop}
+          contentContainerStyle={[
+            styles.filterStripContent,
+            isCompact ? styles.filterStripContentCompact : null,
           ]}
+          accessibilityRole="radiogroup"
+          accessibilityLabel={t.filterGroupA11y}
         >
-          <Text
-            numberOfLines={1}
-            style={[
-              styles.filterChipLabel,
-              isCompact ? styles.filterChipLabelCompact : null,
-              controls.authorFilter === 'all'
-                ? styles.filterChipLabelActive
-                : null,
+          <Pressable
+            testID="filter-polygon-all"
+            accessibilityRole="radio"
+            accessibilityLabel={t.filterAllA11y}
+            accessibilityState={{
+              checked: controls.polygonFilter === 'all',
+              selected: controls.polygonFilter === 'all',
+            }}
+            onPress={() => onSetPolygonFilter?.('all')}
+            style={({ pressed }) => [
+              styles.filterChip,
+              isCompact ? styles.filterChipCompact : null,
+              controls.polygonFilter === 'all' ? styles.filterChipActive : null,
+              pressed ? styles.buttonPressed : null,
             ]}
           >
-            {t.filterAll}
-          </Text>
-        </Pressable>
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.filterChipLabel,
+                isCompact ? styles.filterChipLabelCompact : null,
+                controls.polygonFilter === 'all'
+                  ? styles.filterChipLabelActive
+                  : null,
+              ]}
+            >
+              {t.filterAll}
+            </Text>
+          </Pressable>
 
-        <Pressable
-          testID="filter-author-new"
-          accessibilityRole="button"
-          accessibilityLabel={t.filterNewContributorsA11y}
-          accessibilityState={{
-            selected: controls.authorFilter === 'new_user',
-          }}
-          onPress={() => onSetAuthorFilter?.('new_user')}
-          style={({ pressed }) => [
-            styles.filterChip,
-            isCompact ? styles.filterChipCompact : null,
-            controls.authorFilter === 'new_user'
-              ? styles.filterChipActive
-              : null,
-            pressed ? styles.buttonPressed : null,
-          ]}
-        >
-          <Text
-            numberOfLines={1}
-            style={[
-              styles.filterChipLabel,
-              isCompact ? styles.filterChipLabelCompact : null,
-              controls.authorFilter === 'new_user'
-                ? styles.filterChipLabelActive
-                : null,
+          <Pressable
+            testID="filter-polygon-new"
+            accessibilityRole="radio"
+            accessibilityLabel={t.filterNewA11y}
+            accessibilityState={{
+              checked: controls.polygonFilter === 'new',
+              selected: controls.polygonFilter === 'new',
+            }}
+            onPress={() => onSetPolygonFilter?.('new')}
+            style={({ pressed }) => [
+              styles.filterChip,
+              isCompact ? styles.filterChipCompact : null,
+              controls.polygonFilter === 'new' ? styles.filterChipActive : null,
+              pressed ? styles.buttonPressed : null,
             ]}
           >
-            {isCompact
-              ? t.filterNewContributorsCompact
-              : t.filterNewContributorsFull}
-          </Text>
-        </Pressable>
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.filterChipLabel,
+                isCompact ? styles.filterChipLabelCompact : null,
+                controls.polygonFilter === 'new'
+                  ? styles.filterChipLabelActive
+                  : null,
+              ]}
+            >
+              {isCompact ? t.filterNewCompact : t.filterNewFull}
+            </Text>
+          </Pressable>
 
-        <Pressable
-          testID="filter-author-established"
-          accessibilityRole="button"
-          accessibilityLabel={t.filterEstablishedA11y}
-          accessibilityState={{
-            selected: controls.authorFilter === 'established',
-          }}
-          onPress={() => onSetAuthorFilter?.('established')}
-          style={({ pressed }) => [
-            styles.filterChip,
-            isCompact ? styles.filterChipCompact : null,
-            controls.authorFilter === 'established'
-              ? styles.filterChipActive
-              : null,
-            pressed ? styles.buttonPressed : null,
-          ]}
-        >
-          <Text
-            numberOfLines={1}
-            style={[
-              styles.filterChipLabel,
-              isCompact ? styles.filterChipLabelCompact : null,
-              controls.authorFilter === 'established'
-                ? styles.filterChipLabelActive
+          <Pressable
+            testID="filter-polygon-established"
+            accessibilityRole="radio"
+            accessibilityLabel={t.filterEstablishedA11y}
+            accessibilityState={{
+              checked: controls.polygonFilter === 'established',
+              selected: controls.polygonFilter === 'established',
+            }}
+            onPress={() => onSetPolygonFilter?.('established')}
+            style={({ pressed }) => [
+              styles.filterChip,
+              isCompact ? styles.filterChipCompact : null,
+              controls.polygonFilter === 'established'
+                ? styles.filterChipActive
                 : null,
+              pressed ? styles.buttonPressed : null,
             ]}
           >
-            {isCompact ? t.filterEstablishedCompact : t.filterEstablishedFull}
-          </Text>
-        </Pressable>
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.filterChipLabel,
+                isCompact ? styles.filterChipLabelCompact : null,
+                controls.polygonFilter === 'established'
+                  ? styles.filterChipLabelActive
+                  : null,
+              ]}
+            >
+              {isCompact
+                ? t.filterEstablishedCompact
+                : t.filterEstablishedFull}
+            </Text>
+          </Pressable>
 
-        <View style={styles.filterDivider} />
-
-        <Pressable
-          testID="filter-unrated-flagged"
-          accessibilityRole="button"
-          accessibilityLabel={t.filterUnratedFlaggedA11y}
-          accessibilityState={{ selected: controls.unratedFlaggedOnly }}
-          onPress={() => onToggleUnratedFlaggedOnly?.()}
-          style={({ pressed }) => [
-            styles.filterChip,
-            isCompact ? styles.filterChipCompact : null,
-            controls.unratedFlaggedOnly ? styles.filterChipWarningActive : null,
-            pressed ? styles.buttonPressed : null,
-          ]}
-        >
-          <Text
-            numberOfLines={1}
-            style={[
-              styles.filterChipLabel,
-              isCompact ? styles.filterChipLabelCompact : null,
-              controls.unratedFlaggedOnly
-                ? styles.filterChipWarningLabelActive
+          <Pressable
+            testID="filter-polygon-needs-review"
+            accessibilityRole="radio"
+            accessibilityLabel={t.filterNeedsReviewA11y}
+            accessibilityState={{
+              checked: controls.polygonFilter === 'needs_review',
+              selected: controls.polygonFilter === 'needs_review',
+            }}
+            onPress={() => onSetPolygonFilter?.('needs_review')}
+            style={({ pressed }) => [
+              styles.filterChip,
+              isCompact ? styles.filterChipCompact : null,
+              controls.polygonFilter === 'needs_review'
+                ? styles.filterChipWarningActive
                 : null,
+              pressed ? styles.buttonPressed : null,
             ]}
           >
-            {isCompact
-              ? t.filterUnratedFlaggedCompact
-              : t.filterUnratedFlaggedFull}
-          </Text>
-        </Pressable>
-
-        <View style={styles.filterDivider} />
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.filterChipLabel,
+                isCompact ? styles.filterChipLabelCompact : null,
+                controls.polygonFilter === 'needs_review'
+                  ? styles.filterChipWarningLabelActive
+                  : null,
+              ]}
+            >
+              {isCompact
+                ? t.filterNeedsReviewCompact
+                : t.filterNeedsReviewFull}
+            </Text>
+          </Pressable>
+        </ScrollView>
 
         <PolygonOpacitySlider
           opacity={controls.polygonOpacity}
@@ -1150,7 +1179,7 @@ export function MapControlsBar({
           accessibilityLabel={t.polygonOpacityA11y}
           {...(onSetPolygonOpacity ? { onChange: onSetPolygonOpacity } : {})}
         />
-      </ScrollView>
+      </View>
     </View>
   );
 }
@@ -1183,6 +1212,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 16,
   },
+  filterSectionDesktop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  filterSectionCompact: {
+    gap: 6,
+  },
+  filterScrollDesktop: {
+    flex: 1,
+    minWidth: 0,
+  },
   filterStripContent: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1204,7 +1246,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   filterChipCompact: {
-    paddingHorizontal: 9,
+    minHeight: 38,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
   filterChipActive: {
     backgroundColor: PALETTE.bgTinted,
@@ -1230,12 +1274,6 @@ const styles = StyleSheet.create({
     color: PALETTE.neutralText,
     fontWeight: '700',
   },
-  filterDivider: {
-    width: 1,
-    height: 20,
-    backgroundColor: PALETTE.borderSubtle,
-    marginHorizontal: 2,
-  },
   opacityPill: {
     minHeight: MIN_TOUCH_TARGET_DP,
     flexDirection: 'row',
@@ -1250,8 +1288,11 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   opacityPillCompact: {
-    gap: 6,
-    paddingHorizontal: 10,
+    width: '100%',
+    minHeight: 38,
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
   },
   opacityValueLabel: {
     ...TABULAR_NUMS_STYLE,
@@ -1262,13 +1303,16 @@ const styles = StyleSheet.create({
     color: PALETTE.inkPrimary,
   },
   nativeSliderTouchArea: {
-    width: 96,
-    height: 28,
+    height: 30,
     justifyContent: 'center',
     position: 'relative',
   },
+  nativeSliderTouchAreaDesktop: {
+    width: 96,
+  },
   nativeSliderTouchAreaCompact: {
-    width: 76,
+    flex: 1,
+    minWidth: 76,
   },
   nativeSliderTrack: {
     width: '100%',

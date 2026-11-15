@@ -988,18 +988,41 @@ describe('Review Focus 3: BboxQuerySchema vs checkBboxSpan and remaining wire sc
 
     const parsedListQuery = PolygonListQuerySchema.parse({
       bbox: '9.98,53.54,10.01,53.56',
-      authorType: 'new_user',
-      unratedFlaggedOnly: 'true',
+      filter: 'new',
     });
-    assert.equal(parsedListQuery.authorType, 'new_user');
-    assert.equal(parsedListQuery.unratedFlaggedOnly, true);
+    assert.equal(parsedListQuery.filter, 'new');
 
-    const parsedListQueryFalse = PolygonListQuerySchema.parse({
+    const parsedListQueryEstablished = PolygonListQuerySchema.parse({
       bbox: '9.98,53.54,10.01,53.56',
+      filter: 'established',
+    });
+    assert.equal(parsedListQueryEstablished.filter, 'established');
+
+    const parsedListQueryNeedsReview = PolygonListQuerySchema.parse({
+      bbox: '9.98,53.54,10.01,53.56',
+      filter: 'needs_review',
+    });
+    assert.equal(parsedListQueryNeedsReview.filter, 'needs_review');
+
+    // Legacy query parameter fallback normalizes into single-choice filter
+    const parsedLegacyQuery = PolygonListQuerySchema.parse({
+      bbox: '9.98,53.54,10.01,53.56',
+      authorType: 'new_user',
       unratedFlaggedOnly: 'false',
     });
-    assert.equal(parsedListQueryFalse.authorType, 'all');
-    assert.equal(parsedListQueryFalse.unratedFlaggedOnly, false);
+    assert.equal(parsedLegacyQuery.filter, 'new');
+
+    const parsedListQueryDefault = PolygonListQuerySchema.parse({
+      bbox: '9.98,53.54,10.01,53.56',
+    });
+    assert.equal(parsedListQueryDefault.filter, 'all');
+
+    assert.throws(() =>
+      PolygonListQuerySchema.parse({
+        bbox: '9.98,53.54,10.01,53.56',
+        filter: ['new', 'needs_review'],
+      }),
+    );
 
     const parsedFlagReq = FlagPolygonRequestSchema.parse({
       reason: 'already_unsealed',

@@ -6,11 +6,13 @@ import {
   GEOMETRY_LIMITS,
   MUNICIPALITY_NORMS,
   POLYGON_AUTHOR_FILTERS,
+  POLYGON_FILTERS,
   POLYGON_FLAG_REASONS,
   POLYGON_STATUSES,
   SURFACE_TYPES,
   TRUST_AND_MODERATION_LIMITS,
   USER_ROLES,
+  type PolygonFilter,
   type PolygonStatus,
 } from './constants.js';
 import { ApiError } from './errors.js';
@@ -659,11 +661,28 @@ const OptionalBooleanQueryParamSchema = z
   .optional()
   .default(false);
 
-export const PolygonListQuerySchema = z.object({
-  bbox: BboxStringSchema,
-  authorType: z.enum(POLYGON_AUTHOR_FILTERS).optional().default('all'),
-  unratedFlaggedOnly: OptionalBooleanQueryParamSchema,
-});
+export const PolygonListQuerySchema = z
+  .object({
+    bbox: BboxStringSchema,
+    filter: z.enum(POLYGON_FILTERS).optional(),
+    authorType: z.enum(POLYGON_AUTHOR_FILTERS).optional(),
+    unratedFlaggedOnly: OptionalBooleanQueryParamSchema,
+  })
+  .transform((q): { bbox: BboxBounds; filter: PolygonFilter } => {
+    const resolvedFilter: PolygonFilter =
+      q.filter ??
+      (q.unratedFlaggedOnly
+        ? 'needs_review'
+        : q.authorType === 'new_user'
+          ? 'new'
+          : q.authorType === 'established'
+            ? 'established'
+            : 'all');
+    return {
+      bbox: q.bbox,
+      filter: resolvedFilter,
+    };
+  });
 
 export type PolygonListQuery = z.output<typeof PolygonListQuerySchema>;
 

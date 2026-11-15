@@ -38,9 +38,12 @@ interface SessionLookupRow {
   pseudonym: string;
   email: string | null;
   email_verified_at: Date | null;
+  last_login_at: Date | null;
   role: string;
   created_at: Date;
 }
+
+const SESSION_LAST_LOGIN_REFRESH_MS = 15 * 60 * 1000;
 
 interface InsertedSessionRow {
   id: string;
@@ -103,6 +106,11 @@ async function createSessionWithClient(
   if (!inserted) {
     throw new ApiError(500, 'INTERNAL_ERROR', 'Failed to persist session.');
   }
+
+  await client.query(
+    'UPDATE users SET last_login_at = clock_timestamp() WHERE id = $1',
+    [userId],
+  );
 
   await client.query(
     `DELETE FROM sessions
@@ -171,6 +179,7 @@ async function resolveSessionFromRequest(
        u.pseudonym,
        u.email,
        u.email_verified_at,
+       u.last_login_at,
        u.role,
        u.created_at
      FROM sessions s
@@ -188,6 +197,22 @@ async function resolveSessionFromRequest(
 
   if (row.email !== null && row.email_verified_at === null) {
     return null;
+  }
+
+  if (
+    row.last_login_at === null ||
+    Date.now() - row.last_login_at.getTime() >= SESSION_LAST_LOGIN_REFRESH_MS
+  ) {
+    await request.server.pool.query(
+      `UPDATE users
+       SET last_login_at = clock_timestamp()
+       WHERE id = $1
+         AND (
+           last_login_at IS NULL
+           OR last_login_at <= clock_timestamp() - INTERVAL '15 minutes'
+         )`,
+      [row.user_id],
+    );
   }
 
   const user = AuthUserSchema.parse({
