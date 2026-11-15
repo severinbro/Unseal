@@ -1,5 +1,13 @@
+# GDPR storage limitation: rotate container logs (json-file, 3 x 10 MB per service)
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   postgis:
+    logging: *default-logging
     image: postgis/postgis:16-3.4-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-ppgis}
@@ -16,6 +24,7 @@ services:
       - pgdata:/var/lib/postgresql/data
 
   mailpit:
+    logging: *default-logging
     image: axllent/mailpit:v1.21
     ports:
       - "127.0.0.1:8025:8025"
@@ -25,6 +34,7 @@ services:
       MP_SMTP_AUTH_ALLOW_INSECURE: "1"
 
   api:
+    logging: *default-logging
     build:
       context: .
       dockerfile: apps/api/Dockerfile

@@ -202,7 +202,8 @@ export function registerGeocodeRoutes(
           }),
         );
       } catch (err: unknown) {
-        request.log.warn({ err, query: parsed.q }, 'Nominatim request failed');
+        // Search text is often a home address: never log it (GDPR Art. 5(1)(c)).
+        request.log.warn({ err }, 'Nominatim request failed');
         throw new ApiError(
           503,
           'SERVICE_UNAVAILABLE',
@@ -214,7 +215,7 @@ export function registerGeocodeRoutes(
 
       if (!upstreamRes.ok) {
         request.log.warn(
-          { status: upstreamRes.status, query: parsed.q },
+          { status: upstreamRes.status },
           'Nominatim returned non-OK status',
         );
         throw new ApiError(

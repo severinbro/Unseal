@@ -484,7 +484,7 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
     );
   });
 
-  it('createLogger omits remoteAddress and redacts authorization, password, newPassword, recoveryCode, and sessionToken', async () => {
+  it('createLogger omits client IPs, headers and query strings and redacts authorization, password, newPassword, recoveryCode, and sessionToken', async () => {
     const stream = new PassThrough();
     const lines: string[] = [];
     stream.on('data', (chunk: Buffer) => {
@@ -494,7 +494,10 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
     const logger = createLogger({ stream, level: 'info' });
     const reqHeaders = {
       authorization: 'Bearer secret-bearer-value-123',
-      'user-agent': 'ppgis-test/1.0',
+      'user-agent': 'ppgis-test-agent/1.0',
+      'x-forwarded-for': '198.51.100.23, 10.0.0.2',
+      'x-real-ip': '198.51.100.24',
+      referer: 'https://referrer.example/private-page',
     };
 
     logger.info(
@@ -502,7 +505,7 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
         req: {
           id: 'req-42',
           method: 'POST',
-          url: '/api/v1/auth/recover',
+          url: '/api/v1/auth/recover?q=Musterstrasse%2012&token=email-action-token-777',
           remoteAddress: '203.0.113.99',
           remotePort: 54123,
           headers: reqHeaders,
@@ -537,6 +540,12 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
     const combinedOutput = lines.join('');
     for (const forbidden of [
       '203.0.113.99',
+      '198.51.100.23',
+      '198.51.100.24',
+      'ppgis-test-agent',
+      'referrer.example',
+      'Musterstrasse',
+      'email-action-token-777',
       'secret-bearer-value-123',
       'super-secret-password',
       'even-newer-secret-password',
@@ -562,10 +571,10 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
     const serializedReq = firstRecord.req as Record<string, unknown>;
     assert.equal('remoteAddress' in serializedReq, false);
     assert.equal('remotePort' in serializedReq, false);
-    assert.equal(
-      (serializedReq.headers as Record<string, unknown>).authorization,
-      '[Redacted]',
-    );
+    assert.equal('headers' in serializedReq, false);
+    assert.equal(serializedReq.url, '/api/v1/auth/recover');
+    assert.equal(serializedReq.method, 'POST');
+    assert.equal(serializedReq.id, 'req-42');
     assert.equal((firstRecord.body as Record<string, unknown>).password, '[Redacted]');
     assert.equal((firstRecord.body as Record<string, unknown>).newPassword, '[Redacted]');
     assert.equal((firstRecord.body as Record<string, unknown>).recoveryCode, '[Redacted]');
@@ -573,6 +582,49 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
       (firstRecord.authResult as Record<string, unknown>).sessionToken,
       '[Redacted]',
     );
+  });
+
+  it('Fastify request logs behind a reverse proxy contain no client IP, user agent, referer or query string', async () => {
+    const stream = new PassThrough();
+    const lines: string[] = [];
+    stream.on('data', (chunk: Buffer) => {
+      lines.push(chunk.toString('utf8'));
+    });
+
+    const config = loadEnvConfig({ TRUST_PROXY: 'true' });
+    const app = await buildApp(config, pool, {
+      logger: createLogger({ stream, level: 'info' }),
+    });
+    try {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/v1/health?q=Musterstrasse%2012',
+        headers: {
+          'x-forwarded-for': '198.51.100.77',
+          'user-agent': 'proxied-agent/9.9',
+          referer: 'https://referrer.example/secret',
+        },
+      });
+      assert.equal(res.statusCode, 200);
+    } finally {
+      await app.close();
+    }
+
+    const combinedOutput = lines.join('');
+    assert.match(combinedOutput, /incoming request/);
+    assert.match(combinedOutput, /"url":"\/api\/v1\/health"/);
+    for (const forbidden of [
+      '198.51.100.77',
+      'proxied-agent',
+      'referrer.example',
+      'Musterstrasse',
+      'remoteAddress',
+    ]) {
+      assert.ok(
+        !combinedOutput.includes(forbidden),
+        `Expected request log not to contain "${forbidden}"`,
+      );
+    }
   });
 
   it('BoundedSemaphore enforces maxConcurrent + maxQueue with parameterized ErrorCode and normalizeRateLimitIp collapses IPv6 /64', async () => {

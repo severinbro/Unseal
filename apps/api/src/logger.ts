@@ -10,7 +10,21 @@ interface SerializableRequest {
   id?: string | number;
   method?: string;
   url?: string;
-  headers?: Record<string, unknown>;
+}
+
+/**
+ * GDPR data minimisation (Art. 5(1)(c)): request log lines carry only the
+ * request id, HTTP method and URL *path*. Headers are never logged because
+ * behind the reverse proxy they contain the client IP (`X-Forwarded-For`),
+ * `User-Agent` and `Referer`. Query strings are dropped because they can carry
+ * address searches (`/api/v1/geocode?q=…`) and email action tokens.
+ */
+export function toLoggablePath(url: unknown): string | undefined {
+  if (typeof url !== 'string') {
+    return undefined;
+  }
+  const queryIndex = url.indexOf('?');
+  return queryIndex === -1 ? url : url.slice(0, queryIndex);
 }
 
 const REDACTED_PATHS = [
@@ -42,19 +56,12 @@ export function createLogger(options: CreateLoggerOptions = {}): Logger {
     },
     serializers: {
       req(req: SerializableRequest) {
-        const safeUrl =
-          typeof req.url === 'string'
-            ? req.url.replace(/([?&]token=)[^&]+/gi, '$1[Redacted]')
-            : req.url;
         const serialized: Record<string, unknown> = {
           method: req.method,
-          url: safeUrl,
+          url: toLoggablePath(req.url),
         };
         if (req.id !== undefined) {
           serialized.id = req.id;
-        }
-        if (req.headers !== undefined && req.headers !== null) {
-          serialized.headers = { ...req.headers };
         }
         return serialized;
       },
