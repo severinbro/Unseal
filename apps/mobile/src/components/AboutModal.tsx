@@ -244,7 +244,9 @@ export function AboutModal({
             </Text>
           </Pressable>
         </View>
+      </View>
 
+      <View style={styles.sectionCard}>
         <View style={styles.actionRow}>
           {impressumUrl ? (
             <Pressable
@@ -495,7 +497,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginTop: 2,
   },
   touchButton: {
     minHeight: MIN_TOUCH_TARGET_DP,

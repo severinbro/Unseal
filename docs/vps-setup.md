@@ -120,7 +120,7 @@ docker compose --env-file .env.vps -f docker-compose.vps.yml exec api \
 
 ## Pointing the Android / iOS App at Your VPS
 
-When building the Android APK/AAB or iOS build for production devices, pass `EXPO_PUBLIC_API_BASE_URL` pointing to your HTTPS VPS domain, and configure release signing in the generated `android/app/build.gradle` + keystore environment variables (see **Section 4** of [`README.md`](../README.md#4-production-mobile--web-builds) for `build.gradle` / `AndroidManifest.xml` setup after `expo prebuild`):
+When building the Android APK/AAB or iOS build for production devices, pass `EXPO_PUBLIC_API_BASE_URL` pointing to your HTTPS VPS domain, and configure release signing in the generated `android/app/build.gradle` + keystore environment variables (see **Section 3** of [`docs/installation.md`](./installation.md#3-android-release-signing--manifest-hardening) for the exact `build.gradle` and `AndroidManifest.xml` steps after `expo prebuild`):
 
 ```bash
 cd apps/mobile
