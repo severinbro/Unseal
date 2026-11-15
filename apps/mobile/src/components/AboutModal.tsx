@@ -23,6 +23,10 @@ export interface AboutModalProps {
   locale?: Locale;
   compact?: boolean;
   privacyPolicyUrl: string;
+  impressumUrl?: string | undefined;
+  termsUrl?: string | undefined;
+  licensesUrl?: string | undefined;
+  sourceCodeUrl?: string | null | undefined;
   apkDownloadUrl: string | null;
   abuseContact: string | null;
   onClose: () => void;
@@ -48,6 +52,10 @@ export function AboutModal({
   locale = DEFAULT_LOCALE,
   compact = false,
   privacyPolicyUrl,
+  impressumUrl,
+  termsUrl,
+  licensesUrl,
+  sourceCodeUrl,
   apkDownloadUrl,
   abuseContact,
   onClose,
@@ -238,6 +246,22 @@ export function AboutModal({
         </View>
 
         <View style={styles.actionRow}>
+          {impressumUrl ? (
+            <Pressable
+              accessibilityRole="link"
+              onPress={() => openExternalUrl(impressumUrl)}
+              style={({ pressed }) => [
+                styles.touchButton,
+                styles.secondaryButton,
+                pressed ? styles.buttonPressed : null,
+              ]}
+            >
+              <Text style={styles.secondaryButtonLabel}>
+                {t.impressumLinkLabel}
+              </Text>
+            </Pressable>
+          ) : null}
+
           <Pressable
             accessibilityRole="link"
             onPress={() => openExternalUrl(privacyPolicyUrl)}
@@ -251,6 +275,54 @@ export function AboutModal({
               {t.privacyLinkLabel}
             </Text>
           </Pressable>
+
+          {termsUrl ? (
+            <Pressable
+              accessibilityRole="link"
+              onPress={() => openExternalUrl(termsUrl)}
+              style={({ pressed }) => [
+                styles.touchButton,
+                styles.secondaryButton,
+                pressed ? styles.buttonPressed : null,
+              ]}
+            >
+              <Text style={styles.secondaryButtonLabel}>
+                {t.termsLinkLabel}
+              </Text>
+            </Pressable>
+          ) : null}
+
+          {licensesUrl ? (
+            <Pressable
+              accessibilityRole="link"
+              onPress={() => openExternalUrl(licensesUrl)}
+              style={({ pressed }) => [
+                styles.touchButton,
+                styles.secondaryButton,
+                pressed ? styles.buttonPressed : null,
+              ]}
+            >
+              <Text style={styles.secondaryButtonLabel}>
+                {t.licensesLinkLabel}
+              </Text>
+            </Pressable>
+          ) : null}
+
+          {sourceCodeUrl ? (
+            <Pressable
+              accessibilityRole="link"
+              onPress={() => openExternalUrl(sourceCodeUrl)}
+              style={({ pressed }) => [
+                styles.touchButton,
+                styles.secondaryButton,
+                pressed ? styles.buttonPressed : null,
+              ]}
+            >
+              <Text style={styles.secondaryButtonLabel}>
+                {t.sourceCodeLinkLabel}
+              </Text>
+            </Pressable>
+          ) : null}
 
           {showApkButton ? (
             <Pressable

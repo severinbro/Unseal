@@ -677,9 +677,10 @@ export function registerAuthRoutes(app: FastifyInstance): void {
                canonical_email_hash,
                password_hash,
                privacy_accepted_at,
+               terms_accepted_at,
                role
              )
-             VALUES ($1, $2, $3, $4, clock_timestamp(), 'user')
+             VALUES ($1, $2, $3, $4, clock_timestamp(), clock_timestamp(), 'user')
              RETURNING id, pseudonym, email`,
             [body.pseudonym, emailLower, canonicalEmailHash, passwordHash],
           );

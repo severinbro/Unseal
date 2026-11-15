@@ -78,7 +78,13 @@ const SAMPLE_CONFIG: RuntimeConfig = {
     'Community unsealing suggestions - non-binding public input, regardless of property ownership.',
   abuseContact: 'moderation@example.org',
   privacyPolicyUrl: 'https://maps.example.org/auth/privacy',
+  impressumUrl: 'https://maps.example.org/auth/impressum',
+  termsUrl: 'https://maps.example.org/auth/terms',
+  licensesUrl: 'https://maps.example.org/auth/licenses',
+  sourceCodeUrl: 'https://github.com/sebroccoli/Entsiegelungskartierung',
+  bugReportContact: 'bugs@example.org',
   apkDownloadUrl: 'https://maps.example.org/downloads/unseal.apk',
+  apkSha256: null,
   authCaptchaRequired: false,
 };
 

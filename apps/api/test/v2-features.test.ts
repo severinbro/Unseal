@@ -121,6 +121,7 @@ async function registerTestUser(
       email,
       password: 'valid-password-123',
       acceptedPrivacyPolicy: true,
+      acceptedTerms: true,
     },
   });
   assert.equal(regRes.statusCode, 201);

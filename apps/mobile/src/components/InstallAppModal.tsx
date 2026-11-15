@@ -22,6 +22,7 @@ export interface InstallAppModalProps {
   locale?: Locale | undefined;
   compact?: boolean | undefined;
   apkDownloadUrl: string | null;
+  apkSha256?: string | null | undefined;
   onClose: () => void;
   onDownloadError?: ((message: string) => void) | undefined;
 }
@@ -48,6 +49,7 @@ export function InstallAppModal({
   locale = DEFAULT_LOCALE,
   compact = false,
   apkDownloadUrl,
+  apkSha256,
   onClose,
   onDownloadError,
 }: InstallAppModalProps): React.JSX.Element | null {
@@ -115,6 +117,11 @@ export function InstallAppModal({
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>{t.androidApkTitle}</Text>
           <Text style={styles.bodyNote}>{t.androidApkBody}</Text>
+          {apkSha256 ? (
+            <Text selectable style={styles.sha256Text}>
+              {t.apkSha256Label} {apkSha256}
+            </Text>
+          ) : null}
           <View style={styles.actionRow}>
             <Pressable
               testID="install-modal-download-apk-button"
@@ -235,6 +242,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16.5,
     color: PALETTE.inkSecondary,
+  },
+  sha256Text: {
+    fontSize: 11,
+    lineHeight: 15,
+    fontFamily: Platform.OS === 'web' ? 'monospace' : 'Courier',
+    color: PALETTE.inkMuted,
   },
   actionRow: {
     flexDirection: 'row',

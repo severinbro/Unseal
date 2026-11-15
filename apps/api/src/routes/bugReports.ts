@@ -30,10 +30,18 @@ export function registerBugReportRoutes(app: FastifyInstance): void {
     async (request, reply) => {
       const parsed = CreateBugReportRequestSchema.parse(request.body);
       const authUser = request.auth?.user ?? null;
+      const recipientEmail = app.config.bugReportEmail;
+      if (!recipientEmail) {
+        throw new ApiError(
+          503,
+          'SERVICE_UNAVAILABLE',
+          'Bug report email delivery is not configured on this instance.',
+        );
+      }
 
       try {
         await app.mailer.sendBugReportEmail({
-          to: app.config.bugReportEmail,
+          to: recipientEmail,
           description: parsed.description,
           contactEmail: parsed.contactEmail ?? null,
           reporterPseudonym: authUser?.pseudonym ?? null,

@@ -68,6 +68,7 @@ async function registerUser(
       email,
       password: 'valid-password-123',
       acceptedPrivacyPolicy: true,
+      acceptedTerms: true,
     },
   });
   assert.equal(res.statusCode, 201);
@@ -839,6 +840,7 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
           email: 'fresh-spam@example.org',
           password: 'another-password-123',
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
         },
       });
       assert.equal(reRegActiveBanned.statusCode, 403);
@@ -857,6 +859,7 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
           email: 'spamabuser@example.org',
           password: 'another-password-123',
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
         },
       });
       assert.equal(reRegBannedEmail.statusCode, 403);
@@ -884,6 +887,7 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
           email: 'troll@example.org',
           password: 'another-password-123',
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
         },
       });
       assert.equal(regPreemptiveBanned.statusCode, 403);
@@ -911,6 +915,7 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
           email: 'former2@example.org',
           password: 'another-password-123',
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
         },
       });
       assert.equal(postSelfDelReg.statusCode, 409);
@@ -932,6 +937,7 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
           email: 'former3@example.org',
           password: 'another-password-123',
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
         },
       });
       assert.equal(postBanUpgradeReg.statusCode, 403);
@@ -1044,6 +1050,7 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
           email: 'clibanned@example.org',
           password: 'another-password-123',
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
         },
       });
       assert.equal(cliBanRegRes.statusCode, 403);

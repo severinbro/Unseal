@@ -576,13 +576,14 @@ describe('Review Focus 2: PatchPolygonRequestSchema, TextEncoder password bounds
     assert.deepEqual(PatchPolygonRequestSchema.parse({ note: '' }), { note: '' });
   });
 
-  it('RegisterRequestSchema, LoginRequestSchema, and ResetPasswordRequestSchema enforce email, privacy consent, and TextEncoder UTF-8 byte & char limits', () => {
+  it('RegisterRequestSchema, LoginRequestSchema, and ResetPasswordRequestSchema enforce email, privacy & terms consent, and TextEncoder UTF-8 byte & char limits', () => {
     // Valid v2 email registration
     const validReg = RegisterRequestSchema.parse({
       pseudonym: 'kiez_mapper-42',
       email: 'Kiez.Mapper@Example.ORG',
       password: 'correct-horse-battery-staple',
       acceptedPrivacyPolicy: true,
+      acceptedTerms: true,
     });
     assert.equal(validReg.pseudonym, 'kiez_mapper-42');
     assert.equal(validReg.email, 'kiez.mapper@example.org');
@@ -595,6 +596,20 @@ describe('Review Focus 2: PatchPolygonRequestSchema, TextEncoder password bounds
           email: 'mapper1@example.org',
           password: 'correct-horse-battery-staple',
           acceptedPrivacyPolicy: false,
+          acceptedTerms: true,
+        }),
+      ZodError,
+    );
+
+    // Missing terms consent rejected
+    assert.throws(
+      () =>
+        RegisterRequestSchema.parse({
+          pseudonym: 'mapper1',
+          email: 'mapper1@example.org',
+          password: 'correct-horse-battery-staple',
+          acceptedPrivacyPolicy: true,
+          acceptedTerms: false,
         }),
       ZodError,
     );
@@ -607,6 +622,7 @@ describe('Review Focus 2: PatchPolygonRequestSchema, TextEncoder password bounds
           email: 'mapper1@example.org',
           password: 'short7!',
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
         }),
       ZodError,
     );
@@ -619,6 +635,7 @@ describe('Review Focus 2: PatchPolygonRequestSchema, TextEncoder password bounds
       email: 'mapper1@example.org',
       password: over1024Bytes,
       acceptedPrivacyPolicy: true,
+      acceptedTerms: true,
     });
     assert.equal(overBytesRes.success, false);
     assert.ok(
@@ -634,6 +651,7 @@ describe('Review Focus 2: PatchPolygonRequestSchema, TextEncoder password bounds
           email: 'mapper1@example.org',
           password: 'a'.repeat(129),
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
         }),
       ZodError,
     );
@@ -800,6 +818,12 @@ describe('Review Focus 3: BboxQuerySchema vs checkBboxSpan and remaining wire sc
     });
     assert.equal(cleanDefaultConfig.orthophoto, null);
     assert.equal(cleanDefaultConfig.apkDownloadUrl, null);
+    assert.equal(cleanDefaultConfig.apkSha256, null);
+    assert.equal(cleanDefaultConfig.impressumUrl, null);
+    assert.equal(cleanDefaultConfig.termsUrl, null);
+    assert.equal(cleanDefaultConfig.licensesUrl, null);
+    assert.equal(cleanDefaultConfig.sourceCodeUrl, null);
+    assert.equal(cleanDefaultConfig.bugReportContact, null);
     assert.deepEqual(POLYGON_STATUSES, ['proposed', 'in_progress', 'finished']);
     assert.equal(PHOTO_LIMITS.GPS_VERIFY_DISTANCE_M, 3);
 

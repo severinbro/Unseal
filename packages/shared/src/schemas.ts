@@ -121,6 +121,11 @@ export const RegisterRequestSchema = z
         message: 'Privacy policy consent is required to register.',
       }),
     }),
+    acceptedTerms: z.literal(true, {
+      errorMap: () => ({
+        message: 'Terms of use and content license consent is required to register.',
+      }),
+    }),
     altchaPayload: z.string().trim().min(1).max(4096).optional(),
   })
   .strict();
@@ -291,7 +296,18 @@ export const RuntimeConfigSchema = z.object({
   disclaimerText: z.string().min(1),
   abuseContact: z.string().nullable(),
   privacyPolicyUrl: z.string().url().nullable().optional().default(null),
+  impressumUrl: z.string().url().nullable().optional().default(null),
+  termsUrl: z.string().url().nullable().optional().default(null),
+  licensesUrl: z.string().url().nullable().optional().default(null),
+  sourceCodeUrl: z.string().url().nullable().optional().default(null),
+  bugReportContact: z.string().nullable().optional().default(null),
   apkDownloadUrl: z.string().min(1).nullable().optional().default(null),
+  apkSha256: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/i)
+    .nullable()
+    .optional()
+    .default(null),
   authCaptchaRequired: z.boolean().optional().default(false),
 });
 

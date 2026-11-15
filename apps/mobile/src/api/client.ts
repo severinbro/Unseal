@@ -198,6 +198,18 @@ export class PpgisApiClient {
     return `${this.baseUrl}/auth/privacy`;
   }
 
+  public getImpressumUrl(): string {
+    return `${this.baseUrl}/auth/impressum`;
+  }
+
+  public getTermsUrl(): string {
+    return `${this.baseUrl}/auth/terms`;
+  }
+
+  public getLicensesUrl(): string {
+    return `${this.baseUrl}/auth/licenses`;
+  }
+
   public resolveUploadUrl(relativeOrAbsoluteUrl: string): string {
     if (/^https?:\/\//i.test(relativeOrAbsoluteUrl)) {
       return relativeOrAbsoluteUrl;

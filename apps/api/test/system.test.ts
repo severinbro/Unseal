@@ -42,10 +42,10 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
     }
   });
 
-  it('applies 001..006 migrations idempotently and resetTestDb truncates all application tables', async () => {
+  it('applies 001..007 migrations idempotently and resetTestDb truncates all application tables', async () => {
     const secondRun = await runMigrations(pool);
     assert.equal(secondRun.applied.length, 0);
-    assert.equal(secondRun.totalApplied, 6);
+    assert.equal(secondRun.totalApplied, 7);
 
     const indexRes = await pool.query<{ indexname: string }>(
       `SELECT indexname FROM pg_indexes WHERE schemaname = 'public'`,
@@ -127,7 +127,7 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
     assert.equal(counts.polygons_cnt, 0);
     assert.equal(counts.creations_cnt, 0);
     assert.equal(counts.votes_cnt, 0);
-    assert.equal(counts.migrations_cnt, 6);
+    assert.equal(counts.migrations_cnt, 7);
   });
 
   it('GET /api/v1/health returns 200 against live PostGIS and 503 SERVICE_UNAVAILABLE when DB fails or migrations are incomplete', async () => {
@@ -145,7 +145,7 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
       assert.ok(okRes.headers['x-request-id']);
       const health = HealthResponseSchema.parse(okRes.json());
       assert.equal(health.status, 'ok');
-      assert.equal(health.migrationsApplied, 6);
+      assert.equal(health.migrationsApplied, 7);
       assert.match(health.postgisVersion, /^3\./);
     } finally {
       await app.close();
@@ -195,13 +195,17 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
       const mig6Path = fileURLToPath(
         new URL('../migrations/006_backfill_last_login.sql', import.meta.url),
       );
+      const mig7Path = fileURLToPath(
+        new URL('../migrations/007_legal_terms_consent.sql', import.meta.url),
+      );
       await fs.copyFile(mig1Path, path.join(tmpDir, '001_initial_schema.sql'));
       await fs.copyFile(mig2Path, path.join(tmpDir, '002_v2_features.sql'));
       await fs.copyFile(mig3Path, path.join(tmpDir, '003_v3_adjustments.sql'));
       await fs.copyFile(mig4Path, path.join(tmpDir, '004_polygon_comments.sql'));
       await fs.copyFile(mig5Path, path.join(tmpDir, '005_carbon_anti_spam.sql'));
       await fs.copyFile(mig6Path, path.join(tmpDir, '006_backfill_last_login.sql'));
-      await fs.writeFile(path.join(tmpDir, '007_pending.sql'), 'SELECT 1;\n', 'utf8');
+      await fs.copyFile(mig7Path, path.join(tmpDir, '007_legal_terms_consent.sql'));
+      await fs.writeFile(path.join(tmpDir, '008_pending.sql'), 'SELECT 1;\n', 'utf8');
 
       const unmigratedApp = await buildApp(config, pool, {
         logger: createLogger({ enabled: false }),
@@ -361,7 +365,17 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
       assert.equal(cfg.orthophoto.tileSize, 256);
       assert.equal(cfg.orthophoto.maxZoom, 20);
       assert.match(cfg.orthophoto.attribution, /GeoBasis-DE/);
-      assert.equal(cfg.apkDownloadUrl, '/downloads/unseal.apk');
+      // Clean checkout has no APK (returns null); if a local dev release APK is built, it is advertised with SHA-256
+      if (cfg.apkDownloadUrl === null) {
+        assert.equal(cfg.apkSha256, null);
+      } else {
+        assert.equal(cfg.apkDownloadUrl, '/downloads/unseal.apk');
+        assert.match(String(cfg.apkSha256), /^[a-f0-9]{64}$/);
+      }
+      assert.equal(cfg.impressumUrl, 'http://127.0.0.1:3000/auth/impressum');
+      assert.equal(cfg.termsUrl, 'http://127.0.0.1:3000/auth/terms');
+      assert.equal(cfg.licensesUrl, 'http://127.0.0.1:3000/auth/licenses');
+      assert.equal(cfg.sourceCodeUrl, 'https://github.com/severinbro/Unseal');
       assert.deepEqual(cfg.initialView, {
         lng: 8.2739,
         lat: 49.9989,
@@ -715,16 +729,33 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
         `Expected Hessen DOP20 URL to request LAYERS=he_dop_rgb, got: ${wmsFetchUrls.join(', ')}`,
       );
 
-      // Missing APK -> 404 NOT_FOUND
+      // Missing APK -> 404 NOT_FOUND and /api/v1/config omits apkDownloadUrl
+      const beforeCfgRes = await app.inject({
+        method: 'GET',
+        url: '/api/v1/config',
+      });
+      assert.equal(beforeCfgRes.statusCode, 200);
+      assert.equal(RuntimeConfigSchema.parse(beforeCfgRes.json()).apkDownloadUrl, null);
+      assert.equal(RuntimeConfigSchema.parse(beforeCfgRes.json()).apkSha256, null);
+
       const missingApkRes = await app.inject({
         method: 'GET',
         url: '/downloads/unseal.apk',
       });
       assert.equal(missingApkRes.statusCode, 404);
 
-      // Present APK -> 200 application/vnd.android.package-archive
+      // Present APK -> 200 application/vnd.android.package-archive + ETag + exposed in /api/v1/config
       const fakeApkBytes = Buffer.from('PK\x03\x04unseal-test-apk-payload', 'binary');
       await fs.writeFile(path.join(tmpUploads, 'unseal.apk'), fakeApkBytes);
+      const afterCfgRes = await app.inject({
+        method: 'GET',
+        url: '/api/v1/config',
+      });
+      assert.equal(afterCfgRes.statusCode, 200);
+      const afterCfg = RuntimeConfigSchema.parse(afterCfgRes.json());
+      assert.equal(afterCfg.apkDownloadUrl, '/downloads/unseal.apk');
+      assert.match(String(afterCfg.apkSha256), /^[a-f0-9]{64}$/);
+
       const presentApkRes = await app.inject({
         method: 'GET',
         url: '/downloads/unseal.apk',
@@ -734,6 +765,7 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
         String(presentApkRes.headers['content-type']),
         /application\/vnd\.android\.package-archive/,
       );
+      assert.equal(presentApkRes.headers.etag, `"sha256-${afterCfg.apkSha256}"`);
       assert.equal(presentApkRes.rawPayload.length, fakeApkBytes.length);
     } finally {
       await app.close();

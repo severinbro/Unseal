@@ -11,14 +11,26 @@ import { normalizeRateLimitIp } from '../util/rateLimit.js';
 import type { FastifyInstance } from 'fastify';
 
 const NOMINATIM_SEARCH_URL = 'https://nominatim.openstreetmap.org/search';
-const NOMINATIM_USER_AGENT =
-  'Unseal-PPGIS/0.1 (https://app.open-unseal.de; info@open-unseal.de)';
 const UPSTREAM_TIMEOUT_MS = 8_000;
+const NOMINATIM_MIN_INTERVAL_MS = 1_100;
 const GEOCODE_CACHE_MAX_ENTRIES = 500;
 const GEOCODE_CACHE_TTL_MS = 10 * 60 * 1000;
 
 export interface GeocodeRoutesOptions {
   fetchImpl?: typeof fetch;
+  minUpstreamIntervalMs?: number;
+}
+
+function buildNominatimUserAgent(
+  publicBaseUrl: string,
+  contactEmail: string | null,
+): string {
+  const details = [publicBaseUrl, contactEmail].filter(
+    (part): part is string => typeof part === 'string' && part.length > 0,
+  );
+  return details.length > 0
+    ? `Unseal-PPGIS/0.2 (${details.join('; ')})`
+    : 'Unseal-PPGIS/0.2';
 }
 
 interface NominatimRawItem {
@@ -104,7 +116,36 @@ export function registerGeocodeRoutes(
   options: GeocodeRoutesOptions = {},
 ): void {
   const fetchImpl = options.fetchImpl ?? fetch;
+  const minIntervalMs =
+    options.minUpstreamIntervalMs ??
+    (options.fetchImpl !== undefined ? 0 : NOMINATIM_MIN_INTERVAL_MS);
+  const nominatimUserAgent = buildNominatimUserAgent(
+    app.config.publicBaseUrl,
+    app.config.operatorEmail ?? app.config.bugReportEmail,
+  );
   const cache = new Map<string, CacheEntry>();
+  let upstreamQueue: Promise<void> = Promise.resolve();
+  let lastUpstreamRequestMs = 0;
+
+  const scheduleUpstreamFetch = async <T>(fn: () => Promise<T>): Promise<T> => {
+    const run = upstreamQueue.then(async () => {
+      if (minIntervalMs > 0) {
+        const elapsed = Date.now() - lastUpstreamRequestMs;
+        if (elapsed < minIntervalMs) {
+          await new Promise<void>((resolve) =>
+            setTimeout(resolve, minIntervalMs - elapsed),
+          );
+        }
+      }
+      lastUpstreamRequestMs = Date.now();
+      return fn();
+    });
+    upstreamQueue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  };
 
   const geocodeRateLimit = app.rateLimitOverrides.geocode ?? {
     max: 30,
@@ -148,16 +189,18 @@ export function registerGeocodeRoutes(
 
       let upstreamRes: Response;
       try {
-        upstreamRes = await fetchImpl(url.toString(), {
-          method: 'GET',
-          headers: {
-            Accept: 'application/json',
-            'Accept-Language':
-              parsed.lang === 'en' ? 'en,de;q=0.8' : 'de,en;q=0.8',
-            'User-Agent': NOMINATIM_USER_AGENT,
-          },
-          signal: controller.signal,
-        });
+        upstreamRes = await scheduleUpstreamFetch(() =>
+          fetchImpl(url.toString(), {
+            method: 'GET',
+            headers: {
+              Accept: 'application/json',
+              'Accept-Language':
+                parsed.lang === 'en' ? 'en,de;q=0.8' : 'de,en;q=0.8',
+              'User-Agent': nominatimUserAgent,
+            },
+            signal: controller.signal,
+          }),
+        );
       } catch (err: unknown) {
         request.log.warn({ err, query: parsed.q }, 'Nominatim request failed');
         throw new ApiError(

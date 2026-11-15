@@ -57,9 +57,19 @@ services:
       MAX_DAILY_POLYGONS_PER_USER: "${MAX_DAILY_POLYGONS_PER_USER:-25}"
       SESSION_TTL_DAYS: "${SESSION_TTL_DAYS:-30}"
       DISCLAIMER_TEXT: "${DISCLAIMER_TEXT:-Community unsealing suggestions - non-binding public input, regardless of property ownership.}"
+      OPERATOR_NAME: "${OPERATOR_NAME:-}"
+      OPERATOR_ADDRESS: "${OPERATOR_ADDRESS:-}"
+      OPERATOR_EMAIL: "${OPERATOR_EMAIL:-}"
+      OPERATOR_PHONE: "${OPERATOR_PHONE:-}"
       ABUSE_CONTACT: "${ABUSE_CONTACT:-}"
-      BUG_REPORT_TO: "${BUG_REPORT_TO:-info@open-unseal.de}"
+      BUG_REPORT_TO: "${BUG_REPORT_TO:-}"
+      IMPRESSUM_URL: "${IMPRESSUM_URL:-}"
+      PRIVACY_POLICY_URL: "${PRIVACY_POLICY_URL:-}"
+      TERMS_URL: "${TERMS_URL:-}"
+      LICENSES_URL: "${LICENSES_URL:-}"
+      SOURCE_CODE_URL: "${SOURCE_CODE_URL:-https://github.com/severinbro/Unseal}"
       APK_DOWNLOAD_URL: "${APK_DOWNLOAD_URL:-}"
+      APK_SHA256: "${APK_SHA256:-}"
     volumes:
       - uploads_data:/var/lib/entsiegelung/uploads
     depends_on:

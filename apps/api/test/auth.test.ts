@@ -73,6 +73,7 @@ async function registerVerifiedUser(
       email,
       password,
       acceptedPrivacyPolicy: true,
+      acceptedTerms: true,
     },
   });
   assert.equal(regRes.statusCode, 201);
@@ -184,6 +185,7 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
             email: 'reserved@example.org',
             password: 'valid-password-123',
             acceptedPrivacyPolicy: true,
+            acceptedTerms: true,
           },
         });
         assert.equal(res.statusCode, 409);
@@ -212,6 +214,7 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
           email: 'clean@example.org',
           password: 'valid-password-123',
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
         },
       });
       assert.equal(bannedPseudoRes.statusCode, 403);
@@ -229,6 +232,7 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
           email: 'Vandal@Example.org',
           password: 'valid-password-123',
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
         },
       });
       assert.equal(bannedEmailRes.statusCode, 403);
@@ -247,6 +251,7 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
           email: 'Courtyard.Mapper@Example.org',
           password: 'valid-password-123',
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
         },
       });
       assert.equal(regRes.statusCode, 201);
@@ -276,6 +281,7 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
           email: 'other@example.org',
           password: 'another-password-123',
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
         },
       });
       assert.equal(dupPseudo.statusCode, 409);
@@ -293,6 +299,7 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
           email: 'courtyard.mapper@example.org',
           password: 'another-password-123',
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
         },
       });
       assert.equal(dupEmail.statusCode, 409);
@@ -404,6 +411,7 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
           email: 'jsonverifier@example.org',
           password: 'valid-password-123',
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
         },
       });
       const jsonToken = extractTokenFromActionUrl(mailer.outbox[2]!.actionUrl);
@@ -684,6 +692,7 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
           email: 'new-anna@example.org',
           password: 'impersonator-password-123',
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
         },
       });
       assert.equal(reRegSamePseudo.statusCode, 409);
@@ -734,6 +743,7 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
           email: ben.email,
           password: 'new-ben-password-123',
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
         },
       });
       assert.equal(reRegBenEmail.statusCode, 403);
@@ -776,6 +786,7 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
             email: 'busynew@example.org',
             password: 'busy-password-123',
             acceptedPrivacyPolicy: true,
+            acceptedTerms: true,
           },
         });
         assert.equal(busyReg.statusCode, 503);
@@ -993,6 +1004,107 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
       assert.ok(directSession.sessionToken.length > 20);
     } finally {
       await app.close();
+    }
+  });
+
+  it('serves /auth/impressum, /auth/terms, /auth/licenses, updated /auth/privacy, persists terms_accepted_at, guards unconfigured bug-reports, and sets CC0 headers on GeoJSON export', async () => {
+    // 1. Minimal config without OPERATOR_* or BUG_REPORT_TO -> Impressum notice + 503 on bug-reports
+    const unconfiguredApp = await buildApp(loadEnvConfig({}), pool, {
+      logger: createLogger({ enabled: false }),
+      mailer: createMemoryMailer(),
+    });
+    try {
+      const impEmptyRes = await unconfiguredApp.inject({
+        method: 'GET',
+        url: '/auth/impressum',
+      });
+      assert.equal(impEmptyRes.statusCode, 200);
+      assert.match(impEmptyRes.body, /OPERATOR_NAME.*OPERATOR_ADDRESS.*OPERATOR_EMAIL/);
+
+      const bugDisabledRes = await unconfiguredApp.inject({
+        method: 'POST',
+        url: '/api/v1/bug-reports',
+        remoteAddress: '198.51.100.70',
+        payload: {
+          description: 'Bug report should be 503 when BUG_REPORT_TO and OPERATOR_EMAIL are unset.',
+          platform: 'web',
+        },
+      });
+      assert.equal(bugDisabledRes.statusCode, 503);
+      assert.equal(
+        ApiErrorEnvelopeSchema.parse(bugDisabledRes.json()).error.code,
+        'SERVICE_UNAVAILABLE',
+      );
+    } finally {
+      await unconfiguredApp.close();
+    }
+
+    // 2. Configured operator identity -> Impressum, Privacy, Terms, Licenses, terms_accepted_at, CC0 headers
+    const configuredApp = await buildApp(
+      loadEnvConfig({
+        PUBLIC_BASE_URL: 'https://unseal.example.org',
+        OPERATOR_NAME: 'Entsiegelung Musterverein e.V.',
+        OPERATOR_ADDRESS: 'Gartenweg 5\\n55116 Mainz',
+        OPERATOR_EMAIL: 'impressum@unseal.example.org',
+        OPERATOR_PHONE: '+49 6131 123456',
+        ABUSE_CONTACT: 'abuse@unseal.example.org',
+      }),
+      pool,
+      {
+        logger: createLogger({ enabled: false }),
+        mailer: createMemoryMailer(),
+      },
+    );
+
+    try {
+      const [impRes, privRes, termsRes, licRes, exportRes] = await Promise.all([
+        configuredApp.inject({ method: 'GET', url: '/auth/impressum' }),
+        configuredApp.inject({ method: 'GET', url: '/auth/privacy' }),
+        configuredApp.inject({ method: 'GET', url: '/auth/terms' }),
+        configuredApp.inject({ method: 'GET', url: '/auth/licenses' }),
+        configuredApp.inject({ method: 'GET', url: '/api/v1/polygons/export.geojson' }),
+      ]);
+
+      assert.equal(impRes.statusCode, 200);
+      assert.match(impRes.body, /Entsiegelung Musterverein e\.V\./);
+      assert.match(impRes.body, /Gartenweg 5/);
+      assert.match(impRes.body, /impressum@unseal\.example\.org/);
+      assert.match(impRes.body, /\+49 6131 123456/);
+
+      assert.equal(privRes.statusCode, 200);
+      assert.match(privRes.body, /Entsiegelung Musterverein e\.V\./);
+      assert.match(privRes.body, /Datenschutzerklärung/);
+      assert.match(privRes.body, /reserved_pseudonyms/);
+      assert.match(privRes.body, /Nominatim/);
+
+      assert.equal(termsRes.statusCode, 200);
+      assert.match(termsRes.body, /CC0 1\.0/);
+      assert.match(termsRes.body, /CC BY 4\.0/);
+
+      assert.equal(licRes.statusCode, 200);
+      assert.match(licRes.body, /AGPL-3\.0-or-later/);
+      assert.match(licRes.body, /MPL-2\.0/);
+
+      assert.equal(exportRes.statusCode, 200);
+      assert.equal(exportRes.headers['content-license'], 'CC0-1.0');
+      assert.equal(
+        exportRes.headers.link,
+        '<https://unseal.example.org/auth/terms>; rel="license"',
+      );
+
+      const user = await registerVerifiedUser(
+        configuredApp,
+        'LegalCheckUser',
+        'legal-password-123',
+        '198.51.100.71',
+      );
+      const userRow = await pool.query<{ terms_accepted_at: Date | null }>(
+        'SELECT terms_accepted_at FROM users WHERE id = $1',
+        [user.userId],
+      );
+      assert.ok(userRow.rows[0]?.terms_accepted_at instanceof Date);
+    } finally {
+      await configuredApp.close();
     }
   });
 });

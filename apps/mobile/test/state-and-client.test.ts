@@ -67,7 +67,13 @@ const SAMPLE_CONFIG_NO_ORTHO: RuntimeConfig = {
     'Community unsealing suggestions - non-binding public input, regardless of property ownership.',
   abuseContact: 'moderation@example.org',
   privacyPolicyUrl: 'https://maps.example.org/auth/privacy',
+  impressumUrl: 'https://maps.example.org/auth/impressum',
+  termsUrl: 'https://maps.example.org/auth/terms',
+  licensesUrl: 'https://maps.example.org/auth/licenses',
+  sourceCodeUrl: 'https://github.com/sebroccoli/Entsiegelungskartierung',
+  bugReportContact: 'bugs@example.org',
   apkDownloadUrl: null,
+  apkSha256: null,
   authCaptchaRequired: false,
 };
 
@@ -696,6 +702,7 @@ describe('PpgisApiClient v2 against live HTTP server', () => {
         email: 'mapper@example.org',
         password: 'correct-horse-battery',
         acceptedPrivacyPolicy: true,
+        acceptedTerms: true,
       });
       assert.equal(regRes.status, 'verification_email_sent');
       assert.equal(await storage.getToken(), null);
@@ -1371,6 +1378,7 @@ describe('appReducer and viewModels v2', () => {
       email: 'proactive@example.org',
       password: 'strong-password-123',
       acceptedPrivacyPolicy: true,
+      acceptedTerms: true,
     });
     assert.equal(regProactive.status, 'verification_email_sent');
 
@@ -1386,6 +1394,7 @@ describe('appReducer and viewModels v2', () => {
       email: 'cold@example.org',
       password: 'strong-password-123',
       acceptedPrivacyPolicy: true,
+      acceptedTerms: true,
     });
     assert.equal(regCold.status, 'verification_email_sent');
 

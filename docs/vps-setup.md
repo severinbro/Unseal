@@ -10,9 +10,9 @@ All backend services run inside isolated Docker networks defined in [`docker-com
    - Stores both the spatial GIS tables (`polygons`, German BKG VG250 `municipalities`, `polygon_photos`) and the user/authentication tables (`users`, `sessions`, `email_tokens`, `votes`, `photo_votes`, `reserved_pseudonyms`, `reserved_emails`).
    - Air-gapped on an `internal: true` Docker network with **zero host ports exposed**.
 2. **`api` (`apps/api/Dockerfile` on `db_internal` + `edge_net`):**
-   - Runs numbered SQL migrations (`001_initial_schema.sql`, `002_v2_features.sql`, `003_v3_adjustments.sql`) automatically on boot.
+   - Runs numbered SQL migrations (`001_initial_schema.sql` through `007_legal_terms_consent.sql`) automatically on boot.
    - Automatically downloads and seeds Germany's **BKG VG250 OpenData municipality boundaries** (`vg250_gem`, `~11,000` municipalities) on first startup when `AUTO_SEED_VG250=true`.
-   - Hosts the **clickable web pages** for email confirmation (`GET/POST /auth/verify-email?token=...`), password recovery (`GET/POST /auth/reset-password?token=...`), and GDPR privacy policy (`GET /auth/privacy`).
+   - Hosts the **clickable web pages** for email confirmation (`GET/POST /auth/verify-email?token=...`), password recovery (`GET/POST /auth/reset-password?token=...`), and legal/GDPR pages (`/auth/impressum`, `/auth/privacy`, `/auth/terms`, `/auth/licenses`).
    - Processes uploaded site photos (`<= 3 m` EXIF GPS polygon tolerance check -> `"GPS verified"`, followed by 100% EXIF stripping and WebP conversion) onto the persistent `uploads_data` Docker volume (`/uploads/*`), and optionally serves `/downloads/unseal.apk`.
 3. **`caddy` (`caddy:2-alpine` on `edge_net`):**
    - Terminates HTTPS (`80`/`443`) with automatic Let's Encrypt certificates, discards per-request client IP access logs (`output discard`), proxies `/api/*`, `/auth/*`, `/uploads/*`, and `/downloads/*` to `api:3000`, and serves the static Expo Web app from `./dist-web`.
@@ -42,6 +42,7 @@ Edit `.env.vps` and fill in:
 - `POSTGRES_PASSWORD` - strong random password (`openssl rand -hex 24` - avoid `#`, `?`, or `/` characters so the connection URI needs no URL-encoding)
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` - credentials for the email account that sends registration confirmation and password recovery links
 - `CORS_ORIGIN` - `https://<your-domain>`
+- `OPERATOR_NAME`, `OPERATOR_ADDRESS`, `OPERATOR_EMAIL`, `ABUSE_CONTACT`, `BUG_REPORT_TO` - legal operator contact details rendered on `/auth/impressum`, `/auth/privacy`, `/auth/terms`, and used as bug-report recipient / Nominatim contact (and `SOURCE_CODE_URL` for your AGPLv3/MPL-2.0 repository fork if applicable)
 
 ### 3. (Optional) Export the Static Web Frontend
 
@@ -71,11 +72,14 @@ Follow the startup logs (migrations + automatic BKG VG250 municipality seeding):
 docker compose --env-file .env.vps -f docker-compose.vps.yml logs -f api
 ```
 
-Verify HTTPS health and the hosted privacy/recovery endpoints:
+Verify HTTPS health and the hosted legal/privacy/recovery endpoints:
 
 ```bash
 curl -fsS https://entsiegelung.example.org/api/v1/health
+curl -I https://entsiegelung.example.org/auth/impressum
 curl -I https://entsiegelung.example.org/auth/privacy
+curl -I https://entsiegelung.example.org/auth/terms
+curl -I https://entsiegelung.example.org/auth/licenses
 ```
 
 ---
@@ -116,12 +120,23 @@ docker compose --env-file .env.vps -f docker-compose.vps.yml exec api \
 
 ## Pointing the Android / iOS App at Your VPS
 
-When building the Android APK/AAB or iOS build for production devices, pass `EXPO_PUBLIC_API_BASE_URL` pointing to your HTTPS VPS domain:
+When building the Android APK/AAB or iOS build for production devices, pass `EXPO_PUBLIC_API_BASE_URL` pointing to your HTTPS VPS domain, and configure release signing in the generated `android/app/build.gradle` + keystore environment variables (see **Section 4** of [`README.md`](../README.md#4-production-mobile--web-builds) for `build.gradle` / `AndroidManifest.xml` setup after `expo prebuild`):
 
 ```bash
 cd apps/mobile
 EXPO_PUBLIC_API_BASE_URL="https://entsiegelung.example.org" npx expo prebuild
+
+# Generate a release keystore once (back it up safely outside git!):
+# keytool -genkeypair -v -storetype PKCS12 -keystore unseal-release.keystore -alias unseal-upload -keyalg RSA -keysize 4096 -validity 10000
+
+export UNSEAL_UPLOAD_STORE_FILE="/path/to/unseal-release.keystore"
+export UNSEAL_UPLOAD_STORE_PASSWORD="<store-password>"
+export UNSEAL_UPLOAD_KEY_ALIAS="unseal-upload"
+export UNSEAL_UPLOAD_KEY_PASSWORD="<key-password>"
+(cd android && ./gradlew assembleRelease)
 ```
+
+If you distribute the signed APK via the VPS (`/downloads/unseal.apk`), place it at `<UPLOADS_DIR>/unseal.apk` (or mount it to `APK_FILE_PATH`). The API automatically detects the file and advertises both `apkDownloadUrl` and its SHA-256 checksum (`apkSha256`) on `/api/v1/config`.
 
 ---
 

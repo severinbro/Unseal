@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
 
 import {
@@ -41,9 +42,21 @@ export interface EnvConfig {
   sessionTtlDays: number;
   disclaimerText: string;
   abuseContact: string | null;
-  bugReportEmail: string;
+  operatorName: string | null;
+  operatorAddress: string | null;
+  operatorEmail: string | null;
+  operatorPhone: string | null;
+  bugReportEmail: string | null;
   privacyPolicyUrl: string;
+  impressumUrl: string;
+  termsUrl: string;
+  licensesUrl: string;
+  sourceCodeUrl: string;
+  apkMode: 'auto' | 'explicit' | 'disabled';
+  apkDefaultUrl: string;
+  apkExplicitSha256: string | null;
   apkDownloadUrl: string | null;
+  apkSha256: string | null;
   authCaptchaEnabled: boolean;
   authCaptchaSecret: string;
   authCaptchaMaxNumber: number;
@@ -62,8 +75,78 @@ const EPHEMERAL_FALLBACK_CAPTCHA_SECRET = crypto
 const DEFAULT_DISCLAIMER_TEXT =
   'Community unsealing suggestions - non-binding public input, regardless of property ownership.';
 const DEFAULT_OSM_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
+const DEFAULT_SOURCE_CODE_URL = 'https://github.com/severinbro/Unseal';
 const DISABLED_SETTING_RE = /^(?:none|off|false|disabled|0)$/i;
 const STRICT_NUMBER_RE = /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+const SHA256_HEX_RE = /^[0-9a-f]{64}$/i;
+
+export function resolveCandidateApkPaths(apkFilePath: string): string[] {
+  const defaultDevApkPath = path.join(
+    path.resolve(process.cwd(), 'uploads'),
+    'unseal.apk',
+  );
+  if (apkFilePath === defaultDevApkPath) {
+    return [
+      apkFilePath,
+      path.resolve(process.cwd(), 'downloads', 'unseal.apk'),
+      path.resolve(
+        process.cwd(),
+        'apps/mobile/android/app/build/outputs/apk/release/app-release.apk',
+      ),
+      path.resolve(
+        process.cwd(),
+        '../mobile/android/app/build/outputs/apk/release/app-release.apk',
+      ),
+    ];
+  }
+  return [apkFilePath];
+}
+
+export function findExistingApkInfo(
+  apkFilePath: string,
+): { filePath: string; size: number; sha256: string } | null {
+  for (const candidate of resolveCandidateApkPaths(apkFilePath)) {
+    try {
+      const stat = fs.statSync(candidate);
+      if (stat.isFile() && stat.size > 0) {
+        const hash = crypto
+          .createHash('sha256')
+          .update(fs.readFileSync(candidate))
+          .digest('hex');
+        return { filePath: candidate, size: stat.size, sha256: hash };
+      }
+    } catch {
+      // Try next candidate path
+    }
+  }
+  return null;
+}
+
+export function resolveRuntimeApkAvailability(config: Pick<
+  EnvConfig,
+  'apkMode' | 'apkDefaultUrl' | 'apkFilePath' | 'apkExplicitSha256' | 'apkDownloadUrl'
+>): { apkDownloadUrl: string | null; apkSha256: string | null } {
+  if (config.apkMode === 'disabled') {
+    return { apkDownloadUrl: null, apkSha256: null };
+  }
+  if (config.apkMode === 'explicit') {
+    const localApk = config.apkExplicitSha256
+      ? null
+      : findExistingApkInfo(config.apkFilePath);
+    return {
+      apkDownloadUrl: config.apkDownloadUrl,
+      apkSha256: config.apkExplicitSha256 ?? localApk?.sha256 ?? null,
+    };
+  }
+  const existing = findExistingApkInfo(config.apkFilePath);
+  if (!existing) {
+    return { apkDownloadUrl: null, apkSha256: null };
+  }
+  return {
+    apkDownloadUrl: config.apkDefaultUrl,
+    apkSha256: config.apkExplicitSha256 ?? existing.sha256,
+  };
+}
 
 function parseFiniteNumber(raw: string | undefined, fallback: number, name: string): number {
   const trimmed = raw?.trim();
@@ -270,19 +353,67 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
   const disclaimerText = env.DISCLAIMER_TEXT?.trim() || DEFAULT_DISCLAIMER_TEXT;
   const rawAbuseContact = env.ABUSE_CONTACT?.trim() ?? '';
   const abuseContact = rawAbuseContact.length > 0 ? rawAbuseContact : null;
-  const bugReportEmail = env.BUG_REPORT_TO?.trim() || 'info@open-unseal.de';
+  const rawOperatorName = env.OPERATOR_NAME?.trim() ?? '';
+  const operatorName = rawOperatorName.length > 0 ? rawOperatorName : null;
+  const rawOperatorAddress = env.OPERATOR_ADDRESS?.trim() ?? '';
+  const operatorAddress =
+    rawOperatorAddress.length > 0
+      ? rawOperatorAddress.replace(/\\n/g, '\n')
+      : null;
+  const rawOperatorEmail = env.OPERATOR_EMAIL?.trim() ?? '';
+  const operatorEmail =
+    rawOperatorEmail.length > 0 ? rawOperatorEmail : abuseContact;
+  const rawOperatorPhone = env.OPERATOR_PHONE?.trim() ?? '';
+  const operatorPhone = rawOperatorPhone.length > 0 ? rawOperatorPhone : null;
+
+  const rawBugReportTo = env.BUG_REPORT_TO?.trim() ?? '';
+  const bugReportEmail = DISABLED_SETTING_RE.test(rawBugReportTo)
+    ? null
+    : rawBugReportTo.length > 0
+      ? rawBugReportTo
+      : operatorEmail;
+
   const privacyPolicyUrl =
     env.PRIVACY_POLICY_URL?.trim() || `${publicBaseUrl}/auth/privacy`;
+  const impressumUrl =
+    env.IMPRESSUM_URL?.trim() || `${publicBaseUrl}/auth/impressum`;
+  const termsUrl = env.TERMS_URL?.trim() || `${publicBaseUrl}/auth/terms`;
+  const licensesUrl =
+    env.LICENSES_URL?.trim() || `${publicBaseUrl}/auth/licenses`;
+  const sourceCodeUrl =
+    env.SOURCE_CODE_URL?.trim() || DEFAULT_SOURCE_CODE_URL;
 
   const rawApkDownloadUrl = env.APK_DOWNLOAD_URL?.trim() ?? '';
   const defaultApkPath = '/downloads/unseal.apk';
-  const apkDownloadUrl = DISABLED_SETTING_RE.test(rawApkDownloadUrl)
-    ? null
+  const apkDefaultUrl = hasExplicitPublicBaseUrl
+    ? `${publicBaseUrl}${defaultApkPath}`
+    : defaultApkPath;
+  const rawApkSha256 = env.APK_SHA256?.trim() ?? '';
+  if (rawApkSha256.length > 0 && !SHA256_HEX_RE.test(rawApkSha256)) {
+    throw new Error(
+      'APK_SHA256 must be a 64-character hexadecimal SHA-256 digest.',
+    );
+  }
+  const apkExplicitSha256 =
+    rawApkSha256.length > 0 ? rawApkSha256.toLowerCase() : null;
+
+  const apkMode: 'auto' | 'explicit' | 'disabled' = DISABLED_SETTING_RE.test(
+    rawApkDownloadUrl,
+  )
+    ? 'disabled'
     : rawApkDownloadUrl.length > 0
-      ? rawApkDownloadUrl
-      : hasExplicitPublicBaseUrl
-        ? `${publicBaseUrl}${defaultApkPath}`
-        : defaultApkPath;
+      ? 'explicit'
+      : 'auto';
+
+  const resolvedApk = resolveRuntimeApkAvailability({
+    apkMode,
+    apkDefaultUrl,
+    apkFilePath,
+    apkExplicitSha256,
+    apkDownloadUrl: apkMode === 'explicit' ? rawApkDownloadUrl : apkDefaultUrl,
+  });
+  const apkDownloadUrl = resolvedApk.apkDownloadUrl;
+  const apkSha256 = resolvedApk.apkSha256;
 
   const authCaptchaEnabled = parseBooleanSetting(
     env.AUTH_CAPTCHA_ENABLED,
@@ -367,7 +498,13 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     disclaimerText,
     abuseContact,
     privacyPolicyUrl,
+    impressumUrl,
+    termsUrl,
+    licensesUrl,
+    sourceCodeUrl,
+    bugReportContact: bugReportEmail,
     apkDownloadUrl,
+    apkSha256,
     authCaptchaRequired: authCaptchaEnabled,
   });
 
@@ -389,9 +526,21 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     sessionTtlDays,
     disclaimerText: runtimeConfig.disclaimerText,
     abuseContact: runtimeConfig.abuseContact,
+    operatorName,
+    operatorAddress,
+    operatorEmail,
+    operatorPhone,
     bugReportEmail,
     privacyPolicyUrl,
+    impressumUrl,
+    termsUrl,
+    licensesUrl,
+    sourceCodeUrl,
+    apkMode,
+    apkDefaultUrl,
+    apkExplicitSha256,
     apkDownloadUrl: runtimeConfig.apkDownloadUrl,
+    apkSha256: runtimeConfig.apkSha256,
     authCaptchaEnabled,
     authCaptchaSecret,
     authCaptchaMaxNumber,

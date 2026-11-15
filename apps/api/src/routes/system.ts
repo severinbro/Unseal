@@ -1,6 +1,4 @@
 import { createReadStream } from 'node:fs';
-import fs from 'node:fs/promises';
-import path from 'node:path';
 
 import {
   ApiError,
@@ -8,6 +6,10 @@ import {
   RuntimeConfigSchema,
 } from '@entsiegelung/shared';
 
+import {
+  findExistingApkInfo,
+  resolveRuntimeApkAvailability,
+} from '../config.js';
 import { getMigrationFiles } from '../db/migrate.js';
 
 import type { FastifyInstance } from 'fastify';
@@ -74,7 +76,12 @@ export function registerSystemRoutes(
   });
 
   app.get('/api/v1/config', async () => {
-    return RuntimeConfigSchema.parse(app.config.runtimeConfig);
+    const apkAvailability = resolveRuntimeApkAvailability(app.config);
+    return RuntimeConfigSchema.parse({
+      ...app.config.runtimeConfig,
+      apkDownloadUrl: apkAvailability.apkDownloadUrl,
+      apkSha256: apkAvailability.apkSha256,
+    });
   });
 
   app.get(
@@ -89,44 +96,21 @@ export function registerSystemRoutes(
       },
     },
     async (_request, reply) => {
-      const defaultDevApkPath = path.join(
-        path.resolve(process.cwd(), 'uploads'),
-        'unseal.apk',
-      );
-      const isDefaultDevPath = app.config.apkFilePath === defaultDevApkPath;
-      const candidatePaths = isDefaultDevPath
-        ? [
-            app.config.apkFilePath,
-            path.resolve(process.cwd(), 'downloads', 'unseal.apk'),
-            path.resolve(
-              process.cwd(),
-              'apps/mobile/android/app/build/outputs/apk/release/app-release.apk',
-            ),
-            path.resolve(
-              process.cwd(),
-              '../mobile/android/app/build/outputs/apk/release/app-release.apk',
-            ),
-          ]
-        : [app.config.apkFilePath];
-
-      for (const filePath of candidatePaths) {
-        try {
-          const stat = await fs.stat(filePath);
-          if (stat.isFile() && stat.size > 0) {
-            return reply
-              .status(200)
-              .header('Content-Type', 'application/vnd.android.package-archive')
-              .header(
-                'Content-Disposition',
-                'attachment; filename="unseal.apk"',
-              )
-              .header('Content-Length', String(stat.size))
-              .header('Cache-Control', 'public, max-age=300')
-              .header('X-Content-Type-Options', 'nosniff')
-              .send(createReadStream(filePath));
-          }
-        } catch {
-          // Try next candidate path
+      if (app.config.apkMode !== 'disabled') {
+        const existing = findExistingApkInfo(app.config.apkFilePath);
+        if (existing) {
+          return reply
+            .status(200)
+            .header('Content-Type', 'application/vnd.android.package-archive')
+            .header(
+              'Content-Disposition',
+              'attachment; filename="unseal.apk"',
+            )
+            .header('Content-Length', String(existing.size))
+            .header('ETag', `"sha256-${existing.sha256}"`)
+            .header('Cache-Control', 'public, max-age=300')
+            .header('X-Content-Type-Options', 'nosniff')
+            .send(createReadStream(existing.filePath));
         }
       }
 

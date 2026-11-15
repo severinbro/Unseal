@@ -2,9 +2,9 @@
 
 **Unseal** is an open-source Public Participation Geographic Information System (PPGIS) for **Android, iOS, and Web** (German `de` default language with full English `en` switcher). Citizens map impervious ground surfaces ("ground sealing", such as asphalt parking corners, concrete courtyards, and paved street margins) proposed for unsealing, attach EXIF-sanitized site photos, and prioritize proposals through `+1` / `-1` community voting.
 
-Unauthenticated visitors can explore OpenStreetMap vector basemaps, toggle built-in Germany-wide **DOP20 aerial orthophotos** (`EPSG:3857`) beneath proposal geometries, center on their position via the floating top-right **GNSS** button, inspect proposals and site photos, open the **`?` About** dialog, download the standalone Android `.apk`, and export all proposals as RFC 7946 GeoJSON (`GET /api/v1/polygons/export.geojson`) for direct analysis in QGIS or desktop GIS tools.
+Unauthenticated visitors can explore OpenStreetMap vector basemaps, toggle built-in Germany-wide **DOP20 aerial orthophotos** (`EPSG:3857`) beneath proposal geometries, center on their position via the floating top-right **GNSS** button, inspect proposals and site photos, open the **`?` About** dialog, download the standalone Android `.apk` (when hosted/configured on the server), and export all proposals as RFC 7946 GeoJSON (`GET /api/v1/polygons/export.geojson`, `CC0-1.0`) for direct analysis in QGIS or desktop GIS tools.
 
-Contributors register pseudonymous accounts backed by **email link confirmation** and **VPS-hosted password recovery pages** (`/auth/verify-email`, `/auth/reset-password`, `/auth/privacy`). Email addresses are used strictly for account verification and password recovery and are **never exposed publicly** on the map, on photos, or in GeoJSON exports - only the user's chosen `pseudonym` appears.
+Contributors register pseudonymous accounts backed by **email link confirmation**, acceptance of the Privacy Policy and Terms of Use (`CC0 1.0` for polygon geometries/notes, `CC BY 4.0` for photos/comments), and **VPS-hosted legal & password recovery pages** (`/auth/verify-email`, `/auth/reset-password`, `/auth/impressum`, `/auth/privacy`, `/auth/terms`, `/auth/licenses`). Email addresses are used strictly for account verification and password recovery and are **never exposed publicly** on the map, on photos, or in GeoJSON exports - only the user's chosen `pseudonym` appears.
 
 ---
 
@@ -81,7 +81,7 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-* **API & Hosted Auth Pages:** `http://127.0.0.1:3000` (`/api/v1/health`, `/api/v1/config`, `/auth/privacy`)
+* **API & Hosted Auth / Legal Pages:** `http://127.0.0.1:3000` (`/api/v1/health`, `/api/v1/config`, `/auth/impressum`, `/auth/privacy`, `/auth/terms`, `/auth/licenses`)
 * **Local Mailpit Email Inbox:** `http://127.0.0.1:8025` (captures all local registration confirmation and password recovery emails with clickable links)
 * **BKG VG250 Municipalities:** Automatically downloaded and seeded (~11,000 German municipalities) on first startup when `AUTO_SEED_VG250=true`.
 
@@ -91,6 +91,8 @@ curl -fsS http://127.0.0.1:3000/api/v1/config
 ```
 
 ### Step 3: Build, Typecheck, and Run the Automated Test Suite
+
+*(Requires Docker running for the PostGIS test database, unless `SKIP_DOCKER_PRETEST=1` points to an existing PostGIS instance.)*
 
 ```bash
 npm run build
@@ -105,14 +107,15 @@ npm test
   npm --workspace apps/mobile run web
   ```
 * **Android Smartphone over USB Debugging (`adb`):**
-  Forward port `3000` from your phone to your local Docker API and build/install the standalone APK:
+  Requires **JDK 17** and the **Android SDK** (`ANDROID_HOME`). Because `apps/mobile/android/` is gitignored and generated via Expo Prebuild, generate it once on each machine, forward port `3000`, and install a debug build:
   ```bash
   adb reverse tcp:3000 tcp:3000
   cd apps/mobile
   npx expo prebuild --platform android
-  ./android/gradlew -p android assembleRelease
-  adb install -r android/app/build/outputs/apk/release/app-release.apk
+  ./android/gradlew -p android assembleDebug
+  adb install -r android/app/build/outputs/apk/debug/app-debug.apk
   ```
+  *(For signed release APKs, see **Section 4** below — never ship an APK signed with Expo's debug keystore.)*
 
 ---
 
@@ -133,7 +136,9 @@ cd /opt/unseal
 
 cp .env.vps.example .env.vps
 chmod 600 .env.vps
-# Edit .env.vps with your DOMAIN, POSTGRES_PASSWORD, and SMTP_* credentials
+# Edit .env.vps: DOMAIN, ACME_EMAIL, POSTGRES_PASSWORD, SMTP_*, CORS_ORIGIN,
+# AUTH_CAPTCHA_SECRET, OPERATOR_NAME, OPERATOR_ADDRESS, OPERATOR_EMAIL,
+# ABUSE_CONTACT, and BUG_REPORT_TO
 
 mkdir -p dist-web
 docker compose --env-file .env.vps -f docker-compose.vps.yml up -d --build
@@ -166,18 +171,38 @@ docker compose exec api node apps/api/dist/cli/admin.js redact-note <polygon-uui
 
 ## 4. Production Mobile & Web Builds
 
-Because `@maplibre/maplibre-react-native`, `expo-location`, `expo-image-picker`, `expo-document-picker`, and `expo-secure-store` include native modules, Android and iOS builds use **Expo Prebuild** (`npx expo prebuild`):
+Because `@maplibre/maplibre-react-native`, `expo-location`, `expo-image-picker`, `expo-document-picker`, and `expo-secure-store` include native modules, Android and iOS native directories (`apps/mobile/android/` and `apps/mobile/ios/`, both gitignored) are generated per machine with **Expo Prebuild** (`npx expo prebuild`):
 
 ```bash
 # Export static production Web assets into ./dist-web
 EXPO_PUBLIC_API_BASE_URL=https://unseal.example.org npm --workspace apps/mobile run export:web
 
-# Prebuild & compile native Android / iOS apps pointing at your production VPS
+# Prebuild native Android / iOS projects pointing at your production VPS
 cd apps/mobile
 EXPO_PUBLIC_API_BASE_URL=https://unseal.example.org npx expo prebuild
-npm --workspace apps/mobile run android
-npm --workspace apps/mobile run ios
 ```
+
+### Android Release Signing & Manifest Hardening (per build machine)
+
+Because `apps/mobile/android/` is generated by `npx expo prebuild` and excluded from git, Expo's default template signs `release` with `signingConfigs.debug` and places `SYSTEM_ALERT_WINDOW` in `src/main/AndroidManifest.xml`. Before running `./android/gradlew -p android assembleRelease` for distribution:
+
+1. **Generate and back up a release keystore once (outside git):**
+   ```bash
+   keytool -genkeypair -v -storetype PKCS12 \
+     -keystore unseal-release.keystore -alias unseal-upload \
+     -keyalg RSA -keysize 4096 -validity 10000
+   ```
+2. **Configure `apps/mobile/android/app/build.gradle`** with a `signingConfigs.release` block reading `UNSEAL_UPLOAD_STORE_FILE`, `UNSEAL_UPLOAD_STORE_PASSWORD`, `UNSEAL_UPLOAD_KEY_ALIAS`, and `UNSEAL_UPLOAD_KEY_PASSWORD` (from Gradle properties or environment variables) instead of `signingConfigs.debug`.
+3. **Remove `android.permission.SYSTEM_ALERT_WINDOW`** from `apps/mobile/android/app/src/main/AndroidManifest.xml` (it belongs only in `src/debug/AndroidManifest.xml`).
+4. **Build the signed release APK (and optionally host it on the VPS):**
+   ```bash
+   export UNSEAL_UPLOAD_STORE_FILE="/path/to/unseal-release.keystore"
+   export UNSEAL_UPLOAD_STORE_PASSWORD="<store-password>"
+   export UNSEAL_UPLOAD_KEY_ALIAS="unseal-upload"
+   export UNSEAL_UPLOAD_KEY_PASSWORD="<key-password>"
+   (cd apps/mobile/android && ./gradlew assembleRelease)
+   ```
+   To serve it directly via `/downloads/unseal.apk`, place the signed APK at `<UPLOADS_DIR>/unseal.apk` (or `APK_FILE_PATH` on the VPS); the API automatically advertises the download URL and SHA-256 checksum on `/api/v1/config`.
 
 ---
 
@@ -201,11 +226,17 @@ npm --workspace apps/mobile run ios
 | `CORS_ORIGIN` | `*` | Allowed browser CORS origin(s), comma-separated. |
 | `OSM_STYLE_URL` | `https://tiles.openfreemap.org/styles/liberty` | MapLibre vector style JSON URL. |
 | `ORTHOPHOTO_*` | *(built-in Germany DOP20)* | Built-in server-proxied German DOP20 aerial orthophotos (`/api/v1/tiles/dop20/{z}/{x}/{y}.png`); set `ORTHOPHOTO_URL_TEMPLATE=none` to disable or override with a custom `EPSG:3857` URL. |
-| `APK_DOWNLOAD_URL` / `APK_FILE_PATH` | `/downloads/unseal.apk` / `<UPLOADS_DIR>/unseal.apk` | Optional direct Android `.apk` download link (`none` to hide button) and server file location. |
+| `APK_DOWNLOAD_URL` / `APK_FILE_PATH` / `APK_SHA256` | *(auto)* / `<UPLOADS_DIR>/unseal.apk` / *(auto SHA-256)* | Optional direct Android `.apk` download link (`none` to hide button; auto-hidden when no APK file exists), server file path, and SHA-256 checksum. |
 | `INITIAL_LNG` / `LAT` / `ZOOM` | `8.2739` / `49.9989` / `15` | Default initial viewport camera (Mainz Cathedral). |
 | `MAX_DAILY_POLYGONS_PER_USER` | `25` | Rolling 24-hour polygon creation cap per user. |
 | `SESSION_TTL_DAYS` | `30` | Bearer session lifetime in days. |
-| `DISCLAIMER_TEXT` / `ABUSE_CONTACT` | *(civic notice)* / *(empty)* | Public notice and optional moderation contact shown in inspector & privacy page. |
+| `AUTH_CAPTCHA_ENABLED` / `SECRET` | `true` / *(ephemeral)* | Enable ALTCHA registration PoW challenge and persistent HMAC secret (`openssl rand -hex 32`). |
+| `DISPOSABLE_EMAIL_BLOCKLIST_EXTRA` | *(empty)* | Comma-separated extra disposable email domains to block at signup. |
+| `REQUIRE_JURISDICTION` / `STALE_UNRATED_PRUNE_DAYS` / `NEW_USER_*` | `when_seeded` / `14` / `14`, `3` | VG250 jurisdiction enforcement, stale unrated proposal pruning days, and new-user badge thresholds. |
+| `DISCLAIMER_TEXT` / `ABUSE_CONTACT` | *(civic notice)* / *(empty)* | Public notice and optional moderation contact shown in inspector, legal pages & bug-report modal. |
+| `OPERATOR_NAME` / `OPERATOR_ADDRESS` / `OPERATOR_EMAIL` / `OPERATOR_PHONE` | *(empty)* | Legal operator identity rendered on `/auth/impressum` & `/auth/privacy` (§ 5 DDG / § 18 MStV / Art. 13 GDPR); `\n` separates address lines. |
+| `IMPRESSUM_URL` / `PRIVACY_POLICY_URL` / `TERMS_URL` / `LICENSES_URL` / `SOURCE_CODE_URL` | `<PUBLIC_BASE_URL>/auth/{impressum,privacy,terms,licenses}` | Override URLs for hosted legal notices and AGPL-3.0/MPL-2.0 source code repository link. |
+| `BUG_REPORT_TO` | *(falls back to `OPERATOR_EMAIL`)* | Recipient email for `/api/v1/bug-reports` (`none` or unset disables bug-report email submission with HTTP 503). |
 | `EXPO_PUBLIC_API_BASE_URL` | `http://127.0.0.1:3000` | Base API URL baked into Expo mobile/web builds at bundle time. |
 
 ---

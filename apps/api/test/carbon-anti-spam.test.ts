@@ -102,6 +102,7 @@ async function registerTestUser(
       email,
       password: 'valid-password-123',
       acceptedPrivacyPolicy: true,
+      acceptedTerms: true,
     },
   });
   assert.equal(regRes.statusCode, 201);
@@ -577,6 +578,7 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
           email: 'nocaptcha@example.org',
           password: 'valid-password-123',
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
         },
       });
       assert.equal(missingPoW.statusCode, 422);
@@ -603,6 +605,7 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
           email: 'burner@mailinator.com',
           password: 'valid-password-123',
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
           altchaPayload: solvedDisp,
         },
       });
@@ -629,6 +632,7 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
           email: 'civic.mapper@gmail.com',
           password: 'valid-password-123',
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
           altchaPayload: solved1,
         },
       });
@@ -644,6 +648,7 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
           email: 'other@example.org',
           password: 'valid-password-123',
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
           altchaPayload: solved1,
         },
       });
@@ -666,6 +671,7 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
           email: 'CivicMapper+sockpuppet@googlemail.com',
           password: 'valid-password-123',
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
           altchaPayload: solveAltchaChallenge(ch2),
         },
       });
@@ -688,6 +694,7 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
           email: 'legit2@example.org',
           password: 'valid-password-123',
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
           altchaPayload: solveAltchaChallenge(ch2b),
         },
       });
@@ -705,6 +712,7 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
           email: 'legit4@example.org',
           password: 'valid-password-123',
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
           altchaPayload: solveAltchaChallenge(ch3),
         },
       });

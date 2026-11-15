@@ -277,6 +277,8 @@ export function registerPolygonRoutes(
         timeoutHandle.unref();
 
         reply.header('Content-Type', 'application/geo+json');
+        reply.header('Content-License', 'CC0-1.0');
+        reply.header('Link', `<${app.config.termsUrl}>; rel="license"`);
         reply.header(
           'Content-Disposition',
           'attachment; filename="entsiegelung-proposals.geojson"',

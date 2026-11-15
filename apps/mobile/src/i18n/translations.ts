@@ -365,6 +365,8 @@ export interface TranslationDictionary {
     readonly privacyConsentA11y: string;
     readonly privacyConsentPrefix: string;
     readonly privacyPolicyLinkText: string;
+    readonly termsConsentConnector: string;
+    readonly termsLinkText: string;
     readonly verifyPendingBody: (email: string) => string;
     readonly resendVerificationButton: string;
     readonly resendingVerification: string;
@@ -455,7 +457,11 @@ export interface TranslationDictionary {
     readonly attributionOsmShort: string;
     readonly attributionDop20Short: string;
     readonly attributionVg250Short: string;
+    readonly impressumLinkLabel: string;
     readonly privacyLinkLabel: string;
+    readonly termsLinkLabel: string;
+    readonly licensesLinkLabel: string;
+    readonly sourceCodeLinkLabel: string;
     readonly apkDownloadButton: string;
     readonly installAppButton: string;
   };
@@ -471,6 +477,7 @@ export interface TranslationDictionary {
     readonly iosPwaSteps: readonly string[];
     readonly androidApkTitle: string;
     readonly androidApkBody: string;
+    readonly apkSha256Label: string;
     readonly apkDownloadButton: string;
   };
   readonly search: {
@@ -890,10 +897,13 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       identifierLabel: 'Pseudonym oder E-Mail-Adresse',
       identifierA11y: 'Pseudonym oder E-Mail-Adresse',
       identifierPlaceholder: 'Pseudonym oder name@beispiel.de',
-      privacyConsentA11y: 'Ich stimme der Datenschutzerklärung zu',
+      privacyConsentA11y:
+        'Ich stimme der Datenschutzerklärung und den Nutzungsbedingungen zu',
       privacyConsentPrefix:
-        'Ich stimme der Speicherung meiner E-Mail-Adresse zur Kontobestätigung und Passwortwiederherstellung gemäß ',
+        'Ich stimme der E-Mail-Verarbeitung gemäß ',
       privacyPolicyLinkText: 'Datenschutzerklärung',
+      termsConsentConnector: ' sowie den ',
+      termsLinkText: 'Nutzungsbedingungen (inkl. CC0 / CC BY 4.0)',
       verifyPendingBody: (email) =>
         `Wir haben einen Bestätigungslink an ${email} gesendet. Bitte klicke auf den Link in deiner E-Mail und melde dich anschließend hier an.`,
       resendVerificationButton: 'Bestätigungslink erneut senden',
@@ -947,7 +957,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         'Das Pseudonym muss 3–32 Zeichen lang sein (Buchstaben, Ziffern, Unterstrich _ oder Bindestrich -).',
       invalidEmail: 'Bitte gib eine gültige E-Mail-Adresse ein.',
       privacyConsentRequired:
-        'Bitte bestätige die Datenschutzerklärung, um fortzufahren.',
+        'Bitte bestätige Datenschutzerklärung und Nutzungsbedingungen, um fortzufahren.',
       shortPassword: (min) =>
         `Das Passwort muss mindestens ${min} Zeichen lang sein.`,
       missingCredentials:
@@ -1014,13 +1024,17 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         '0 Neu / − Umstritten: Unbewertet (orange) bzw. negativer Saldo (rot)',
       legendLifecycle:
         '⟳ Wird entsiegelt / ✓ Entsiegelt: Im Rückbau (blau) bzw. umgesetzt (türkis)',
-      footerTitle: 'Datenschutz, Quellen & App',
+      footerTitle: 'Datenschutz, Rechtliches & App',
       privacyAndLicenseBody:
-        'Öffentlich erscheint nur dein Pseudonym; E-Mails dienen nur Bestätigung & Recovery (jederzeit nach Art. 17 DSGVO löschbar). Quelloffen unter AGPL-3.0 (API) & MPL-2.0 (App).',
+        'Öffentlich erscheint nur dein Pseudonym; E-Mails dienen nur Bestätigung & Recovery (jederzeit nach Art. 17 DSGVO löschbar). Beiträge: CC0 1.0 (Geometrien/Notizen) & CC BY 4.0 (Fotos/Kommentare). Software: AGPL-3.0 (API) & MPL-2.0 (App).',
       attributionOsmShort: '© OpenStreetMap / OpenFreeMap (ODbL)',
       attributionDop20Short: 'DOP20 © Länder (dl-de/by-2-0)',
       attributionVg250Short: 'VG250 © BKG (dl-de/by-2-0)',
-      privacyLinkLabel: 'Datenschutzerklärung',
+      impressumLinkLabel: 'Impressum',
+      privacyLinkLabel: 'Datenschutz',
+      termsLinkLabel: 'Nutzungsbedingungen',
+      licensesLinkLabel: 'OSS-Lizenzen',
+      sourceCodeLinkLabel: 'Quellcode',
       apkDownloadButton: 'Android-APK herunterladen',
       installAppButton: 'App installieren',
     },
@@ -1043,7 +1057,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       modalA11y: 'Fehler melden',
       title: 'Fehler melden',
       subtitle:
-        'Deine Meldung wird per E-Mail an info@open-unseal.de gesendet.',
+        'Deine Meldung wird per E-Mail an die Betreiberstelle dieser Unseal-Instanz gesendet.',
       closeA11y: 'Fehlermeldung schließen',
       close: 'Schließen',
       descriptionLabel: 'Was ist passiert?',
@@ -1057,7 +1071,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       submittingBusy: 'Sendet…',
       successTitle: 'Vielen Dank!',
       successBody:
-        'Deine Fehlermeldung wurde an info@open-unseal.de übermittelt.',
+        'Deine Fehlermeldung wurde an die Betreiberstelle übermittelt.',
       tooShortError:
         'Bitte beschreibe den Fehler mit mindestens 5 Zeichen.',
       invalidEmailError: 'Bitte gib eine gültige E-Mail-Adresse ein oder lasse das Feld leer.',
@@ -1085,6 +1099,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       androidApkTitle: 'Android: Direkter APK-Download',
       androidApkBody:
         'Alternativ zur Browser-App kannst du die Android-App direkt als APK-Datei installieren (Android fragt ggf. nach der Erlaubnis zum Installieren über deinen Browser).',
+      apkSha256Label: 'SHA-256-Prüfsumme:',
       apkDownloadButton: 'Android-APK herunterladen',
     },
   },
@@ -1444,10 +1459,12 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       identifierLabel: 'Pseudonym or Email Address',
       identifierA11y: 'Pseudonym or email address',
       identifierPlaceholder: 'Pseudonym or name@example.org',
-      privacyConsentA11y: 'I agree to the privacy policy',
+      privacyConsentA11y: 'I agree to the Privacy Policy and Terms of Use',
       privacyConsentPrefix:
-        'I consent to storing my email address for account confirmation and password recovery under the ',
+        'I consent to email processing under the ',
       privacyPolicyLinkText: 'Privacy Policy',
+      termsConsentConnector: ' and accept the ',
+      termsLinkText: 'Terms of Use (incl. CC0 / CC BY 4.0)',
       verifyPendingBody: (email) =>
         `We sent a confirmation link to ${email}. Click the link in your email, then return here to sign in.`,
       resendVerificationButton: 'Resend Confirmation Link',
@@ -1501,7 +1518,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         'Pseudonym must be 3–32 characters using letters, digits, underscores (_), or hyphens (-).',
       invalidEmail: 'Please enter a valid email address.',
       privacyConsentRequired:
-        'Please accept the privacy policy to continue.',
+        'Please accept the Privacy Policy and Terms of Use to continue.',
       shortPassword: (min) => `Password must be at least ${min} characters.`,
       missingCredentials: 'Enter your pseudonym (or email) and password.',
       missingRecoveryFields: (min) =>
@@ -1566,13 +1583,17 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         '0 New / − Contested: Unrated (amber) or negative score (red)',
       legendLifecycle:
         '⟳ In progress / ✓ Finished: Active depaving (blue) or completed (mint)',
-      footerTitle: 'Privacy, Data & App',
+      footerTitle: 'Privacy, Legal & App',
       privacyAndLicenseBody:
-        'Only your pseudonym is public; emails are used strictly for confirmation & recovery (erasable anytime under GDPR Art. 17). Open source under AGPL-3.0 (API) & MPL-2.0 (App).',
+        'Only your pseudonym is public; emails are used strictly for confirmation & recovery (erasable anytime under GDPR Art. 17). Contributions: CC0 1.0 (geometries/notes) & CC BY 4.0 (photos/comments). Code: AGPL-3.0 (API) & MPL-2.0 (App).',
       attributionOsmShort: '© OpenStreetMap / OpenFreeMap (ODbL)',
       attributionDop20Short: 'DOP20 © State Surveys (dl-de/by-2-0)',
       attributionVg250Short: 'VG250 © BKG (dl-de/by-2-0)',
+      impressumLinkLabel: 'Impressum',
       privacyLinkLabel: 'Privacy Policy',
+      termsLinkLabel: 'Terms of Use',
+      licensesLinkLabel: 'OSS Licenses',
+      sourceCodeLinkLabel: 'Source Code',
       apkDownloadButton: 'Download Android APK',
       installAppButton: 'Install App',
     },
@@ -1594,7 +1615,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
     bugReport: {
       modalA11y: 'Report a bug',
       title: 'Report a Bug',
-      subtitle: 'Your report will be emailed to info@open-unseal.de.',
+      subtitle: 'Your report will be emailed to the operator of this Unseal instance.',
       closeA11y: 'Close bug report dialog',
       close: 'Close',
       descriptionLabel: 'What went wrong?',
@@ -1608,7 +1629,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       submittingBusy: 'Sending…',
       successTitle: 'Thank you!',
       successBody:
-        'Your bug report has been sent to info@open-unseal.de.',
+        'Your bug report has been sent to the instance operator.',
       tooShortError: 'Please describe the bug in at least 5 characters.',
       invalidEmailError: 'Please enter a valid email address or leave it blank.',
       errorFallback: 'Could not send bug report.',
@@ -1635,6 +1656,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       androidApkTitle: 'Android: Direct APK Download',
       androidApkBody:
         'As an alternative to the browser app, Android users can download and install the APK package directly (Android may prompt you to allow installs from your browser).',
+      apkSha256Label: 'SHA-256 checksum:',
       apkDownloadButton: 'Download Android APK',
     },
   },

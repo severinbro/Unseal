@@ -32,6 +32,7 @@ const SIMPLE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export interface AuthAndAccountModalProps {
   modal: AuthModalModel;
   privacyPolicyUrl?: string;
+  termsUrl?: string;
   locale?: Locale;
   compact?: boolean;
   onSelectView: (view: AuthModalView) => void;
@@ -47,6 +48,7 @@ export interface AuthAndAccountModalProps {
 export function AuthAndAccountModal({
   modal,
   privacyPolicyUrl,
+  termsUrl,
   locale = DEFAULT_LOCALE,
   compact = false,
   onSelectView,
@@ -105,6 +107,12 @@ export function AuthAndAccountModal({
     }
   };
 
+  const handleOpenTerms = (): void => {
+    if (termsUrl) {
+      void Linking.openURL(termsUrl);
+    }
+  };
+
   const handleRegisterSubmit = (): void => {
     setLocalError(null);
     setInfoBanner(null);
@@ -134,6 +142,7 @@ export function AuthAndAccountModal({
       email: trimmedEmail,
       password,
       acceptedPrivacyPolicy: true,
+      acceptedTerms: true,
     })
       .then(() => {
         setIdentifier(trimmedPseudonym);
@@ -510,6 +519,14 @@ export function AuthAndAccountModal({
                 style={styles.privacyLinkText}
               >
                 {t.privacyPolicyLinkText}
+              </Text>
+              {t.termsConsentConnector}
+              <Text
+                accessibilityRole="link"
+                onPress={handleOpenTerms}
+                style={styles.privacyLinkText}
+              >
+                {t.termsLinkText}
               </Text>
               .
             </Text>

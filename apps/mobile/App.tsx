@@ -1208,6 +1208,11 @@ export function App(props: AppProps = {}): React.JSX.Element {
 
   const privacyPolicyUrl =
     state.config.privacyPolicyUrl ?? apiClient.getPrivacyPolicyUrl();
+  const impressumUrl =
+    state.config.impressumUrl ?? apiClient.getImpressumUrl();
+  const termsUrl = state.config.termsUrl ?? apiClient.getTermsUrl();
+  const licensesUrl = state.config.licensesUrl ?? apiClient.getLicensesUrl();
+  const sourceCodeUrl = state.config.sourceCodeUrl ?? null;
 
   const latchA11yLabel = drawingToolbar.visible
     ? isDrawingCollapsed
@@ -1655,6 +1660,10 @@ export function App(props: AppProps = {}): React.JSX.Element {
                 locale={state.locale}
                 compact={layout.isCompact}
                 privacyPolicyUrl={privacyPolicyUrl}
+                impressumUrl={impressumUrl}
+                termsUrl={termsUrl}
+                licensesUrl={licensesUrl}
+                sourceCodeUrl={sourceCodeUrl}
                 apkDownloadUrl={mapControls.apkDownloadUrl}
                 abuseContact={state.config.abuseContact}
                 onClose={() => setAboutModalOpen(false)}
@@ -1699,6 +1708,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
                 locale={state.locale}
                 compact={layout.isCompact}
                 apkDownloadUrl={mapControls.apkDownloadUrl}
+                apkSha256={mapControls.apkSha256}
                 onClose={() => setInstallModalOpen(false)}
                 onDownloadError={(msg) => {
                   setInstallModalOpen(false);
@@ -1741,6 +1751,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
               <AuthAndAccountModal
                 modal={authModal}
                 privacyPolicyUrl={privacyPolicyUrl}
+                termsUrl={termsUrl}
                 locale={state.locale}
                 compact={layout.isCompact}
                 onSelectView={(view) =>

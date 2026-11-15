@@ -157,7 +157,11 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
       PUBLIC_BASE_URL: 'https://entsiegelung.example.org',
       UPLOADS_DIR: uploadsDir,
       AUTO_SEED_VG250: 'false',
+      OPERATOR_NAME: 'Initiative Entsiegelung Test e.V.',
+      OPERATOR_ADDRESS: 'Musterstraße 1\\n55116 Mainz',
+      OPERATOR_EMAIL: 'kontakt@entsiegelung.example.org',
       ABUSE_CONTACT: 'moderation@entsiegelung.example.org',
+      BUG_REPORT_TO: 'bugs@entsiegelung.example.org',
       AUTH_CAPTCHA_ENABLED: 'true',
       AUTH_CAPTCHA_MAX_NUMBER: '500',
       ORTHOPHOTO_URL_TEMPLATE:
@@ -241,6 +245,25 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     const privacyHtml = await privacyRes.text();
     assert.match(privacyHtml, /Datenschutzerklärung/);
     assert.match(privacyHtml, /GPS verified/);
+    assert.match(privacyHtml, /Initiative Entsiegelung Test e\.V\./);
+
+    const impressumRes = await fetch(`${baseUrl}/auth/impressum`);
+    assert.equal(impressumRes.status, 200);
+    const impressumHtml = await impressumRes.text();
+    assert.match(impressumHtml, /Impressum/);
+    assert.match(impressumHtml, /Initiative Entsiegelung Test e\.V\./);
+
+    const termsRes = await fetch(`${baseUrl}/auth/terms`);
+    assert.equal(termsRes.status, 200);
+    const termsHtml = await termsRes.text();
+    assert.match(termsHtml, /CC0 1\.0/);
+    assert.match(termsHtml, /CC BY 4\.0/);
+
+    const licensesRes = await fetch(`${baseUrl}/auth/licenses`);
+    assert.equal(licensesRes.status, 200);
+    const licensesHtml = await licensesRes.text();
+    assert.match(licensesHtml, /AGPL-3\.0-or-later/);
+    assert.match(licensesHtml, /MPL-2\.0/);
 
     // 1. Anonymous cold-start: /api/v1/config + /api/v1/polygons?bbox=... (Vary: Authorization)
     const anonStorage = createMemorySessionStorage();
@@ -387,6 +410,7 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
       email: 'courtyard_author@example.org',
       password: 'correct-horse-battery-staple',
       acceptedPrivacyPolicy: true,
+      acceptedTerms: true,
     });
     assert.equal(regAuthor.status, 'verification_email_sent');
     assert.equal(mailer.outbox.length, 1);
@@ -489,6 +513,7 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
       email: 'district_voter@example.org',
       password: 'second-user-strong-pass',
       acceptedPrivacyPolicy: true,
+      acceptedTerms: true,
     });
     await confirmEmailViaHostedWebPage(
       baseUrl,
@@ -630,6 +655,7 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
       email: 'umweltamt@example.org',
       password: 'municipal-admin-pass-123',
       acceptedPrivacyPolicy: true,
+      acceptedTerms: true,
     });
     await confirmEmailViaHostedWebPage(
       baseUrl,
@@ -726,7 +752,7 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     });
     assert.equal(bugRes.status, 'sent');
     assert.equal(mailer.bugReports.length, 1);
-    assert.equal(mailer.bugReports[0]?.to, 'info@open-unseal.de');
+    assert.equal(mailer.bugReports[0]?.to, 'bugs@entsiegelung.example.org');
     assert.equal(mailer.bugReports[0]?.reporterPseudonym, 'courtyard_author');
     assert.equal(mailer.bugReports[0]?.contactEmail, 'reporter@example.org');
 
@@ -795,6 +821,7 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
       email: 'recovery_tester@example.org',
       password: 'initial-password-123',
       acceptedPrivacyPolicy: true,
+      acceptedTerms: true,
     });
     await confirmEmailViaHostedWebPage(baseUrl, mailer.outbox[0]!.actionUrl);
 
@@ -919,6 +946,7 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
       email: 'courtyard_seed@example.org',
       password: 'seed-author-strong-pass',
       acceptedPrivacyPolicy: true,
+      acceptedTerms: true,
     });
     await confirmEmailViaHostedWebPage(
       baseUrl,
@@ -995,6 +1023,7 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
           email: 'brigade@example.org',
           password: 'valid-password-1234',
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
         }),
       (err: unknown) => {
         assert.ok(err instanceof ApiError);
@@ -1021,6 +1050,7 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
           email: 'throwaway@mailinator.com',
           password: 'strong-password-1234',
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
         }),
       (err: unknown) => {
         assert.ok(err instanceof ApiError);
@@ -1036,6 +1066,7 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
       email: 'newcomer.hh@gmail.com',
       password: 'strong-password-1234',
       acceptedPrivacyPolicy: true,
+      acceptedTerms: true,
     });
 
     // Canonical email normalization blocks Gmail dot/+tag alias duplicate
@@ -1046,6 +1077,7 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
           email: 'newcomerhh+sockpuppet@googlemail.com',
           password: 'strong-password-1234',
           acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
         }),
       (err: unknown) => {
         assert.ok(err instanceof ApiError);
@@ -1192,6 +1224,7 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
       email: 'reviewer@example.org',
       password: 'reviewer-password-1234',
       acceptedPrivacyPolicy: true,
+      acceptedTerms: true,
     });
     await confirmEmailViaHostedWebPage(
       baseUrl,
@@ -1243,6 +1276,7 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
       email: 'supporter@example.org',
       password: 'supporter-password-1234',
       acceptedPrivacyPolicy: true,
+      acceptedTerms: true,
     });
     await confirmEmailViaHostedWebPage(
       baseUrl,
