@@ -1,6 +1,7 @@
 import {
   ApiError,
   VoteResponseSchema,
+  type PolygonStatus,
   type VoteRequest,
   type VoteResponse,
 } from '@entsiegelung/shared';
@@ -50,13 +51,36 @@ export class VoteRepository {
       // Global lock order: lock users row FOR KEY SHARE before locking polygons FOR UPDATE
       await lockUserForWrite(client, params.userId);
 
-      const lockRes = await client.query<{ id: string }>(
-        'SELECT id FROM polygons WHERE id = $1 FOR UPDATE',
+      const lockRes = await client.query<{
+        id: string;
+        user_id: string | null;
+        status: PolygonStatus;
+      }>(
+        'SELECT id, user_id, status FROM polygons WHERE id = $1 FOR UPDATE',
         [params.polygonId],
       );
       const lockedPolygon = lockRes.rows[0];
       if (!lockedPolygon) {
         throw new ApiError(404, 'NOT_FOUND', 'Polygon not found.');
+      }
+
+      if (lockedPolygon.status !== 'proposed') {
+        throw new ApiError(
+          409,
+          'VOTING_CLOSED',
+          'Voting is closed for areas marked as in progress or finished.',
+        );
+      }
+
+      if (
+        lockedPolygon.user_id !== null &&
+        lockedPolygon.user_id === params.userId
+      ) {
+        throw new ApiError(
+          403,
+          'FORBIDDEN_SELF_VOTE',
+          'You cannot vote on your own proposal.',
+        );
       }
 
       await client.query(
@@ -110,13 +134,24 @@ export class VoteRepository {
       // Global lock order: lock users row FOR KEY SHARE before locking polygons FOR UPDATE
       await lockUserForWrite(client, userId);
 
-      const lockRes = await client.query<{ id: string }>(
-        'SELECT id FROM polygons WHERE id = $1 FOR UPDATE',
+      const lockRes = await client.query<{
+        id: string;
+        status: PolygonStatus;
+      }>(
+        'SELECT id, status FROM polygons WHERE id = $1 FOR UPDATE',
         [polygonId],
       );
       const lockedPolygon = lockRes.rows[0];
       if (!lockedPolygon) {
         throw new ApiError(404, 'NOT_FOUND', 'Polygon not found.');
+      }
+
+      if (lockedPolygon.status !== 'proposed') {
+        throw new ApiError(
+          409,
+          'VOTING_CLOSED',
+          'Voting is closed for areas marked as in progress or finished.',
+        );
       }
 
       await client.query(

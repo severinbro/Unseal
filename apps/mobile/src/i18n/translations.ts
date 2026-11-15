@@ -92,6 +92,9 @@ export interface TranslationDictionary {
     readonly imageryPrefix: string;
     readonly switchLocaleA11y: string;
     readonly aboutButtonA11y: string;
+    readonly bugReportButtonA11y: string;
+    readonly bugReportButtonTooltip: string;
+    readonly searchAddressA11y: string;
     readonly apkDownloadA11y: string;
     readonly apkDownloadCompact: string;
     readonly apkDownloadFull: string;
@@ -309,6 +312,10 @@ export interface TranslationDictionary {
     readonly clearFlagsAdminButton: (count: number) => string;
     readonly clearingFlags: string;
     readonly flagErrorFallback: string;
+    readonly selfVoteDisabledHint: string;
+    readonly votingClosedInProgressHint: string;
+    readonly votingClosedFinishedHint: string;
+    readonly commentsClosedFinishedHint: string;
   };
   readonly auth: {
     readonly modalA11y: string;
@@ -347,6 +354,7 @@ export interface TranslationDictionary {
     readonly pseudonymPlaceholderRegister: string;
     readonly pseudonymPlaceholderLogin: string;
     readonly emailLabel: string;
+    readonly recoverEmailLabel: string;
     readonly emailA11y: string;
     readonly emailPlaceholder: string;
     readonly identifierLabel: string;
@@ -448,6 +456,41 @@ export interface TranslationDictionary {
     readonly privacyLinkLabel: string;
     readonly apkDownloadButton: string;
   };
+  readonly search: {
+    readonly modalA11y: string;
+    readonly title: string;
+    readonly subtitle: string;
+    readonly closeA11y: string;
+    readonly close: string;
+    readonly inputPlaceholder: string;
+    readonly inputA11y: string;
+    readonly submitButton: string;
+    readonly searchingBusy: string;
+    readonly minCharsError: string;
+    readonly noResults: string;
+    readonly attributionNote: string;
+    readonly errorFallback: string;
+  };
+  readonly bugReport: {
+    readonly modalA11y: string;
+    readonly title: string;
+    readonly subtitle: string;
+    readonly closeA11y: string;
+    readonly close: string;
+    readonly descriptionLabel: string;
+    readonly descriptionPlaceholder: string;
+    readonly descriptionA11y: string;
+    readonly contactEmailLabel: string;
+    readonly contactEmailPlaceholder: string;
+    readonly contactEmailA11y: string;
+    readonly submitButton: string;
+    readonly submittingBusy: string;
+    readonly successTitle: string;
+    readonly successBody: string;
+    readonly tooShortError: string;
+    readonly invalidEmailError: string;
+    readonly errorFallback: string;
+  };
 }
 
 export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
@@ -482,6 +525,9 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       imageryPrefix: 'Bilddaten:',
       switchLocaleA11y: 'Sprache auf Englisch (EN) umstellen',
       aboutButtonA11y: 'Über Unseal, Kartendaten und Datenschutz öffnen',
+      bugReportButtonA11y: 'Fehler melden',
+      bugReportButtonTooltip: 'Fehler melden',
+      searchAddressA11y: 'Adresse suchen und auf der Karte anzeigen',
       apkDownloadA11y: 'Android-App als APK-Datei herunterladen',
       apkDownloadCompact: 'APK',
       apkDownloadFull: 'Android-APK herunterladen',
@@ -763,6 +809,14 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       clearFlagsAdminButton: (count) => `Prüfmeldungen zurücksetzen (${count})`,
       clearingFlags: 'Setzt zurück…',
       flagErrorFallback: 'Prüfmeldung konnte nicht aktualisiert werden.',
+      selfVoteDisabledHint:
+        'Eigene Vorschläge können nicht selbst bewertet werden.',
+      votingClosedInProgressHint:
+        'Abstimmung geschlossen – diese Fläche wird bereits entsiegelt.',
+      votingClosedFinishedHint:
+        'Abstimmung geschlossen – diese Fläche wurde bereits entsiegelt.',
+      commentsClosedFinishedHint:
+        'Kommentare sind für bereits entsiegelte Flächen geschlossen.',
     },
     auth: {
       modalA11y: 'Benutzerkonto',
@@ -811,6 +865,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       pseudonymPlaceholderRegister: 'z. B. innenhof_initiative',
       pseudonymPlaceholderLogin: 'Pseudonym oder E-Mail',
       emailLabel: 'E-Mail-Adresse (nur für Bestätigung & Recovery)',
+      recoverEmailLabel: 'E-Mail-Adresse',
       emailA11y: 'E-Mail-Adresse',
       emailPlaceholder: 'name@beispiel.de',
       identifierLabel: 'Pseudonym oder E-Mail-Adresse',
@@ -949,6 +1004,45 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       privacyLinkLabel: 'Datenschutzerklärung',
       apkDownloadButton: 'Android-APK herunterladen',
     },
+    search: {
+      modalA11y: 'Adresssuche',
+      title: 'Adresse suchen',
+      subtitle: 'Straßenname, Hausnummer oder Ort eingeben',
+      closeA11y: 'Adresssuche schließen',
+      close: 'Schließen',
+      inputPlaceholder: 'z. B. Domstraße 12, Mainz',
+      inputA11y: 'Adresse oder Ort suchen',
+      submitButton: 'Suchen',
+      searchingBusy: 'Sucht…',
+      minCharsError: 'Bitte mindestens 2 Zeichen eingeben.',
+      noResults: 'Keine passenden Adressen gefunden.',
+      attributionNote: 'Geocodierung via OpenStreetMap Nominatim (ODbL)',
+      errorFallback: 'Adresssuche momentan nicht verfügbar.',
+    },
+    bugReport: {
+      modalA11y: 'Fehler melden',
+      title: 'Fehler melden',
+      subtitle:
+        'Deine Meldung wird per E-Mail an info@open-unseal.de gesendet.',
+      closeA11y: 'Fehlermeldung schließen',
+      close: 'Schließen',
+      descriptionLabel: 'Was ist passiert?',
+      descriptionPlaceholder:
+        'Beschreibe kurz den Fehler und wie er aufgetreten ist…',
+      descriptionA11y: 'Fehlerbeschreibung',
+      contactEmailLabel: 'Deine E-Mail für Rückfragen (optional)',
+      contactEmailPlaceholder: 'name@beispiel.de (optional)',
+      contactEmailA11y: 'Optionale Kontakt-E-Mail',
+      submitButton: 'Fehlermeldung senden',
+      submittingBusy: 'Sendet…',
+      successTitle: 'Vielen Dank!',
+      successBody:
+        'Deine Fehlermeldung wurde an info@open-unseal.de übermittelt.',
+      tooShortError:
+        'Bitte beschreibe den Fehler mit mindestens 5 Zeichen.',
+      invalidEmailError: 'Bitte gib eine gültige E-Mail-Adresse ein oder lasse das Feld leer.',
+      errorFallback: 'Fehlermeldung konnte nicht gesendet werden.',
+    },
   },
   en: {
     app: {
@@ -980,6 +1074,9 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       imageryPrefix: 'Imagery:',
       switchLocaleA11y: 'Switch language to German (DE)',
       aboutButtonA11y: 'Open About Unseal, map attributions, and privacy',
+      bugReportButtonA11y: 'Report a bug',
+      bugReportButtonTooltip: 'Report a bug',
+      searchAddressA11y: 'Search for an address and jump to it on the map',
       apkDownloadA11y: 'Download Android APK package',
       apkDownloadCompact: 'APK',
       apkDownloadFull: 'Download Android APK',
@@ -1242,6 +1339,13 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       clearFlagsAdminButton: (count) => `Clear review flags (${count})`,
       clearingFlags: 'Clearing…',
       flagErrorFallback: 'Unable to update review flag.',
+      selfVoteDisabledHint: 'You cannot vote on your own proposal.',
+      votingClosedInProgressHint:
+        'Voting closed — unsealing is already in progress for this area.',
+      votingClosedFinishedHint:
+        'Voting closed — this area has already been unsealed.',
+      commentsClosedFinishedHint:
+        'Comments are closed for finished areas.',
     },
     auth: {
       modalA11y: 'Contributor account modal',
@@ -1288,6 +1392,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       pseudonymPlaceholderRegister: 'e.g. courtyard_mapper',
       pseudonymPlaceholderLogin: 'Pseudonym or email',
       emailLabel: 'Email Address (confirmation & recovery only)',
+      recoverEmailLabel: 'Email Address',
       emailA11y: 'Email address',
       emailPlaceholder: 'name@example.org',
       identifierLabel: 'Pseudonym or Email Address',
@@ -1423,6 +1528,43 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       attributionVg250Short: 'VG250 © BKG (dl-de/by-2-0)',
       privacyLinkLabel: 'Privacy Policy',
       apkDownloadButton: 'Download Android APK',
+    },
+    search: {
+      modalA11y: 'Address search',
+      title: 'Search Address',
+      subtitle: 'Enter a street, house number, or place',
+      closeA11y: 'Close address search',
+      close: 'Close',
+      inputPlaceholder: 'e.g. Domstraße 12, Mainz',
+      inputA11y: 'Search address or place',
+      submitButton: 'Search',
+      searchingBusy: 'Searching…',
+      minCharsError: 'Please enter at least 2 characters.',
+      noResults: 'No matching addresses found.',
+      attributionNote: 'Geocoding powered by OpenStreetMap Nominatim (ODbL)',
+      errorFallback: 'Address search is temporarily unavailable.',
+    },
+    bugReport: {
+      modalA11y: 'Report a bug',
+      title: 'Report a Bug',
+      subtitle: 'Your report will be emailed to info@open-unseal.de.',
+      closeA11y: 'Close bug report dialog',
+      close: 'Close',
+      descriptionLabel: 'What went wrong?',
+      descriptionPlaceholder:
+        'Briefly describe the issue and how to reproduce it…',
+      descriptionA11y: 'Bug description',
+      contactEmailLabel: 'Your email for follow-up (optional)',
+      contactEmailPlaceholder: 'name@example.org (optional)',
+      contactEmailA11y: 'Optional contact email',
+      submitButton: 'Send Bug Report',
+      submittingBusy: 'Sending…',
+      successTitle: 'Thank you!',
+      successBody:
+        'Your bug report has been sent to info@open-unseal.de.',
+      tooShortError: 'Please describe the bug in at least 5 characters.',
+      invalidEmailError: 'Please enter a valid email address or leave it blank.',
+      errorFallback: 'Could not send bug report.',
     },
   },
 };
@@ -1590,8 +1732,14 @@ const GERMAN_API_ERROR_MESSAGES: Readonly<Record<ErrorCode, string>> = {
     'Nur die erstellende Person kann diesen Eintrag bearbeiten oder löschen.',
   FORBIDDEN_SELF_FLAG:
     'Eigene Vorschläge können nicht selbst zur Prüfung gemeldet werden.',
+  FORBIDDEN_SELF_VOTE:
+    'Eigene Vorschläge und Kommentare können nicht selbst bewertet werden.',
   FORBIDDEN_ADMIN_ONLY:
     'Diese Funktion steht nur Administrator-Konten zur Verfügung.',
+  VOTING_CLOSED:
+    'Für Flächen mit dem Status „Wird entsiegelt“ oder „Entsiegelt“ ist keine Abstimmung mehr möglich.',
+  COMMENTS_CLOSED:
+    'Für bereits entsiegelte Flächen können keine neuen Kommentare mehr hinzugefügt werden.',
   NOT_FOUND: 'Der angeforderte Eintrag wurde nicht gefunden.',
   VALIDATION_ERROR: 'Ungültige Eingabedaten.',
   UNSUPPORTED_MEDIA_TYPE:

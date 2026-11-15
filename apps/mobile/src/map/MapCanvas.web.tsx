@@ -151,12 +151,22 @@ export function MapCanvas({
     const initialLng = cameraTarget?.lng ?? config.initialView.lng;
     const initialLat = cameraTarget?.lat ?? config.initialView.lat;
     const initialZoom = cameraTarget?.zoom ?? config.initialView.zoom;
+    const initialBounds = cameraTarget?.bounds;
 
     const map = new MapLibreMap({
       container,
       style: config.osmStyleUrl,
-      center: [initialLng, initialLat],
-      zoom: initialZoom,
+      ...(initialBounds
+        ? {
+            bounds: [
+              [initialBounds.minLng, initialBounds.minLat],
+              [initialBounds.maxLng, initialBounds.maxLat],
+            ] as [[number, number], [number, number]],
+          }
+        : {
+            center: [initialLng, initialLat],
+            zoom: initialZoom,
+          }),
       pitchWithRotate: false,
       touchPitch: false,
       dragRotate: true,
@@ -485,6 +495,20 @@ export function MapCanvas({
       return;
     }
     lastCameraSeqRef.current = cameraTarget.seq;
+    const b = cameraTarget.bounds;
+    if (
+      b &&
+      (b.maxLng - b.minLng > 0.002 || b.maxLat - b.minLat > 0.002)
+    ) {
+      map.fitBounds(
+        [
+          [b.minLng, b.minLat],
+          [b.maxLng, b.maxLat],
+        ],
+        { padding: 40, maxZoom: 18, duration: 350 },
+      );
+      return;
+    }
     map.flyTo({
       center: [cameraTarget.lng, cameraTarget.lat],
       ...(cameraTarget.zoom !== undefined ? { zoom: cameraTarget.zoom } : {}),

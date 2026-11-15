@@ -170,6 +170,25 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     app = await buildApp(config, pool, {
       logger: createLogger({ level: 'silent' }),
       mailer,
+      geocodeFetch: async (input) => {
+        const urlStr = String(input);
+        const body = urlStr.includes('Mainz')
+          ? [
+              {
+                place_id: 90123,
+                display_name:
+                  'Mainz Hauptbahnhof, Bahnhofplatz, Mainz, Rheinland-Pfalz, Deutschland',
+                lat: '50.0011',
+                lon: '8.2587',
+                boundingbox: ['49.9995', '50.0028', '8.2565', '8.2610'],
+              },
+            ]
+          : [];
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      },
       rateLimits: {
         register: { max: 50, timeWindow: '1 hour' },
       },
@@ -517,7 +536,25 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     assert.equal(mainzPoly.properties.municipalityName, 'Mainz');
 
     await authorClient.putVote(mainzPoly.id, 1);
-    await voterClient.putVote(mainzPoly.id, 1);
+    // Self-voting on own polygon is rejected with 403 FORBIDDEN_SELF_VOTE
+    await assert.rejects(
+      () => voterClient.putVote(mainzPoly.id, 1),
+      (err: unknown) => {
+        assert.ok(err instanceof ApiError);
+        assert.equal(err.statusCode, 403);
+        assert.equal(err.code, 'FORBIDDEN_SELF_VOTE');
+        return true;
+      },
+    );
+    await assert.rejects(
+      () => authorClient.putVote(polygonId, -1),
+      (err: unknown) => {
+        assert.ok(err instanceof ApiError);
+        assert.equal(err.statusCode, 403);
+        assert.equal(err.code, 'FORBIDDEN_SELF_VOTE');
+        return true;
+      },
+    );
     const upvoteHamburg = await voterClient.putVote(polygonId, 1);
     assert.equal(upvoteHamburg.score, 1);
 
@@ -544,13 +581,31 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     assert.equal(replyComment.parentId, rootComment.id);
 
     await authorClient.putCommentVote(replyComment.id);
-    await voterClient.putCommentVote(replyComment.id);
+    // Self-upvoting own comment is rejected with 403 FORBIDDEN_SELF_VOTE
+    await assert.rejects(
+      () => voterClient.putCommentVote(replyComment.id),
+      (err: unknown) => {
+        assert.ok(err instanceof ApiError);
+        assert.equal(err.statusCode, 403);
+        assert.equal(err.code, 'FORBIDDEN_SELF_VOTE');
+        return true;
+      },
+    );
+    await assert.rejects(
+      () => authorClient.putCommentVote(rootComment.id),
+      (err: unknown) => {
+        assert.ok(err instanceof ApiError);
+        assert.equal(err.statusCode, 403);
+        assert.equal(err.code, 'FORBIDDEN_SELF_VOTE');
+        return true;
+      },
+    );
 
     const commentsBeforeDelete = await anonClient.listPolygonComments(polygonId);
     assert.equal(commentsBeforeDelete.comments.length, 2);
     assert.equal(commentsBeforeDelete.topCommentId, replyComment.id);
     assert.equal(commentsBeforeDelete.comments[0]?.id, replyComment.id);
-    assert.equal(commentsBeforeDelete.comments[0]?.upvotes, 2);
+    assert.equal(commentsBeforeDelete.comments[0]?.upvotes, 1);
 
     const polyWithComments = await anonClient.getPolygon(polygonId);
     assert.equal(polyWithComments.properties.commentCount, 2);
@@ -607,12 +662,73 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     assert.equal(markedInProgress.properties.status, 'in_progress');
     assert.equal(markedInProgress.properties.finishedAt, null);
 
+    // While 'in_progress': area voting is locked (409 VOTING_CLOSED), but comments are still permitted
+    await assert.rejects(
+      () => adminClient.putVote(polygonId, 1),
+      (err: unknown) => {
+        assert.ok(err instanceof ApiError);
+        assert.equal(err.statusCode, 409);
+        assert.equal(err.code, 'VOTING_CLOSED');
+        return true;
+      },
+    );
+    const inProgressComment = await adminClient.createPolygonComment(polygonId, {
+      body: 'Municipal construction crew scheduled for unsealing next month.',
+    });
+    assert.equal(inProgressComment.authorPseudonym, 'umweltamt_hh');
+
     const markedFinished = await adminClient.patchPolygonStatus(
       polygonId,
       'finished',
     );
     assert.equal(markedFinished.properties.status, 'finished');
     assert.ok(markedFinished.properties.finishedAt);
+
+    // Once 'finished': BOTH area voting (409 VOTING_CLOSED) and comments (409 COMMENTS_CLOSED) are locked
+    await assert.rejects(
+      () => adminClient.putVote(polygonId, 1),
+      (err: unknown) => {
+        assert.ok(err instanceof ApiError);
+        assert.equal(err.statusCode, 409);
+        assert.equal(err.code, 'VOTING_CLOSED');
+        return true;
+      },
+    );
+    await assert.rejects(
+      () =>
+        adminClient.createPolygonComment(polygonId, {
+          body: 'Late comment after project completion.',
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof ApiError);
+        assert.equal(err.statusCode, 409);
+        assert.equal(err.code, 'COMMENTS_CLOSED');
+        return true;
+      },
+    );
+
+    // Nominatim geocoding proxy + Bug report delivery to info@open-unseal.de
+    const geocodeRes = await anonClient.searchAddress('Mainz Hauptbahnhof', 'de');
+    assert.equal(geocodeRes.results.length, 1);
+    assert.equal(geocodeRes.results[0]?.lng, 8.2587);
+    assert.equal(geocodeRes.results[0]?.lat, 50.0011);
+    assert.deepEqual(geocodeRes.results[0]?.boundingBox, [
+      8.2565,
+      49.9995,
+      8.261,
+      50.0028,
+    ]);
+
+    const bugRes = await authorClient.submitBugReport({
+      description: 'Opacity slider slightly jitters on older Android WebView.',
+      contactEmail: 'reporter@example.org',
+      platform: 'android',
+    });
+    assert.equal(bugRes.status, 'sent');
+    assert.equal(mailer.bugReports.length, 1);
+    assert.equal(mailer.bugReports[0]?.to, 'info@open-unseal.de');
+    assert.equal(mailer.bugReports[0]?.reporterPseudonym, 'courtyard_author');
+    assert.equal(mailer.bugReports[0]?.contactEmail, 'reporter@example.org');
 
     const importGeoJson = JSON.stringify({
       type: 'FeatureCollection',
@@ -795,8 +911,24 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     assert.equal(state.draftNote, 'Tiny sub-meter patch');
     assert.ok(state.draftSubmitError && state.draftSubmitError.length > 0);
 
-    // Create valid polygon, test inline CAST_VOTE auth continuation, and run admin CLI commands
-    const validPolygon = await userClient.createPolygon({
+    // Create valid polygon by a separate author, test inline CAST_VOTE auth continuation, and run admin CLI commands
+    const seedAuthorStorage = createMemorySessionStorage();
+    const seedAuthorClient = new PpgisApiClient(baseUrl, seedAuthorStorage);
+    await seedAuthorClient.register({
+      pseudonym: 'courtyard_seed',
+      email: 'courtyard_seed@example.org',
+      password: 'seed-author-strong-pass',
+      acceptedPrivacyPolicy: true,
+    });
+    await confirmEmailViaHostedWebPage(
+      baseUrl,
+      mailer.outbox[mailer.outbox.length - 1]!.actionUrl,
+    );
+    await seedAuthorClient.login({
+      identifier: 'courtyard_seed',
+      password: 'seed-author-strong-pass',
+    });
+    const validPolygon = await seedAuthorClient.createPolygon({
       geometry: {
         type: 'Polygon',
         coordinates: [[...COURTYARD_VERTICES, COURTYARD_VERTICES[0]!]],
@@ -804,6 +936,12 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
       surfaceType: 'pavers',
       note: 'Contains accidental phone number 555-0199',
     });
+    const anonValidPolygon = await staleClient
+      .getPolygon(validPolygon.id)
+      .catch(() => ({
+        ...validPolygon,
+        properties: { ...validPolygon.properties, isAuthor: false },
+      }));
 
     let anonState = appReducer(initialAppState, {
       type: 'CONFIG_LOADED',
@@ -811,7 +949,12 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     });
     anonState = appReducer(anonState, {
       type: 'VIEWPORT_FEATURES_LOADED',
-      features: [validPolygon],
+      features: [
+        {
+          ...anonValidPolygon,
+          properties: { ...anonValidPolygon.properties, isAuthor: false },
+        },
+      ],
       truncated: false,
     });
     anonState = appReducer(anonState, {
@@ -1090,8 +1233,27 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     );
     assert.equal(initialNeedsReview.features.length, 2);
 
-    // Once basePoly receives +1 and -1 (net score = 0, total ratings = 2), it has ratings so it leaves 'needs_review' immediately
-    await newcomerClient.putVote(basePoly.id, 1);
+    // Once basePoly receives +1 and -1 from two non-author voters (net score = 0, total ratings = 2), it has ratings so it leaves 'needs_review' immediately
+    const supporterClient = new PpgisApiClient(
+      baseUrl,
+      createMemorySessionStorage(),
+    );
+    await supporterClient.register({
+      pseudonym: 'civic_supporter',
+      email: 'supporter@example.org',
+      password: 'supporter-password-1234',
+      acceptedPrivacyPolicy: true,
+    });
+    await confirmEmailViaHostedWebPage(
+      baseUrl,
+      mailer.outbox[mailer.outbox.length - 1]!.actionUrl,
+    );
+    await supporterClient.login({
+      identifier: 'civic_supporter',
+      password: 'supporter-password-1234',
+    });
+
+    await supporterClient.putVote(basePoly.id, 1);
     await reviewerClient.putVote(basePoly.id, -1);
     const ratedZeroNet = await reviewerClient.getPolygon(basePoly.id);
     assert.equal(ratedZeroNet.properties.score, 0);

@@ -724,6 +724,7 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
 
     try {
       const citizen = await registerUser(app, 'GoodCitizen', '198.51.100.70');
+      const neighbor = await registerUser(app, 'GoodNeighbor', '203.0.113.70');
       const abuser = await registerUser(app, 'SpamAbuser', '198.51.100.71');
 
       const citizenPoly = await createPolygonForUser(app, citizen.sessionToken, {
@@ -746,12 +747,24 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
         remoteAddress: '198.51.100.71',
       });
 
-      // Citizen upvotes citizenPoly (+1) and abuserPoly (+1); abuser downvotes citizenPoly (-1)
-      await app.inject({
+      // Citizen self-vote is rejected with 403 FORBIDDEN_SELF_VOTE; neighbor upvotes citizenPoly (+1), citizen upvotes abuserPoly (+1), abuser downvotes citizenPoly (-1)
+      const selfVoteAttempt = await app.inject({
         method: 'PUT',
         url: `/api/v1/polygons/${citizenPoly.id}/vote`,
         remoteAddress: '198.51.100.70',
         headers: { authorization: `Bearer ${citizen.sessionToken}` },
+        payload: { value: 1 },
+      });
+      assert.equal(selfVoteAttempt.statusCode, 403);
+      assert.equal(
+        ApiErrorEnvelopeSchema.parse(selfVoteAttempt.json()).error.code,
+        'FORBIDDEN_SELF_VOTE',
+      );
+      await app.inject({
+        method: 'PUT',
+        url: `/api/v1/polygons/${citizenPoly.id}/vote`,
+        remoteAddress: '203.0.113.70',
+        headers: { authorization: `Bearer ${neighbor.sessionToken}` },
         payload: { value: 1 },
       });
       await app.inject({

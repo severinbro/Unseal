@@ -623,6 +623,30 @@ describe('PpgisApiClient v2 against live HTTP server', () => {
           return;
         }
 
+        if (method === 'GET' && url.startsWith('/api/v1/geocode?')) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              results: [
+                {
+                  placeId: '4711',
+                  displayName: 'Gutenbergplatz, Mainz, Deutschland',
+                  lat: 49.9989,
+                  lng: 8.2739,
+                  boundingBox: [8.271, 49.997, 8.276, 50.001],
+                },
+              ],
+            }),
+          );
+          return;
+        }
+
+        if (method === 'POST' && url === '/api/v1/bug-reports') {
+          res.writeHead(201, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ status: 'sent' }));
+          return;
+        }
+
         res.writeHead(502, { 'Content-Type': 'text/html' });
         res.end('<html>Bad Gateway</html>');
       });
@@ -754,6 +778,18 @@ describe('PpgisApiClient v2 against live HTTP server', () => {
       assert.equal(unvotedPhoto.myVote, 0);
 
       await client.deletePhoto(SAMPLE_PHOTO_ID);
+
+      const geocodeRes = await client.searchAddress('Gutenbergplatz Mainz', 'de');
+      assert.equal(geocodeRes.results.length, 1);
+      assert.equal(geocodeRes.results[0]?.placeId, '4711');
+
+      const bugReportRes = await client.submitBugReport({
+        description: 'Button label overlaps on narrow viewport.',
+        contactEmail: 'tester@example.org',
+        platform: 'web',
+        pageUrl: 'https://app.open-unseal.de/',
+      });
+      assert.equal(bugReportRes.status, 'sent');
 
       // Forgot + Reset password
       const forgotRes = await client.forgotPassword('mapper@example.org');
@@ -1484,5 +1520,54 @@ describe('appReducer and viewModels v2', () => {
     assert.equal(deletedOther?.properties.flagCount, 0);
     assert.equal(deletedOther?.properties.isFlagged, false);
     assert.equal(deletedOther?.properties.myFlag, false);
+
+    // CAST_VOTE reducer ignores self-votes and non-proposed ('in_progress' / 'finished') polygons
+    const anonWithBlockedPolygons = appReducer(
+      appReducer(initialAppState, {
+        type: 'CONFIG_LOADED',
+        config: SAMPLE_CONFIG_WITH_ORTHO,
+      }),
+      {
+        type: 'VIEWPORT_FEATURES_LOADED',
+        features: [
+          authoredNewPoly,
+          makePolygonFeature({
+            id: '55555555-5555-4555-8555-555555555555',
+            isAuthor: false,
+            status: 'in_progress',
+          }),
+          makePolygonFeature({
+            id: '66666666-6666-4666-8666-666666666666',
+            isAuthor: false,
+            status: 'finished',
+          }),
+        ],
+        truncated: false,
+      },
+    );
+
+    const afterSelfVoteAttempt = appReducer(anonWithBlockedPolygons, {
+      type: 'CAST_VOTE',
+      polygonId: authoredNewPoly.id,
+      value: 1,
+    });
+    assert.equal(afterSelfVoteAttempt.authModalOpen, false);
+    assert.equal(afterSelfVoteAttempt.pendingIntent, null);
+
+    const afterInProgressVoteAttempt = appReducer(anonWithBlockedPolygons, {
+      type: 'CAST_VOTE',
+      polygonId: '55555555-5555-4555-8555-555555555555',
+      value: 1,
+    });
+    assert.equal(afterInProgressVoteAttempt.authModalOpen, false);
+    assert.equal(afterInProgressVoteAttempt.pendingIntent, null);
+
+    const afterFinishedVoteAttempt = appReducer(anonWithBlockedPolygons, {
+      type: 'CAST_VOTE',
+      polygonId: '66666666-6666-4666-8666-666666666666',
+      value: -1,
+    });
+    assert.equal(afterFinishedVoteAttempt.authModalOpen, false);
+    assert.equal(afterFinishedVoteAttempt.pendingIntent, null);
   });
 });

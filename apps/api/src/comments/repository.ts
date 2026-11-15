@@ -162,8 +162,9 @@ export class CommentRepository {
       const polyRes = await client.query<{
         id: string;
         comment_count: number;
+        status: string;
       }>(
-        `SELECT id, comment_count
+        `SELECT id, comment_count, status
          FROM polygons
          WHERE id = $1
          FOR UPDATE`,
@@ -172,6 +173,14 @@ export class CommentRepository {
       const polyRow = polyRes.rows[0];
       if (!polyRow) {
         throw new ApiError(404, 'NOT_FOUND', 'Polygon not found.');
+      }
+
+      if (polyRow.status === 'finished') {
+        throw new ApiError(
+          409,
+          'COMMENTS_CLOSED',
+          'Comments can no longer be added to finished areas.',
+        );
       }
 
       if (polyRow.comment_count >= COMMENT_LIMITS.MAX_COMMENTS_PER_POLYGON) {
@@ -282,13 +291,22 @@ export class CommentRepository {
       const lockComment = await client.query<{
         id: string;
         polygon_id: string;
+        user_id: string | null;
       }>(
-        'SELECT id, polygon_id FROM polygon_comments WHERE id = $1 FOR UPDATE',
+        'SELECT id, polygon_id, user_id FROM polygon_comments WHERE id = $1 FOR UPDATE',
         [params.commentId],
       );
       const commentRow = lockComment.rows[0];
       if (!commentRow) {
         throw new ApiError(404, 'NOT_FOUND', 'Comment not found.');
+      }
+
+      if (commentRow.user_id !== null && commentRow.user_id === params.userId) {
+        throw new ApiError(
+          403,
+          'FORBIDDEN_SELF_VOTE',
+          'You cannot upvote your own comment.',
+        );
       }
 
       await client.query(

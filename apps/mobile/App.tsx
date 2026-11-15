@@ -12,6 +12,7 @@ import {
   type CommentVoteResponse,
   type CreatePolygonCommentRequest,
   type FlagPolygonResponse,
+  type GeocodeResultItem,
   type LoginRequest,
   type PatchPolygonRequest,
   type PhotoVoteResponse,
@@ -48,12 +49,15 @@ import {
 
 import { PpgisApiClient } from './src/api/client';
 import { AboutModal } from './src/components/AboutModal';
+import { AddressSearchModal } from './src/components/AddressSearchModal';
 import { AuthAndAccountModal } from './src/components/AuthAndAccountModal';
+import { BugReportModal } from './src/components/BugReportModal';
 import { DisclaimerBanner } from './src/components/DisclaimerBanner';
 import { DrawingToolbar } from './src/components/DrawingToolbar';
 import {
   GnssMapButton,
   NorthArrowButton,
+  SearchMapButton,
   TopRightMapControls,
 } from './src/components/GnssMapButton';
 import { MapControlsBar } from './src/components/MapControlsBar';
@@ -104,6 +108,11 @@ import {
   SESSION_TOKEN_KEY,
   type SessionStorage,
 } from './src/storage/tokenStorage';
+import {
+  createMemoryViewportStorage,
+  type ViewportStorage,
+} from './src/storage/viewportStorage';
+import { platformViewportStorage } from './src/storage/viewportStorageAdapter';
 import {
   deriveResponsiveLayout,
   MONO_FONT_FAMILY,
@@ -163,6 +172,7 @@ function resolveDefaultApiBaseUrl(): string {
 export interface AppProps {
   baseUrl?: string;
   sessionStorage?: SessionStorage;
+  viewportStorage?: ViewportStorage;
   ephemeralSession?: boolean;
   apiClient?: PpgisApiClient;
   initialLocale?: Locale;
@@ -183,6 +193,8 @@ export function App(props: AppProps = {}): React.JSX.Element {
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [isImporting, setIsImporting] = useState<boolean>(false);
   const [aboutModalOpen, setAboutModalOpen] = useState<boolean>(false);
+  const [searchModalOpen, setSearchModalOpen] = useState<boolean>(false);
+  const [bugModalOpen, setBugModalOpen] = useState<boolean>(false);
   const [locationNotice, setLocationNotice] = useState<string | null>(null);
 
   const localeRef = useRef<Locale>(state.locale);
@@ -223,6 +235,16 @@ export function App(props: AppProps = {}): React.JSX.Element {
     return platformSessionStorage;
   }, [props.sessionStorage, props.ephemeralSession]);
 
+  const viewportStore = useMemo<ViewportStorage>(() => {
+    if (props.viewportStorage) {
+      return props.viewportStorage;
+    }
+    if (props.ephemeralSession || props.sessionStorage) {
+      return createMemoryViewportStorage();
+    }
+    return platformViewportStorage;
+  }, [props.viewportStorage, props.ephemeralSession, props.sessionStorage]);
+
   const resolvedBaseUrl = props.baseUrl ?? resolveDefaultApiBaseUrl();
 
   const apiClient = useMemo<PpgisApiClient>(
@@ -245,8 +267,15 @@ export function App(props: AppProps = {}): React.JSX.Element {
   const bootstrapApp = useCallback(async (): Promise<void> => {
     dispatch({ type: 'CONFIG_LOADING' });
     try {
-      const config = await apiClient.getConfig();
-      dispatch({ type: 'CONFIG_LOADED', config });
+      const [config, savedViewport] = await Promise.all([
+        apiClient.getConfig(),
+        viewportStore.getViewport(),
+      ]);
+      dispatch({
+        type: 'CONFIG_LOADED',
+        config,
+        savedViewport,
+      });
 
       const existingToken = await storage.getToken();
       if (existingToken && existingToken.length > 0) {
@@ -265,7 +294,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
       const message = localizeError(err, fallback, activeLocale);
       dispatch({ type: 'CONFIG_ERROR', message });
     }
-  }, [apiClient, storage]);
+  }, [apiClient, storage, viewportStore]);
 
   useEffect(() => {
     void bootstrapApp();
@@ -396,6 +425,8 @@ export function App(props: AppProps = {}): React.JSX.Element {
         dispatch({ type: 'CLEAR_PENDING_INTENT' });
         if (activeIntent.type === 'SUBMIT_DRAFT') {
           dispatch({ type: 'SUBMIT_ERROR_PRESERVE_DRAFT', message });
+        } else {
+          setLocationNotice(message);
         }
       }
     })();
@@ -522,8 +553,9 @@ export function App(props: AppProps = {}): React.JSX.Element {
   const handleViewportChange = useCallback<MapCanvasProps['onViewportChange']>(
     ({ bbox, zoom }) => {
       dispatch({ type: 'SET_VIEWPORT', bbox, zoom });
+      void viewportStore.setViewport({ bbox, zoom });
     },
-    [],
+    [viewportStore],
   );
 
   const handleMapTap = useCallback<MapCanvasProps['onMapTap']>(
@@ -555,7 +587,20 @@ export function App(props: AppProps = {}): React.JSX.Element {
     setIsLocating(true);
     setLocationNotice(null);
 
-    void requestCurrentCoordinates(undefined, undefined, state.locale)
+    void requestCurrentCoordinates(
+      undefined,
+      undefined,
+      state.locale,
+      undefined,
+      (interimFix) => {
+        dispatch({
+          type: 'SET_CAMERA_TARGET',
+          lng: interimFix.lng,
+          lat: interimFix.lat,
+          zoom: zoomForAccuracyMeters(interimFix.accuracyMeters),
+        });
+      },
+    )
       .then((gpsResult: LocateMeResult) => {
         if (gpsResult.ok) {
           dispatch({
@@ -587,6 +632,61 @@ export function App(props: AppProps = {}): React.JSX.Element {
         setIsLocating(false);
       });
   }, [state.locale]);
+
+  const handleAddressSearch = useCallback(
+    async (query: string): Promise<GeocodeResultItem[]> => {
+      const response = await apiClient.searchAddress(query, state.locale);
+      return response.results;
+    },
+    [apiClient, state.locale],
+  );
+
+  const handleSelectGeocodeResult = useCallback(
+    (item: GeocodeResultItem): void => {
+      setSearchModalOpen(false);
+      dispatch({
+        type: 'SET_CAMERA_TARGET',
+        lng: item.lng,
+        lat: item.lat,
+        zoom: LOCATE_ME_TARGET_ZOOM,
+        ...(item.boundingBox
+          ? {
+              bounds: {
+                minLng: item.boundingBox[0],
+                minLat: item.boundingBox[1],
+                maxLng: item.boundingBox[2],
+                maxLat: item.boundingBox[3],
+              },
+            }
+          : {}),
+      });
+    },
+    [],
+  );
+
+  const handleSubmitBugReport = useCallback(
+    async (input: {
+      description: string;
+      contactEmail: string | null;
+    }): Promise<void> => {
+      let pageUrl: string | null = null;
+      if (Platform.OS === 'web') {
+        const maybeWindow = (
+          globalThis as { window?: { location?: { href?: string } } }
+        ).window;
+        if (typeof maybeWindow?.location?.href === 'string') {
+          pageUrl = maybeWindow.location.href;
+        }
+      }
+      await apiClient.submitBugReport({
+        description: input.description,
+        contactEmail: input.contactEmail,
+        platform: Platform.OS,
+        pageUrl,
+      });
+    },
+    [apiClient],
+  );
 
   const handleTakeDraftPhoto = useCallback((): void => {
     void pickPhotoFromCamera(state.locale).then((outcome) => {
@@ -1243,6 +1343,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
         tier={layout.tier}
         onToggleLocale={handleToggleLocale}
         onOpenAbout={() => setAboutModalOpen(true)}
+        onOpenBugReport={() => setBugModalOpen(true)}
         onSetBasemapMode={(mode) =>
           dispatch({ type: 'SET_BASEMAP_MODE', mode })
         }
@@ -1280,6 +1381,11 @@ export function App(props: AppProps = {}): React.JSX.Element {
         </View>
 
         <TopRightMapControls>
+          <SearchMapButton
+            locale={state.locale}
+            onPress={() => setSearchModalOpen(true)}
+            positioned={false}
+          />
           <GnssMapButton
             locale={state.locale}
             isLocating={isLocating}
@@ -1446,6 +1552,78 @@ export function App(props: AppProps = {}): React.JSX.Element {
           </KeyboardAvoidingView>
         ) : null}
       </View>
+
+      {searchModalOpen ? (
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={[
+            styles.modalBackdropOverlay,
+            layout.isCompact ? styles.modalBackdropCompact : null,
+          ]}
+        >
+          <Pressable
+            accessible={false}
+            onPress={() => setSearchModalOpen(false)}
+            style={styles.modalBackdropScrim}
+          />
+          <View
+            style={[
+              styles.modalDialogWrapper,
+              { maxWidth: Math.max(layout.modalMaxWidth, 480) },
+            ]}
+          >
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.modalScrollContent}
+            >
+              <AddressSearchModal
+                visible={searchModalOpen}
+                locale={state.locale}
+                compact={layout.isCompact}
+                onSearch={handleAddressSearch}
+                onSelectResult={handleSelectGeocodeResult}
+                onClose={() => setSearchModalOpen(false)}
+              />
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      ) : null}
+
+      {bugModalOpen ? (
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={[
+            styles.modalBackdropOverlay,
+            layout.isCompact ? styles.modalBackdropCompact : null,
+          ]}
+        >
+          <Pressable
+            accessible={false}
+            onPress={() => setBugModalOpen(false)}
+            style={styles.modalBackdropScrim}
+          />
+          <View
+            style={[
+              styles.modalDialogWrapper,
+              { maxWidth: Math.max(layout.modalMaxWidth, 480) },
+            ]}
+          >
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.modalScrollContent}
+            >
+              <BugReportModal
+                visible={bugModalOpen}
+                locale={state.locale}
+                compact={layout.isCompact}
+                defaultEmail={state.currentUser?.email ?? null}
+                onSubmit={handleSubmitBugReport}
+                onClose={() => setBugModalOpen(false)}
+              />
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      ) : null}
 
       {aboutModalOpen ? (
         <View

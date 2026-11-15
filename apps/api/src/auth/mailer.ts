@@ -10,12 +10,25 @@ export interface AuthEmailPayload {
   actionUrl: string;
 }
 
+export interface BugReportEmailPayload {
+  to: string;
+  description: string;
+  contactEmail: string | null;
+  reporterPseudonym: string | null;
+  reporterUserId: string | null;
+  platform: string | null;
+  pageUrl: string | null;
+  submittedAtIso: string;
+}
+
 export interface AuthMailer {
   sendActionEmail(payload: AuthEmailPayload): Promise<void>;
+  sendBugReportEmail(payload: BugReportEmailPayload): Promise<void>;
 }
 
 export interface MemoryMailer extends AuthMailer {
   readonly outbox: AuthEmailPayload[];
+  readonly bugReports: BugReportEmailPayload[];
   clear(): void;
 }
 
@@ -127,15 +140,77 @@ export function renderAuthEmailMessage(payload: AuthEmailPayload): {
   return { subject, text, html };
 }
 
+export function renderBugReportEmailMessage(payload: BugReportEmailPayload): {
+  subject: string;
+  text: string;
+  html: string;
+} {
+  const reporterDisplay = payload.reporterPseudonym
+    ? `@${payload.reporterPseudonym}`
+    : 'Anonym / Anonymous';
+  const subjectSummary = payload.description
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60);
+  const subject = `Unseal Bug-Meldung (${reporterDisplay}): ${subjectSummary}`;
+
+  const lines = [
+    'Neue Fehlermeldung über Unseal / New Unseal bug report',
+    '',
+    `Zeitpunkt / Submitted: ${payload.submittedAtIso}`,
+    `Meldende Person / Reporter: ${reporterDisplay}${payload.reporterUserId ? ` (${payload.reporterUserId})` : ''}`,
+    `Kontakt-E-Mail / Contact email: ${payload.contactEmail ?? 'nicht angegeben'}`,
+    `Plattform / Platform: ${payload.platform ?? 'unbekannt'}`,
+    ...(payload.pageUrl ? [`Seite / URL: ${payload.pageUrl}`] : []),
+    '',
+    'Beschreibung / Description:',
+    '---------------------------',
+    payload.description,
+  ];
+  const text = lines.join('\n');
+
+  const safeReporter = escapeHtml(reporterDisplay);
+  const safeContact = escapeHtml(payload.contactEmail ?? 'nicht angegeben');
+  const safePlatform = escapeHtml(payload.platform ?? 'unbekannt');
+  const safeUrl = payload.pageUrl ? escapeHtml(payload.pageUrl) : null;
+  const safeSubmitted = escapeHtml(payload.submittedAtIso);
+  const safeDescription = escapeHtml(payload.description);
+
+  const html = `<!doctype html>
+<html lang="de">
+<body style="font-family: system-ui, -apple-system, sans-serif; background:#f5f6f3; padding:24px; color:#18221d;">
+  <div style="max-width:600px; margin:0 auto; background:#ffffff; border:1px solid #d5ddd7; border-radius:14px; padding:28px;">
+    <h2 style="margin:0 0 12px; color:#176642;">Unseal – Fehlermeldung</h2>
+    <table style="width:100%; border-collapse:collapse; font-size:13px; color:#42524a; margin-bottom:18px;">
+      <tr><td style="padding:4px 8px 4px 0; font-weight:700;">Zeitpunkt:</td><td style="padding:4px 0;">${safeSubmitted}</td></tr>
+      <tr><td style="padding:4px 8px 4px 0; font-weight:700;">Konto:</td><td style="padding:4px 0;">${safeReporter}</td></tr>
+      <tr><td style="padding:4px 8px 4px 0; font-weight:700;">Kontakt-E-Mail:</td><td style="padding:4px 0;">${safeContact}</td></tr>
+      <tr><td style="padding:4px 8px 4px 0; font-weight:700;">Plattform:</td><td style="padding:4px 0;">${safePlatform}</td></tr>
+      ${safeUrl ? `<tr><td style="padding:4px 8px 4px 0; font-weight:700;">URL:</td><td style="padding:4px 0; word-break:break-all;">${safeUrl}</td></tr>` : ''}
+    </table>
+    <div style="background:#f5f6f3; border:1px solid #d5ddd7; border-radius:10px; padding:14px; white-space:pre-wrap; font-size:14px; line-height:1.5; color:#18221d;">${safeDescription}</div>
+  </div>
+</body>
+</html>`;
+
+  return { subject, text, html };
+}
+
 export function createMemoryMailer(): MemoryMailer {
   const outbox: AuthEmailPayload[] = [];
+  const bugReports: BugReportEmailPayload[] = [];
   return {
     outbox,
+    bugReports,
     async sendActionEmail(payload: AuthEmailPayload): Promise<void> {
       outbox.push(payload);
     },
+    async sendBugReportEmail(payload: BugReportEmailPayload): Promise<void> {
+      bugReports.push(payload);
+    },
     clear(): void {
       outbox.length = 0;
+      bugReports.length = 0;
     },
   };
 }
@@ -154,6 +229,18 @@ export function createSmtpMailer(
             actionUrl: payload.actionUrl,
           },
           'SMTP_HOST not configured; logging transactional auth link for local development',
+        );
+      },
+      async sendBugReportEmail(payload: BugReportEmailPayload): Promise<void> {
+        logger.info(
+          {
+            to: payload.to,
+            reporterPseudonym: payload.reporterPseudonym,
+            contactEmail: payload.contactEmail,
+            platform: payload.platform,
+            description: payload.description,
+          },
+          'SMTP_HOST not configured; logging bug report email for local development',
         );
       },
     };
@@ -179,6 +266,17 @@ export function createSmtpMailer(
       await transporter.sendMail({
         from: config.smtp.from,
         to: payload.to,
+        subject: rendered.subject,
+        text: rendered.text,
+        html: rendered.html,
+      });
+    },
+    async sendBugReportEmail(payload: BugReportEmailPayload): Promise<void> {
+      const rendered = renderBugReportEmailMessage(payload);
+      await transporter.sendMail({
+        from: config.smtp.from,
+        to: payload.to,
+        ...(payload.contactEmail ? { replyTo: payload.contactEmail } : {}),
         subject: rendered.subject,
         text: rendered.text,
         html: rendered.html,

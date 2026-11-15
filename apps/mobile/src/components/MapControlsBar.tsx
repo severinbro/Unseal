@@ -94,6 +94,7 @@ export interface MapControlsBarProps {
   tier?: ViewportTier;
   onToggleLocale?: () => void;
   onOpenAbout?: () => void;
+  onOpenBugReport?: () => void;
   onSetBasemapMode: (mode: BasemapMode) => void;
   onSetPolygonOpacity?: (opacity: number) => void;
   onSetPolygonFilter?: (filter: PolygonFilter) => void;
@@ -211,6 +212,76 @@ export function AndroidGlyph({
         />
       </View>
       <View style={[styles.androidFallbackBody, { backgroundColor: color }]} />
+    </View>
+  );
+}
+
+export function BugGlyph({
+  color = PALETTE.inkSecondary,
+  size = 18,
+}: {
+  color?: string;
+  size?: number;
+}): React.JSX.Element {
+  if (Platform.OS === 'web') {
+    return React.createElement(
+      'svg',
+      {
+        width: size,
+        height: size,
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        'aria-hidden': 'true',
+        style: {
+          flexShrink: 0,
+          display: 'block',
+        },
+      },
+      React.createElement('path', {
+        d: 'M9 7.5L7.2 5.2M15 7.5L16.8 5.2',
+        stroke: color,
+        strokeWidth: '1.8',
+        strokeLinecap: 'round',
+      }),
+      React.createElement('path', {
+        d: 'M9 9C9 7.343 10.343 6 12 6C13.657 6 15 7.343 15 9V10H9V9Z',
+        fill: color,
+      }),
+      React.createElement('rect', {
+        x: '7.5',
+        y: '9.8',
+        width: '9',
+        height: '10.2',
+        rx: '4.5',
+        stroke: color,
+        strokeWidth: '1.8',
+      }),
+      React.createElement('path', {
+        d: 'M12 10.2V19.6M4 11.5H7.4M16.6 11.5H20M3.5 15H7.3M16.7 15H20.5M4.5 18.5L7.8 17.2M19.5 18.5L16.2 17.2',
+        stroke: color,
+        strokeWidth: '1.7',
+        strokeLinecap: 'round',
+      }),
+    );
+  }
+
+  return (
+    <View
+      accessible={false}
+      style={[styles.bugFallbackFrame, { width: size, height: size }]}
+    >
+      <View style={[styles.bugFallbackHead, { backgroundColor: color }]} />
+      <View style={[styles.bugFallbackBody, { borderColor: color }]}>
+        <View style={[styles.bugFallbackSeam, { backgroundColor: color }]} />
+      </View>
+      <View style={[styles.bugFallbackLegRow, styles.bugFallbackLegTop]}>
+        <View style={[styles.bugFallbackLeg, { backgroundColor: color }]} />
+        <View style={[styles.bugFallbackLeg, { backgroundColor: color }]} />
+      </View>
+      <View style={[styles.bugFallbackLegRow, styles.bugFallbackLegBottom]}>
+        <View style={[styles.bugFallbackLeg, { backgroundColor: color }]} />
+        <View style={[styles.bugFallbackLeg, { backgroundColor: color }]} />
+      </View>
     </View>
   );
 }
@@ -621,6 +692,7 @@ export function MapControlsBar({
   tier = 'expanded',
   onToggleLocale,
   onOpenAbout,
+  onOpenBugReport,
   onSetBasemapMode,
   onSetPolygonOpacity,
   onSetPolygonFilter,
@@ -686,6 +758,27 @@ export function MapControlsBar({
                 color={PALETTE.accentPrimary}
                 eyeColor={PALETTE.bgSurface}
                 size={isCompact ? 18 : 20}
+              />
+            </Pressable>,
+          )
+        : null}
+      {onOpenBugReport
+        ? withWebTooltip(
+            t.bugReportButtonTooltip,
+            <Pressable
+              testID="bug-report-button"
+              accessibilityRole="button"
+              accessibilityLabel={t.bugReportButtonA11y}
+              onPress={onOpenBugReport}
+              style={({ pressed }) => [
+                styles.helpButton,
+                isCompact ? styles.helpButtonCompact : null,
+                pressed ? styles.buttonPressed : null,
+              ]}
+            >
+              <BugGlyph
+                color={PALETTE.inkSecondary}
+                size={isCompact ? 17 : 18}
               />
             </Pressable>,
           )
@@ -819,17 +912,6 @@ export function MapControlsBar({
                 {controls.basemapMode === 'orthophoto'
                   ? t.subtitleOrthophoto
                   : t.subtitleOsm}
-                {controls.basemapMode === 'orthophoto' &&
-                controls.orthophotoAttribution &&
-                controls.orthophotoAttribution.length > 0
-                  ? ` · ${controls.orthophotoAttribution}`
-                  : ` · ${t.osmAttributionShort}`}
-              </Text>
-            ) : controls.basemapMode === 'orthophoto' &&
-              controls.orthophotoAttribution &&
-              controls.orthophotoAttribution.length > 0 ? (
-              <Text numberOfLines={1} style={styles.attributionText}>
-                {t.imageryPrefix} {controls.orthophotoAttribution}
               </Text>
             ) : null}
           </View>
@@ -1656,5 +1738,47 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.65,
+  },
+  bugFallbackFrame: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  bugFallbackHead: {
+    width: 6,
+    height: 3.5,
+    borderTopLeftRadius: 3,
+    borderTopRightRadius: 3,
+    marginBottom: -0.5,
+  },
+  bugFallbackBody: {
+    width: 9,
+    height: 10,
+    borderRadius: 4.5,
+    borderWidth: 1.7,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bugFallbackSeam: {
+    width: 1.5,
+    height: 7,
+  },
+  bugFallbackLegRow: {
+    position: 'absolute',
+    left: 1,
+    right: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  bugFallbackLegTop: {
+    top: 8,
+  },
+  bugFallbackLegBottom: {
+    top: 12.5,
+  },
+  bugFallbackLeg: {
+    width: 3,
+    height: 1.6,
+    borderRadius: 0.8,
   },
 });

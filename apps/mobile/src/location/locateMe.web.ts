@@ -48,14 +48,14 @@ export interface WebNavigatorLike {
 
 const HIGH_ACCURACY_GEOLOCATION_OPTIONS: GeolocationPositionOptionsLike = {
   enableHighAccuracy: true,
-  timeout: 15_000,
+  timeout: 5_000,
   maximumAge: 0,
 };
 
 const FALLBACK_GEOLOCATION_OPTIONS: GeolocationPositionOptionsLike = {
   enableHighAccuracy: false,
-  timeout: 8_000,
-  maximumAge: 0,
+  timeout: 4_000,
+  maximumAge: 60_000,
 };
 
 /**
@@ -64,8 +64,8 @@ const FALLBACK_GEOLOCATION_OPTIONS: GeolocationPositionOptionsLike = {
  * (typically 3,000–50,000 m, e.g. regional backbone hubs) exceed this and wait
  * briefly for hardware GPS or Wi-Fi triangulation to lock onto the user.
  */
-export const PRECISE_ACCURACY_THRESHOLD_M = 150;
-export const COARSE_REFINEMENT_WINDOW_MS = 4_500;
+export const PRECISE_ACCURACY_THRESHOLD_M = 250;
+export const COARSE_REFINEMENT_WINDOW_MS = 1_800;
 
 function resolveDefaultIsSecureContext(): boolean {
   const scope = globalThis as {
@@ -148,6 +148,7 @@ export async function requestCurrentCoordinates(
   isSecureContext?: boolean,
   locale: Locale = DEFAULT_LOCALE,
   refinementWindowMs: number = COARSE_REFINEMENT_WINDOW_MS,
+  _onInterimFix?: (fix: Extract<LocateMeResult, { ok: true }>) => void,
 ): Promise<LocateMeResult> {
   const t = getTranslations(locale).location;
   const secure = isSecureContext ?? resolveDefaultIsSecureContext();

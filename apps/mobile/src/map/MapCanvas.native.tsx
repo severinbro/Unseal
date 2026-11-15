@@ -133,17 +133,26 @@ export function MapCanvas({
   const orthophotoUrlHintRef = useRef<string | null>(orthophotoUrlHint);
   orthophotoUrlHintRef.current = orthophotoUrlHint;
 
-  const initialCenter = useMemo<[number, number]>(
-    () => [
-      cameraTarget?.lng ?? config.initialView.lng,
-      cameraTarget?.lat ?? config.initialView.lat,
-    ],
+  const initialCameraDefaultSettings = useMemo(
+    () => {
+      const b = cameraTarget?.bounds;
+      if (b) {
+        return {
+          bounds: {
+            ne: [b.maxLng, b.maxLat] as [number, number],
+            sw: [b.minLng, b.minLat] as [number, number],
+          },
+        };
+      }
+      return {
+        centerCoordinate: [
+          cameraTarget?.lng ?? config.initialView.lng,
+          cameraTarget?.lat ?? config.initialView.lat,
+        ] as [number, number],
+        zoomLevel: cameraTarget?.zoom ?? config.initialView.zoom,
+      };
+    },
     // Fixed default camera stop on initial mount; subsequent targets run via cameraTarget.seq
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
-  const initialZoom = useMemo<number>(
-    () => cameraTarget?.zoom ?? config.initialView.zoom,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
@@ -178,6 +187,19 @@ export function MapCanvas({
       return;
     }
     lastCameraSeqRef.current = cameraTarget.seq;
+    const b = cameraTarget.bounds;
+    if (
+      b &&
+      (b.maxLng - b.minLng > 0.002 || b.maxLat - b.minLat > 0.002)
+    ) {
+      cameraRef.current?.fitBounds(
+        [b.maxLng, b.maxLat],
+        [b.minLng, b.minLat],
+        40,
+        350,
+      );
+      return;
+    }
     cameraRef.current?.setCamera({
       centerCoordinate: [cameraTarget.lng, cameraTarget.lat],
       ...(cameraTarget.zoom !== undefined ? { zoomLevel: cameraTarget.zoom } : {}),
@@ -386,10 +408,7 @@ export function MapCanvas({
       >
         <Camera
           ref={cameraRef}
-          defaultSettings={{
-            centerCoordinate: initialCenter,
-            zoomLevel: initialZoom,
-          }}
+          defaultSettings={initialCameraDefaultSettings}
         />
 
         <ShapeSource

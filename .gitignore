@@ -9,3 +9,6 @@ web-build
 .swarm
 apps/mobile/android
 apps/mobile/ios
+AGENTS.md
+test_geopkg/
+2026-08-22_detektierte_flaechen*

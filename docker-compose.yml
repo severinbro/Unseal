@@ -58,6 +58,7 @@ services:
       SESSION_TTL_DAYS: "${SESSION_TTL_DAYS:-30}"
       DISCLAIMER_TEXT: "${DISCLAIMER_TEXT:-Community unsealing suggestions - non-binding public input, regardless of property ownership.}"
       ABUSE_CONTACT: "${ABUSE_CONTACT:-}"
+      BUG_REPORT_TO: "${BUG_REPORT_TO:-info@open-unseal.de}"
       APK_DOWNLOAD_URL: "${APK_DOWNLOAD_URL:-}"
     volumes:
       - uploads_data:/var/lib/entsiegelung/uploads

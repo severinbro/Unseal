@@ -41,6 +41,7 @@ export interface EnvConfig {
   sessionTtlDays: number;
   disclaimerText: string;
   abuseContact: string | null;
+  bugReportEmail: string;
   privacyPolicyUrl: string;
   apkDownloadUrl: string | null;
   authCaptchaEnabled: boolean;
@@ -269,6 +270,7 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
   const disclaimerText = env.DISCLAIMER_TEXT?.trim() || DEFAULT_DISCLAIMER_TEXT;
   const rawAbuseContact = env.ABUSE_CONTACT?.trim() ?? '';
   const abuseContact = rawAbuseContact.length > 0 ? rawAbuseContact : null;
+  const bugReportEmail = env.BUG_REPORT_TO?.trim() || 'info@open-unseal.de';
   const privacyPolicyUrl =
     env.PRIVACY_POLICY_URL?.trim() || `${publicBaseUrl}/auth/privacy`;
 
@@ -387,6 +389,7 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     sessionTtlDays,
     disclaimerText: runtimeConfig.disclaimerText,
     abuseContact: runtimeConfig.abuseContact,
+    bugReportEmail,
     privacyPolicyUrl,
     apkDownloadUrl: runtimeConfig.apkDownloadUrl,
     authCaptchaEnabled,

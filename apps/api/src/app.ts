@@ -29,6 +29,7 @@ import {
   createSmtpMailer,
   type AuthEmailPayload,
   type AuthMailer,
+  type BugReportEmailPayload,
   type MemoryMailer,
 } from './auth/mailer.js';
 import { createSession, optionalAuth, requireAdmin, requireAuth } from './auth/session.js';
@@ -63,11 +64,16 @@ import {
 import { PolygonRepository } from './polygons/repository.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerAuthPageRoutes } from './routes/authPages.js';
+import { registerBugReportRoutes } from './routes/bugReports.js';
 import { registerCommentRoutes } from './routes/comments.js';
 import {
   registerDop20TileRoutes,
   type Dop20TileRoutesOptions,
 } from './routes/dop20Tiles.js';
+import {
+  registerGeocodeRoutes,
+  type GeocodeRoutesOptions,
+} from './routes/geocode.js';
 import { registerPhotoRoutes } from './routes/photos.js';
 import { registerPolygonRoutes } from './routes/polygons.js';
 import { registerSystemRoutes } from './routes/system.js';
@@ -94,6 +100,8 @@ export interface RateLimitOverrides {
   mutatePolygon?: RateLimitWindowOverride;
   vote?: RateLimitWindowOverride;
   exportGeoJson?: RateLimitWindowOverride;
+  geocode?: RateLimitWindowOverride;
+  bugReport?: RateLimitWindowOverride;
 }
 
 export interface BuildAppOptions {
@@ -106,6 +114,7 @@ export interface BuildAppOptions {
   rateLimits?: RateLimitOverrides;
   mailer?: AuthMailer;
   dop20TileFetch?: Dop20TileRoutesOptions['fetchImpl'];
+  geocodeFetch?: GeocodeRoutesOptions['fetchImpl'];
 }
 
 declare module 'fastify' {
@@ -353,6 +362,13 @@ export async function buildApp(
       ? { fetchImpl: options.dop20TileFetch }
       : {},
   );
+  registerGeocodeRoutes(
+    app,
+    options.geocodeFetch !== undefined
+      ? { fetchImpl: options.geocodeFetch }
+      : {},
+  );
+  registerBugReportRoutes(app);
   registerAuthRoutes(app);
   registerAuthPageRoutes(app);
 
@@ -413,7 +429,9 @@ export {
   recomputePolygonScores,
   registerAuthPageRoutes,
   registerAuthRoutes,
+  registerBugReportRoutes,
   registerCommentRoutes,
+  registerGeocodeRoutes,
   registerPhotoRoutes,
   registerPolygonRoutes,
   registerVoteRoutes,
@@ -430,6 +448,7 @@ export {
   type AdminCommandResult,
   type AuthEmailPayload,
   type AuthMailer,
+  type BugReportEmailPayload,
   type EnvConfig,
   type LandCoverSeedItem,
   type LoadLandCoverOptions,

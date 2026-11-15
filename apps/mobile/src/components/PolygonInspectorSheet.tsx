@@ -165,7 +165,9 @@ export function PolygonInspectorSheet({
     null,
   );
   const [isLoadingPhotos, setIsLoadingPhotos] = useState<boolean>(false);
-  const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
+  const [uploadingPhotoSource, setUploadingPhotoSource] = useState<
+    'camera' | 'library' | null
+  >(null);
   const [revealedFakeIds, setRevealedFakeIds] = useState<
     Record<string, boolean>
   >({});
@@ -206,6 +208,7 @@ export function PolygonInspectorSheet({
     setEditNote(featureNote);
     setPhotos([]);
     setPhotosLoadedForId(null);
+    setUploadingPhotoSource(null);
     setRevealedFakeIds({});
     setLightboxPhoto(null);
     setComments([]);
@@ -313,6 +316,16 @@ export function PolygonInspectorSheet({
   const swatch = SURFACE_SWATCHES[properties.surfaceType];
   const isFinished = properties.status === 'finished';
   const isInProgress = properties.status === 'in_progress';
+  const isVotingClosedByStatus = isInProgress || isFinished;
+  const isVoteDisabled =
+    isBusy || properties.isAuthor || isVotingClosedByStatus;
+  const voteLockReason = isFinished
+    ? t.votingClosedFinishedHint
+    : isInProgress
+      ? t.votingClosedInProgressHint
+      : properties.isAuthor
+        ? t.selfVoteDisabledHint
+        : null;
   const effectiveOverlapCount = Math.max(1, overlapCount);
   const displayOverlapPosition = Math.min(
     effectiveOverlapCount,
@@ -348,6 +361,9 @@ export function PolygonInspectorSheet({
     resolveUploadUrl ? resolveUploadUrl(rawUrl) : rawUrl;
 
   const handleVotePress = (targetValue: 1 | -1): void => {
+    if (properties.isAuthor || isInProgress || isFinished) {
+      return;
+    }
     setActionError(null);
     if (!isAuthenticated) {
       onVoteIntent(feature.id, targetValue);
@@ -433,7 +449,7 @@ export function PolygonInspectorSheet({
     }
 
     setActionError(null);
-    setIsUploadingPhoto(true);
+    setUploadingPhotoSource(source);
     void handler(feature.id)
       .then((uploaded) => {
         if (uploaded) {
@@ -448,7 +464,7 @@ export function PolygonInspectorSheet({
         setActionError(localizeError(err, t.photoErrorFallback, locale));
       })
       .finally(() => {
-        setIsUploadingPhoto(false);
+        setUploadingPhotoSource(null);
       });
   };
 
@@ -512,7 +528,7 @@ export function PolygonInspectorSheet({
   };
 
   const handleCreateCommentSubmit = (parentId: string | null): void => {
-    if (!onCreateComment) {
+    if (isFinished || !onCreateComment) {
       return;
     }
     if (!isAuthenticated) {
@@ -553,6 +569,9 @@ export function PolygonInspectorSheet({
   };
 
   const handleCommentVotePress = (comment: PolygonComment): void => {
+    if (comment.isAuthor) {
+      return;
+    }
     if (!isAuthenticated) {
       onOpenAuth?.();
       return;
@@ -735,13 +754,14 @@ export function PolygonInspectorSheet({
               accessibilityLabel={t.upvoteCommentA11y(comment.upvotes)}
               accessibilityState={{
                 selected: comment.myVote === 1,
-                disabled: isBusy,
+                disabled: isBusy || comment.isAuthor,
               }}
-              disabled={isBusy}
+              disabled={isBusy || comment.isAuthor}
               onPress={() => handleCommentVotePress(comment)}
               style={[
                 styles.photoVotePill,
                 comment.myVote === 1 ? styles.photoVotePillRealActive : null,
+                comment.isAuthor ? styles.disabledButton : null,
               ]}
             >
               <Text
@@ -754,7 +774,7 @@ export function PolygonInspectorSheet({
               </Text>
             </Pressable>
 
-            {canReply && onCreateComment ? (
+            {canReply && !isFinished && onCreateComment ? (
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={t.replyButton}
@@ -793,7 +813,7 @@ export function PolygonInspectorSheet({
             ) : null}
           </View>
 
-          {isReplyingHere && isAuthenticated ? (
+          {isReplyingHere && !isFinished && isAuthenticated ? (
             <View style={styles.replyComposerBox}>
               <TextInput
                 accessibilityLabel={t.replyInputPlaceholder(
@@ -965,14 +985,17 @@ export function PolygonInspectorSheet({
             accessibilityLabel={t.upvoteA11y(properties.upvotes)}
             accessibilityState={{
               selected: properties.myVote === 1,
-              disabled: isBusy,
+              disabled: isVoteDisabled,
             }}
-            disabled={isBusy}
+            disabled={isVoteDisabled}
             onPress={() => handleVotePress(1)}
             style={[
               styles.touchButton,
               styles.voteButton,
               properties.myVote === 1 ? styles.upvoteButtonActive : null,
+              properties.isAuthor || isVotingClosedByStatus
+                ? styles.disabledButton
+                : null,
             ]}
           >
             <Text
@@ -990,14 +1013,17 @@ export function PolygonInspectorSheet({
             accessibilityLabel={t.downvoteA11y(properties.downvotes)}
             accessibilityState={{
               selected: properties.myVote === -1,
-              disabled: isBusy,
+              disabled: isVoteDisabled,
             }}
-            disabled={isBusy}
+            disabled={isVoteDisabled}
             onPress={() => handleVotePress(-1)}
             style={[
               styles.touchButton,
               styles.voteButton,
               properties.myVote === -1 ? styles.downvoteButtonActive : null,
+              properties.isAuthor || isVotingClosedByStatus
+                ? styles.disabledButton
+                : null,
             ]}
           >
             <Text
@@ -1011,6 +1037,12 @@ export function PolygonInspectorSheet({
           </Pressable>
         </View>
       </View>
+
+      {voteLockReason ? (
+        <Text testID="vote-lock-hint" style={styles.immutableNotice}>
+          {voteLockReason}
+        </Text>
+      ) : null}
 
       <View style={styles.tabWell} accessibilityRole="tablist">
         <Pressable
@@ -1295,7 +1327,13 @@ export function PolygonInspectorSheet({
 
       {activeTab === 'comments' ? (
         <View style={styles.tabSection}>
-          {isAuthenticated && onCreateComment ? (
+          {isFinished ? (
+            <View testID="comments-closed-banner" style={styles.noteCard}>
+              <Text style={styles.immutableNotice}>
+                {t.commentsClosedFinishedHint}
+              </Text>
+            </View>
+          ) : isAuthenticated && onCreateComment ? (
             <View style={styles.commentComposerBox}>
               <TextInput
                 accessibilityLabel={t.commentInputA11y}
@@ -1402,9 +1440,13 @@ export function PolygonInspectorSheet({
                       accessibilityState={{
                         selected:
                           commentDisplay.pinnedTopReply.comment.myVote === 1,
-                        disabled: isBusy,
+                        disabled:
+                          isBusy ||
+                          commentDisplay.pinnedTopReply.comment.isAuthor,
                       }}
-                      disabled={isBusy}
+                      disabled={
+                        isBusy || commentDisplay.pinnedTopReply.comment.isAuthor
+                      }
                       onPress={() => {
                         if (commentDisplay.pinnedTopReply) {
                           handleCommentVotePress(
@@ -1416,6 +1458,9 @@ export function PolygonInspectorSheet({
                         styles.photoVotePill,
                         commentDisplay.pinnedTopReply.comment.myVote === 1
                           ? styles.photoVotePillRealActive
+                          : null,
+                        commentDisplay.pinnedTopReply.comment.isAuthor
+                          ? styles.disabledButton
                           : null,
                       ]}
                     >
@@ -1448,36 +1493,48 @@ export function PolygonInspectorSheet({
             <View style={styles.photoUploadBar}>
               {onUploadPhotoFromCamera ? (
                 <Pressable
+                  testID="upload-photo-camera-button"
                   accessibilityRole="button"
                   accessibilityLabel={t.addPhotoCamera}
-                  disabled={isUploadingPhoto}
+                  disabled={uploadingPhotoSource !== null}
                   onPress={() => handleUploadPhoto('camera')}
                   style={[
                     styles.touchButton,
                     styles.flexButton,
                     styles.secondaryButton,
+                    uploadingPhotoSource !== null
+                      ? styles.disabledButton
+                      : null,
                   ]}
                 >
                   <Text style={styles.secondaryButtonLabel}>
-                    {isUploadingPhoto ? t.uploadingPhoto : t.addPhotoCamera}
+                    {uploadingPhotoSource === 'camera'
+                      ? t.uploadingPhoto
+                      : t.addPhotoCamera}
                   </Text>
                 </Pressable>
               ) : null}
 
               {onUploadPhotoFromLibrary ? (
                 <Pressable
+                  testID="upload-photo-gallery-button"
                   accessibilityRole="button"
                   accessibilityLabel={t.addPhotoGallery}
-                  disabled={isUploadingPhoto}
+                  disabled={uploadingPhotoSource !== null}
                   onPress={() => handleUploadPhoto('library')}
                   style={[
                     styles.touchButton,
                     styles.flexButton,
                     styles.secondaryButton,
+                    uploadingPhotoSource !== null
+                      ? styles.disabledButton
+                      : null,
                   ]}
                 >
                   <Text style={styles.secondaryButtonLabel}>
-                    {isUploadingPhoto ? t.uploadingPhoto : t.addPhotoGallery}
+                    {uploadingPhotoSource === 'library'
+                      ? t.uploadingPhoto
+                      : t.addPhotoGallery}
                   </Text>
                 </Pressable>
               ) : null}

@@ -23,6 +23,12 @@ import {
 } from '../src/map/types';
 import { createMemorySessionStorage } from '../src/storage/tokenStorage';
 import {
+  LAST_VIEWPORT_KEY,
+  parseSavedViewport,
+  serializeSavedViewport,
+} from '../src/storage/viewportStorage';
+import { createWebViewportStorage } from '../src/storage/viewportStorageAdapter.web';
+import {
   requestCurrentCoordinates,
   type WebNavigatorLike,
 } from '../src/location/locateMe.web';
@@ -835,5 +841,84 @@ describe('German default localization and DE <-> EN switching', () => {
 
     assert.equal(getTranslations('de').controls.northA11y, 'Karte nach Norden ausrichten');
     assert.equal(getTranslations('en').controls.northA11y, 'Orient map to north');
+  });
+
+  it('persists last user viewport bbox, removes recovery email parenthetical, and localizes vote/comment lock errors', async () => {
+    assert.equal(getTranslations('de').auth.recoverEmailLabel, 'E-Mail-Adresse');
+    assert.equal(getTranslations('en').auth.recoverEmailLabel, 'Email Address');
+    assert.equal(
+      getTranslations('de').auth.recoverEmailLabel.includes('Bestätigung'),
+      false,
+    );
+
+    assert.match(
+      localizeError(
+        new ApiError(403, 'FORBIDDEN_SELF_VOTE', 'Cannot vote on own item.'),
+        'Fallback',
+        'de',
+      ),
+      /Eigene Vorschläge und Kommentare/,
+    );
+    assert.match(
+      localizeError(
+        new ApiError(409, 'VOTING_CLOSED', 'Voting is closed.'),
+        'Fallback',
+        'de',
+      ),
+      /keine Abstimmung mehr möglich/,
+    );
+    assert.match(
+      localizeError(
+        new ApiError(409, 'COMMENTS_CLOSED', 'Comments are closed.'),
+        'Fallback',
+        'de',
+      ),
+      /Kommentare mehr hinzugefügt/,
+    );
+
+    const backing = new Map<string, string>();
+    const webViewportStore = createWebViewportStorage(() => ({
+      getItem: (k) => backing.get(k) ?? null,
+      setItem: (k, v) => {
+        backing.set(k, v);
+      },
+      removeItem: (k) => {
+        backing.delete(k);
+      },
+    }));
+
+    assert.equal(await webViewportStore.getViewport(), null);
+    const saved = {
+      bbox: { minLng: 9.985, minLat: 53.545, maxLng: 10.005, maxLat: 53.565 },
+      zoom: 16.2,
+    };
+    await webViewportStore.setViewport(saved);
+    assert.ok(backing.has(LAST_VIEWPORT_KEY));
+    assert.deepEqual(await webViewportStore.getViewport(), saved);
+    assert.equal(parseSavedViewport('not-json'), null);
+    assert.equal(
+      parseSavedViewport(
+        JSON.stringify({
+          bbox: { minLng: 10, minLat: 53, maxLng: 9, maxLat: 54 },
+          zoom: 14,
+        }),
+      ),
+      null,
+    );
+    assert.deepEqual(
+      parseSavedViewport(serializeSavedViewport(saved)),
+      saved,
+    );
+
+    // CONFIG_LOADED restores savedViewport instead of defaulting to Mainz initialView
+    const restoredState = appReducer(initialAppState, {
+      type: 'CONFIG_LOADED',
+      config: SAMPLE_CONFIG,
+      savedViewport: saved,
+    });
+    assert.deepEqual(restoredState.cameraTarget?.bounds, saved.bbox);
+    assert.equal(restoredState.cameraTarget?.zoom, 16.2);
+    assert.ok(Math.abs((restoredState.cameraTarget?.lng ?? 0) - 9.995) < 1e-6);
+    assert.ok(Math.abs((restoredState.cameraTarget?.lat ?? 0) - 53.555) < 1e-6);
   });
 });

@@ -33,6 +33,12 @@ export interface NorthArrowButtonProps {
   positioned?: boolean;
 }
 
+export interface SearchMapButtonProps {
+  locale?: Locale;
+  onPress: () => void;
+  positioned?: boolean;
+}
+
 export interface TopRightMapControlsProps {
   children: React.ReactNode;
 }
@@ -180,6 +186,69 @@ export function NorthArrowButton({
   );
 }
 
+function SearchMagnifierGlyph(): React.JSX.Element {
+  if (Platform.OS === 'web') {
+    return (
+      <View style={styles.glyphFrame} accessible={false}>
+        {React.createElement(
+          'svg',
+          {
+            width: 20,
+            height: 20,
+            viewBox: '0 0 24 24',
+            fill: 'none',
+            'aria-hidden': true,
+          },
+          React.createElement('circle', {
+            cx: 11,
+            cy: 11,
+            r: 6.5,
+            stroke: PALETTE.inkPrimary,
+            strokeWidth: 2.2,
+          }),
+          React.createElement('path', {
+            d: 'M16 16L20.5 20.5',
+            stroke: PALETTE.accentPrimary,
+            strokeWidth: 2.4,
+            strokeLinecap: 'round',
+          }),
+        )}
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.glyphFrame} accessible={false}>
+      <View style={styles.searchLensRing} />
+      <View style={styles.searchHandleBar} />
+    </View>
+  );
+}
+
+export function SearchMapButton({
+  locale = DEFAULT_LOCALE,
+  onPress,
+  positioned = false,
+}: SearchMapButtonProps): React.JSX.Element {
+  const t = getTranslations(locale).controls;
+
+  return (
+    <Pressable
+      testID="address-search-button"
+      accessibilityRole="button"
+      accessibilityLabel={t.searchAddressA11y}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.floatingButton,
+        positioned ? styles.floatingButtonPositioned : null,
+        pressed ? styles.floatingButtonPressed : null,
+      ]}
+    >
+      <SearchMagnifierGlyph />
+    </Pressable>
+  );
+}
+
 const BUTTON_SIZE_DP = Math.max(48, MIN_TOUCH_TARGET_DP);
 
 const styles = StyleSheet.create({
@@ -305,5 +374,25 @@ const styles = StyleSheet.create({
     height: 3,
     borderRadius: 1.5,
     backgroundColor: '#FFFFFF',
+  },
+  searchLensRing: {
+    position: 'absolute',
+    top: 3,
+    left: 3,
+    width: 13,
+    height: 13,
+    borderRadius: 6.5,
+    borderWidth: 2.2,
+    borderColor: PALETTE.inkPrimary,
+  },
+  searchHandleBar: {
+    position: 'absolute',
+    bottom: 4.5,
+    right: 2.5,
+    width: 7,
+    height: 2.4,
+    borderRadius: 1.2,
+    backgroundColor: PALETTE.accentPrimary,
+    transform: [{ rotate: '45deg' }],
   },
 });

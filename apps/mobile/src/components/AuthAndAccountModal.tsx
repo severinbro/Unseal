@@ -601,7 +601,7 @@ export function AuthAndAccountModal({
           <Text style={styles.privacyHint}>{t.forgotPasswordHint}</Text>
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>{t.emailLabel}</Text>
+            <Text style={styles.fieldLabel}>{t.recoverEmailLabel}</Text>
             <TextInput
               accessibilityLabel={t.emailA11y}
               value={email}

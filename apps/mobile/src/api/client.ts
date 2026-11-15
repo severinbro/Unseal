@@ -4,8 +4,10 @@ import {
   ApiErrorEnvelopeSchema,
   AuthUserSchema,
   CommentVoteResponseSchema,
+  CreateBugReportResponseSchema,
   EmailActionResponseSchema,
   FlagPolygonResponseSchema,
+  GeocodeResponseSchema,
   ImportPolygonsResponseSchema,
   PhotoVoteResponseSchema,
   PolygonCollectionResponseSchema,
@@ -24,12 +26,15 @@ import {
   type AuthUser,
   type BboxBounds,
   type CommentVoteResponse,
+  type CreateBugReportRequest,
+  type CreateBugReportResponse,
   type CreatePolygonCommentRequest,
   type CreatePolygonRequest,
   type EmailActionResponse,
   type ErrorCode,
   type FlagPolygonRequest,
   type FlagPolygonResponse,
+  type GeocodeResponse,
   type ImportPolygonsResponse,
   type LoginRequest,
   type PatchPolygonRequest,
@@ -488,6 +493,35 @@ export class PpgisApiClient {
       path: `/api/v1/comments/${encodedId}`,
       includeAuth: true,
     });
+  }
+
+  public async searchAddress(
+    query: string,
+    lang: 'de' | 'en' = 'de',
+  ): Promise<GeocodeResponse> {
+    const trimmed = query.trim();
+    const params = new URLSearchParams({
+      q: trimmed,
+      lang,
+    });
+    const json = await this.requestJson({
+      method: 'GET',
+      path: `/api/v1/geocode?${params.toString()}`,
+      includeAuth: false,
+    });
+    return GeocodeResponseSchema.parse(json);
+  }
+
+  public async submitBugReport(
+    input: CreateBugReportRequest,
+  ): Promise<CreateBugReportResponse> {
+    const json = await this.requestJson({
+      method: 'POST',
+      path: '/api/v1/bug-reports',
+      body: input,
+      includeAuth: true,
+    });
+    return CreateBugReportResponseSchema.parse(json);
   }
 
   public async fetchAltchaChallenge(): Promise<AltchaChallengeResponse> {

@@ -766,3 +766,61 @@ export const PolygonCollectionResponseSchema = z.object({
 });
 
 export type PolygonCollectionResponse = z.output<typeof PolygonCollectionResponseSchema>;
+
+export const GeocodeQuerySchema = z.object({
+  q: z
+    .string()
+    .trim()
+    .min(2, 'Search query must be at least 2 characters.')
+    .max(200, 'Search query must not exceed 200 characters.'),
+  lang: z.enum(['de', 'en']).optional().default('de'),
+});
+
+export type GeocodeQuery = z.output<typeof GeocodeQuerySchema>;
+
+export const GeocodeResultItemSchema = z.object({
+  placeId: z.string().min(1),
+  displayName: z.string().min(1),
+  lat: z.number().finite().min(-90).max(90),
+  lng: z.number().finite().min(-180).max(180),
+  boundingBox: z
+    .tuple([
+      z.number().finite(),
+      z.number().finite(),
+      z.number().finite(),
+      z.number().finite(),
+    ])
+    .nullable(),
+});
+
+export type GeocodeResultItem = z.infer<typeof GeocodeResultItemSchema>;
+
+export const GeocodeResponseSchema = z.object({
+  results: z.array(GeocodeResultItemSchema),
+});
+
+export type GeocodeResponse = z.infer<typeof GeocodeResponseSchema>;
+
+export const CreateBugReportRequestSchema = z
+  .object({
+    description: z
+      .string()
+      .trim()
+      .min(5, 'Bug description must be at least 5 characters.')
+      .max(4000, 'Bug description must not exceed 4000 characters.'),
+    contactEmail: z.preprocess(
+      (val) => (typeof val === 'string' && val.trim() === '' ? null : val),
+      EmailSchema.nullable().optional(),
+    ),
+    platform: z.string().trim().max(64).nullable().optional(),
+    pageUrl: z.string().trim().max(500).nullable().optional(),
+  })
+  .strict();
+
+export type CreateBugReportRequest = z.input<typeof CreateBugReportRequestSchema>;
+
+export const CreateBugReportResponseSchema = z.object({
+  status: z.literal('sent'),
+});
+
+export type CreateBugReportResponse = z.infer<typeof CreateBugReportResponseSchema>;

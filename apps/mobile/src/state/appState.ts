@@ -60,6 +60,7 @@ export interface CameraTarget {
   lng: number;
   lat: number;
   zoom?: number;
+  bounds?: BboxBounds;
   seq: number;
 }
 
@@ -117,7 +118,11 @@ export interface AppState {
 export type AppAction =
   | { type: 'SET_LOCALE'; locale: Locale }
   | { type: 'CONFIG_LOADING' }
-  | { type: 'CONFIG_LOADED'; config: RuntimeConfig }
+  | {
+      type: 'CONFIG_LOADED';
+      config: RuntimeConfig;
+      savedViewport?: ViewportState | null;
+    }
   | { type: 'CONFIG_ERROR'; message: string }
   | { type: 'DISMISS_FIRST_VISIT_DISCLAIMER' }
   | { type: 'DISMISS_TILE_WARNING' }
@@ -125,7 +130,13 @@ export type AppAction =
   | { type: 'SET_POLYGON_OPACITY'; opacity: number }
   | { type: 'SET_POLYGON_FILTER'; filter: PolygonFilter }
   | { type: 'TILE_LOAD_ERROR'; reason?: string }
-  | { type: 'SET_CAMERA_TARGET'; lng: number; lat: number; zoom?: number }
+  | {
+      type: 'SET_CAMERA_TARGET';
+      lng: number;
+      lat: number;
+      zoom?: number;
+      bounds?: BboxBounds;
+    }
   | { type: 'SET_VIEWPORT'; bbox: BboxBounds; zoom: number }
   | {
       type: 'VIEWPORT_FEATURES_LOADED';
@@ -406,13 +417,23 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         !hasOrthophoto && state.basemapMode === 'orthophoto'
           ? 'osm'
           : state.basemapMode;
+      const saved = action.savedViewport ?? null;
       const nextCameraTarget: CameraTarget =
-        state.cameraTarget ?? {
-          lng: action.config.initialView.lng,
-          lat: action.config.initialView.lat,
-          zoom: action.config.initialView.zoom,
-          seq: 1,
-        };
+        state.cameraTarget ??
+        (saved !== null
+          ? {
+              lng: (saved.bbox.minLng + saved.bbox.maxLng) / 2,
+              lat: (saved.bbox.minLat + saved.bbox.maxLat) / 2,
+              zoom: saved.zoom,
+              bounds: saved.bbox,
+              seq: 1,
+            }
+          : {
+              lng: action.config.initialView.lng,
+              lat: action.config.initialView.lat,
+              zoom: action.config.initialView.zoom,
+              seq: 1,
+            });
 
       return {
         ...state,
@@ -500,6 +521,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         lng: action.lng,
         lat: action.lat,
         ...(action.zoom !== undefined ? { zoom: action.zoom } : {}),
+        ...(action.bounds !== undefined ? { bounds: action.bounds } : {}),
         seq: nextSeq,
       };
       return {
@@ -975,6 +997,16 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'CAST_VOTE': {
+      const targetFeature = state.features.find(
+        (f) => f.id === action.polygonId,
+      );
+      if (
+        targetFeature &&
+        (targetFeature.properties.isAuthor ||
+          targetFeature.properties.status !== 'proposed')
+      ) {
+        return state;
+      }
       const intent: PendingIntent = {
         type: 'CAST_VOTE',
         polygonId: action.polygonId,
