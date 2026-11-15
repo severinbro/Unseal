@@ -913,11 +913,10 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       identifierA11y: 'Pseudonym oder E-Mail-Adresse',
       identifierPlaceholder: 'Pseudonym oder name@beispiel.de',
       privacyConsentA11y:
-        'Ich stimme der Datenschutzerklärung und den Nutzungsbedingungen zu',
-      privacyConsentPrefix:
-        'Ich stimme der E-Mail-Verarbeitung gemäß ',
+        'Ich habe die Datenschutzerklärung gelesen und akzeptiere die Nutzungsbedingungen',
+      privacyConsentPrefix: 'Ich habe die ',
       privacyPolicyLinkText: 'Datenschutzerklärung',
-      termsConsentConnector: ' sowie den ',
+      termsConsentConnector: ' gelesen und akzeptiere die ',
       termsLinkText: 'Nutzungsbedingungen (inkl. CC0 / CC BY 4.0)',
       verifyPendingBody: (email) =>
         `Wir haben einen Bestätigungslink an ${email} gesendet. Bitte klicke auf den Link in deiner E-Mail und melde dich anschließend hier an.`,
@@ -982,7 +981,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         'Das Pseudonym muss 3–32 Zeichen lang sein (Buchstaben, Ziffern, Unterstrich _ oder Bindestrich -).',
       invalidEmail: 'Bitte gib eine gültige E-Mail-Adresse ein.',
       privacyConsentRequired:
-        'Bitte bestätige Datenschutzerklärung und Nutzungsbedingungen, um fortzufahren.',
+        'Bitte bestätige, dass du die Datenschutzerklärung gelesen hast, und akzeptiere die Nutzungsbedingungen.',
       shortPassword: (min) =>
         `Das Passwort muss mindestens ${min} Zeichen lang sein.`,
       missingCredentials:
@@ -1488,9 +1487,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       identifierLabel: 'Pseudonym or Email Address',
       identifierA11y: 'Pseudonym or email address',
       identifierPlaceholder: 'Pseudonym or name@example.org',
-      privacyConsentA11y: 'I agree to the Privacy Policy and Terms of Use',
-      privacyConsentPrefix:
-        'I consent to email processing under the ',
+      privacyConsentA11y: 'I have read the Privacy Policy and accept the Terms of Use',
+      privacyConsentPrefix: 'I have read the ',
       privacyPolicyLinkText: 'Privacy Policy',
       termsConsentConnector: ' and accept the ',
       termsLinkText: 'Terms of Use (incl. CC0 / CC BY 4.0)',
@@ -1557,7 +1555,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         'Pseudonym must be 3–32 characters using letters, digits, underscores (_), or hyphens (-).',
       invalidEmail: 'Please enter a valid email address.',
       privacyConsentRequired:
-        'Please accept the Privacy Policy and Terms of Use to continue.',
+        'Please confirm that you have read the Privacy Policy and accept the Terms of Use.',
       shortPassword: (min) => `Password must be at least ${min} characters.`,
       missingCredentials: 'Enter your pseudonym (or email) and password.',
       missingRecoveryFields: (min) =>

@@ -46,6 +46,10 @@ import {
   recomputePhotoScores,
   recomputePolygonScores,
 } from './db/integrity.js';
+import {
+  purgeAbandonedUnverifiedAccounts,
+  purgeExpiredPersonalData,
+} from './db/retention.js';
 import { resetTestDb, setupTestDb } from './db/testHarness.js';
 import { createLogger } from './logger.js';
 import {
@@ -431,6 +435,8 @@ export {
   optionalAuth,
   parseGeoPackageBinary,
   processUploadedPhoto,
+  purgeAbandonedUnverifiedAccounts,
+  purgeExpiredPersonalData,
   recomputeCommentScores,
   recomputePhotoScores,
   recomputePolygonScores,

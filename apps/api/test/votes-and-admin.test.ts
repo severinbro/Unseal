@@ -850,7 +850,8 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
         'FORBIDDEN_PSEUDONYM_BANNED',
       );
 
-      // Re-registering with the banned user's email under a new pseudonym ALSO fails with 403
+      // Re-registering with the banned user's email under a new pseudonym creates no account
+      // (generic 201 so the response does not reveal that the address is banned)
       const reRegBannedEmail = await app.inject({
         method: 'POST',
         url: '/api/v1/auth/register',
@@ -863,11 +864,11 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
           acceptedTerms: true,
         },
       });
-      assert.equal(reRegBannedEmail.statusCode, 403);
-      assert.equal(
-        ApiErrorEnvelopeSchema.parse(reRegBannedEmail.json()).error.code,
-        'FORBIDDEN_PSEUDONYM_BANNED',
+      assert.equal(reRegBannedEmail.statusCode, 201);
+      const freshAlias = await pool.query(
+        "SELECT 1 FROM users WHERE LOWER(pseudonym) = 'freshalias99'",
       );
+      assert.equal(freshAlias.rowCount, 0);
 
       // 2) Preemptive ban-user (no users row exists, default reason -> 'banned')
       const preemptiveBanResult = await runAdminCommand(pool, [
@@ -1274,6 +1275,10 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
         },
       });
       assert.equal(reRegister.statusCode, 201);
+      const reRegistered = await pool.query(
+        "SELECT 1 FROM users WHERE LOWER(pseudonym) = 'othercitizen'",
+      );
+      assert.equal(reRegistered.rowCount, 1, 'lifted ban must allow a real registration');
       const keepReservation = await app.runAdminCommand(['lift-ban', 'CarlaRealName']);
       assert.equal(keepReservation.liftedPseudonymBans, 0);
     } finally {

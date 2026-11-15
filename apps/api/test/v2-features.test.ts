@@ -1183,6 +1183,10 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
         },
       });
       assert.equal(reRegister.statusCode, 201);
+      const returned = await pool.query(
+        "SELECT 1 FROM users WHERE LOWER(pseudonym) = 'purgemapperreturns'",
+      );
+      assert.equal(returned.rowCount, 1);
     } finally {
       await app.close();
     }

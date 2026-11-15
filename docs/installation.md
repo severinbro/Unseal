@@ -220,6 +220,7 @@ Users can download their own data in the app (*Konto → Meine Daten herunterlad
 | `AUTO_SEED_VG250` | `false` (`true` in Compose) | Automatically download & seed German BKG VG250 OpenData municipalities when empty. |
 | `SMTP_HOST` / `SMTP_PORT` | *(empty)* / `587` | Outbound SMTP hostname and port (`mailpit` / `1025` in local `docker-compose.yml`). |
 | `SMTP_SECURE` | `false` (`true` if `465`) | Use implicit TLS (`true` for port `465`, `false` for STARTTLS on `587`). |
+| `SMTP_REQUIRE_TLS` | `true` (unless `SMTP_SECURE=true`) | Refuse to send when the server does not offer STARTTLS, so confirmation/reset links and addresses never travel unencrypted. Set `false` only for local Mailpit (as in `docker-compose.yml`). |
 | `SMTP_USER` / `SMTP_PASS` | *(empty)* | SMTP authentication credentials. |
 | `SMTP_FROM` | `Unseal <noreply@localhost>` | Sender `From:` header for confirmation and password reset emails. |
 | `TRUST_PROXY` | `false` | Set `true` behind Caddy/Nginx/Traefik. |

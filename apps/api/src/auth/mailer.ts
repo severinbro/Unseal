@@ -6,7 +6,13 @@ import type { FastifyBaseLogger } from 'fastify';
 export interface AuthEmailPayload {
   to: string;
   pseudonym: string;
-  purpose: 'verify_email' | 'reset_password';
+  /**
+   * `account_exists` is sent instead of a confirmation link when someone tries to
+   * register with an address that already has an account, so the registration
+   * response never reveals whether an address is registered (GDPR Art. 32).
+   * Its `actionUrl` is the public app URL, never a token link.
+   */
+  purpose: 'verify_email' | 'reset_password' | 'account_exists';
   actionUrl: string;
 }
 
@@ -48,6 +54,54 @@ export function renderAuthEmailMessage(payload: AuthEmailPayload): {
 } {
   const safeName = escapeHtml(payload.pseudonym);
   const safeUrl = escapeHtml(payload.actionUrl);
+
+  if (payload.purpose === 'account_exists') {
+    const subject =
+      'Unseal – Registrierungsversuch mit deiner E-Mail-Adresse / Registration attempt';
+    const text = [
+      `Hallo ${payload.pseudonym},`,
+      '',
+      'gerade wurde versucht, mit deiner E-Mail-Adresse ein neues Unseal-Konto zu registrieren. Für diese Adresse besteht bereits dein Konto.',
+      'Falls du das warst: Melde dich einfach an. Wenn du dein Passwort nicht mehr weißt, nutze in der App „Passwort vergessen?“.',
+      payload.actionUrl,
+      '',
+      'Falls du das nicht warst, musst du nichts tun – es wurde kein neues Konto angelegt.',
+      '',
+      '---',
+      `Hello ${payload.pseudonym},`,
+      '',
+      'Someone just tried to register a new Unseal account with your email address, which already has an account.',
+      'If this was you, simply sign in, or use "Forgot password?" in the app. If not, no action is needed – no account was created.',
+      payload.actionUrl,
+    ].join('\n');
+
+    const html = `<!doctype html>
+<html lang="de">
+<body style="font-family: system-ui, -apple-system, sans-serif; background:#f5f6f3; padding:24px; color:#18221d;">
+  <div style="max-width:540px; margin:0 auto; background:#ffffff; border:1px solid #d5ddd7; border-radius:14px; padding:28px;">
+    <h2 style="margin:0 0 12px; color:#176642;">Unseal</h2>
+    <p style="margin:0 0 14px;">Hallo <strong>${safeName}</strong>,</p>
+    <p style="margin:0 0 14px; line-height:1.5;">
+      gerade wurde versucht, mit deiner E-Mail-Adresse ein neues Konto zu registrieren. Für diese Adresse besteht bereits dein Konto.
+    </p>
+    <p style="margin:0 0 20px; line-height:1.5;">
+      Falls du das warst, melde dich einfach an oder nutze in der App <em>Passwort vergessen?</em>. Falls nicht, musst du nichts tun – es wurde kein neues Konto angelegt.
+    </p>
+    <p style="margin:0 0 22px;">
+      <a href="${safeUrl}" style="display:inline-block; background:#1f6f4a; color:#ffffff; text-decoration:none; font-weight:700; padding:12px 20px; border-radius:999px;">
+        Unseal öffnen
+      </a>
+    </p>
+    <hr style="border:none; border-top:1px solid #e3e8e4; margin:18px 0;" />
+    <p style="font-size:13px; color:#526159; margin:0; line-height:1.45;">
+      <strong>English:</strong> Someone tried to register with your email address, which already belongs to account <strong>${safeName}</strong>. If this was you, sign in or use "Forgot password?". Otherwise no action is needed.
+    </p>
+  </div>
+</body>
+</html>`;
+
+    return { subject, text, html };
+  }
 
   if (payload.purpose === 'verify_email') {
     const subject =
@@ -222,6 +276,13 @@ export function createSmtpMailer(
   if (!config.smtp.host) {
     return {
       async sendActionEmail(payload: AuthEmailPayload): Promise<void> {
+        if (!config.smtp.logFallbackContent) {
+          logger.warn(
+            { purpose: payload.purpose },
+            'SMTP_HOST not configured; transactional email dropped',
+          );
+          return;
+        }
         logger.info(
           {
             purpose: payload.purpose,
@@ -232,6 +293,10 @@ export function createSmtpMailer(
         );
       },
       async sendBugReportEmail(payload: BugReportEmailPayload): Promise<void> {
+        if (!config.smtp.logFallbackContent) {
+          logger.warn('SMTP_HOST not configured; bug report email dropped');
+          return;
+        }
         logger.info(
           {
             to: payload.to,
@@ -250,6 +315,7 @@ export function createSmtpMailer(
     host: config.smtp.host,
     port: config.smtp.port,
     secure: config.smtp.secure,
+    requireTLS: config.smtp.requireTls,
     ...(config.smtp.user && config.smtp.pass
       ? {
           auth: {

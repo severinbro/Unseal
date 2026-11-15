@@ -47,17 +47,26 @@ export async function assertPseudonymNotReserved(
   );
 }
 
+/** Whether an email address (or its canonical alias) belongs to a banned account. */
+export async function isEmailReserved(
+  db: pg.Pool | pg.PoolClient,
+  tombstoneSecret: string,
+  email: string,
+): Promise<boolean> {
+  const reservedRes = await db.query<ReservedRow>(
+    'SELECT reason FROM reserved_emails WHERE email_hash = ANY($1::bytea[]) LIMIT 1',
+    [emailTombstoneCandidates(tombstoneSecret, email)],
+  );
+  return (reservedRes.rowCount ?? 0) > 0;
+}
+
 /** Rejects email addresses (or their canonical alias) that belong to a banned account. */
 export async function assertEmailNotReserved(
   db: pg.Pool | pg.PoolClient,
   tombstoneSecret: string,
   email: string,
 ): Promise<void> {
-  const reservedRes = await db.query<ReservedRow>(
-    'SELECT reason FROM reserved_emails WHERE email_hash = ANY($1::bytea[]) LIMIT 1',
-    [emailTombstoneCandidates(tombstoneSecret, email)],
-  );
-  if ((reservedRes.rowCount ?? 0) > 0) {
+  if (await isEmailReserved(db, tombstoneSecret, email)) {
     throw new ApiError(
       403,
       'FORBIDDEN_PSEUDONYM_BANNED',

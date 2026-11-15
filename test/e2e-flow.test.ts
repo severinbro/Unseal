@@ -1071,28 +1071,40 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
       acceptedTerms: true,
     });
 
-    // Canonical email normalization blocks Gmail dot/+tag alias duplicate
+    // Canonical email normalization blocks a Gmail dot/+tag alias duplicate without
+    // revealing it: the client sees the generic "check your inbox" result, no account is created
+    const aliasResult = await newcomerClient.register({
+      pseudonym: 'newcomer_alias',
+      email: 'newcomerhh+sockpuppet@googlemail.com',
+      password: 'strong-password-1234',
+      acceptedPrivacyPolicy: true,
+      acceptedTerms: true,
+    });
+    assert.equal(aliasResult.status, 'verification_email_sent');
     await assert.rejects(
       () =>
-        newcomerClient.register({
-          pseudonym: 'newcomer_alias',
-          email: 'newcomerhh+sockpuppet@googlemail.com',
+        newcomerClient.login({
+          identifier: 'newcomer_alias',
           password: 'strong-password-1234',
-          acceptedPrivacyPolicy: true,
-          acceptedTerms: true,
         }),
       (err: unknown) => {
         assert.ok(err instanceof ApiError);
-        assert.equal(err.statusCode, 409);
-        assert.equal(err.code, 'AUTH_EMAIL_TAKEN');
+        assert.equal(err.code, 'AUTH_INVALID_CREDENTIALS');
         return true;
       },
     );
 
-    await confirmEmailViaHostedWebPage(
-      baseUrl,
-      mailer.outbox[mailer.outbox.length - 1]!.actionUrl,
-    );
+    // The real owner is told about the attempt instead of the requester
+    const accountExistsNotice = mailer.outbox[mailer.outbox.length - 1]!;
+    assert.equal(accountExistsNotice.purpose, 'account_exists');
+    assert.equal(accountExistsNotice.to, 'newcomer.hh@gmail.com');
+    assert.equal(accountExistsNotice.actionUrl.includes('token='), false);
+
+    const newcomerVerifyMail = [...mailer.outbox]
+      .reverse()
+      .find((m) => m.purpose === 'verify_email' && m.to === 'newcomer.hh@gmail.com');
+    assert.ok(newcomerVerifyMail);
+    await confirmEmailViaHostedWebPage(baseUrl, newcomerVerifyMail.actionUrl);
     await newcomerClient.login({
       identifier: 'newcomer_hh',
       password: 'strong-password-1234',

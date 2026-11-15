@@ -27,6 +27,7 @@ import {
   verifyPassword,
 } from '../src/auth/crypto.js';
 import { rekeyCanonicalEmailHashes } from '../src/auth/tombstones.js';
+import { purgeExpiredPersonalData } from '../src/db/retention.js';
 import {
   createSession,
   optionalAuth,
@@ -122,6 +123,77 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
     if (pool) {
       await pool.end();
     }
+  });
+
+  it('purgeExpiredPersonalData erases abandoned registrations, expired sessions, stale email links and expired pseudonym reservations but keeps bans', async () => {
+    const passwordHash = await hashPassword('valid-password-123');
+    const usersRes = await pool.query<{ id: string; pseudonym: string }>(
+      `INSERT INTO users (pseudonym, email, password_hash, email_verified_at, created_at)
+       VALUES
+         ('AbandonedSignup', 'abandoned@example.org', $1, NULL, NOW() - INTERVAL '3 days'),
+         ('FreshSignup', 'fresh@example.org', $1, NULL, NOW() - INTERVAL '1 hour'),
+         ('ActiveCitizen', 'active@example.org', $1, NOW() - INTERVAL '10 days', NOW() - INTERVAL '10 days')
+       RETURNING id, pseudonym`,
+      [passwordHash],
+    );
+    const idOf = (name: string): string =>
+      usersRes.rows.find((r) => r.pseudonym === name)!.id;
+
+    await pool.query(
+      `INSERT INTO sessions (user_id, token_hash, expires_at)
+       VALUES ($1, $2, NOW() - INTERVAL '1 day'), ($1, $3, NOW() + INTERVAL '1 day')`,
+      [idOf('ActiveCitizen'), Buffer.alloc(32, 1), Buffer.alloc(32, 2)],
+    );
+    await pool.query(
+      `INSERT INTO email_tokens (user_id, purpose, token_hash, expires_at, consumed_at, created_at)
+       VALUES
+         ($1, 'reset_password', $2, NOW() - INTERVAL '19 days', NOW() - INTERVAL '19 days', NOW() - INTERVAL '20 days'),
+         ($1, 'reset_password', $3, NOW() - INTERVAL '8 days', NULL, NOW() - INTERVAL '9 days'),
+         ($1, 'reset_password', $4, NOW() + INTERVAL '1 hour', NULL, NOW())`,
+      [idOf('ActiveCitizen'), Buffer.alloc(32, 3), Buffer.alloc(32, 4), Buffer.alloc(32, 5)],
+    );
+    await pool.query(
+      `INSERT INTO reserved_pseudonyms (pseudonym_hash, reason, created_at)
+       VALUES
+         ($1, 'self_deleted', NOW() - INTERVAL '400 days'),
+         ($2, 'self_deleted', NOW() - INTERVAL '10 days'),
+         ($3, 'spam', NOW() - INTERVAL '900 days')`,
+      [
+        hashPseudonymTombstone(DEV_TOMBSTONE_SECRET, 'old_leaver'),
+        hashPseudonymTombstone(DEV_TOMBSTONE_SECRET, 'recent_leaver'),
+        hashPseudonymTombstone(DEV_TOMBSTONE_SECRET, 'old_spammer'),
+      ],
+    );
+
+    const result = await purgeExpiredPersonalData(pool, { pseudonymReservationDays: 365 });
+    assert.deepEqual(result, {
+      unverifiedUsers: 1,
+      expiredSessions: 1,
+      staleEmailTokens: 2,
+      expiredPseudonymReservations: 1,
+    });
+
+    const remainingUsers = await pool.query<{ pseudonym: string }>(
+      'SELECT pseudonym FROM users ORDER BY pseudonym',
+    );
+    assert.deepEqual(
+      remainingUsers.rows.map((r) => r.pseudonym),
+      ['ActiveCitizen', 'FreshSignup'],
+    );
+    const remainingReasons = await pool.query<{ reason: string }>(
+      'SELECT reason FROM reserved_pseudonyms ORDER BY reason',
+    );
+    assert.deepEqual(
+      remainingReasons.rows.map((r) => r.reason),
+      ['self_deleted', 'spam'],
+    );
+    // Idempotent
+    assert.deepEqual(await purgeExpiredPersonalData(pool, { pseudonymReservationDays: 365 }), {
+      unverifiedUsers: 0,
+      expiredSessions: 0,
+      staleEmailTokens: 0,
+      expiredPseudonymReservations: 0,
+    });
   });
 
   it('re-keys legacy SHA-256 canonical email hashes with the HMAC secret at startup and leaves NULL hashes untouched', async () => {
@@ -287,33 +359,53 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
           acceptedTerms: true,
         },
       });
-      assert.equal(bannedEmailRes.statusCode, 403);
+      // Banned emails get the same generic response as a fresh registration
+      // (no enumeration of banned/registered addresses), but nothing is created or sent.
+      assert.equal(bannedEmailRes.statusCode, 201);
       assert.equal(
-        ApiErrorEnvelopeSchema.parse(bannedEmailRes.json()).error.code,
+        RegisterResponseSchema.parse(bannedEmailRes.json()).status,
+        'verification_email_sent',
+      );
+      const cleanAliasCount = await pool.query(
+        "SELECT 1 FROM users WHERE LOWER(pseudonym) = 'cleanalias'",
+      );
+      assert.equal(cleanAliasCount.rowCount, 0);
+      assert.equal(mailer.outbox.length, 0);
+
+      const legacyPseudoRes = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        remoteAddress: '198.51.100.11',
+        payload: {
+          pseudonym: 'Legacy_Vandal',
+          email: 'fresh-one@example.org',
+          password: 'valid-password-123',
+          acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
+        },
+      });
+      assert.equal(legacyPseudoRes.statusCode, 403);
+      assert.equal(
+        ApiErrorEnvelopeSchema.parse(legacyPseudoRes.json()).error.code,
         'FORBIDDEN_PSEUDONYM_BANNED',
       );
-
-      for (const legacyPayload of [
-        { pseudonym: 'Legacy_Vandal', email: 'fresh-one@example.org' },
-        { pseudonym: 'FreshAlias', email: 'Legacy.Vandal@example.org' },
-      ]) {
-        const legacyRes = await app.inject({
-          method: 'POST',
-          url: '/api/v1/auth/register',
-          remoteAddress: '198.51.100.11',
-          payload: {
-            ...legacyPayload,
-            password: 'valid-password-123',
-            acceptedPrivacyPolicy: true,
-            acceptedTerms: true,
-          },
-        });
-        assert.equal(legacyRes.statusCode, 403);
-        assert.equal(
-          ApiErrorEnvelopeSchema.parse(legacyRes.json()).error.code,
-          'FORBIDDEN_PSEUDONYM_BANNED',
-        );
-      }
+      const legacyEmailRes = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        remoteAddress: '198.51.100.11',
+        payload: {
+          pseudonym: 'FreshAlias',
+          email: 'Legacy.Vandal@example.org',
+          password: 'valid-password-123',
+          acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
+        },
+      });
+      assert.equal(legacyEmailRes.statusCode, 201);
+      const freshAliasCount = await pool.query(
+        "SELECT 1 FROM users WHERE LOWER(pseudonym) = 'freshalias'",
+      );
+      assert.equal(freshAliasCount.rowCount, 0, 'legacy email ban must still block');
 
       // Valid registration -> 201 verification_email_sent + email dispatched
       const regRes = await app.inject({
@@ -345,7 +437,8 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
       );
       const initialToken = extractTokenFromActionUrl(firstEmail.actionUrl);
 
-      // Duplicate pseudonym -> 409 AUTH_PSEUDONYM_TAKEN; duplicate email -> 409 AUTH_EMAIL_TAKEN
+      // Duplicate pseudonym -> 409 AUTH_PSEUDONYM_TAKEN (pseudonyms are public);
+      // duplicate email -> generic 201 + "account exists" notice to the owner (no enumeration)
       const dupPseudo = await app.inject({
         method: 'POST',
         url: '/api/v1/auth/register',
@@ -376,11 +469,22 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
           acceptedTerms: true,
         },
       });
-      assert.equal(dupEmail.statusCode, 409);
-      assert.equal(
-        ApiErrorEnvelopeSchema.parse(dupEmail.json()).error.code,
-        'AUTH_EMAIL_TAKEN',
+      assert.equal(dupEmail.statusCode, 201);
+      assert.deepEqual(RegisterResponseSchema.parse(dupEmail.json()), {
+        status: 'verification_email_sent',
+        pseudonym: 'AnotherMapper',
+        email: 'courtyard.mapper@example.org',
+      });
+      const anotherMapperCount = await pool.query(
+        "SELECT 1 FROM users WHERE LOWER(pseudonym) = 'anothermapper'",
       );
+      assert.equal(anotherMapperCount.rowCount, 0);
+      assert.equal(mailer.outbox.length, 2);
+      const accountExistsNotice = mailer.outbox.pop()!;
+      assert.equal(accountExistsNotice.purpose, 'account_exists');
+      assert.equal(accountExistsNotice.to, 'courtyard.mapper@example.org');
+      assert.equal(accountExistsNotice.pseudonym, 'CourtyardMapper');
+      assert.equal(accountExistsNotice.actionUrl, 'https://map.example.org');
 
       // Attempting login BEFORE clicking confirmation link -> 403 AUTH_EMAIL_UNVERIFIED
       const unverifiedLogin = await app.inject({
@@ -821,11 +925,12 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
           acceptedTerms: true,
         },
       });
-      assert.equal(reRegBenEmail.statusCode, 403);
-      assert.equal(
-        ApiErrorEnvelopeSchema.parse(reRegBenEmail.json()).error.code,
-        'FORBIDDEN_PSEUDONYM_BANNED',
+      // Banned email: generic 201 (no enumeration) but no account is created
+      assert.equal(reRegBenEmail.statusCode, 201);
+      const differentPseudonym = await pool.query(
+        "SELECT 1 FROM users WHERE LOWER(pseudonym) = 'differentpseudonym'",
       );
+      assert.equal(differentPseudonym.rowCount, 0);
     } finally {
       await app.close();
     }

@@ -658,14 +658,15 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
         'AUTH_CAPTCHA_INVALID',
       );
 
-      // 4. Canonical +tag / dot Gmail alias is blocked with 409 AUTH_EMAIL_TAKEN
+      // 4. Canonical +tag / dot Gmail alias creates no account; the response is the generic
+      //    201 (no email enumeration) and counts towards the registration quota of its own subnet
       const ch2 = AltchaChallengeResponseSchema.parse(
         (await app.inject({ method: 'GET', url: '/api/v1/auth/challenge' })).json(),
       );
       const aliasRes = await app.inject({
         method: 'POST',
         url: '/api/v1/auth/register',
-        remoteAddress: '203.0.113.7',
+        remoteAddress: '198.51.103.7',
         payload: {
           pseudonym: 'AliasAttempt',
           email: 'CivicMapper+sockpuppet@googlemail.com',
@@ -675,11 +676,11 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
           altchaPayload: solveAltchaChallenge(ch2),
         },
       });
-      assert.equal(aliasRes.statusCode, 409);
-      assert.equal(
-        ApiErrorEnvelopeSchema.parse(aliasRes.json()).error.code,
-        'AUTH_EMAIL_TAKEN',
+      assert.equal(aliasRes.statusCode, 201);
+      const aliasUser = await pool.query(
+        "SELECT 1 FROM users WHERE LOWER(pseudonym) = 'aliasattempt'",
       );
+      assert.equal(aliasUser.rowCount, 0);
 
       // 5. Second valid registration on same /24 subnet succeeds; third registration from 203.0.113.x hits /24 subnet throttle -> 429 RATE_LIMITED
       const ch2b = AltchaChallengeResponseSchema.parse(

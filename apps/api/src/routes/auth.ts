@@ -35,8 +35,10 @@ import { createSession, requireAuth } from '../auth/session.js';
 import {
   assertEmailNotReserved,
   assertPseudonymNotReserved,
+  isEmailReserved,
 } from '../auth/tombstones.js';
 import { deleteOrBanUserAccount } from '../db/integrity.js';
+import { purgeAbandonedUnverifiedAccounts } from '../db/retention.js';
 import { unlinkUploadFiles } from '../photos/uploadFiles.js';
 import { collectUserData } from '../users/dataExport.js';
 import {
@@ -54,6 +56,9 @@ const DEFAULT_LOGIN_ACCOUNT_WINDOW_MS = 15 * 60 * 1000;
 const DEFAULT_REGISTER_SUBNET_WINDOW_MS = 60 * 60 * 1000;
 const MAX_USED_ALTCHA_CHALLENGES = 10_000;
 const ALTCHA_REPLAY_RETENTION_MS = 15 * 60 * 1000;
+
+/** Unique-constraint race on the email column during registration (handled like "email exists"). */
+class RegistrationEmailRace extends Error {}
 
 class BoundedReplayCache {
   private readonly seen = new Map<string, number>();
@@ -561,19 +566,9 @@ export function registerAuthRoutes(app: FastifyInstance): void {
         }
       }
 
-      // GDPR Art. 5(1)(e) storage limitation: purge abandoned unverified accounts (> 48h)
-      await app.pool.query(
-        `DELETE FROM users u
-         WHERE u.email_verified_at IS NULL
-           AND u.created_at < NOW() - INTERVAL '48 hours'
-           AND NOT EXISTS (
-             SELECT 1 FROM email_tokens et
-             WHERE et.user_id = u.id
-               AND et.purpose = 'verify_email'
-               AND et.consumed_at IS NULL
-               AND et.expires_at > NOW()
-           )`,
-      );
+      // GDPR Art. 5(1)(e): also purge abandoned registrations here (besides the hourly
+      // job) so their pseudonym/email become available again right away.
+      await purgeAbandonedUnverifiedAccounts(app.pool);
 
       if ((RESERVED_PSEUDONYMS as readonly string[]).includes(pseudonymLower)) {
         throw new ApiError(
@@ -588,7 +583,6 @@ export function registerAuthRoutes(app: FastifyInstance): void {
         app.config.tombstoneSecret,
         pseudonymLower,
       );
-      await assertEmailNotReserved(app.pool, app.config.tombstoneSecret, emailLower);
 
       const existingPseudonymRes = await app.pool.query<{ exists: number }>(
         'SELECT 1 AS exists FROM users WHERE LOWER(pseudonym) = $1 LIMIT 1',
@@ -602,16 +596,50 @@ export function registerAuthRoutes(app: FastifyInstance): void {
         );
       }
 
-      const existingEmailRes = await app.pool.query<{ exists: number }>(
-        'SELECT 1 AS exists FROM users WHERE LOWER(email) = $1 OR canonical_email_hash = $2 LIMIT 1',
+      // GDPR Art. 32 / anti-enumeration: the response must not reveal whether an email
+      // address is already registered or banned. Pseudonyms are public anyway.
+      const sendGenericAcceptedResponse = () =>
+        reply.status(201).send(
+          RegisterResponseSchema.parse({
+            status: 'verification_email_sent',
+            pseudonym: body.pseudonym,
+            email: emailLower,
+          }),
+        );
+
+      const emailIsBanned = await isEmailReserved(
+        app.pool,
+        app.config.tombstoneSecret,
+        emailLower,
+      );
+      const existingEmailRes = await app.pool.query<{
+        pseudonym: string;
+        email: string;
+      }>(
+        'SELECT pseudonym, email FROM users WHERE LOWER(email) = $1 OR canonical_email_hash = $2 LIMIT 1',
         [emailLower, canonicalEmailHash],
       );
-      if ((existingEmailRes.rowCount ?? 0) > 0) {
-        throw new ApiError(
-          409,
-          'AUTH_EMAIL_TAKEN',
-          'This email address is already registered.',
-        );
+      const existingOwner = existingEmailRes.rows[0];
+      if (emailIsBanned || existingOwner) {
+        // Same expensive work as a real registration so timing does not tell either.
+        await hashPassword(body.password, app.authSemaphore);
+        registerSubnetTracker.recordFailure(subnetKey, Date.now());
+        if (existingOwner && !emailIsBanned) {
+          try {
+            await app.mailer.sendActionEmail({
+              to: existingOwner.email,
+              pseudonym: existingOwner.pseudonym,
+              purpose: 'account_exists',
+              actionUrl: app.config.publicBaseUrl,
+            });
+          } catch (mailErr: unknown) {
+            request.log.error(
+              { err: mailErr },
+              'Failed to dispatch account-exists notice',
+            );
+          }
+        }
+        return sendGenericAcceptedResponse();
       }
 
       const passwordHash = await hashPassword(body.password, app.authSemaphore);
@@ -661,11 +689,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
               typeof errRec.constraint === 'string' &&
               errRec.constraint.includes('email')
             ) {
-              throw new ApiError(
-                409,
-                'AUTH_EMAIL_TAKEN',
-                'This email address is already registered.',
-              );
+              throw new RegistrationEmailRace();
             }
             throw new ApiError(
               409,
@@ -695,6 +719,10 @@ export function registerAuthRoutes(app: FastifyInstance): void {
         registerSubnetTracker.recordFailure(subnetKey, Date.now());
       } catch (err: unknown) {
         await rollbackQuietly(client, request.log);
+        if (err instanceof RegistrationEmailRace) {
+          registerSubnetTracker.recordFailure(subnetKey, Date.now());
+          return sendGenericAcceptedResponse();
+        }
         throw err;
       } finally {
         client.release();

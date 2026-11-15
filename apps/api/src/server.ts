@@ -5,6 +5,7 @@ import { buildApp } from './app.js';
 import { rekeyCanonicalEmailHashes } from './auth/tombstones.js';
 import { loadEnvConfig } from './config.js';
 import { runMigrations } from './db/migrate.js';
+import { purgeExpiredPersonalData } from './db/retention.js';
 import { createDbPool } from './db/pool.js';
 import { createLogger } from './logger.js';
 import { ensureMunicipalitiesSeededIfEnabled } from './municipalities/vg250.js';
@@ -52,6 +53,37 @@ async function runAdvisoryLockedStalePrune(
   }
 }
 
+async function runAdvisoryLockedPrivacyRetention(
+  pool: pg.Pool,
+  pseudonymReservationDays: number,
+  logger: FastifyBaseLogger,
+): Promise<void> {
+  const lockClient = await pool.connect();
+  let acquired = false;
+  try {
+    const lockRes = await lockClient.query<{ acquired: boolean }>(
+      "SELECT pg_try_advisory_lock(hashtext('privacy_retention')) AS acquired",
+    );
+    acquired = Boolean(lockRes.rows[0]?.acquired);
+    if (!acquired) {
+      return;
+    }
+    const result = await purgeExpiredPersonalData(pool, { pseudonymReservationDays });
+    if (Object.values(result).some((count) => count > 0)) {
+      logger.info(result, 'Privacy retention purge completed');
+    }
+  } catch (err: unknown) {
+    logger.error({ err }, 'Background privacy retention purge failed');
+  } finally {
+    if (acquired) {
+      await lockClient
+        .query("SELECT pg_advisory_unlock(hashtext('privacy_retention'))")
+        .catch(() => undefined);
+    }
+    lockClient.release();
+  }
+}
+
 export async function startServer(): Promise<void> {
   const config = loadEnvConfig();
   const logger = createLogger();
@@ -75,6 +107,11 @@ export async function startServer(): Promise<void> {
       pool,
       config.uploadsDir,
       config.staleUnratedPruneDays,
+      logger,
+    );
+    void runAdvisoryLockedPrivacyRetention(
+      pool,
+      config.pseudonymReservationDays,
       logger,
     );
   }, STALE_PRUNE_INTERVAL_MS);
@@ -126,6 +163,11 @@ export async function startServer(): Promise<void> {
     pool,
     config.uploadsDir,
     config.staleUnratedPruneDays,
+    logger,
+  );
+  void runAdvisoryLockedPrivacyRetention(
+    pool,
+    config.pseudonymReservationDays,
     logger,
   );
 }

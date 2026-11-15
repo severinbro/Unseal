@@ -14,7 +14,7 @@ import {
   RuntimeConfigSchema,
 } from '@entsiegelung/shared';
 
-import { buildApp } from '../src/app.js';
+import { buildApp, createSmtpMailer } from '../src/app.js';
 import { loadEnvConfig } from '../src/config.js';
 import { runMigrations } from '../src/db/migrate.js';
 import { createDbPool } from '../src/db/pool.js';
@@ -346,6 +346,50 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
       assert.ok(!boomEnv.error.message.includes('secret-db-internal-detail'));
     } finally {
       await app.close();
+    }
+  });
+
+  it('enforces STARTTLS by default and never logs email links or bug-report content in production without SMTP', async () => {
+    assert.equal(loadEnvConfig({}).smtp.requireTls, true);
+    assert.equal(loadEnvConfig({ SMTP_PORT: '465' }).smtp.requireTls, false);
+    assert.equal(loadEnvConfig({ SMTP_REQUIRE_TLS: 'false' }).smtp.requireTls, false);
+
+    const stream = new PassThrough();
+    const lines: string[] = [];
+    stream.on('data', (chunk: Buffer) => {
+      lines.push(chunk.toString('utf8'));
+    });
+    const logger = createLogger({ stream, level: 'info' });
+    const prodConfig = loadEnvConfig({
+      NODE_ENV: 'production',
+      TOMBSTONE_SECRET: 'b'.repeat(64),
+    });
+    const prodMailer = createSmtpMailer(prodConfig, logger);
+    await prodMailer.sendActionEmail({
+      to: 'person@example.org',
+      pseudonym: 'SecretPseudonym',
+      purpose: 'reset_password',
+      actionUrl: 'https://map.example.org/auth/reset-password?token=supersecrettoken123',
+    });
+    await prodMailer.sendBugReportEmail({
+      to: 'operator@example.org',
+      description: 'Private description text',
+      contactEmail: 'reporter@example.org',
+      reporterPseudonym: 'ReporterName',
+      reporterUserId: null,
+      platform: 'web',
+      pageUrl: null,
+      submittedAtIso: new Date().toISOString(),
+    });
+    const output = lines.join('');
+    assert.match(output, /transactional email dropped/);
+    for (const forbidden of [
+      'supersecrettoken123',
+      'SecretPseudonym',
+      'Private description text',
+      'reporter@example.org',
+    ]) {
+      assert.equal(output.includes(forbidden), false, `log must not contain ${forbidden}`);
     }
   });
 

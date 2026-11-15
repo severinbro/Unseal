@@ -118,12 +118,14 @@ export const RegisterRequestSchema = z
     password: PasswordSchema,
     acceptedPrivacyPolicy: z.literal(true, {
       errorMap: () => ({
-        message: 'Privacy policy consent is required to register.',
+        // Acknowledgement of the privacy notice (Art. 13 GDPR), not consent: the account
+        // itself is processed to provide the service (Art. 6(1)(b) GDPR).
+        message: 'Please confirm that you have read the privacy policy to register.',
       }),
     }),
     acceptedTerms: z.literal(true, {
       errorMap: () => ({
-        message: 'Terms of use and content license consent is required to register.',
+        message: 'Please accept the terms of use and content licenses to register.',
       }),
     }),
     altchaPayload: z.string().trim().min(1).max(4096).optional(),

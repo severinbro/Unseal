@@ -22,6 +22,10 @@ export interface SmtpConfig {
   user: string | null;
   pass: string | null;
   from: string;
+  /** Refuse to send over an unencrypted connection when STARTTLS is unavailable (GDPR Art. 32). */
+  requireTls: boolean;
+  /** Development fallback without SMTP may log links; production never does. */
+  logFallbackContent: boolean;
 }
 
 export interface EnvConfig {
@@ -313,6 +317,11 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
   const smtpPassRaw = env.SMTP_PASS ?? '';
   const smtpFrom =
     env.SMTP_FROM?.trim() || 'Unseal <noreply@localhost>';
+  const smtpRequireTls = parseBooleanSetting(
+    env.SMTP_REQUIRE_TLS,
+    !smtpSecure,
+    'SMTP_REQUIRE_TLS',
+  );
 
   const smtp: SmtpConfig = {
     host: smtpHostRaw.length > 0 ? smtpHostRaw : null,
@@ -321,6 +330,8 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     user: smtpUserRaw.length > 0 ? smtpUserRaw : null,
     pass: smtpPassRaw.length > 0 ? smtpPassRaw : null,
     from: smtpFrom,
+    requireTls: smtpRequireTls,
+    logFallbackContent: env.NODE_ENV !== 'production',
   };
 
   const autoSeedVg250 = parseBooleanSetting(
