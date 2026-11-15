@@ -17,6 +17,10 @@ import {
   localizeSystemNotice,
 } from '../src/i18n/translations';
 import type { LocateMeResult } from '../src/location/locateMe.types';
+import {
+  computeNorthArrowRotationDeg,
+  normalizeMapBearing,
+} from '../src/map/types';
 import { createMemorySessionStorage } from '../src/storage/tokenStorage';
 import {
   requestCurrentCoordinates,
@@ -813,5 +817,23 @@ describe('German default localization and DE <-> EN switching', () => {
     assert.equal(metaEn.authorLastLoginText, 'Unknown');
     assert.equal(metaEn.needsReviewBadgeText, 'Needs review (2)');
     assert.equal(metaEn.canFlagOrUnflag, false);
+  });
+
+  it('normalizes map bearing and computes north arrow rotation cleanly', () => {
+    assert.equal(normalizeMapBearing(0), 0);
+    assert.equal(normalizeMapBearing(360), 0);
+    assert.equal(normalizeMapBearing(-90), 270);
+    assert.equal(normalizeMapBearing(450), 90);
+    assert.equal(normalizeMapBearing(Number.NaN), 0);
+
+    assert.equal(computeNorthArrowRotationDeg(0), 0);
+    assert.equal(computeNorthArrowRotationDeg(360), 0);
+    assert.equal(computeNorthArrowRotationDeg(90), -90);
+    assert.equal(computeNorthArrowRotationDeg(-90), -270);
+    assert.equal(computeNorthArrowRotationDeg(180), -180);
+    assert.equal(computeNorthArrowRotationDeg(Number.NaN), 0);
+
+    assert.equal(getTranslations('de').controls.northA11y, 'Karte nach Norden ausrichten');
+    assert.equal(getTranslations('en').controls.northA11y, 'Orient map to north');
   });
 });

@@ -12,13 +12,43 @@ import {
   getTranslations,
   type Locale,
 } from '../i18n/translations';
+import { computeNorthArrowRotationDeg } from '../map/types';
 import { MIN_TOUCH_TARGET_DP } from '../state/viewModels';
 import { PALETTE, RADII } from '../theme/tokens';
+
+const NORTH_NEEDLE_COLOR = '#D93025';
+const SOUTH_NEEDLE_COLOR = '#8A9790';
 
 export interface GnssMapButtonProps {
   locale?: Locale;
   isLocating: boolean;
   onPress: () => void;
+  positioned?: boolean;
+}
+
+export interface NorthArrowButtonProps {
+  locale?: Locale;
+  bearingDeg: number;
+  onPress: () => void;
+  positioned?: boolean;
+}
+
+export interface TopRightMapControlsProps {
+  children: React.ReactNode;
+}
+
+export function TopRightMapControls({
+  children,
+}: TopRightMapControlsProps): React.JSX.Element {
+  return (
+    <View
+      pointerEvents="box-none"
+      style={styles.topRightControlsContainer}
+      testID="top-right-map-controls"
+    >
+      {children}
+    </View>
+  );
 }
 
 function GnssReticleGlyph(): React.JSX.Element {
@@ -35,10 +65,68 @@ function GnssReticleGlyph(): React.JSX.Element {
   );
 }
 
+function NorthArrowGlyph({
+  rotationDeg,
+}: {
+  rotationDeg: number;
+}): React.JSX.Element {
+  if (Platform.OS === 'web') {
+    return (
+      <View
+        style={[
+          styles.glyphFrame,
+          { transform: [{ rotate: `${rotationDeg}deg` }] },
+        ]}
+        accessible={false}
+      >
+        {React.createElement(
+          'svg',
+          {
+            width: 24,
+            height: 24,
+            viewBox: '0 0 24 24',
+            fill: 'none',
+            'aria-hidden': true,
+          },
+          React.createElement('path', {
+            d: 'M12 2L16.5 12H7.5L12 2Z',
+            fill: NORTH_NEEDLE_COLOR,
+          }),
+          React.createElement('path', {
+            d: 'M12 22L16.5 12H7.5L12 22Z',
+            fill: SOUTH_NEEDLE_COLOR,
+          }),
+          React.createElement('circle', {
+            cx: 12,
+            cy: 12,
+            r: 1.5,
+            fill: '#FFFFFF',
+          }),
+        )}
+      </View>
+    );
+  }
+
+  return (
+    <View
+      style={[
+        styles.glyphFrame,
+        { transform: [{ rotate: `${rotationDeg}deg` }] },
+      ]}
+      accessible={false}
+    >
+      <View style={styles.needleNorth} />
+      <View style={styles.needleSouth} />
+      <View style={styles.needlePivot} />
+    </View>
+  );
+}
+
 export function GnssMapButton({
   locale = DEFAULT_LOCALE,
   isLocating,
   onPress,
+  positioned = true,
 }: GnssMapButtonProps): React.JSX.Element {
   const t = getTranslations(locale).controls;
 
@@ -52,6 +140,7 @@ export function GnssMapButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.floatingButton,
+        positioned ? styles.floatingButtonPositioned : null,
         pressed && !isLocating ? styles.floatingButtonPressed : null,
         isLocating ? styles.floatingButtonBusy : null,
       ]}
@@ -65,14 +154,44 @@ export function GnssMapButton({
   );
 }
 
+export function NorthArrowButton({
+  locale = DEFAULT_LOCALE,
+  bearingDeg,
+  onPress,
+  positioned = false,
+}: NorthArrowButtonProps): React.JSX.Element {
+  const t = getTranslations(locale).controls;
+  const rotationDeg = computeNorthArrowRotationDeg(bearingDeg);
+
+  return (
+    <Pressable
+      testID="north-arrow-button"
+      accessibilityRole="button"
+      accessibilityLabel={t.northA11y}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.floatingButton,
+        positioned ? styles.floatingButtonPositioned : null,
+        pressed ? styles.floatingButtonPressed : null,
+      ]}
+    >
+      <NorthArrowGlyph rotationDeg={rotationDeg} />
+    </Pressable>
+  );
+}
+
 const BUTTON_SIZE_DP = Math.max(48, MIN_TOUCH_TARGET_DP);
 
 const styles = StyleSheet.create({
-  floatingButton: {
+  topRightControlsContainer: {
     position: 'absolute',
     top: 12,
     right: 12,
     zIndex: 25,
+    gap: 8,
+    alignItems: 'center',
+  },
+  floatingButton: {
     width: BUTTON_SIZE_DP,
     height: BUTTON_SIZE_DP,
     borderRadius: RADII.pill,
@@ -92,6 +211,12 @@ const styles = StyleSheet.create({
           shadowRadius: 5,
           elevation: 5,
         }),
+  },
+  floatingButtonPositioned: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    zIndex: 25,
   },
   floatingButtonPressed: {
     backgroundColor: PALETTE.bgTinted,
@@ -151,5 +276,34 @@ const styles = StyleSheet.create({
   tickEast: {
     right: 0,
     top: 11,
+  },
+  needleNorth: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 4.5,
+    borderRightWidth: 4.5,
+    borderBottomWidth: 10,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: NORTH_NEEDLE_COLOR,
+  },
+  needleSouth: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 4.5,
+    borderRightWidth: 4.5,
+    borderTopWidth: 10,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: SOUTH_NEEDLE_COLOR,
+  },
+  needlePivot: {
+    position: 'absolute',
+    top: 10.5,
+    left: 10.5,
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: '#FFFFFF',
   },
 });

@@ -34,6 +34,7 @@ import {
   shouldReportOrthophotoTileError,
 } from './styleBuilder';
 import {
+  normalizeMapBearing,
   VIEWPORT_SETTLE_DEBOUNCE_MS,
   type BboxBounds,
   type MapCanvasProps,
@@ -95,7 +96,9 @@ export function MapCanvas({
   selectedFeatureId,
   polygonOpacity = DEFAULT_POLYGON_OPACITY,
   cameraTarget,
+  northResetSeq = 0,
   onViewportChange,
+  onBearingChange,
   onMapTap,
   onFeaturePress,
   onTileError,
@@ -104,6 +107,7 @@ export function MapCanvas({
   const cameraRef = useRef<CameraRef | null>(null);
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCameraSeqRef = useRef<number | null>(cameraTarget?.seq ?? null);
+  const lastNorthResetSeqRef = useRef<number>(northResetSeq);
 
   const modeRef = useRef(mode);
   modeRef.current = mode;
@@ -113,6 +117,8 @@ export function MapCanvas({
   featuresRef.current = features;
   const onViewportChangeRef = useRef(onViewportChange);
   onViewportChangeRef.current = onViewportChange;
+  const onBearingChangeRef = useRef(onBearingChange);
+  onBearingChangeRef.current = onBearingChange;
   const onMapTapRef = useRef(onMapTap);
   onMapTapRef.current = onMapTap;
   const onFeaturePressRef = useRef(onFeaturePress);
@@ -181,6 +187,18 @@ export function MapCanvas({
   }, [cameraTarget]);
 
   useEffect(() => {
+    if (northResetSeq === lastNorthResetSeqRef.current) {
+      return;
+    }
+    lastNorthResetSeqRef.current = northResetSeq;
+    cameraRef.current?.setCamera({
+      heading: 0,
+      animationDuration: 300,
+      animationMode: 'easeTo',
+    });
+  }, [northResetSeq]);
+
+  useEffect(() => {
     Logger.setLogCallback((log) => {
       if (log.level !== 'error' || log.message.includes('Canceled')) {
         return false;
@@ -228,6 +246,7 @@ export function MapCanvas({
   );
 
   const handleDidFinishLoadingMap = useCallback((): void => {
+    onBearingChangeRef.current?.(0);
     const view = mapViewRef.current;
     if (!view) {
       return;
@@ -250,11 +269,27 @@ export function MapCanvas({
     })();
   }, []);
 
+  const handleRegionIsChanging = useCallback(
+    (regionFeature: GeoJsonFeature<GeoJsonPoint, RegionPayload>): void => {
+      const payload = regionFeature.properties;
+      if (!payload) {
+        return;
+      }
+      if (Number.isFinite(payload.heading)) {
+        onBearingChangeRef.current?.(normalizeMapBearing(payload.heading));
+      }
+    },
+    [],
+  );
+
   const handleRegionDidChange = useCallback(
     (regionFeature: GeoJsonFeature<GeoJsonPoint, RegionPayload>): void => {
       const payload = regionFeature.properties;
       if (!payload) {
         return;
+      }
+      if (Number.isFinite(payload.heading)) {
+        onBearingChangeRef.current?.(normalizeMapBearing(payload.heading));
       }
       const bbox = visibleBoundsToBbox(payload.visibleBounds);
       if (bbox !== null && Number.isFinite(payload.zoomLevel)) {
@@ -338,13 +373,14 @@ export function MapCanvas({
         ref={mapViewRef}
         style={styles.map}
         mapStyle={config.osmStyleUrl}
-        compassEnabled
+        compassEnabled={false}
         attributionEnabled
         logoEnabled={false}
         pitchEnabled={false}
-        rotateEnabled={false}
+        rotateEnabled
         regionDidChangeDebounceTime={0}
         onDidFinishLoadingMap={handleDidFinishLoadingMap}
+        onRegionIsChanging={handleRegionIsChanging}
         onRegionDidChange={handleRegionDidChange}
         onPress={handleMapPress}
       >

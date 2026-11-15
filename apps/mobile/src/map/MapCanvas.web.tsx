@@ -100,7 +100,9 @@ export function MapCanvas({
   selectedFeatureId,
   polygonOpacity = DEFAULT_POLYGON_OPACITY,
   cameraTarget,
+  northResetSeq = 0,
   onViewportChange,
+  onBearingChange,
   onMapTap,
   onFeaturePress,
   onTileError,
@@ -110,6 +112,7 @@ export function MapCanvas({
   const styleReadyRef = useRef<boolean>(false);
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCameraSeqRef = useRef<number | null>(cameraTarget?.seq ?? null);
+  const lastNorthResetSeqRef = useRef<number>(northResetSeq);
 
   const configRef = useRef(config);
   configRef.current = config;
@@ -130,6 +133,8 @@ export function MapCanvas({
 
   const onViewportChangeRef = useRef(onViewportChange);
   onViewportChangeRef.current = onViewportChange;
+  const onBearingChangeRef = useRef(onBearingChange);
+  onBearingChangeRef.current = onBearingChange;
   const onMapTapRef = useRef(onMapTap);
   onMapTapRef.current = onMapTap;
   const onFeaturePressRef = useRef(onFeaturePress);
@@ -153,7 +158,8 @@ export function MapCanvas({
       center: [initialLng, initialLat],
       zoom: initialZoom,
       pitchWithRotate: false,
-      dragRotate: false,
+      touchPitch: false,
+      dragRotate: true,
       preserveDrawingBuffer: true,
       attributionControl: false,
     });
@@ -253,14 +259,22 @@ export function MapCanvas({
       }
     };
 
+    const emitBearing = (): void => {
+      onBearingChangeRef.current?.(map.getBearing());
+    };
+
     map.on('load', () => {
       styleReadyRef.current = true;
       syncSourcesAndLayers();
+      emitBearing();
       const initialViewport = extractMapViewport(map);
       if (initialViewport !== null) {
         onViewportChangeRef.current(initialViewport);
       }
     });
+
+    map.on('rotate', emitBearing);
+    map.on('rotateend', emitBearing);
 
     map.on('moveend', () => {
       if (settleTimerRef.current !== null) {
@@ -477,6 +491,15 @@ export function MapCanvas({
       duration: 350,
     });
   }, [cameraTarget]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || northResetSeq === lastNorthResetSeqRef.current) {
+      return;
+    }
+    lastNorthResetSeqRef.current = northResetSeq;
+    map.resetNorth({ duration: 300 });
+  }, [northResetSeq]);
 
   return (
     <View style={styles.container} testID="ppgis-map-canvas-web">

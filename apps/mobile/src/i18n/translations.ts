@@ -106,6 +106,7 @@ export interface TranslationDictionary {
     readonly streetFull: string;
     readonly locateA11y: string;
     readonly gnssA11y: string;
+    readonly northA11y: string;
     readonly locateCompact: string;
     readonly locateBusy: string;
     readonly locateFull: string;
@@ -496,6 +497,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       streetFull: 'Straßenkarte',
       locateA11y: 'Eigenen Standort per GNSS bestimmen',
       gnssA11y: 'Auf meinen GNSS-Standort zentrieren',
+      northA11y: 'Karte nach Norden ausrichten',
       locateCompact: 'GPS',
       locateBusy: 'GPS…',
       locateFull: 'Standort',
@@ -992,6 +994,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       streetFull: 'Street Map',
       locateA11y: 'Locate me using device GNSS',
       gnssA11y: 'Center map on my GNSS position',
+      northA11y: 'Orient map to north',
       locateCompact: 'GPS',
       locateBusy: 'GPS…',
       locateFull: 'Locate Me',

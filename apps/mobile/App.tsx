@@ -51,7 +51,11 @@ import { AboutModal } from './src/components/AboutModal';
 import { AuthAndAccountModal } from './src/components/AuthAndAccountModal';
 import { DisclaimerBanner } from './src/components/DisclaimerBanner';
 import { DrawingToolbar } from './src/components/DrawingToolbar';
-import { GnssMapButton } from './src/components/GnssMapButton';
+import {
+  GnssMapButton,
+  NorthArrowButton,
+  TopRightMapControls,
+} from './src/components/GnssMapButton';
 import { MapControlsBar } from './src/components/MapControlsBar';
 import { PolygonInspectorSheet } from './src/components/PolygonInspectorSheet';
 import {
@@ -423,6 +427,21 @@ export function App(props: AppProps = {}): React.JSX.Element {
   }, [state.features, state.mode, state.selectedFeatureId]);
 
   const sheetDragY = useRef(new Animated.Value(0)).current;
+  const [mapBearingDeg, setMapBearingDeg] = useState(0);
+  const [northResetSeq, setNorthResetSeq] = useState(0);
+
+  const handleBearingChange = useCallback((bearingDeg: number): void => {
+    setMapBearingDeg((prev) => {
+      if (bearingDeg === 0) {
+        return prev === 0 ? prev : 0;
+      }
+      return Math.abs(prev - bearingDeg) < 0.25 ? prev : bearingDeg;
+    });
+  }, []);
+
+  const handleNorthReset = useCallback((): void => {
+    setNorthResetSeq((seq) => seq + 1);
+  }, []);
   const drawingVisibleRef = useRef<boolean>(drawingToolbar.visible);
   drawingVisibleRef.current = drawingToolbar.visible;
   const drawingCollapsedRef = useRef<boolean>(drawingToolbar.collapsed);
@@ -1251,18 +1270,29 @@ export function App(props: AppProps = {}): React.JSX.Element {
             selectedFeatureId={state.selectedFeatureId}
             polygonOpacity={state.polygonOpacity}
             cameraTarget={state.cameraTarget}
+            northResetSeq={northResetSeq}
             onViewportChange={handleViewportChange}
+            onBearingChange={handleBearingChange}
             onMapTap={handleMapTap}
             onFeaturePress={handleFeaturePress}
             onTileError={handleTileError}
           />
         </View>
 
-        <GnssMapButton
-          locale={state.locale}
-          isLocating={isLocating}
-          onPress={handleLocateMe}
-        />
+        <TopRightMapControls>
+          <GnssMapButton
+            locale={state.locale}
+            isLocating={isLocating}
+            onPress={handleLocateMe}
+            positioned={false}
+          />
+          <NorthArrowButton
+            locale={state.locale}
+            bearingDeg={mapBearingDeg}
+            onPress={handleNorthReset}
+            positioned={false}
+          />
+        </TopRightMapControls>
 
         {hasVisibleBanner ? (
           <View
