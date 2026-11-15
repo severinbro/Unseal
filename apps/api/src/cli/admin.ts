@@ -27,6 +27,7 @@ import {
 } from '../auth/tombstones.js';
 import { loadEnvConfig, resolveTombstoneSecret } from '../config.js';
 import { deleteOrBanUserAccount } from '../db/integrity.js';
+import { unlinkUploadFiles } from '../photos/uploadFiles.js';
 import {
   collectUserData,
   findUserIdByIdentifier,
@@ -329,11 +330,7 @@ export async function runAdminCommand(
         await client.query('COMMIT');
 
         if (options.uploadsDir && deletedPhotoFiles.length > 0) {
-          for (const fileName of deletedPhotoFiles) {
-            await fs
-              .unlink(path.join(options.uploadsDir, fileName))
-              .catch(() => undefined);
-          }
+          await unlinkUploadFiles(options.uploadsDir, deletedPhotoFiles);
         }
 
         return {

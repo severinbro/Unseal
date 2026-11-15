@@ -3,6 +3,7 @@ import {
   AltchaChallengeResponseSchema,
   ApiError,
   AuthUserSchema,
+  DeleteAccountQuerySchema,
   EmailActionRequestSchema,
   EmailActionResponseSchema,
   LoginRequestSchema,
@@ -36,6 +37,7 @@ import {
   assertPseudonymNotReserved,
 } from '../auth/tombstones.js';
 import { deleteOrBanUserAccount } from '../db/integrity.js';
+import { unlinkUploadFiles } from '../photos/uploadFiles.js';
 import { collectUserData } from '../users/dataExport.js';
 import {
   normalizeRateLimitIp,
@@ -1076,23 +1078,27 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     },
     async (request, reply) => {
       const auth = request.auth!;
+      const { purgeContent } = DeleteAccountQuerySchema.parse(request.query ?? {});
       const client = await app.pool.connect();
+      let deletedPhotoFiles: string[] = [];
       try {
         await client.query('BEGIN');
-        await deleteOrBanUserAccount(client, {
+        const result = await deleteOrBanUserAccount(client, {
           userId: auth.user.id,
           pseudonymLower: auth.user.pseudonym.toLowerCase(),
-          mode: 'self_delete',
+          mode: purgeContent ? 'self_delete_purge' : 'self_delete',
           tombstoneSecret: app.config.tombstoneSecret,
         });
+        deletedPhotoFiles = result.deletedPhotoFiles;
         await client.query('COMMIT');
-        return reply.status(204).send();
       } catch (err: unknown) {
         await rollbackQuietly(client, request.log);
         throw err;
       } finally {
         client.release();
       }
+      await unlinkUploadFiles(app.config.uploadsDir, deletedPhotoFiles);
+      return reply.status(204).send();
     },
   );
 }

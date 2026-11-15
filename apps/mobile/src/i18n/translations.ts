@@ -411,6 +411,8 @@ export interface TranslationDictionary {
     readonly loggingOut: string;
     readonly logout: string;
     readonly deleteAccountWarning: string;
+    readonly purgeContentLabel: string;
+    readonly purgeContentA11y: string;
     readonly cancelDeleteAccountA11y: string;
     readonly cancel: string;
     readonly confirmDeleteAccountA11y: string;
@@ -965,7 +967,10 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       loggingOut: 'Abmeldung läuft…',
       logout: 'Abmelden',
       deleteAccountWarning:
-        'Das Löschen deines Kontos entfernt dauerhaft deine E-Mail-Adresse, Zugangsdaten, Sitzungen und Stimmen (Art. 17 DSGVO), sperrt dein Pseudonym gegen Nachahmung und erhält deine eingereichten Flächen und Kommentare anonym unter „gelöscht“.',
+        'Das Löschen deines Kontos entfernt dauerhaft deine E-Mail-Adresse, Zugangsdaten, Sitzungen und Stimmen (Art. 17 DSGVO) und reserviert dein Pseudonym zeitlich begrenzt gegen Nachahmung. Deine Flächenvorschläge, Fotos und Kommentare bleiben anonym unter „gelöscht“ sichtbar – außer du wählst unten, dass sie mitgelöscht werden.',
+      purgeContentLabel:
+        'Auch alle meine Flächenvorschläge, Fotos und Kommentare endgültig löschen (Antworten anderer auf meine Kommentare werden dabei mitgelöscht).',
+      purgeContentA11y: 'Auch alle eigenen Beiträge löschen',
       cancelDeleteAccountA11y: 'Kontolöschung abbrechen',
       cancel: 'Abbrechen',
       confirmDeleteAccountA11y: 'Endgültige Kontolöschung bestätigen',
@@ -1537,7 +1542,10 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       loggingOut: 'Signing Out…',
       logout: 'Log Out',
       deleteAccountWarning:
-        'Deleting your account permanently erases your email address, credentials, active sessions, and votes (GDPR Art. 17), reserves a cryptographic tombstone of your pseudonym to prevent impersonation, and keeps your authored proposals and comments public under “deleted”.',
+        'Deleting your account permanently erases your email address, credentials, sessions and votes (GDPR Art. 17) and reserves your pseudonym for a limited time to prevent impersonation. Your proposals, photos and comments stay public anonymised as “deleted” – unless you choose below to delete them too.',
+      purgeContentLabel:
+        'Also permanently delete all my proposals, photos and comments (replies by others to my comments are removed as well).',
+      purgeContentA11y: 'Also delete all my contributions',
       cancelDeleteAccountA11y: 'Cancel account deletion',
       cancel: 'Cancel',
       confirmDeleteAccountA11y: 'Confirm permanent account deletion',

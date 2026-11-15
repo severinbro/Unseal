@@ -1067,4 +1067,124 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
       await app.close();
     }
   });
+
+  it('DELETE /api/v1/auth/me?purgeContent=true erases own polygons, photos (incl. files) and comments; plain deletion keeps them anonymised', async () => {
+    const config = loadEnvConfig({ UPLOADS_DIR: uploadsDir });
+    const app = await buildApp(config, pool, {
+      logger: createLogger({ enabled: false }),
+      mailer: createMemoryMailer(),
+    });
+
+    const uploadPhoto = async (sessionToken: string, polygonId: string): Promise<void> => {
+      const jpeg = await sharp({
+        create: { width: 320, height: 240, channels: 3, background: { r: 80, g: 110, b: 90 } },
+      })
+        .jpeg({ quality: 80 })
+        .toBuffer();
+      const multipart = buildMultipartPayload({
+        fieldName: 'photo',
+        fileName: 'site.jpg',
+        contentType: 'image/jpeg',
+        fileBuffer: jpeg,
+      });
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/polygons/${polygonId}/photos`,
+        headers: {
+          authorization: `Bearer ${sessionToken}`,
+          'content-type': multipart.contentTypeHeader,
+        },
+        payload: multipart.body,
+      });
+      assert.equal(res.statusCode, 201);
+    };
+    const comment = async (sessionToken: string, polygonId: string, body: string): Promise<void> => {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/polygons/${polygonId}/comments`,
+        remoteAddress: '198.51.100.60',
+        headers: { authorization: `Bearer ${sessionToken}` },
+        payload: { body },
+      });
+      assert.equal(res.statusCode, 201);
+    };
+
+    try {
+      const purger = await registerTestUser(app, 'PurgeMapper', '198.51.100.61');
+      const keeper = await registerTestUser(app, 'KeepMapper', '198.51.100.62');
+      const other = await registerTestUser(app, 'OtherMapper', '198.51.100.63');
+
+      const purgerPoly = await createPolygon(app, purger.sessionToken, makeCourtyardRing(9.9937, 53.5511));
+      const keeperPoly = await createPolygon(app, keeper.sessionToken, makeCourtyardRing(9.9947, 53.5511));
+      const otherPoly = await createPolygon(app, other.sessionToken, makeCourtyardRing(9.9957, 53.5511));
+
+      await uploadPhoto(purger.sessionToken, purgerPoly.id);
+      await uploadPhoto(purger.sessionToken, otherPoly.id);
+      await uploadPhoto(keeper.sessionToken, keeperPoly.id);
+      await comment(purger.sessionToken, otherPoly.id, 'Purger comment on other polygon');
+      await comment(keeper.sessionToken, otherPoly.id, 'Keeper comment on other polygon');
+      assert.equal((await fs.readdir(uploadsDir)).length, 6);
+
+      // Plain deletion: contributions stay public, anonymised as "deleted"
+      const keepRes = await app.inject({
+        method: 'DELETE',
+        url: '/api/v1/auth/me',
+        headers: { authorization: `Bearer ${keeper.sessionToken}` },
+      });
+      assert.equal(keepRes.statusCode, 204);
+      const keptPoly = await app.inject({ method: 'GET', url: `/api/v1/polygons/${keeperPoly.id}` });
+      assert.equal(keptPoly.statusCode, 200);
+      assert.equal(PolygonFeatureSchema.parse(keptPoly.json()).properties.authorPseudonym, 'deleted');
+      assert.equal((await fs.readdir(uploadsDir)).length, 6);
+
+      // Purge: own polygons, photos (rows + files) and comments are erased
+      const badQuery = await app.inject({
+        method: 'DELETE',
+        url: '/api/v1/auth/me?purgeContent=maybe',
+        headers: { authorization: `Bearer ${purger.sessionToken}` },
+      });
+      assert.equal(badQuery.statusCode, 422);
+      const purgeRes = await app.inject({
+        method: 'DELETE',
+        url: '/api/v1/auth/me?purgeContent=true',
+        headers: { authorization: `Bearer ${purger.sessionToken}` },
+      });
+      assert.equal(purgeRes.statusCode, 204);
+
+      const purgedPoly = await app.inject({ method: 'GET', url: `/api/v1/polygons/${purgerPoly.id}` });
+      assert.equal(purgedPoly.statusCode, 404);
+      const remaining = await pool.query<{ photos: number; comments: number; users: number }>(
+        `SELECT
+           (SELECT COUNT(*)::int FROM polygon_photos) AS photos,
+           (SELECT COUNT(*)::int FROM polygon_comments) AS comments,
+           (SELECT COUNT(*)::int FROM users WHERE LOWER(pseudonym) = 'purgemapper') AS users`,
+      );
+      assert.deepEqual(remaining.rows[0], { photos: 1, comments: 1, users: 0 });
+      // Only the keeper's photo + thumbnail remain on disk
+      assert.equal((await fs.readdir(uploadsDir)).length, 2);
+
+      const otherAfter = PolygonFeatureSchema.parse(
+        (await app.inject({ method: 'GET', url: `/api/v1/polygons/${otherPoly.id}` })).json(),
+      );
+      assert.equal(otherAfter.properties.photoCount, 0);
+      assert.equal(otherAfter.properties.commentCount, 1);
+
+      // No email ban tombstone for a voluntary purge: the address can register again
+      const reRegister = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        remoteAddress: '198.51.100.64',
+        payload: {
+          pseudonym: 'PurgeMapperReturns',
+          email: 'purgemapper@example.org',
+          password: 'valid-password-123',
+          acceptedPrivacyPolicy: true,
+          acceptedTerms: true,
+        },
+      });
+      assert.equal(reRegister.statusCode, 201);
+    } finally {
+      await app.close();
+    }
+  });
 });

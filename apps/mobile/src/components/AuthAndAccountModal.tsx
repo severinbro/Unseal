@@ -42,7 +42,7 @@ export interface AuthAndAccountModalProps {
   onLogin: (input: LoginRequest) => Promise<void>;
   onForgotPassword: (email: string) => Promise<void>;
   onLogout: () => Promise<void>;
-  onDeleteAccount: () => Promise<void>;
+  onDeleteAccount: (options: { purgeContent: boolean }) => Promise<void>;
   /** GDPR Art. 15/20 self-service data download. */
   onExportData?: () => Promise<void>;
 }
@@ -69,6 +69,8 @@ export function AuthAndAccountModal({
   const [password, setPassword] = useState<string>('');
   const [privacyConsent, setPrivacyConsent] = useState<boolean>(false);
   const [confirmingAccountDelete, setConfirmingAccountDelete] =
+    useState<boolean>(false);
+  const [purgeContentOnDelete, setPurgeContentOnDelete] =
     useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -273,7 +275,7 @@ export function AuthAndAccountModal({
   const handleDeleteAccountConfirm = (): void => {
     setLocalError(null);
     setIsSubmitting(true);
-    void onDeleteAccount()
+    void onDeleteAccount({ purgeContent: purgeContentOnDelete })
       .catch((err: unknown) => {
         setLocalError(localizeError(err, t.deleteAccountFailed, locale));
       })
@@ -728,12 +730,39 @@ export function AuthAndAccountModal({
                 {t.deleteAccountWarning}
               </Text>
 
+              <View style={styles.checkboxRow}>
+                <Pressable
+                  testID="delete-account-purge-content"
+                  accessibilityRole="checkbox"
+                  accessibilityLabel={t.purgeContentA11y}
+                  accessibilityState={{ checked: purgeContentOnDelete }}
+                  disabled={isSubmitting}
+                  onPress={() => setPurgeContentOnDelete((prev) => !prev)}
+                  style={styles.checkboxHitArea}
+                >
+                  <View
+                    style={[
+                      styles.checkboxIndicator,
+                      purgeContentOnDelete ? styles.checkboxIndicatorChecked : null,
+                    ]}
+                  >
+                    <Text style={styles.checkboxMark}>
+                      {purgeContentOnDelete ? '✓' : ''}
+                    </Text>
+                  </View>
+                </Pressable>
+                <Text style={styles.checkboxLabel}>{t.purgeContentLabel}</Text>
+              </View>
+
               <View style={styles.confirmRow}>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={t.cancelDeleteAccountA11y}
                   disabled={isSubmitting}
-                  onPress={() => setConfirmingAccountDelete(false)}
+                  onPress={() => {
+                    setConfirmingAccountDelete(false);
+                    setPurgeContentOnDelete(false);
+                  }}
                   style={[styles.touchButton, styles.secondaryButton]}
                 >
                   <Text style={styles.secondaryButtonLabel}>{t.cancel}</Text>

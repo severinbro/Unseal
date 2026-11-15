@@ -809,17 +809,23 @@ export function App(props: AppProps = {}): React.JSX.Element {
     dispatch({ type: 'LOGOUT_SUCCEEDED' });
   }, [apiClient]);
 
-  const handleDeleteAccount = useCallback(async (): Promise<void> => {
-    try {
-      await apiClient.deleteMe();
-      dispatch({ type: 'ACCOUNT_DELETED' });
-    } catch (err: unknown) {
-      if (await handleSessionExpiredError(err)) {
-        return;
+  const handleDeleteAccount = useCallback(
+    async (options: { purgeContent: boolean }): Promise<void> => {
+      try {
+        await apiClient.deleteMe({ purgeContent: options.purgeContent });
+        dispatch({
+          type: 'ACCOUNT_DELETED',
+          purgedContent: options.purgeContent,
+        });
+      } catch (err: unknown) {
+        if (await handleSessionExpiredError(err)) {
+          return;
+        }
+        throw err;
       }
-      throw err;
-    }
-  }, [apiClient, handleSessionExpiredError]);
+    },
+    [apiClient, handleSessionExpiredError],
+  );
 
   const handleExportData = useCallback(async (): Promise<void> => {
     try {

@@ -11,7 +11,13 @@ import type pg from 'pg';
 export interface DeleteOrBanUserParams {
   userId: string;
   pseudonymLower: string;
-  mode: 'self_delete' | 'ban';
+  /**
+   * - `self_delete`: account erased, contributions stay public anonymised as "deleted".
+   * - `self_delete_purge`: account erased together with all own polygons, photos and
+   *   comments (GDPR Art. 17 at the user's choice); no email tombstone is written.
+   * - `ban`: like `self_delete_purge`, plus pseudonym/email ban tombstones.
+   */
+  mode: 'self_delete' | 'self_delete_purge' | 'ban';
   reason?: string | undefined;
   /** HMAC key for pseudonym/email tombstones (`EnvConfig.tombstoneSecret`). */
   tombstoneSecret: string;
@@ -196,17 +202,20 @@ export async function deleteOrBanUserAccount(
   ]);
   const userRow = userRes.rows[0];
 
-  const resolvedReason =
-    params.mode === 'self_delete'
-      ? 'self_deleted'
-      : params.reason &&
-          params.reason.trim().length > 0 &&
-          params.reason.trim() !== 'self_deleted'
-        ? params.reason.trim()
-        : 'banned';
+  const isSelfDeletion =
+    params.mode === 'self_delete' || params.mode === 'self_delete_purge';
+  const purgesContent =
+    params.mode === 'ban' || params.mode === 'self_delete_purge';
+
+  const trimmedReason = params.reason?.trim() ?? '';
+  const resolvedReason = isSelfDeletion
+    ? 'self_deleted'
+    : trimmedReason.length > 0 && trimmedReason !== 'self_deleted'
+      ? trimmedReason
+      : 'banned';
 
   if (!userRow) {
-    if (params.mode === 'self_delete') {
+    if (isSelfDeletion) {
       throw new ApiError(
         401,
         'AUTH_REQUIRED',
@@ -341,7 +350,7 @@ export async function deleteOrBanUserAccount(
   let remainingPolygonIdsToRecompute: string[];
   const deletedPhotoFiles: string[] = [];
 
-  if (params.mode === 'ban') {
+  if (purgesContent) {
     for (const photoRow of uploadedPhotoPolygonsRes.rows) {
       deletedPhotoFiles.push(photoRow.file_name, photoRow.thumb_name);
     }

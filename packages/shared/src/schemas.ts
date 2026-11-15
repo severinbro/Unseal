@@ -169,6 +169,16 @@ export const RecoverRequestSchema = z
 
 export type RecoverRequest = z.infer<typeof RecoverRequestSchema>;
 
+/** `DELETE /api/v1/auth/me?purgeContent=true` also erases own polygons, photos and comments. */
+export const DeleteAccountQuerySchema = z.object({
+  purgeContent: z
+    .enum(['true', 'false', '1', '0'])
+    .optional()
+    .transform((value) => value === 'true' || value === '1'),
+});
+
+export type DeleteAccountQuery = z.output<typeof DeleteAccountQuerySchema>;
+
 export const EmailActionRequestSchema = z
   .object({
     email: EmailSchema,

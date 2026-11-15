@@ -1530,6 +1530,24 @@ describe('appReducer and viewModels v2', () => {
     assert.equal(deletedOther?.properties.isFlagged, false);
     assert.equal(deletedOther?.properties.myFlag, false);
 
+    // Purging deletion removes the user's own polygons from the map and clears a purged selection
+    const selectedAuthored = appReducer(state, {
+      type: 'SELECT_FEATURES_AT_TAP',
+      featureIds: [authoredNewPoly.id, SAMPLE_POLYGON_ID],
+    });
+    assert.equal(selectedAuthored.selectedFeatureId, authoredNewPoly.id);
+    const purgedState = appReducer(selectedAuthored, {
+      type: 'ACCOUNT_DELETED',
+      purgedContent: true,
+    });
+    assert.deepEqual(
+      purgedState.features.map((f) => f.id),
+      [SAMPLE_POLYGON_ID],
+    );
+    assert.deepEqual(purgedState.overlappingFeatureIds, [SAMPLE_POLYGON_ID]);
+    assert.equal(purgedState.selectedFeatureId, SAMPLE_POLYGON_ID);
+    assert.equal(purgedState.currentUser, null);
+
     // CAST_VOTE reducer ignores self-votes and non-proposed ('in_progress' / 'finished') polygons
     const anonWithBlockedPolygons = appReducer(
       appReducer(initialAppState, {

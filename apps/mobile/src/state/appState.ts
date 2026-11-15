@@ -191,7 +191,7 @@ export type AppAction =
   | { type: 'AUTH_SUCCEEDED'; user: AuthUser }
   | { type: 'SESSION_EXPIRED' }
   | { type: 'LOGOUT_SUCCEEDED' }
-  | { type: 'ACCOUNT_DELETED' }
+  | { type: 'ACCOUNT_DELETED'; purgedContent?: boolean }
   | { type: 'CLEAR_PENDING_INTENT' };
 
 export const initialAppState: AppState = {
@@ -1209,37 +1209,59 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'ACCOUNT_DELETED': {
-      const anonymizedFeatures = state.features.map((f) => {
-        const nextFlagCount = f.properties.myFlag
-          ? Math.max(0, f.properties.flagCount - 1)
-          : f.properties.flagCount;
-        return {
-          ...f,
-          properties: {
-            ...f.properties,
-            authorPseudonym: f.properties.isAuthor
-              ? 'deleted'
-              : f.properties.authorPseudonym,
-            authorIsNewUser: f.properties.isAuthor
-              ? false
-              : f.properties.authorIsNewUser,
-            authorRecentlyActive: f.properties.isAuthor
-              ? null
-              : f.properties.authorRecentlyActive,
-            isAuthor: false,
-            myVote: 0 as const,
-            flagCount: nextFlagCount,
-            isFlagged: nextFlagCount > 0,
-            myFlag: false,
-          },
-        };
-      });
+      // With purgedContent the server erased the user's own polygons as well.
+      const purgedIds = new Set(
+        action.purgedContent
+          ? state.features.filter((f) => f.properties.isAuthor).map((f) => f.id)
+          : [],
+      );
+      const nextOverlap = state.overlappingFeatureIds.filter(
+        (id) => !purgedIds.has(id),
+      );
+      const nextOverlapIndex =
+        nextOverlap.length === 0
+          ? 0
+          : Math.min(state.overlapIndex, nextOverlap.length - 1);
+      const selectionPurged =
+        state.selectedFeatureId !== null && purgedIds.has(state.selectedFeatureId);
+      const anonymizedFeatures = state.features
+        .filter((f) => !purgedIds.has(f.id))
+        .map((f) => {
+          const nextFlagCount = f.properties.myFlag
+            ? Math.max(0, f.properties.flagCount - 1)
+            : f.properties.flagCount;
+          return {
+            ...f,
+            properties: {
+              ...f.properties,
+              authorPseudonym: f.properties.isAuthor
+                ? 'deleted'
+                : f.properties.authorPseudonym,
+              authorIsNewUser: f.properties.isAuthor
+                ? false
+                : f.properties.authorIsNewUser,
+              authorRecentlyActive: f.properties.isAuthor
+                ? null
+                : f.properties.authorRecentlyActive,
+              isAuthor: false,
+              myVote: 0 as const,
+              flagCount: nextFlagCount,
+              isFlagged: nextFlagCount > 0,
+              myFlag: false,
+            },
+          };
+        });
 
       return {
         ...state,
         currentUser: null,
         viewportRefreshSeq: state.viewportRefreshSeq + 1,
         features: anonymizedFeatures,
+        overlappingFeatureIds: nextOverlap,
+        overlapIndex: nextOverlapIndex,
+        selectedFeatureId: selectionPurged
+          ? (nextOverlap[nextOverlapIndex] ?? null)
+          : state.selectedFeatureId,
         isSubmittingDraft: false,
         authModalOpen: false,
         authModalView: 'login',

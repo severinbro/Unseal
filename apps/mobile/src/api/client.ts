@@ -679,10 +679,16 @@ export class PpgisApiClient {
     return response.text();
   }
 
-  public async deleteMe(): Promise<void> {
+  /**
+   * Deletes the signed-in account. With `purgeContent`, own polygons, photos and
+   * comments are erased too instead of staying public anonymised as "deleted".
+   */
+  public async deleteMe(options: { purgeContent?: boolean } = {}): Promise<void> {
     await this.requestVoid({
       method: 'DELETE',
-      path: '/api/v1/auth/me',
+      path: options.purgeContent
+        ? '/api/v1/auth/me?purgeContent=true'
+        : '/api/v1/auth/me',
       includeAuth: true,
     });
     await this.sessionStorage.clearToken();
