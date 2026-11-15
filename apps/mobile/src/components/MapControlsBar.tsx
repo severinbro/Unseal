@@ -665,6 +665,86 @@ export function MapControlsBar({
     ? t.accountSettingsA11y(controls.accountLabel)
     : t.signInOrRegisterA11y;
 
+  const utilityControls = (
+    <>
+      {showApkDownloadButton
+        ? withWebTooltip(
+            t.apkDownloadFull,
+            <Pressable
+              testID="download-apk-button"
+              accessibilityRole="button"
+              accessibilityLabel={t.apkDownloadFull}
+              accessibilityHint={t.apkDownloadA11y}
+              onPress={handleApkDownloadPress}
+              style={({ pressed }) => [
+                styles.helpButton,
+                isCompact ? styles.helpButtonCompact : null,
+                pressed ? styles.buttonPressed : null,
+              ]}
+            >
+              <AndroidGlyph
+                color={PALETTE.accentPrimary}
+                eyeColor={PALETTE.bgSurface}
+                size={isCompact ? 18 : 20}
+              />
+            </Pressable>,
+          )
+        : null}
+      {onOpenAbout ? (
+        <Pressable
+          testID="about-modal-button"
+          accessibilityRole="button"
+          accessibilityLabel={t.aboutButtonA11y}
+          onPress={onOpenAbout}
+          style={({ pressed }) => [
+            styles.helpButton,
+            isCompact ? styles.helpButtonCompact : null,
+            pressed ? styles.buttonPressed : null,
+          ]}
+        >
+          <Text style={styles.helpButtonLabel}>?</Text>
+        </Pressable>
+      ) : null}
+      <LocaleTogglePill
+        locale={locale}
+        compact={isCompact}
+        accessibilityLabel={t.switchLocaleA11y}
+        {...(onToggleLocale ? { onPress: onToggleLocale } : {})}
+      />
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={accountButtonA11y}
+        onPress={onOpenAccount}
+        style={({ pressed }) => [
+          styles.accountChip,
+          isCompact ? styles.accountChipCompact : null,
+          controls.isAuthenticated ? styles.accountChipActive : null,
+          pressed ? styles.buttonPressed : null,
+        ]}
+      >
+        <View
+          style={[
+            styles.accountStatusDot,
+            controls.isAuthenticated
+              ? styles.accountStatusDotOnline
+              : styles.accountStatusDotGuest,
+          ]}
+        />
+        <Text
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          style={[
+            styles.accountChipLabel,
+            isCompact ? styles.accountChipLabelCompact : null,
+            controls.isAuthenticated ? styles.accountChipLabelActive : null,
+          ]}
+        >
+          {controls.accountLabel}
+        </Text>
+      </Pressable>
+    </>
+  );
+
   return (
     <View
       style={[
@@ -762,60 +842,7 @@ export function MapControlsBar({
               isCompact ? styles.rightHeaderClusterCompact : null,
             ]}
           >
-            {onOpenAbout ? (
-              <Pressable
-                testID="about-modal-button"
-                accessibilityRole="button"
-                accessibilityLabel={t.aboutButtonA11y}
-                onPress={onOpenAbout}
-                style={({ pressed }) => [
-                  styles.helpButton,
-                  isCompact ? styles.helpButtonCompact : null,
-                  pressed ? styles.buttonPressed : null,
-                ]}
-              >
-                <Text style={styles.helpButtonLabel}>?</Text>
-              </Pressable>
-            ) : null}
-            <LocaleTogglePill
-              locale={locale}
-              compact={isCompact}
-              accessibilityLabel={t.switchLocaleA11y}
-              {...(onToggleLocale ? { onPress: onToggleLocale } : {})}
-            />
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={accountButtonA11y}
-              onPress={onOpenAccount}
-              style={({ pressed }) => [
-                styles.accountChip,
-                isCompact ? styles.accountChipCompact : null,
-                controls.isAuthenticated ? styles.accountChipActive : null,
-                pressed ? styles.buttonPressed : null,
-              ]}
-            >
-              <View
-                style={[
-                  styles.accountStatusDot,
-                  controls.isAuthenticated
-                    ? styles.accountStatusDotOnline
-                    : styles.accountStatusDotGuest,
-                ]}
-              />
-              <Text
-                numberOfLines={1}
-                ellipsizeMode="tail"
-                style={[
-                  styles.accountChipLabel,
-                  isCompact ? styles.accountChipLabelCompact : null,
-                  controls.isAuthenticated
-                    ? styles.accountChipLabelActive
-                    : null,
-                ]}
-              >
-                {controls.accountLabel}
-              </Text>
-            </Pressable>
+            {utilityControls}
           </View>
         ) : null}
       </View>
@@ -889,31 +916,6 @@ export function MapControlsBar({
           </Pressable>,
         )}
 
-        {showApkDownloadButton
-          ? withWebTooltip(
-              t.apkDownloadFull,
-              <Pressable
-                testID="download-apk-button"
-                accessibilityRole="button"
-                accessibilityLabel={t.apkDownloadFull}
-                accessibilityHint={t.apkDownloadA11y}
-                onPress={handleApkDownloadPress}
-                style={({ pressed }) => [
-                  styles.controlButton,
-                  styles.iconControlButton,
-                  styles.secondaryButton,
-                  pressed ? styles.buttonPressed : null,
-                ]}
-              >
-                <AndroidGlyph
-                  color={PALETTE.accentPrimary}
-                  eyeColor={PALETTE.bgSurface}
-                  size={20}
-                />
-              </Pressable>,
-            )
-          : null}
-
         {controls.isAdmin && onImportPress
           ? withWebTooltip(
               isImporting ? t.importingBusy : t.importFull,
@@ -969,61 +971,7 @@ export function MapControlsBar({
           </Text>
         </Pressable>
 
-        {isExpanded ? (
-          <>
-            {onOpenAbout ? (
-              <Pressable
-                testID="about-modal-button"
-                accessibilityRole="button"
-                accessibilityLabel={t.aboutButtonA11y}
-                onPress={onOpenAbout}
-                style={({ pressed }) => [
-                  styles.helpButton,
-                  pressed ? styles.buttonPressed : null,
-                ]}
-              >
-                <Text style={styles.helpButtonLabel}>?</Text>
-              </Pressable>
-            ) : null}
-            <LocaleTogglePill
-              locale={locale}
-              compact={false}
-              accessibilityLabel={t.switchLocaleA11y}
-              {...(onToggleLocale ? { onPress: onToggleLocale } : {})}
-            />
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={accountButtonA11y}
-              onPress={onOpenAccount}
-              style={({ pressed }) => [
-                styles.accountChip,
-                controls.isAuthenticated ? styles.accountChipActive : null,
-                pressed ? styles.buttonPressed : null,
-              ]}
-            >
-              <View
-                style={[
-                  styles.accountStatusDot,
-                  controls.isAuthenticated
-                    ? styles.accountStatusDotOnline
-                    : styles.accountStatusDotGuest,
-                ]}
-              />
-              <Text
-                numberOfLines={1}
-                ellipsizeMode="tail"
-                style={[
-                  styles.accountChipLabel,
-                  controls.isAuthenticated
-                    ? styles.accountChipLabelActive
-                    : null,
-                ]}
-              >
-                {controls.accountLabel}
-              </Text>
-            </Pressable>
-          </>
-        ) : null}
+        {isExpanded ? utilityControls : null}
         </View>
       </View>
 
@@ -1423,7 +1371,8 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   rightHeaderClusterCompact: {
-    maxWidth: '58%',
+    maxWidth: '72%',
+    flexShrink: 1,
   },
   brandGroup: {
     flexDirection: 'row',
@@ -1591,7 +1540,7 @@ const styles = StyleSheet.create({
   accountChipCompact: {
     paddingHorizontal: 8,
     gap: 4,
-    maxWidth: 112,
+    maxWidth: 100,
   },
   accountChipActive: {
     backgroundColor: PALETTE.bgTinted,
