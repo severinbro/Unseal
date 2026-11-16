@@ -18,16 +18,20 @@ import {
   buildPolygonLayerSpecs,
   buildProposalGeoJson,
   clampPolygonOpacity,
+  DEFAULT_DARK_OSM_STYLE_URL,
   DEFAULT_POLYGON_OPACITY,
   dedupeFeatureIdsPreservingOrder,
   DRAFT_SOURCE_ID,
   extractRenderedFeatureRawIds,
   INTERACTIVE_PROPOSAL_LAYER_IDS,
+  isOpenFreeMapDarkStyleUrl,
   ORTHOPHOTO_LAYER_ID,
   ORTHOPHOTO_SOURCE_ID,
   PROPOSALS_CENTROID_SOURCE_ID,
   PROPOSALS_POLYGON_SOURCE_ID,
+  resolveBasemapStyleUrl,
   shouldReportOrthophotoTileError,
+  tuneOpenFreeMapDarkStyleLayers,
   type DraftGeoJsonFeature,
   type DraftLineFeature,
   type DraftPolygonFeature,
@@ -612,5 +616,144 @@ describe('styleBuilder and MapCanvas contract', () => {
       DEFAULT_POLYGON_OPACITY,
     );
     assert.equal(evalBaseFill(fullFill.paint['fill-opacity']), 1);
+  });
+
+  it('resolves dark basemap URL, tunes OpenFreeMap dark style layers, and validates dark proposal & draft layers against MapLibre style-spec', () => {
+    const defaultCfg = {
+      osmStyleUrl: 'https://tiles.openfreemap.org/styles/liberty',
+    };
+    assert.equal(
+      resolveBasemapStyleUrl(defaultCfg, 'light'),
+      'https://tiles.openfreemap.org/styles/liberty',
+    );
+    assert.equal(
+      resolveBasemapStyleUrl(defaultCfg, 'dark'),
+      DEFAULT_DARK_OSM_STYLE_URL,
+    );
+
+    const explicitDarkCfg = {
+      osmStyleUrl: 'https://tiles.openfreemap.org/styles/liberty',
+      osmDarkStyleUrl: 'https://maps.example.org/styles/night.json',
+    };
+    assert.equal(
+      resolveBasemapStyleUrl(explicitDarkCfg, 'dark'),
+      'https://maps.example.org/styles/night.json',
+    );
+
+    const selfHostedCfg = {
+      osmStyleUrl: 'https://tiles.municipality.example/styles/day.json',
+    };
+    assert.equal(
+      resolveBasemapStyleUrl(selfHostedCfg, 'dark'),
+      'https://tiles.municipality.example/styles/day.json',
+    );
+
+    assert.equal(isOpenFreeMapDarkStyleUrl(DEFAULT_DARK_OSM_STYLE_URL), true);
+    assert.equal(
+      isOpenFreeMapDarkStyleUrl('https://tiles.openfreemap.org/styles/liberty'),
+      false,
+    );
+    assert.equal(
+      isOpenFreeMapDarkStyleUrl('https://maps.example.org/styles/dark'),
+      false,
+    );
+
+    const sampleDarkBasemap: StyleSpecification = {
+      version: 8,
+      glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+      sources: {
+        openmaptiles: {
+          type: 'vector',
+          url: 'https://tiles.openfreemap.org/planet',
+        },
+        [PROPOSALS_POLYGON_SOURCE_ID]: {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] },
+        },
+        [PROPOSALS_CENTROID_SOURCE_ID]: {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] },
+        },
+        [DRAFT_SOURCE_ID]: {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] },
+        },
+      },
+      layers: [
+        {
+          id: 'background',
+          type: 'background',
+          paint: { 'background-color': 'rgb(12,12,12)' },
+        },
+        {
+          id: 'water',
+          type: 'fill',
+          source: 'openmaptiles',
+          'source-layer': 'water',
+          paint: { 'fill-color': 'rgb(27,27,29)' },
+        },
+        {
+          id: 'building',
+          type: 'fill',
+          source: 'openmaptiles',
+          'source-layer': 'building',
+          paint: {
+            'fill-color': 'rgb(10,10,10)',
+            'fill-outline-color': 'rgb(27,27,29)',
+          },
+        },
+        {
+          id: 'highway_minor',
+          type: 'line',
+          source: 'openmaptiles',
+          'source-layer': 'transportation',
+          paint: { 'line-color': '#181818' },
+        },
+        {
+          id: 'highway_name_other',
+          type: 'symbol',
+          source: 'openmaptiles',
+          'source-layer': 'transportation_name',
+          layout: {
+            'text-field': ['get', 'name'],
+            'text-font': ['Noto Sans Regular'],
+          },
+          paint: { 'text-color': 'rgba(80, 78, 78, 1)' },
+        },
+        ...buildPolygonLayerSpecs(DEFAULT_POLYGON_OPACITY, 'dark'),
+        ...buildDraftLayerSpecs('dark'),
+      ],
+    };
+
+    const tunedStyle = tuneOpenFreeMapDarkStyleLayers(sampleDarkBasemap);
+    assert.deepEqual(validateStyleMin(tunedStyle), []);
+
+    const bgLayer = tunedStyle.layers.find((l) => l.id === 'background');
+    const buildingLayer = tunedStyle.layers.find((l) => l.id === 'building');
+    assert.equal(bgLayer?.type, 'background');
+    if (bgLayer?.type === 'background') {
+      assert.equal(bgLayer.paint?.['background-color'], '#101614');
+    }
+    if (buildingLayer?.type === 'fill') {
+      assert.equal(buildingLayer.paint?.['fill-color'], '#1b2520');
+      assert.equal(buildingLayer.paint?.['fill-outline-color'], '#2d3d36');
+    }
+
+    const [lightFill, lightOutline] = buildPolygonLayerSpecs(
+      DEFAULT_POLYGON_OPACITY,
+      'light',
+    );
+    const [darkFill, darkOutline] = buildPolygonLayerSpecs(
+      DEFAULT_POLYGON_OPACITY,
+      'dark',
+    );
+    assert.notDeepEqual(
+      darkFill.paint['fill-color'],
+      lightFill.paint['fill-color'],
+    );
+    assert.notDeepEqual(
+      darkOutline.paint['line-color'],
+      lightOutline.paint['line-color'],
+    );
   });
 });

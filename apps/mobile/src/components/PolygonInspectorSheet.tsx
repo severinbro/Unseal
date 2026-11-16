@@ -45,12 +45,12 @@ import {
   type CommentThreadNode,
   type InspectorOverviewMetaModel,
 } from '../state/viewModels';
+import { useTheme } from '../theme/themeContext';
 import {
   MONO_FONT_FAMILY,
-  PALETTE,
   RADII,
-  SURFACE_SWATCHES,
   TABULAR_NUMS_STYLE,
+  type ThemePalette,
 } from '../theme/tokens';
 
 export type InspectorTab = 'overview' | 'comments' | 'photos' | 'manage';
@@ -151,6 +151,8 @@ export function PolygonInspectorSheet({
   onUnflagPolygon,
   onClearPolygonFlags,
 }: PolygonInspectorSheetProps): React.JSX.Element | null {
+  const { palette, surfaceSwatches } = useTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
   const [activeTab, setActiveTab] = useState<InspectorTab>('overview');
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [editSurfaceType, setEditSurfaceType] =
@@ -313,7 +315,7 @@ export function PolygonInspectorSheet({
   const surfaceCopy = dict.surfaces;
 
   const { properties } = feature;
-  const swatch = SURFACE_SWATCHES[properties.surfaceType];
+  const swatch = surfaceSwatches[properties.surfaceType];
   const isFinished = properties.status === 'finished';
   const isInProgress = properties.status === 'in_progress';
   const isVotingClosedByStatus = isInProgress || isFinished;
@@ -824,7 +826,7 @@ export function PolygonInspectorSheet({
                 maxLength={COMMENT_LIMITS.MAX_BODY_LENGTH}
                 multiline
                 placeholder={t.replyInputPlaceholder(comment.authorPseudonym)}
-                placeholderTextColor={PALETTE.inkMuted}
+                placeholderTextColor={palette.inkMuted}
                 style={styles.commentInput}
               />
               <View style={styles.buttonRow}>
@@ -1342,7 +1344,7 @@ export function PolygonInspectorSheet({
                 maxLength={COMMENT_LIMITS.MAX_BODY_LENGTH}
                 multiline
                 placeholder={t.commentInputPlaceholder}
-                placeholderTextColor={PALETTE.inkMuted}
+                placeholderTextColor={palette.inkMuted}
                 style={styles.commentInput}
               />
               <View style={styles.commentComposerFooter}>
@@ -1384,7 +1386,7 @@ export function PolygonInspectorSheet({
 
           {isLoadingComments ? (
             <View style={styles.photosLoadingBox}>
-              <ActivityIndicator size="small" color={PALETTE.accentPrimary} />
+              <ActivityIndicator size="small" color={palette.accentPrimary} />
             </View>
           ) : commentDisplay.roots.length === 0 ? (
             <View style={styles.emptyPhotosBox}>
@@ -1553,7 +1555,7 @@ export function PolygonInspectorSheet({
 
           {isLoadingPhotos ? (
             <View style={styles.photosLoadingBox}>
-              <ActivityIndicator size="small" color={PALETTE.accentPrimary} />
+              <ActivityIndicator size="small" color={palette.accentPrimary} />
             </View>
           ) : photos.length === 0 ? (
             <View style={styles.emptyPhotosBox}>
@@ -1830,7 +1832,7 @@ export function PolygonInspectorSheet({
                     maxLength={GEOMETRY_LIMITS.MAX_NOTE_LENGTH}
                     multiline
                     placeholder={t.editNotePlaceholder}
-                    placeholderTextColor={PALETTE.inkMuted}
+                    placeholderTextColor={palette.inkMuted}
                     style={styles.editNoteInput}
                   />
 
@@ -1979,7 +1981,8 @@ export function PolygonInspectorSheet({
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(PALETTE: ThemePalette) {
+  return StyleSheet.create({
   sheet: {
     padding: 14,
     borderRadius: RADII.lg,
@@ -2922,4 +2925,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: PALETTE.inkPrimary,
   },
-});
+  });
+}

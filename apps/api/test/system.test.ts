@@ -512,6 +512,7 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
       assert.ok(res.headers['x-request-id']);
       const cfg = RuntimeConfigSchema.parse(res.json());
       assert.equal(cfg.osmStyleUrl, 'https://tiles.openfreemap.org/styles/liberty');
+      assert.equal(cfg.osmDarkStyleUrl, 'https://tiles.openfreemap.org/styles/dark');
       assert.ok(cfg.orthophoto);
       assert.equal(cfg.orthophoto.urlTemplate, '/api/v1/tiles/dop20/{z}/{x}/{y}.png');
       assert.equal(cfg.orthophoto.tileSize, 256);

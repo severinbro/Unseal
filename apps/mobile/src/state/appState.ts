@@ -29,8 +29,14 @@ import {
   clampPolygonOpacity,
   DEFAULT_POLYGON_OPACITY,
 } from '../map/styleBuilder';
+import {
+  isThemePreference,
+  type ColorScheme,
+  type ThemePreference,
+} from '../theme/tokens';
 
 export { DEFAULT_LOCALE, type Locale } from '../i18n/translations';
+export type { ColorScheme, ThemePreference };
 
 export type ConfigStatus = 'loading' | 'ready' | 'error';
 export type InteractionMode = 'browse' | 'drawing';
@@ -78,6 +84,7 @@ export type PendingIntent =
 
 export interface AppState {
   locale: Locale;
+  themePreference: ThemePreference;
   configStatus: ConfigStatus;
   config: RuntimeConfig | null;
   configError: string | null;
@@ -117,6 +124,7 @@ export interface AppState {
 
 export type AppAction =
   | { type: 'SET_LOCALE'; locale: Locale }
+  | { type: 'SET_THEME_PREFERENCE'; preference: ThemePreference }
   | { type: 'CONFIG_LOADING' }
   | {
       type: 'CONFIG_LOADED';
@@ -196,6 +204,7 @@ export type AppAction =
 
 export const initialAppState: AppState = {
   locale: DEFAULT_LOCALE,
+  themePreference: 'system',
   configStatus: 'loading',
   config: null,
   configError: null,
@@ -400,6 +409,19 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         locale: action.locale,
         authError:
           state.authError === prevExpiredMsg ? nextExpiredMsg : state.authError,
+      };
+    }
+
+    case 'SET_THEME_PREFERENCE': {
+      if (
+        !isThemePreference(action.preference) ||
+        action.preference === state.themePreference
+      ) {
+        return state;
+      }
+      return {
+        ...state,
+        themePreference: action.preference,
       };
     }
 

@@ -1213,8 +1213,28 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
       assert.match(html, /nach 21 Tagen gelöscht/);
       assert.equal(html.includes('BACKUP_RETENTION_DAYS'), false);
       assert.match(html, /180 Tage/);
+      assert.match(html, /@media \(prefers-color-scheme: dark\)/);
     } finally {
       await app.close();
+    }
+
+    const splitDarkHostApp = await buildApp(
+      loadEnvConfig({
+        OSM_DARK_STYLE_URL: 'https://darkmaps.thirdparty.example/styles/dark.json',
+      }),
+      pool,
+      { logger: createLogger({ enabled: false }), mailer: createMemoryMailer() },
+    );
+    try {
+      const res = await splitDarkHostApp.inject({
+        method: 'GET',
+        url: '/auth/privacy',
+      });
+      assert.equal(res.statusCode, 200);
+      assert.match(res.body, /OpenFreeMap/);
+      assert.match(res.body, /<code>darkmaps\.thirdparty\.example<\/code>/);
+    } finally {
+      await splitDarkHostApp.close();
     }
 
     const noOrthoApp = await buildApp(

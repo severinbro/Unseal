@@ -231,7 +231,7 @@ Users can download their own data in the app (*Konto → Meine Daten herunterlad
 | `SMTP_FROM` | `Unseal <noreply@localhost>` | Sender `From:` header for confirmation and password reset emails. |
 | `TRUST_PROXY` | `false` | Set `true` behind Caddy/Nginx/Traefik. |
 | `CORS_ORIGIN` | `*` | Allowed browser CORS origin(s), comma-separated. |
-| `OSM_STYLE_URL` | `https://tiles.openfreemap.org/styles/liberty` | MapLibre vector style JSON URL. |
+| `OSM_STYLE_URL` / `OSM_DARK_STYLE_URL` | `https://tiles.openfreemap.org/styles/liberty` / `.../styles/dark` | Light and dark mode MapLibre vector style JSON URLs. |
 | `ORTHOPHOTO_*` | *(built-in Germany DOP20)* | Built-in server-proxied German DOP20 aerial orthophotos (`/api/v1/tiles/dop20/{z}/{x}/{y}.png`); set `ORTHOPHOTO_URL_TEMPLATE=none` to disable or override with a custom `EPSG:3857` URL. |
 | `APK_DOWNLOAD_URL` / `APK_FILE_PATH` / `APK_SHA256` | *(auto)* / `<UPLOADS_DIR>/unseal.apk` / *(auto SHA-256)* | Optional direct Android `.apk` download link (`none` to hide button; auto-hidden when no APK file exists), server file path, and SHA-256 checksum. |
 | `INITIAL_LNG` / `LAT` / `ZOOM` | `8.2739` / `49.9989` / `15` | Default initial viewport camera (Mainz Cathedral). |

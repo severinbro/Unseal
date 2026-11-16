@@ -14,6 +14,119 @@ import type {
   Polygon,
 } from 'geojson';
 
+import type { ColorScheme } from '../theme/tokens';
+
+export const DEFAULT_DARK_OSM_STYLE_URL =
+  'https://tiles.openfreemap.org/styles/dark';
+
+export function resolveBasemapStyleUrl(
+  config: Pick<RuntimeConfig, 'osmStyleUrl' | 'osmDarkStyleUrl'>,
+  colorScheme: ColorScheme = 'light',
+): string {
+  if (colorScheme !== 'dark') {
+    return config.osmStyleUrl;
+  }
+  if (config.osmDarkStyleUrl && config.osmDarkStyleUrl.trim().length > 0) {
+    return config.osmDarkStyleUrl.trim();
+  }
+  try {
+    if (new URL(config.osmStyleUrl).host === 'tiles.openfreemap.org') {
+      return DEFAULT_DARK_OSM_STYLE_URL;
+    }
+  } catch {
+    // Fall back to osmStyleUrl when non-URL or custom relative path.
+  }
+  return config.osmStyleUrl;
+}
+
+export function isOpenFreeMapDarkStyleUrl(styleUrl: string): boolean {
+  try {
+    const parsed = new URL(styleUrl);
+    return (
+      parsed.host === 'tiles.openfreemap.org' &&
+      parsed.pathname.replace(/\/+$/, '') === '/styles/dark'
+    );
+  } catch {
+    return false;
+  }
+}
+
+export const DARK_BASEMAP_PAINT_TUNING: Readonly<
+  Record<string, Readonly<Record<string, unknown>>>
+> = {
+  background: { 'background-color': '#101614' },
+  water: { 'fill-color': '#0d212e' },
+  waterway: { 'line-color': '#0f2838' },
+  landuse_park: { 'fill-color': '#13221a' },
+  landcover_wood: { 'fill-color': '#13221a' },
+  building: {
+    'fill-color': '#1b2520',
+    'fill-outline-color': '#2d3d36',
+  },
+  highway_path: { 'line-color': '#2e3d36' },
+  highway_minor: { 'line-color': '#26332d' },
+  highway_major_casing: { 'line-color': '#3a4b44' },
+  highway_major_inner: { 'line-color': '#202b26' },
+  highway_motorway_casing: { 'line-color': '#475a51' },
+  highway_motorway_inner: { 'line-color': '#1b2420' },
+  highway_name_other: {
+    'text-color': '#a0b4aa',
+    'text-halo-color': '#0f1613',
+    'text-halo-width': 1.5,
+  },
+  highway_name_motorway: { 'text-color': '#b8c9c0' },
+  place_other: {
+    'text-color': '#bdd0c6',
+    'text-halo-color': 'rgba(12, 18, 15, 0.88)',
+  },
+  place_suburb: {
+    'text-color': '#bdd0c6',
+    'text-halo-color': 'rgba(12, 18, 15, 0.88)',
+  },
+  place_village: {
+    'text-color': '#bdd0c6',
+    'text-halo-color': 'rgba(12, 18, 15, 0.88)',
+  },
+  place_town: {
+    'text-color': '#bdd0c6',
+    'text-halo-color': 'rgba(12, 18, 15, 0.88)',
+  },
+  place_city: {
+    'text-color': '#bdd0c6',
+    'text-halo-color': 'rgba(12, 18, 15, 0.88)',
+  },
+  place_city_large: {
+    'text-color': '#bdd0c6',
+    'text-halo-color': 'rgba(12, 18, 15, 0.88)',
+  },
+  place_state: {
+    'text-color': '#9eb2a8',
+    'text-halo-color': 'rgba(12, 18, 15, 0.88)',
+  },
+};
+
+export function tuneOpenFreeMapDarkStyleLayers<
+  T extends { layers: readonly { id: string; paint?: Record<string, unknown> }[] },
+>(style: T): T {
+  const nextLayers = style.layers.map((layer) => {
+    const patch = DARK_BASEMAP_PAINT_TUNING[layer.id];
+    if (!patch) {
+      return layer;
+    }
+    return {
+      ...layer,
+      paint: {
+        ...(layer.paint ?? {}),
+        ...patch,
+      },
+    };
+  });
+  return {
+    ...style,
+    layers: nextLayers,
+  };
+}
+
 export const ORTHOPHOTO_SOURCE_ID = 'orthophoto-source';
 export const ORTHOPHOTO_LAYER_ID = 'orthophoto-raster-layer';
 export const PROPOSALS_POLYGON_SOURCE_ID = 'proposals-polygon-source';
@@ -523,7 +636,9 @@ function scaleOpacityChannel(
 
 export function buildPolygonLayerSpecs(
   polygonOpacity: number = DEFAULT_POLYGON_OPACITY,
+  colorScheme: ColorScheme = 'light',
 ): PolygonLayerSpecsTuple {
+  const isDark = colorScheme === 'dark';
   const op = clampPolygonOpacity(polygonOpacity);
   const baseFillOpacity = scaleOpacityChannel(op, DEFAULT_POLYGON_OPACITY);
   const inProgressFillOpacity = scaleOpacityChannel(op, 0.42);
@@ -531,39 +646,61 @@ export function buildPolygonLayerSpecs(
   const selectedFillOpacity = scaleOpacityChannel(op, 0.58);
   const strokeAndMarkerOpacity = scaleOpacityChannel(op, 1);
 
-  const positiveGradient: NormalizedPositiveFillExpression = [
-    'interpolate',
-    ['linear'],
-    ['number', ['get', 'municipalityNormalizedScore'], 0.5],
-    0,
-    '#6ee7b7',
-    0.4,
-    '#22c55e',
-    1,
-    '#14532d',
-  ];
+  const positiveGradient: NormalizedPositiveFillExpression = isDark
+    ? [
+        'interpolate',
+        ['linear'],
+        ['number', ['get', 'municipalityNormalizedScore'], 0.5],
+        0,
+        '#059669',
+        0.4,
+        '#10b981',
+        1,
+        '#34d399',
+      ]
+    : [
+        'interpolate',
+        ['linear'],
+        ['number', ['get', 'municipalityNormalizedScore'], 0.5],
+        0,
+        '#6ee7b7',
+        0.4,
+        '#22c55e',
+        1,
+        '#14532d',
+      ];
 
-  const positiveOutlineGradient: NormalizedPositiveOutlineExpression = [
-    'interpolate',
-    ['linear'],
-    ['number', ['get', 'municipalityNormalizedScore'], 0.5],
-    0,
-    '#059669',
-    1,
-    '#052e16',
-  ];
+  const positiveOutlineGradient: NormalizedPositiveOutlineExpression = isDark
+    ? [
+        'interpolate',
+        ['linear'],
+        ['number', ['get', 'municipalityNormalizedScore'], 0.5],
+        0,
+        '#34d399',
+        1,
+        '#a7f3d0',
+      ]
+    : [
+        'interpolate',
+        ['linear'],
+        ['number', ['get', 'municipalityNormalizedScore'], 0.5],
+        0,
+        '#059669',
+        1,
+        '#052e16',
+      ];
 
   const scoreColor: ScoreColorCaseExpression = [
     'case',
     ['==', ['get', 'status'], 'finished'],
-    '#0d9488',
+    isDark ? '#14b8a6' : '#0d9488',
     ['==', ['get', 'status'], 'in_progress'],
-    '#2563eb',
+    isDark ? '#3b82f6' : '#2563eb',
     ['<', ['get', 'score'], 0],
-    '#c44536',
+    isDark ? '#ef4444' : '#c44536',
     ['>', ['get', 'score'], 0],
     positiveGradient,
-    '#c87d1a',
+    isDark ? '#f59e0b' : '#c87d1a',
   ];
 
   const fillLayer: ProposalFillLayerSpec = {
@@ -585,6 +722,8 @@ export function buildPolygonLayerSpecs(
     },
   };
 
+  const selectedStrokeColor = isDark ? '#7dd3fc' : '#0b3d91';
+
   const outlineLayer: ProposalOutlineLayerSpec = {
     id: 'proposals-outline',
     type: 'line',
@@ -597,16 +736,16 @@ export function buildPolygonLayerSpecs(
       'line-color': [
         'case',
         ['boolean', ['get', 'selected'], false],
-        '#0b3d91',
+        selectedStrokeColor,
         ['==', ['get', 'status'], 'finished'],
-        '#0f766e',
+        isDark ? '#5eead4' : '#0f766e',
         ['==', ['get', 'status'], 'in_progress'],
-        '#1e40af',
+        isDark ? '#93c5fd' : '#1e40af',
         ['<', ['get', 'score'], 0],
-        '#8f281d',
+        isDark ? '#fca5a5' : '#8f281d',
         ['>', ['get', 'score'], 0],
         positiveOutlineGradient,
-        '#8a530b',
+        isDark ? '#fcd34d' : '#8a530b',
       ],
       'line-width': [
         'case',
@@ -633,8 +772,8 @@ export function buildPolygonLayerSpecs(
       'circle-stroke-color': [
         'case',
         ['boolean', ['get', 'selected'], false],
-        '#0b3d91',
-        '#ffffff',
+        selectedStrokeColor,
+        isDark ? '#e2ece7' : '#ffffff',
       ],
       'circle-stroke-width': [
         'case',
@@ -725,7 +864,14 @@ export function buildDraftGeoJson(
   };
 }
 
-export function buildDraftLayerSpecs(): DraftLayerSpecsTuple {
+export function buildDraftLayerSpecs(
+  colorScheme: ColorScheme = 'light',
+): DraftLayerSpecsTuple {
+  const isDark = colorScheme === 'dark';
+  const draftPrimaryColor = isDark ? '#60a5fa' : '#1d4ed8';
+  const draftFirstVertexColor = isDark ? '#2dd4bf' : '#0f766e';
+  const draftStrokeColor = isDark ? '#f8fafc' : '#ffffff';
+
   const draftFill: DraftFillLayerSpec = {
     id: 'draft-fill',
     type: 'fill',
@@ -736,8 +882,8 @@ export function buildDraftLayerSpecs(): DraftLayerSpecsTuple {
       aboveLayerId: 'proposals-centroid',
     },
     paint: {
-      'fill-color': '#1d4ed8',
-      'fill-opacity': 0.24,
+      'fill-color': draftPrimaryColor,
+      'fill-opacity': isDark ? 0.28 : 0.24,
     },
   };
 
@@ -755,7 +901,7 @@ export function buildDraftLayerSpecs(): DraftLayerSpecsTuple {
       'line-join': 'round',
     },
     paint: {
-      'line-color': '#1d4ed8',
+      'line-color': draftPrimaryColor,
       'line-width': 2.5,
       'line-dasharray': [2, 1.5],
     },
@@ -774,11 +920,11 @@ export function buildDraftLayerSpecs(): DraftLayerSpecsTuple {
       'circle-color': [
         'case',
         ['boolean', ['get', 'isFirst'], false],
-        '#0f766e',
-        '#1d4ed8',
+        draftFirstVertexColor,
+        draftPrimaryColor,
       ],
       'circle-radius': ['case', ['boolean', ['get', 'isFirst'], false], 6.5, 5],
-      'circle-stroke-color': '#ffffff',
+      'circle-stroke-color': draftStrokeColor,
       'circle-stroke-width': 2,
     },
   };

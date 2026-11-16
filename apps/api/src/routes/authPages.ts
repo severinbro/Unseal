@@ -44,7 +44,7 @@ function sendHostedHtml(
   <title>${escapeHtml(title)} – Unseal</title>
   <style>
     :root {
-      color-scheme: light;
+      color-scheme: light dark;
     }
     * { box-sizing: border-box; }
     body {
@@ -188,6 +188,65 @@ function sendHostedHtml(
       line-height: 1.5;
     }
     li { margin-bottom: 8px; }
+    @media (prefers-color-scheme: dark) {
+      body {
+        background: #0f1613;
+        color: #ecf3ef;
+      }
+      .card {
+        background: #16201b;
+        border-color: #2b3b32;
+        box-shadow: 0 14px 36px rgba(0, 0, 0, 0.48);
+      }
+      .brand {
+        color: #6ee7b7;
+        background: #193126;
+      }
+      h2, a {
+        color: #34c785;
+      }
+      p, ul {
+        color: #b7c7be;
+      }
+      .en-sub, .legal-nav {
+        color: #93a89d;
+        border-top-color: #26352d;
+      }
+      .alert-ok {
+        background: #132e22;
+        border-color: #235c42;
+        color: #6ee7b7;
+      }
+      .alert-err {
+        background: #311518;
+        border-color: #70262c;
+        color: #fca5a5;
+      }
+      .alert-warn {
+        background: #2d2210;
+        border-color: #6b4e1b;
+        color: #fcd34d;
+      }
+      label {
+        color: #ecf3ef;
+      }
+      input[type="password"] {
+        border-color: #394d42;
+        background: #121a16;
+        color: #ecf3ef;
+      }
+      input[type="password"]:focus {
+        outline-color: #34c785;
+        border-color: #34c785;
+      }
+      button {
+        background: #34c785;
+        color: #062115;
+      }
+      button:hover {
+        background: #28b073;
+      }
+    }
   </style>
 </head>
 <body>
@@ -295,16 +354,25 @@ function buildThirdPartyItemsHtml(app: FastifyInstance): string {
     `<li><strong>E-Mail-Versand (Auftragsverarbeitung, Art. 28 DSGVO):</strong> ${mailProvider} versendet Bestätigungs- und Wiederherstellungslinks sowie Fehlermeldungen an die Betreiberstelle.${tlsNote}</li>`,
   );
 
-  const styleHost = hostOf(config.osmStyleUrl);
-  if (styleHost === null) {
+  const styleHosts = Array.from(
+    new Set(
+      [hostOf(config.osmStyleUrl), hostOf(config.osmDarkStyleUrl)].filter(
+        (h): h is string => h !== null,
+      ),
+    ),
+  );
+  if (styleHosts.length === 0) {
     items.push(
       '<li><strong>Basiskarte:</strong> Kartenstil, Schriften und Vektorkacheln werden von diesem Server geladen.</li>',
     );
   } else {
-    const provider =
-      styleHost === 'tiles.openfreemap.org'
-        ? '<em>OpenFreeMap</em> (<a href="https://openfreemap.org" target="_blank" rel="noopener noreferrer">openfreemap.org</a>, Kartendaten © OpenStreetMap-Mitwirkende)'
-        : `<code>${escapeHtml(styleHost)}</code>`;
+    const provider = styleHosts
+      .map((host) =>
+        host === 'tiles.openfreemap.org'
+          ? '<em>OpenFreeMap</em> (<a href="https://openfreemap.org" target="_blank" rel="noopener noreferrer">openfreemap.org</a>, Kartendaten © OpenStreetMap-Mitwirkende)'
+          : `<code>${escapeHtml(host)}</code>`,
+      )
+      .join(' bzw. ');
     items.push(
       `<li><strong>Basiskarte (Art. 6 Abs. 1 lit. f DSGVO):</strong> Dein Endgerät lädt Kartenstil, Schriften und Vektorkacheln <strong>direkt</strong> von ${provider} (bzw. den dort im Kartenstil angegebenen Servern). Dabei wird technisch bedingt deine IP-Adresse an diesen Anbieter übermittelt, der dafür selbst verantwortlich ist. Unser Interesse: eine funktionierende Kartendarstellung.</li>`,
     );
@@ -370,7 +438,7 @@ function buildPrivacyPolicyHtml(app: FastifyInstance): string {
          <li><strong>Server-Protokolle (Art. 6 Abs. 1 lit. f DSGVO; Interesse: sicherer Betrieb, Fehleranalyse):</strong> Anfrage-ID, Methode, Pfad ohne Parameter, Statuscode, Antwortzeit und Fehlermeldungen. <strong>Keine</strong> IP-Adressen, Browserkennungen (User-Agent) oder Referrer. Der vorgeschaltete Webserver schreibt keine Zugriffsprotokolle.</li>
          <li><strong>Fehlermeldungen (Art. 6 Abs. 1 lit. f DSGVO; optionale Kontakt-E-Mail: Art. 6 Abs. 1 lit. a DSGVO):</strong> Beschreibung, optionale Kontakt-E-Mail, Plattform, Seiten-URL, Zeitpunkt und, falls angemeldet, Pseudonym und Konto-ID gehen per E-Mail an die Betreiberstelle.</li>
          <li><strong>Standort, Kamera &amp; Mediathek:</strong> nur nach deiner Freigabe auf dem Gerät. Deine Live-Position wird nicht an den Server übertragen (zu Fotos siehe oben).</li>
-         <li><strong>Speicher auf deinem Gerät (§ 25 Abs. 2 Nr. 2 TDDDG):</strong> Sitzungs-Token (Web: <code>localStorage</code>, App: geschützter Systemspeicher), zuletzt angezeigter Kartenausschnitt und gewählte Sprache. Diese Angaben bleiben auf deinem Gerät.</li>
+         <li><strong>Speicher auf deinem Gerät (§ 25 Abs. 2 Nr. 2 TDDDG):</strong> Sitzungs-Token (Web: <code>localStorage</code>, App: geschützter Systemspeicher), zuletzt angezeigter Kartenausschnitt sowie gewählte Sprache und Darstellungsmodus (Hell/Dunkel). Diese Angaben bleiben auf deinem Gerät.</li>
        </ul>
 
        <h2>4. Empfänger &amp; Drittanbieter (Art. 13 Abs. 1 lit. e, f DSGVO)</h2>

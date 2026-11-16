@@ -291,6 +291,7 @@ const OrthophotoConfigSchema = z.object({
 
 export const RuntimeConfigSchema = z.object({
   osmStyleUrl: z.string().url(),
+  osmDarkStyleUrl: z.string().url().optional(),
   orthophoto: OrthophotoConfigSchema.nullable(),
   initialView: z.object({
     lng: z.number().finite().min(-180).max(180),

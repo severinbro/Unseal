@@ -4,7 +4,7 @@ import {
   type LoginRequest,
   type RegisterRequest,
 } from '@entsiegelung/shared';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Linking,
   Pressable,
@@ -25,7 +25,8 @@ import {
   MIN_TOUCH_TARGET_DP,
   type AuthModalModel,
 } from '../state/viewModels';
-import { PALETTE, RADII } from '../theme/tokens';
+import { useTheme } from '../theme/themeContext';
+import { RADII, type ThemePalette } from '../theme/tokens';
 
 const SIMPLE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -63,6 +64,8 @@ export function AuthAndAccountModal({
   onDeleteAccount,
   onExportData,
 }: AuthAndAccountModalProps): React.JSX.Element | null {
+  const { palette } = useTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
   const [identifier, setIdentifier] = useState<string>('');
   const [pseudonym, setPseudonym] = useState<string>('');
   const [email, setEmail] = useState<string>('');
@@ -477,7 +480,7 @@ export function AuthAndAccountModal({
               autoComplete="username-new"
               textContentType="username"
               placeholder={t.pseudonymPlaceholderRegister}
-              placeholderTextColor={PALETTE.inkMuted}
+              placeholderTextColor={palette.inkMuted}
               style={styles.inputField}
             />
           </View>
@@ -494,7 +497,7 @@ export function AuthAndAccountModal({
               autoComplete="email"
               textContentType="emailAddress"
               placeholder={t.emailPlaceholder}
-              placeholderTextColor={PALETTE.inkMuted}
+              placeholderTextColor={palette.inkMuted}
               style={styles.inputField}
             />
           </View>
@@ -511,7 +514,7 @@ export function AuthAndAccountModal({
               autoComplete="new-password"
               textContentType="newPassword"
               placeholder={t.passwordPlaceholderMin}
-              placeholderTextColor={PALETTE.inkMuted}
+              placeholderTextColor={palette.inkMuted}
               style={styles.inputField}
             />
           </View>
@@ -588,7 +591,7 @@ export function AuthAndAccountModal({
               autoComplete="username"
               textContentType="username"
               placeholder={t.identifierPlaceholder}
-              placeholderTextColor={PALETTE.inkMuted}
+              placeholderTextColor={palette.inkMuted}
               style={styles.inputField}
             />
           </View>
@@ -615,7 +618,7 @@ export function AuthAndAccountModal({
               autoComplete="current-password"
               textContentType="password"
               placeholder={t.passwordPlaceholderLogin}
-              placeholderTextColor={PALETTE.inkMuted}
+              placeholderTextColor={palette.inkMuted}
               style={styles.inputField}
             />
           </View>
@@ -654,7 +657,7 @@ export function AuthAndAccountModal({
               autoComplete="email"
               textContentType="emailAddress"
               placeholder={t.emailPlaceholder}
-              placeholderTextColor={PALETTE.inkMuted}
+              placeholderTextColor={palette.inkMuted}
               style={styles.inputField}
             />
           </View>
@@ -798,7 +801,8 @@ export function AuthAndAccountModal({
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(PALETTE: ThemePalette) {
+  return StyleSheet.create({
   modalCard: {
     padding: 18,
     borderRadius: RADII.lg,
@@ -1133,4 +1137,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: PALETTE.dangerText,
   },
-});
+  });
+}

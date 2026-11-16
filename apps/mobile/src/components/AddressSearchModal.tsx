@@ -1,5 +1,5 @@
 import type { GeocodeResultItem } from '@entsiegelung/shared';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -16,7 +16,8 @@ import {
   type Locale,
 } from '../i18n/translations';
 import { MIN_TOUCH_TARGET_DP } from '../state/viewModels';
-import { PALETTE, RADII } from '../theme/tokens';
+import { useTheme } from '../theme/themeContext';
+import { RADII, type ThemePalette } from '../theme/tokens';
 
 export interface AddressSearchModalProps {
   visible: boolean;
@@ -35,6 +36,8 @@ export function AddressSearchModal({
   onSelectResult,
   onClose,
 }: AddressSearchModalProps): React.JSX.Element | null {
+  const { palette } = useTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
   const [query, setQuery] = useState<string>('');
   const [results, setResults] = useState<GeocodeResultItem[]>([]);
   const [hasSearched, setHasSearched] = useState<boolean>(false);
@@ -113,7 +116,7 @@ export function AddressSearchModal({
             }
           }}
           placeholder={t.inputPlaceholder}
-          placeholderTextColor={PALETTE.inkMuted}
+          placeholderTextColor={palette.inkMuted}
           returnKeyType="search"
           autoFocus
           autoCorrect={false}
@@ -147,7 +150,7 @@ export function AddressSearchModal({
 
       {isSearching ? (
         <View style={styles.loadingBox}>
-          <ActivityIndicator size="small" color={PALETTE.accentPrimary} />
+          <ActivityIndicator size="small" color={palette.accentPrimary} />
         </View>
       ) : results.length > 0 ? (
         <View style={styles.resultsList}>
@@ -180,7 +183,8 @@ export function AddressSearchModal({
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(PALETTE: ThemePalette) {
+  return StyleSheet.create({
   card: {
     width: '100%',
     padding: 15,
@@ -334,4 +338,5 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: PALETTE.inkMuted,
   },
-});
+  });
+}

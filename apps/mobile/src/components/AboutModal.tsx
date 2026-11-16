@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Linking,
   Platform,
@@ -15,7 +15,8 @@ import {
   type Locale,
 } from '../i18n/translations';
 import { MIN_TOUCH_TARGET_DP } from '../state/viewModels';
-import { PALETTE, RADII } from '../theme/tokens';
+import { useTheme } from '../theme/themeContext';
+import { RADII, type ThemePalette } from '../theme/tokens';
 import { AndroidGlyph, triggerApkDownload } from './MapControlsBar';
 
 export interface AboutModalProps {
@@ -62,6 +63,9 @@ export function AboutModal({
   onOpenInstallApp,
   onDownloadError,
 }: AboutModalProps): React.JSX.Element | null {
+  const { palette } = useTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
+
   if (!visible) {
     return null;
   }
@@ -148,7 +152,7 @@ export function AboutModal({
               <View
                 style={[
                   styles.statusDot,
-                  { backgroundColor: PALETTE.positiveDot },
+                  { backgroundColor: palette.positiveDot },
                 ]}
               />
             </View>
@@ -159,13 +163,13 @@ export function AboutModal({
               <View
                 style={[
                   styles.statusDot,
-                  { backgroundColor: PALETTE.neutralDot },
+                  { backgroundColor: palette.neutralDot },
                 ]}
               />
               <View
                 style={[
                   styles.statusDot,
-                  { backgroundColor: PALETTE.dangerDot },
+                  { backgroundColor: palette.dangerDot },
                 ]}
               />
             </View>
@@ -176,13 +180,13 @@ export function AboutModal({
               <View
                 style={[
                   styles.statusDot,
-                  { backgroundColor: PALETTE.inProgressDot },
+                  { backgroundColor: palette.inProgressDot },
                 ]}
               />
               <View
                 style={[
                   styles.statusDot,
-                  { backgroundColor: PALETTE.finishedDot },
+                  { backgroundColor: palette.finishedDot },
                 ]}
               />
             </View>
@@ -344,8 +348,8 @@ export function AboutModal({
               ]}
             >
               <AndroidGlyph
-                color={PALETTE.inkOnAccent}
-                eyeColor={PALETTE.accentPrimary}
+                color={palette.inkOnAccent}
+                eyeColor={palette.accentPrimary}
                 size={18}
               />
               <Text style={styles.primaryButtonLabel}>
@@ -359,7 +363,8 @@ export function AboutModal({
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(PALETTE: ThemePalette) {
+  return StyleSheet.create({
   card: {
     width: '100%',
     padding: 15,
@@ -537,4 +542,5 @@ const styles = StyleSheet.create({
   buttonPressed: {
     backgroundColor: PALETTE.bgRecessed,
   },
-});
+  });
+}

@@ -47,9 +47,23 @@ import {
 } from '../src/state/viewModels';
 import {
   deriveResponsiveLayout,
+  DARK_PALETTE,
   formatRecoveryCodeBlocks,
+  getPalette,
+  getSurfaceSwatches,
+  LIGHT_PALETTE,
+  resolveColorScheme,
 } from '../src/theme/tokens';
-import { WEB_CRAFT_CSS } from '../src/theme/webStyles';
+import {
+  injectWebCraftStyles,
+  syncWebDocumentTheme,
+  WEB_CRAFT_CSS,
+} from '../src/theme/webStyles';
+import {
+  parseSavedThemePreference,
+  THEME_STORAGE_KEY,
+} from '../src/storage/themeStorage';
+import { createWebThemeStorage } from '../src/storage/themeStorageAdapter.web';
 
 const SAMPLE_CONFIG: RuntimeConfig = {
   osmStyleUrl: 'https://tiles.openfreemap.org/styles/liberty',
@@ -936,5 +950,123 @@ describe('German default localization and DE <-> EN switching', () => {
     assert.equal(restoredState.cameraTarget?.zoom, 16.2);
     assert.ok(Math.abs((restoredState.cameraTarget?.lng ?? 0) - 9.995) < 1e-6);
     assert.ok(Math.abs((restoredState.cameraTarget?.lat ?? 0) - 53.555) < 1e-6);
+  });
+
+  it('supports light/dark theme preference, WCAG AA >= 4.5:1 dark contrast, localStorage persistence, and web document data-theme sync', async () => {
+    const relativeLuminance = (hex: string): number => {
+      const clean = hex.replace('#', '');
+      const num = Number.parseInt(clean, 16);
+      const channels = [(num >> 16) & 255, (num >> 8) & 255, num & 255].map(
+        (v) => {
+          const s = v / 255;
+          return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+        },
+      );
+      return (
+        0.2126 * channels[0]! + 0.7152 * channels[1]! + 0.0722 * channels[2]!
+      );
+    };
+    const contrastRatio = (fg: string, bg: string): number => {
+      const l1 = relativeLuminance(fg);
+      const l2 = relativeLuminance(bg);
+      return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    };
+
+    assert.equal(getPalette('light'), LIGHT_PALETTE);
+    assert.equal(getPalette('dark'), DARK_PALETTE);
+    assert.notEqual(
+      getSurfaceSwatches('dark').asphalt.color,
+      getSurfaceSwatches('light').asphalt.color,
+    );
+
+    const requiredPairs: readonly [string, string][] = [
+      [DARK_PALETTE.inkPrimary, DARK_PALETTE.bgGround],
+      [DARK_PALETTE.inkPrimary, DARK_PALETTE.bgSurface],
+      [DARK_PALETTE.inkPrimary, DARK_PALETTE.bgSubtle],
+      [DARK_PALETTE.inkSecondary, DARK_PALETTE.bgSurface],
+      [DARK_PALETTE.inkSecondary, DARK_PALETTE.bgSubtle],
+      [DARK_PALETTE.inkMuted, DARK_PALETTE.bgSurface],
+      [DARK_PALETTE.inkMuted, DARK_PALETTE.bgSubtle],
+      [DARK_PALETTE.accentPrimary, DARK_PALETTE.bgSurface],
+      [DARK_PALETTE.inkOnAccent, DARK_PALETTE.accentPrimary],
+      [DARK_PALETTE.inkOnAccent, DARK_PALETTE.accentPrimaryStrong],
+      [DARK_PALETTE.inkOnAccent, DARK_PALETTE.dangerSolid],
+      [DARK_PALETTE.inkOnAccent, DARK_PALETTE.finishedSolid],
+      [DARK_PALETTE.positiveText, DARK_PALETTE.positiveBg],
+      [DARK_PALETTE.neutralText, DARK_PALETTE.neutralBg],
+      [DARK_PALETTE.dangerText, DARK_PALETTE.dangerBg],
+      [DARK_PALETTE.infoText, DARK_PALETTE.infoBg],
+      [DARK_PALETTE.inProgressText, DARK_PALETTE.inProgressBg],
+      [DARK_PALETTE.finishedText, DARK_PALETTE.finishedBg],
+    ];
+    for (const [fg, bg] of requiredPairs) {
+      assert.ok(
+        contrastRatio(fg, bg) >= 4.5,
+        `Expected WCAG AA >= 4.5:1 for ${fg} on ${bg}, got ${contrastRatio(fg, bg).toFixed(2)}`,
+      );
+    }
+
+    assert.equal(resolveColorScheme('system', null), 'light');
+    assert.equal(resolveColorScheme('system', 'dark'), 'dark');
+    assert.equal(resolveColorScheme('light', 'dark'), 'light');
+    assert.equal(resolveColorScheme('dark', 'light'), 'dark');
+
+    let state = appReducer(initialAppState, {
+      type: 'CONFIG_LOADED',
+      config: SAMPLE_CONFIG,
+    });
+    assert.equal(state.themePreference, 'system');
+    assert.equal(deriveMapControlsModel(state, 'dark').colorScheme, 'dark');
+    assert.equal(deriveMapControlsModel(state, 'light').colorScheme, 'light');
+
+    state = appReducer(state, {
+      type: 'SET_THEME_PREFERENCE',
+      preference: 'dark',
+    });
+    assert.equal(state.themePreference, 'dark');
+    assert.equal(deriveMapControlsModel(state, 'light').colorScheme, 'dark');
+
+    state = appReducer(state, {
+      type: 'SET_THEME_PREFERENCE',
+      preference: 'light',
+    });
+    assert.equal(deriveMapControlsModel(state, 'dark').colorScheme, 'light');
+
+    assert.match(getTranslations('de').controls.switchToDarkModeA11y, /Dunkelmodus/);
+    assert.match(getTranslations('en').controls.switchToDarkModeA11y, /dark mode/i);
+
+    const backing = new Map<string, string>();
+    const themeStore = createWebThemeStorage(() => ({
+      getItem: (k) => backing.get(k) ?? null,
+      setItem: (k, v) => {
+        backing.set(k, v);
+      },
+      removeItem: (k) => {
+        backing.delete(k);
+      },
+    }));
+    assert.equal(await themeStore.getThemePreference(), null);
+    await themeStore.setThemePreference('dark');
+    assert.equal(backing.get(THEME_STORAGE_KEY), 'dark');
+    assert.equal(await themeStore.getThemePreference(), 'dark');
+    assert.equal(parseSavedThemePreference('invalid'), null);
+    assert.equal(parseSavedThemePreference('light'), 'light');
+
+    assert.match(WEB_CRAFT_CSS, /:root\[data-theme="dark"\]/);
+    assert.match(WEB_CRAFT_CSS, /\.maplibregl-ctrl-attrib a/);
+
+    const dataset: Record<string, string> = {};
+    const prevDoc = (globalThis as { document?: unknown }).document;
+    try {
+      (globalThis as { document?: unknown }).document = {
+        documentElement: { dataset },
+      };
+      injectWebCraftStyles('de', 'dark');
+      assert.equal(dataset['theme'], 'dark');
+      syncWebDocumentTheme('light');
+      assert.equal(dataset['theme'], 'light');
+    } finally {
+      (globalThis as { document?: unknown }).document = prevDoc;
+    }
   });
 });

@@ -31,6 +31,7 @@ import {
   ORTHOPHOTO_SOURCE_ID,
   PROPOSALS_CENTROID_SOURCE_ID,
   PROPOSALS_POLYGON_SOURCE_ID,
+  resolveBasemapStyleUrl,
   shouldReportOrthophotoTileError,
 } from './styleBuilder';
 import {
@@ -88,6 +89,7 @@ function visibleBoundsToBbox(
 
 export function MapCanvas({
   config,
+  colorScheme = 'light',
   mode,
   basemapMode,
   features,
@@ -173,13 +175,17 @@ export function MapCanvas({
     () => buildOrthophotoLayerSpec(basemapMode === 'orthophoto'),
     [basemapMode],
   );
+  const activeStyleUrl = useMemo(
+    () => resolveBasemapStyleUrl(config, colorScheme),
+    [config, colorScheme],
+  );
   const [proposalFillSpec, proposalOutlineSpec, proposalCentroidSpec] = useMemo(
-    () => buildPolygonLayerSpecs(polygonOpacity),
-    [polygonOpacity],
+    () => buildPolygonLayerSpecs(polygonOpacity, colorScheme),
+    [polygonOpacity, colorScheme],
   );
   const [draftFillSpec, draftLineSpec, draftVerticesSpec] = useMemo(
-    () => buildDraftLayerSpecs(),
-    [],
+    () => buildDraftLayerSpecs(colorScheme),
+    [colorScheme],
   );
 
   useEffect(() => {
@@ -394,7 +400,7 @@ export function MapCanvas({
       <MapView
         ref={mapViewRef}
         style={styles.map}
-        mapStyle={config.osmStyleUrl}
+        mapStyle={activeStyleUrl}
         compassEnabled={false}
         attributionEnabled
         logoEnabled={false}

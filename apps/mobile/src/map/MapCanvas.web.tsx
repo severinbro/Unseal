@@ -17,16 +17,20 @@ import {
   buildOrthophotoSourceSpec,
   buildPolygonLayerSpecs,
   buildProposalGeoJson,
+  DARK_BASEMAP_PAINT_TUNING,
   DEFAULT_POLYGON_OPACITY,
   dedupeFeatureIdsPreservingOrder,
   DRAFT_SOURCE_ID,
   extractRenderedFeatureRawIds,
   INTERACTIVE_PROPOSAL_LAYER_IDS,
+  isOpenFreeMapDarkStyleUrl,
   ORTHOPHOTO_LAYER_ID,
   ORTHOPHOTO_SOURCE_ID,
   PROPOSALS_CENTROID_SOURCE_ID,
   PROPOSALS_POLYGON_SOURCE_ID,
+  resolveBasemapStyleUrl,
   shouldReportOrthophotoTileError,
+  tuneOpenFreeMapDarkStyleLayers,
 } from './styleBuilder';
 import {
   VIEWPORT_SETTLE_DEBOUNCE_MS,
@@ -90,8 +94,24 @@ function extractErrorMessage(event: unknown): string | undefined {
   return undefined;
 }
 
+function applyDarkBasemapTuningToMap(map: MapLibreMap): void {
+  for (const [layerId, paintProps] of Object.entries(DARK_BASEMAP_PAINT_TUNING)) {
+    if (!map.getLayer(layerId)) {
+      continue;
+    }
+    for (const [propName, propValue] of Object.entries(paintProps)) {
+      try {
+        map.setPaintProperty(layerId, propName, propValue);
+      } catch {
+        // Ignore non-matching third-party layer property types.
+      }
+    }
+  }
+}
+
 export function MapCanvas({
   config,
+  colorScheme = 'light',
   mode,
   basemapMode,
   features,
@@ -107,15 +127,22 @@ export function MapCanvas({
   onFeaturePress,
   onTileError,
 }: MapCanvasProps): React.JSX.Element {
+  const activeStyleUrl = resolveBasemapStyleUrl(config, colorScheme);
+
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const styleReadyRef = useRef<boolean>(false);
+  const appliedStyleUrlRef = useRef<string | null>(null);
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCameraSeqRef = useRef<number | null>(cameraTarget?.seq ?? null);
   const lastNorthResetSeqRef = useRef<number>(northResetSeq);
 
   const configRef = useRef(config);
   configRef.current = config;
+  const colorSchemeRef = useRef(colorScheme);
+  colorSchemeRef.current = colorScheme;
+  const activeStyleUrlRef = useRef(activeStyleUrl);
+  activeStyleUrlRef.current = activeStyleUrl;
   const modeRef = useRef(mode);
   modeRef.current = mode;
   const basemapModeRef = useRef(basemapMode);
@@ -152,10 +179,11 @@ export function MapCanvas({
     const initialLat = cameraTarget?.lat ?? config.initialView.lat;
     const initialZoom = cameraTarget?.zoom ?? config.initialView.zoom;
     const initialBounds = cameraTarget?.bounds;
+    const initialStyleUrl = activeStyleUrlRef.current;
 
     const map = new MapLibreMap({
       container,
-      style: config.osmStyleUrl,
+      style: initialStyleUrl,
       ...(initialBounds
         ? {
             bounds: [
@@ -174,6 +202,7 @@ export function MapCanvas({
       attributionControl: false,
     });
     mapRef.current = map;
+    appliedStyleUrlRef.current = initialStyleUrl;
     styleReadyRef.current = false;
 
     // In MapLibre GL JS, 'bottom-*' positions insert each newly added control
@@ -205,6 +234,13 @@ export function MapCanvas({
     }
 
     const syncSourcesAndLayers = (): void => {
+      if (
+        colorSchemeRef.current === 'dark' &&
+        isOpenFreeMapDarkStyleUrl(activeStyleUrlRef.current)
+      ) {
+        applyDarkBasemapTuningToMap(map);
+      }
+
       const proposalGeoJson = buildProposalGeoJson(
         featuresRef.current,
         selectedFeatureIdRef.current,
@@ -219,23 +255,36 @@ export function MapCanvas({
           type: 'geojson',
           data: proposalGeoJson.polygons,
         });
+      } else {
+        map
+          .getSource<GeoJSONSource>(PROPOSALS_POLYGON_SOURCE_ID)
+          ?.setData(proposalGeoJson.polygons);
       }
+
       if (!map.getSource(PROPOSALS_CENTROID_SOURCE_ID)) {
         map.addSource(PROPOSALS_CENTROID_SOURCE_ID, {
           type: 'geojson',
           data: proposalGeoJson.centroids,
         });
+      } else {
+        map
+          .getSource<GeoJSONSource>(PROPOSALS_CENTROID_SOURCE_ID)
+          ?.setData(proposalGeoJson.centroids);
       }
+
       if (!map.getSource(DRAFT_SOURCE_ID)) {
         map.addSource(DRAFT_SOURCE_ID, {
           type: 'geojson',
           data: draftGeoJson,
         });
+      } else {
+        map.getSource<GeoJSONSource>(DRAFT_SOURCE_ID)?.setData(draftGeoJson);
       }
 
       // 1. Proposal layers above basemap
       for (const proposalLayer of buildPolygonLayerSpecs(
         polygonOpacityRef.current,
+        colorSchemeRef.current,
       )) {
         if (!map.getLayer(proposalLayer.id)) {
           map.addLayer(proposalLayer);
@@ -250,19 +299,25 @@ export function MapCanvas({
         if (!map.getSource(ORTHOPHOTO_SOURCE_ID)) {
           map.addSource(ORTHOPHOTO_SOURCE_ID, orthoSourceSpec);
         }
+        const isOrthoVisible = basemapModeRef.current === 'orthophoto';
         if (!map.getLayer(ORTHOPHOTO_LAYER_ID)) {
-          const { beforeId, ...rasterLayer } = buildOrthophotoLayerSpec(
-            basemapModeRef.current === 'orthophoto',
-          );
+          const { beforeId, ...rasterLayer } =
+            buildOrthophotoLayerSpec(isOrthoVisible);
           map.addLayer(
             rasterLayer,
             map.getLayer(beforeId) ? beforeId : undefined,
+          );
+        } else {
+          map.setLayoutProperty(
+            ORTHOPHOTO_LAYER_ID,
+            'visibility',
+            isOrthoVisible ? 'visible' : 'none',
           );
         }
       }
 
       // 3. Draft layers appended at top above proposals
-      for (const draftLayer of buildDraftLayerSpecs()) {
+      for (const draftLayer of buildDraftLayerSpecs(colorSchemeRef.current)) {
         if (!map.getLayer(draftLayer.id)) {
           map.addLayer(draftLayer);
         }
@@ -271,6 +326,21 @@ export function MapCanvas({
 
     const emitBearing = (): void => {
       onBearingChangeRef.current?.(map.getBearing());
+    };
+
+    const tryRestoreAfterStyleSwap = (): void => {
+      if (styleReadyRef.current) {
+        return;
+      }
+      try {
+        if (!map.getStyle()) {
+          return;
+        }
+        syncSourcesAndLayers();
+        styleReadyRef.current = true;
+      } catch {
+        // Style JSON is still initializing; subsequent styledata/idle will retry.
+      }
     };
 
     map.on('load', () => {
@@ -282,6 +352,9 @@ export function MapCanvas({
         onViewportChangeRef.current(initialViewport);
       }
     });
+
+    map.on('styledata', tryRestoreAfterStyleSwap);
+    map.on('idle', tryRestoreAfterStyleSwap);
 
     map.on('rotate', emitBearing);
     map.on('rotateend', emitBearing);
@@ -366,6 +439,7 @@ export function MapCanvas({
 
     return () => {
       styleReadyRef.current = false;
+      appliedStyleUrlRef.current = null;
       resizeObserver?.disconnect();
       if (settleTimerRef.current !== null) {
         clearTimeout(settleTimerRef.current);
@@ -374,9 +448,26 @@ export function MapCanvas({
       map.remove();
       mapRef.current = null;
     };
-    // Re-create MapLibre instance only if osmStyleUrl changes
+    // MapLibre instance stays mounted across theme/style swaps so camera & bearing persist
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.osmStyleUrl]);
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || appliedStyleUrlRef.current === activeStyleUrl) {
+      return;
+    }
+    appliedStyleUrlRef.current = activeStyleUrl;
+    styleReadyRef.current = false;
+    map.setStyle(activeStyleUrl, {
+      diff: false,
+      transformStyle: (_previous, next) =>
+        colorSchemeRef.current === 'dark' &&
+        isOpenFreeMapDarkStyleUrl(activeStyleUrl)
+          ? tuneOpenFreeMapDarkStyleLayers(next)
+          : next,
+    });
+  }, [activeStyleUrl]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -411,9 +502,16 @@ export function MapCanvas({
     if (!map || !styleReadyRef.current) {
       return;
     }
-    const [fillSpec, outlineSpec, centroidSpec] =
-      buildPolygonLayerSpecs(polygonOpacity);
+    const [fillSpec, outlineSpec, centroidSpec] = buildPolygonLayerSpecs(
+      polygonOpacity,
+      colorScheme,
+    );
     if (map.getLayer(fillSpec.id)) {
+      map.setPaintProperty(
+        fillSpec.id,
+        'fill-color',
+        fillSpec.paint['fill-color'],
+      );
       map.setPaintProperty(
         fillSpec.id,
         'fill-opacity',
@@ -423,6 +521,11 @@ export function MapCanvas({
     if (map.getLayer(outlineSpec.id)) {
       map.setPaintProperty(
         outlineSpec.id,
+        'line-color',
+        outlineSpec.paint['line-color'],
+      );
+      map.setPaintProperty(
+        outlineSpec.id,
         'line-opacity',
         outlineSpec.paint['line-opacity'],
       );
@@ -430,8 +533,18 @@ export function MapCanvas({
     if (map.getLayer(centroidSpec.id)) {
       map.setPaintProperty(
         centroidSpec.id,
+        'circle-color',
+        centroidSpec.paint['circle-color'],
+      );
+      map.setPaintProperty(
+        centroidSpec.id,
         'circle-opacity',
         centroidSpec.paint['circle-opacity'],
+      );
+      map.setPaintProperty(
+        centroidSpec.id,
+        'circle-stroke-color',
+        centroidSpec.paint['circle-stroke-color'],
       );
       map.setPaintProperty(
         centroidSpec.id,
@@ -439,7 +552,41 @@ export function MapCanvas({
         centroidSpec.paint['circle-stroke-opacity'],
       );
     }
-  }, [polygonOpacity]);
+
+    const [draftFillSpec, draftLineSpec, draftVerticesSpec] =
+      buildDraftLayerSpecs(colorScheme);
+    if (map.getLayer(draftFillSpec.id)) {
+      map.setPaintProperty(
+        draftFillSpec.id,
+        'fill-color',
+        draftFillSpec.paint['fill-color'],
+      );
+      map.setPaintProperty(
+        draftFillSpec.id,
+        'fill-opacity',
+        draftFillSpec.paint['fill-opacity'],
+      );
+    }
+    if (map.getLayer(draftLineSpec.id)) {
+      map.setPaintProperty(
+        draftLineSpec.id,
+        'line-color',
+        draftLineSpec.paint['line-color'],
+      );
+    }
+    if (map.getLayer(draftVerticesSpec.id)) {
+      map.setPaintProperty(
+        draftVerticesSpec.id,
+        'circle-color',
+        draftVerticesSpec.paint['circle-color'],
+      );
+      map.setPaintProperty(
+        draftVerticesSpec.id,
+        'circle-stroke-color',
+        draftVerticesSpec.paint['circle-stroke-color'],
+      );
+    }
+  }, [polygonOpacity, colorScheme]);
 
   useEffect(() => {
     const map = mapRef.current;

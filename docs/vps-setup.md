@@ -175,7 +175,7 @@ The code keeps data collection small, but running a public instance makes you th
 
 - [ ] **Legal notice & controller:** fill in `OPERATOR_NAME`, `OPERATOR_ADDRESS`, `OPERATOR_EMAIL` and a privacy contact (`ABUSE_CONTACT`); check `/auth/impressum` and `/auth/privacy`.
 - [ ] **Processing agreements (Art. 28):** sign data processing agreements with your VPS host and your SMTP provider, and name them in `PRIVACY_HOSTING_PROVIDER` / `PRIVACY_EMAIL_PROVIDER`.
-- [ ] **Third parties:** if you change `OSM_STYLE_URL` or `ORTHOPHOTO_URL_TEMPLATE`, `/auth/privacy` names the new hosts automatically — check that provider's own privacy terms and whether it transfers data outside the EU/EEA.
+- [ ] **Third parties:** if you change `OSM_STYLE_URL`, `OSM_DARK_STYLE_URL`, or `ORTHOPHOTO_URL_TEMPLATE`, `/auth/privacy` names the new hosts automatically — check that provider's own privacy terms and whether it transfers data outside the EU/EEA.
 - [ ] **Record of processing activities (Art. 30):** document the processing described on `/auth/privacy` (accounts, contributions, abuse prevention, logs, bug reports).
 - [ ] **Security (Art. 32):** set `TOMBSTONE_SECRET` and a strong `POSTGRES_PASSWORD`; keep the VPS patched; encrypt backups.
 - [ ] **Retention:** set `BACKUP_RETENTION_DAYS` and delete bug-report emails once handled.

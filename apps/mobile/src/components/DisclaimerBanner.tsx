@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import {
@@ -9,7 +9,8 @@ import {
   MIN_TOUCH_TARGET_DP,
   type MapControlsModel,
 } from '../state/viewModels';
-import { PALETTE, RADII, TABULAR_NUMS_STYLE } from '../theme/tokens';
+import { useTheme } from '../theme/themeContext';
+import { RADII, TABULAR_NUMS_STYLE, type ThemePalette } from '../theme/tokens';
 
 export interface DisclaimerBannerProps {
   controls: MapControlsModel;
@@ -29,6 +30,8 @@ export function DisclaimerBanner({
   onDismissTileWarning,
   onDismissLocationNotice,
 }: DisclaimerBannerProps): React.JSX.Element | null {
+  const { palette } = useTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
   const locale = controls.locale;
   const t = getTranslations(locale).banners;
 
@@ -123,7 +126,8 @@ export function DisclaimerBanner({
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(PALETTE: ThemePalette) {
+  return StyleSheet.create({
   stackContainer: {
     gap: 6,
   },
@@ -254,4 +258,5 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     color: PALETTE.inkSecondary,
   },
-});
+  });
+}

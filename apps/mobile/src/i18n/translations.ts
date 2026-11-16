@@ -91,6 +91,10 @@ export interface TranslationDictionary {
     readonly osmAttributionShort: string;
     readonly imageryPrefix: string;
     readonly switchLocaleA11y: string;
+    readonly switchToDarkModeA11y: string;
+    readonly switchToLightModeA11y: string;
+    readonly darkModeTooltip: string;
+    readonly lightModeTooltip: string;
     readonly aboutButtonA11y: string;
     readonly bugReportButtonA11y: string;
     readonly bugReportButtonTooltip: string;
@@ -559,6 +563,10 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       osmAttributionShort: '© OpenStreetMap (ODbL) · OpenFreeMap · VG250 © BKG',
       imageryPrefix: 'Bilddaten:',
       switchLocaleA11y: 'Sprache auf Englisch (EN) umstellen',
+      switchToDarkModeA11y: 'Dunkelmodus mit dunkler Hintergrundkarte aktivieren',
+      switchToLightModeA11y: 'Hellmodus mit heller Hintergrundkarte aktivieren',
+      darkModeTooltip: 'Dunkelmodus',
+      lightModeTooltip: 'Hellmodus',
       aboutButtonA11y: 'Über Unseal, Kartendaten und Datenschutz öffnen',
       bugReportButtonA11y: 'Fehler melden',
       bugReportButtonTooltip: 'Fehler melden',
@@ -1038,7 +1046,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       featureReviewBullet:
         'Bewerten & Prüfen: Vorschläge mit +1/−1 gewichten, Fotos als Echt/Fake einstufen oder Unstimmigkeiten zur Prüfung melden.',
       featureControlsBullet:
-        'Ansicht & Filter: Straßenkarte/Luftbild (DOP20), stufenloser Deckkraft-Regler sowie Einzelauswahl-Filter (Alle, Neu: letzte 7 Tage, Etabliert: älter als 7 Tage, Prüfbedarf: Bewertung 0 ohne Stimmen).',
+        'Ansicht & Filter: Straßenkarte/Luftbild (DOP20), Hell-/Dunkelmodus mit dunkler Basiskarte, stufenloser Deckkraft-Regler sowie Einzelauswahl-Filter (Alle, Neu: letzte 7 Tage, Etabliert: älter als 7 Tage, Prüfbedarf: Bewertung 0 ohne Stimmen).',
       featureDataBullet:
         'Offene Geodaten: Ein-Klick-GeoJSON-Export (sowie .geojson/.gpkg-Import für Admins).',
       legendTitle: 'Farben & Status',
@@ -1156,6 +1164,10 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       osmAttributionShort: '© OpenStreetMap (ODbL) · OpenFreeMap · VG250 © BKG',
       imageryPrefix: 'Imagery:',
       switchLocaleA11y: 'Switch language to German (DE)',
+      switchToDarkModeA11y: 'Switch to dark mode with dark background map',
+      switchToLightModeA11y: 'Switch to light mode with light background map',
+      darkModeTooltip: 'Dark mode',
+      lightModeTooltip: 'Light mode',
       aboutButtonA11y: 'Open About Unseal, map attributions, and privacy',
       bugReportButtonA11y: 'Report a bug',
       bugReportButtonTooltip: 'Report a bug',
@@ -1610,7 +1622,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       featureReviewBullet:
         'Vote & review: Score proposals +1/−1, rate photos Real/Fake, or flag questionable entries for community review.',
       featureControlsBullet:
-        'View & filters: Street/DOP20 aerial toggle, dynamic polygon opacity slider, plus single-choice filters (All, New: past 7 days, Established: older than 7 days, Needs review: score 0 with no ratings).',
+        'View & filters: Street/DOP20 aerial toggle, light/dark mode with dark basemap, dynamic polygon opacity slider, plus single-choice filters (All, New: past 7 days, Established: older than 7 days, Needs review: score 0 with no ratings).',
       featureDataBullet:
         'Open geodata: One-click GeoJSON export (plus .geojson/.gpkg import for admins).',
       legendTitle: 'Colors & Status',

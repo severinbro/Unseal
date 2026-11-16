@@ -817,6 +817,14 @@ describe('Review Focus 3: BboxQuerySchema vs checkBboxSpan and remaining wire sc
       abuseContact: null,
     });
     assert.equal(cleanDefaultConfig.orthophoto, null);
+    assert.equal(cleanDefaultConfig.osmDarkStyleUrl, undefined);
+    assert.equal(
+      RuntimeConfigSchema.parse({
+        ...cleanDefaultConfig,
+        osmDarkStyleUrl: 'https://tiles.openfreemap.org/styles/dark',
+      }).osmDarkStyleUrl,
+      'https://tiles.openfreemap.org/styles/dark',
+    );
     assert.equal(cleanDefaultConfig.apkDownloadUrl, null);
     assert.equal(cleanDefaultConfig.apkSha256, null);
     assert.equal(cleanDefaultConfig.impressumUrl, null);

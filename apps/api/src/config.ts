@@ -40,6 +40,7 @@ export interface EnvConfig {
   smtp: SmtpConfig;
   autoSeedVg250: boolean;
   osmStyleUrl: string;
+  osmDarkStyleUrl: string;
   orthophoto: RuntimeConfig['orthophoto'];
   initialView: RuntimeConfig['initialView'];
   maxDailyPolygonsPerUser: number;
@@ -119,7 +120,19 @@ export function resolveTombstoneSecret(env: NodeJS.ProcessEnv = process.env): st
 const DEFAULT_DISCLAIMER_TEXT =
   'Community unsealing suggestions - non-binding public input, regardless of property ownership.';
 const DEFAULT_OSM_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
+const DEFAULT_OSM_DARK_STYLE_URL = 'https://tiles.openfreemap.org/styles/dark';
 const DEFAULT_SOURCE_CODE_URL = 'https://github.com/severinbro/Unseal';
+
+function resolveDefaultDarkStyleUrl(lightStyleUrl: string): string {
+  try {
+    if (new URL(lightStyleUrl).host === 'tiles.openfreemap.org') {
+      return DEFAULT_OSM_DARK_STYLE_URL;
+    }
+  } catch {
+    // Non-URL string; let RuntimeConfigSchema report validation issues.
+  }
+  return lightStyleUrl;
+}
 const DISABLED_SETTING_RE = /^(?:none|off|false|disabled|0)$/i;
 const STRICT_NUMBER_RE = /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 const SHA256_HEX_RE = /^[0-9a-f]{64}$/i;
@@ -297,6 +310,8 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
   const trustProxy = parseBooleanSetting(env.TRUST_PROXY, false, 'TRUST_PROXY');
   const corsOrigin = env.CORS_ORIGIN?.trim() || '*';
   const osmStyleUrl = env.OSM_STYLE_URL?.trim() || DEFAULT_OSM_STYLE_URL;
+  const osmDarkStyleUrl =
+    env.OSM_DARK_STYLE_URL?.trim() || resolveDefaultDarkStyleUrl(osmStyleUrl);
 
   const hasExplicitPublicBaseUrl = Boolean(env.PUBLIC_BASE_URL?.trim());
   const defaultBasePort = port === 80 || port === 443 ? '' : `:${port || 3000}`;
@@ -566,6 +581,7 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
 
   const runtimeConfig = RuntimeConfigSchema.parse({
     osmStyleUrl,
+    osmDarkStyleUrl,
     orthophoto,
     initialView: {
       lng: initialLng,
@@ -606,6 +622,7 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     smtp,
     autoSeedVg250,
     osmStyleUrl: runtimeConfig.osmStyleUrl,
+    osmDarkStyleUrl: runtimeConfig.osmDarkStyleUrl ?? osmDarkStyleUrl,
     orthophoto: runtimeConfig.orthophoto,
     initialView: runtimeConfig.initialView,
     maxDailyPolygonsPerUser: runtimeConfig.limits.maxDailyPolygonsPerUser,

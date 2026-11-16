@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -14,7 +14,8 @@ import {
   type Locale,
 } from '../i18n/translations';
 import { MIN_TOUCH_TARGET_DP } from '../state/viewModels';
-import { PALETTE, RADII } from '../theme/tokens';
+import { useTheme } from '../theme/themeContext';
+import { RADII, type ThemePalette } from '../theme/tokens';
 
 const SIMPLE_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -38,6 +39,8 @@ export function BugReportModal({
   onSubmit,
   onClose,
 }: BugReportModalProps): React.JSX.Element | null {
+  const { palette } = useTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
   const [description, setDescription] = useState<string>('');
   const [contactEmail, setContactEmail] = useState<string>(defaultEmail ?? '');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -150,7 +153,7 @@ export function BugReportModal({
                 }
               }}
               placeholder={t.descriptionPlaceholder}
-              placeholderTextColor={PALETTE.inkMuted}
+              placeholderTextColor={palette.inkMuted}
               multiline
               maxLength={4000}
               style={styles.multilineInput}
@@ -170,7 +173,7 @@ export function BugReportModal({
                 }
               }}
               placeholder={t.contactEmailPlaceholder}
-              placeholderTextColor={PALETTE.inkMuted}
+              placeholderTextColor={palette.inkMuted}
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
@@ -210,7 +213,8 @@ export function BugReportModal({
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(PALETTE: ThemePalette) {
+  return StyleSheet.create({
   card: {
     width: '100%',
     padding: 15,
@@ -357,4 +361,5 @@ const styles = StyleSheet.create({
   buttonPressed: {
     backgroundColor: PALETTE.bgRecessed,
   },
-});
+  });
+}

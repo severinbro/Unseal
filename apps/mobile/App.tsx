@@ -41,8 +41,10 @@ import {
   Pressable,
   SafeAreaView,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
+  useColorScheme,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -74,6 +76,7 @@ import {
 import { requestCurrentCoordinates } from './src/location/locateMe';
 import type { LocateMeResult } from './src/location/locateMe.types';
 import {
+  DEFAULT_DARK_OSM_STYLE_URL,
   INTERACTIVE_PROPOSAL_LAYER_IDS,
   MapCanvas,
   ORTHOPHOTO_LAYER_ID,
@@ -85,6 +88,7 @@ import {
   buildPolygonLayerSpecs,
   buildProposalGeoJson,
   dedupeFeatureIdsPreservingOrder,
+  resolveBasemapStyleUrl,
   type MapCanvasProps,
 } from './src/map';
 import {
@@ -116,15 +120,28 @@ import {
 } from './src/storage/viewportStorage';
 import { platformViewportStorage } from './src/storage/viewportStorageAdapter';
 import {
+  createMemoryThemeStorage,
+  detectWebSystemColorScheme,
+  readPersistedThemePreferenceSync,
+  type ThemeStorage,
+} from './src/storage/themeStorage';
+import { platformThemeStorage } from './src/storage/themeStorageAdapter';
+import { ThemeProvider } from './src/theme/themeContext';
+import {
   deriveResponsiveLayout,
+  getPalette,
   MONO_FONT_FAMILY,
-  PALETTE,
   RADII,
+  resolveColorScheme,
   TABULAR_NUMS_STYLE,
+  type ColorScheme,
+  type ThemePalette,
+  type ThemePreference,
 } from './src/theme/tokens';
 import {
   injectWebCraftStyles,
   syncWebDocumentLocale,
+  syncWebDocumentTheme,
 } from './src/theme/webStyles';
 
 const DEFAULT_API_BASE_URL = 'http://127.0.0.1:3000';
@@ -148,7 +165,9 @@ export const mapStylePrimitives = {
   ORTHOPHOTO_SOURCE_ID,
   ORTHOPHOTO_LAYER_ID,
   INTERACTIVE_PROPOSAL_LAYER_IDS,
+  DEFAULT_DARK_OSM_STYLE_URL,
   dedupeFeatureIdsPreservingOrder,
+  resolveBasemapStyleUrl,
   buildProposalGeoJson,
   buildDraftGeoJson,
   buildOrthophotoSourceSpec,
@@ -175,23 +194,37 @@ export interface AppProps {
   baseUrl?: string;
   sessionStorage?: SessionStorage;
   viewportStorage?: ViewportStorage;
+  themeStorage?: ThemeStorage;
   ephemeralSession?: boolean;
   apiClient?: PpgisApiClient;
   initialLocale?: Locale;
+  initialThemePreference?: ThemePreference;
   exp?: Record<string, unknown>;
 }
 
 export function App(props: AppProps = {}): React.JSX.Element {
   const [state, dispatch] = useReducer<
     React.Reducer<AppState, AppAction>,
-    Locale | undefined
-  >(appReducer, props.initialLocale, (explicitLocale): AppState => {
-    const startLocale = explicitLocale ?? readPersistedLocale();
-    return {
-      ...initialAppState,
-      locale: startLocale,
-    };
-  });
+    { locale?: Locale | undefined; themePreference?: ThemePreference | undefined }
+  >(
+    appReducer,
+    {
+      locale: props.initialLocale,
+      themePreference: props.initialThemePreference,
+    },
+    (init): AppState => {
+      const startLocale = init.locale ?? readPersistedLocale();
+      const startTheme =
+        init.themePreference ??
+        readPersistedThemePreferenceSync() ??
+        'system';
+      return {
+        ...initialAppState,
+        locale: startLocale,
+        themePreference: startTheme,
+      };
+    },
+  );
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [isImporting, setIsImporting] = useState<boolean>(false);
   const [aboutModalOpen, setAboutModalOpen] = useState<boolean>(false);
@@ -213,13 +246,83 @@ export function App(props: AppProps = {}): React.JSX.Element {
     [windowDimensions.width, windowDimensions.height],
   );
 
+  const rnColorScheme = useColorScheme();
+  const [webSystemScheme, setWebSystemScheme] = useState<ColorScheme | null>(
+    () => (Platform.OS === 'web' ? detectWebSystemColorScheme() : null),
+  );
+
   useEffect(() => {
-    injectWebCraftStyles(localeRef.current);
+    if (Platform.OS !== 'web') {
+      return;
+    }
+    const scope = globalThis as {
+      window?: {
+        matchMedia?: (query: string) => {
+          matches?: boolean;
+          addEventListener?: (
+            type: 'change',
+            listener: (event: { matches?: boolean }) => void,
+          ) => void;
+          removeEventListener?: (
+            type: 'change',
+            listener: (event: { matches?: boolean }) => void,
+          ) => void;
+        } | null;
+      };
+    };
+    const mql = scope.window?.matchMedia?.('(prefers-color-scheme: dark)');
+    if (!mql || typeof mql.addEventListener !== 'function') {
+      return;
+    }
+    const handleChange = (event: { matches?: boolean }): void => {
+      setWebSystemScheme(event.matches ? 'dark' : 'light');
+    };
+    mql.addEventListener('change', handleChange);
+    return () => {
+      mql.removeEventListener?.('change', handleChange);
+    };
+  }, []);
+
+  const systemColorScheme: ColorScheme | null =
+    Platform.OS === 'web'
+      ? (webSystemScheme ??
+        (rnColorScheme === 'dark'
+          ? 'dark'
+          : rnColorScheme === 'light'
+            ? 'light'
+            : null))
+      : rnColorScheme === 'dark'
+        ? 'dark'
+        : rnColorScheme === 'light'
+          ? 'light'
+          : null;
+
+  const activeColorScheme = resolveColorScheme(
+    state.themePreference,
+    systemColorScheme,
+  );
+  const palette = useMemo(
+    () => getPalette(activeColorScheme),
+    [activeColorScheme],
+  );
+  const isDark = activeColorScheme === 'dark';
+  const styles = useMemo(
+    () => createStyles(palette, isDark),
+    [palette, isDark],
+  );
+
+  useEffect(() => {
+    injectWebCraftStyles(localeRef.current, activeColorScheme);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     syncWebDocumentLocale(state.locale);
   }, [state.locale]);
+
+  useEffect(() => {
+    syncWebDocumentTheme(activeColorScheme);
+  }, [activeColorScheme]);
 
   const handleToggleLocale = useCallback((): void => {
     const nextLocale: Locale = state.locale === 'de' ? 'en' : 'de';
@@ -247,6 +350,38 @@ export function App(props: AppProps = {}): React.JSX.Element {
     }
     return platformViewportStorage;
   }, [props.viewportStorage, props.ephemeralSession, props.sessionStorage]);
+
+  const themeStore = useMemo<ThemeStorage>(() => {
+    if (props.themeStorage) {
+      return props.themeStorage;
+    }
+    if (props.ephemeralSession || props.sessionStorage) {
+      return createMemoryThemeStorage();
+    }
+    return platformThemeStorage;
+  }, [props.themeStorage, props.ephemeralSession, props.sessionStorage]);
+
+  useEffect(() => {
+    if (props.initialThemePreference !== undefined) {
+      return;
+    }
+    let cancelled = false;
+    void themeStore.getThemePreference().then((savedPref) => {
+      if (!cancelled && savedPref !== null) {
+        dispatch({ type: 'SET_THEME_PREFERENCE', preference: savedPref });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [props.initialThemePreference, themeStore]);
+
+  const handleToggleTheme = useCallback((): void => {
+    const nextPreference: ThemePreference =
+      activeColorScheme === 'dark' ? 'light' : 'dark';
+    dispatch({ type: 'SET_THEME_PREFERENCE', preference: nextPreference });
+    void themeStore.setThemePreference(nextPreference);
+  }, [activeColorScheme, themeStore]);
 
   const resolvedBaseUrl = props.baseUrl ?? resolveDefaultApiBaseUrl();
 
@@ -447,7 +582,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
 
   const dict = getTranslations(state.locale);
   const tApp = dict.app;
-  const mapControls = deriveMapControlsModel(state);
+  const mapControls = deriveMapControlsModel(state, systemColorScheme);
   const authModal = deriveAuthModalModel(state);
   const drawingToolbar = deriveDrawingToolbarModel(state);
 
@@ -1182,35 +1317,55 @@ export function App(props: AppProps = {}): React.JSX.Element {
     [apiClient],
   );
 
+  const statusBarNode =
+    Platform.OS !== 'web' ? (
+      <StatusBar
+        barStyle={isDark ? 'light-content' : 'dark-content'}
+        backgroundColor={palette.bgSurface}
+      />
+    ) : null;
+
   if (state.configStatus === 'loading') {
     return (
-      <SafeAreaView style={styles.centeredScreen}>
-        <ActivityIndicator size="large" color={PALETTE.accentPrimary} />
-        <Text style={styles.statusTitle}>{tApp.loadingTitle}</Text>
-      </SafeAreaView>
+      <ThemeProvider
+        colorScheme={activeColorScheme}
+        themePreference={state.themePreference}
+      >
+        {statusBarNode}
+        <SafeAreaView style={styles.centeredScreen}>
+          <ActivityIndicator size="large" color={palette.accentPrimary} />
+          <Text style={styles.statusTitle}>{tApp.loadingTitle}</Text>
+        </SafeAreaView>
+      </ThemeProvider>
     );
   }
 
   if (state.configStatus === 'error' || state.config === null) {
     return (
-      <SafeAreaView style={styles.centeredScreen}>
-        <View style={styles.errorCard}>
-          <Text style={styles.errorTitle}>{tApp.errorTitle}</Text>
-          <Text style={styles.errorBody}>
-            {state.configError ?? tApp.errorFallback}
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={tApp.retryA11y}
-            onPress={() => {
-              void bootstrapApp();
-            }}
-            style={styles.retryButton}
-          >
-            <Text style={styles.retryButtonLabel}>{tApp.retryButton}</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
+      <ThemeProvider
+        colorScheme={activeColorScheme}
+        themePreference={state.themePreference}
+      >
+        {statusBarNode}
+        <SafeAreaView style={styles.centeredScreen}>
+          <View style={styles.errorCard}>
+            <Text style={styles.errorTitle}>{tApp.errorTitle}</Text>
+            <Text style={styles.errorBody}>
+              {state.configError ?? tApp.errorFallback}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={tApp.retryA11y}
+              onPress={() => {
+                void bootstrapApp();
+              }}
+              style={styles.retryButton}
+            >
+              <Text style={styles.retryButtonLabel}>{tApp.retryButton}</Text>
+            </Pressable>
+          </View>
+        </SafeAreaView>
+      </ThemeProvider>
     );
   }
 
@@ -1357,18 +1512,24 @@ export function App(props: AppProps = {}): React.JSX.Element {
     ) : null;
 
   return (
-    <SafeAreaView
-      style={styles.appContainer}
-      accessibilityHint={SESSION_TOKEN_KEY}
+    <ThemeProvider
+      colorScheme={activeColorScheme}
+      themePreference={state.themePreference}
     >
-      <MapControlsBar
-        controls={mapControls}
-        proposalCount={state.features.length}
-        exportGeoJsonUrl={apiClient.getExportGeoJsonUrl()}
-        isImporting={isImporting}
-        tier={layout.tier}
-        onToggleLocale={handleToggleLocale}
-        onOpenAbout={() => setAboutModalOpen(true)}
+      {statusBarNode}
+      <SafeAreaView
+        style={styles.appContainer}
+        accessibilityHint={SESSION_TOKEN_KEY}
+      >
+        <MapControlsBar
+          controls={mapControls}
+          proposalCount={state.features.length}
+          exportGeoJsonUrl={apiClient.getExportGeoJsonUrl()}
+          isImporting={isImporting}
+          tier={layout.tier}
+          onToggleLocale={handleToggleLocale}
+          onToggleTheme={handleToggleTheme}
+          onOpenAbout={() => setAboutModalOpen(true)}
         onOpenBugReport={() => setBugModalOpen(true)}
         onOpenInstallApp={() => setInstallModalOpen(true)}
         onSetBasemapMode={(mode) =>
@@ -1390,6 +1551,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
         <View style={styles.mapCanvasFill}>
           <MapCanvas
             config={state.config}
+            colorScheme={activeColorScheme}
             mode={state.mode}
             basemapMode={state.basemapMode}
             features={state.features}
@@ -1465,7 +1627,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
               <View
                 style={[
                   styles.legendSwatch,
-                  { backgroundColor: PALETTE.positiveDot },
+                  { backgroundColor: palette.positiveDot },
                 ]}
               />
               <Text style={styles.legendLabel}>{tApp.legendBacked}</Text>
@@ -1474,7 +1636,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
               <View
                 style={[
                   styles.legendSwatch,
-                  { backgroundColor: PALETTE.neutralDot },
+                  { backgroundColor: palette.neutralDot },
                 ]}
               />
               <Text style={styles.legendLabel}>{tApp.legendNew}</Text>
@@ -1483,7 +1645,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
               <View
                 style={[
                   styles.legendSwatch,
-                  { backgroundColor: PALETTE.dangerDot },
+                  { backgroundColor: palette.dangerDot },
                 ]}
               />
               <Text style={styles.legendLabel}>{tApp.legendContested}</Text>
@@ -1492,7 +1654,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
               <View
                 style={[
                   styles.legendSwatch,
-                  { backgroundColor: PALETTE.inProgressDot },
+                  { backgroundColor: palette.inProgressDot },
                 ]}
               />
               <Text style={styles.legendLabel}>{tApp.legendInProgress}</Text>
@@ -1501,7 +1663,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
               <View
                 style={[
                   styles.legendSwatch,
-                  { backgroundColor: PALETTE.finishedDot },
+                  { backgroundColor: palette.finishedDot },
                 ]}
               />
               <Text style={styles.legendLabel}>{tApp.legendFinished}</Text>
@@ -1789,13 +1951,15 @@ export function App(props: AppProps = {}): React.JSX.Element {
           </View>
         </KeyboardAvoidingView>
       ) : null}
-    </SafeAreaView>
+      </SafeAreaView>
+    </ThemeProvider>
   );
 }
 
 export default App;
 
-const styles = StyleSheet.create({
+function createStyles(PALETTE: ThemePalette, isDark: boolean) {
+  return StyleSheet.create({
   appContainer: {
     flex: 1,
     backgroundColor: PALETTE.bgGround,
@@ -1855,7 +2019,7 @@ const styles = StyleSheet.create({
   mapStage: {
     flex: 1,
     position: 'relative',
-    backgroundColor: '#DFE7E2',
+    backgroundColor: PALETTE.bgMapCanvas,
     overflow: 'hidden',
   },
   mapCanvasFill: {
@@ -1881,7 +2045,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: RADII.pill,
-    backgroundColor: 'rgba(255, 255, 255, 0.94)',
+    backgroundColor: PALETTE.bgFloatingPill,
     borderWidth: 1,
     borderColor: PALETTE.borderSubtle,
     zIndex: 10,
@@ -1909,7 +2073,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: RADII.sm,
-    backgroundColor: 'rgba(255, 255, 255, 0.88)',
+    backgroundColor: PALETTE.bgFloatingPill,
     borderWidth: 1,
     borderColor: PALETTE.borderSubtle,
     zIndex: 10,
@@ -1938,12 +2102,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...(Platform.OS === 'web'
       ? {
-          boxShadow: '0 -4px 16px rgba(18, 32, 25, 0.14)',
+          boxShadow: isDark
+            ? '0 -4px 20px rgba(0, 0, 0, 0.48)'
+            : '0 -4px 16px rgba(18, 32, 25, 0.14)',
         }
       : {
-          shadowColor: '#122019',
+          shadowColor: isDark ? '#000000' : '#122019',
           shadowOffset: { width: 0, height: -3 },
-          shadowOpacity: 0.14,
+          shadowOpacity: isDark ? 0.36 : 0.14,
           shadowRadius: 8,
           elevation: 8,
         }),
@@ -2057,4 +2223,5 @@ const styles = StyleSheet.create({
   modalScrollContent: {
     flexGrow: 0,
   },
-});
+  });
+}

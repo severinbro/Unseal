@@ -8,6 +8,8 @@
 export { MapCanvas } from './MapCanvas';
 export { VIEWPORT_SETTLE_DEBOUNCE_MS, type MapCanvasProps } from './types';
 export {
+  DARK_BASEMAP_PAINT_TUNING,
+  DEFAULT_DARK_OSM_STYLE_URL,
   DRAFT_SOURCE_ID,
   INTERACTIVE_PROPOSAL_LAYER_IDS,
   ORTHOPHOTO_LAYER_ID,
@@ -22,7 +24,10 @@ export {
   buildProposalGeoJson,
   dedupeFeatureIdsPreservingOrder,
   extractRenderedFeatureRawIds,
+  isOpenFreeMapDarkStyleUrl,
+  resolveBasemapStyleUrl,
   shouldReportOrthophotoTileError,
+  tuneOpenFreeMapDarkStyleLayers,
   type DraftFeatureCollection,
   type DraftFillLayerSpec,
   type DraftGeoJsonFeature,

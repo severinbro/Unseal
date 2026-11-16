@@ -1,5 +1,5 @@
 import type { PolygonFilter } from '@entsiegelung/shared';
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -23,10 +23,11 @@ import {
   MIN_TOUCH_TARGET_DP,
   type MapControlsModel,
 } from '../state/viewModels';
+import { useTheme } from '../theme/themeContext';
 import {
-  PALETTE,
   RADII,
   TABULAR_NUMS_STYLE,
+  type ThemePalette,
   type ViewportTier,
 } from '../theme/tokens';
 
@@ -93,6 +94,7 @@ export interface MapControlsBarProps {
   isImporting?: boolean;
   tier?: ViewportTier;
   onToggleLocale?: () => void;
+  onToggleTheme?: () => void;
   onOpenAbout?: () => void;
   onOpenBugReport?: () => void;
   onOpenInstallApp?: () => void;
@@ -109,14 +111,19 @@ export interface MapControlsBarProps {
 const UNSEAL_HEADER_LOGO = require('../../assets/header-logo.png') as number;
 
 export function AndroidGlyph({
-  color = PALETTE.accentPrimary,
-  eyeColor = PALETTE.bgSurface,
+  color,
+  eyeColor,
   size = 20,
 }: {
   color?: string;
   eyeColor?: string;
   size?: number;
 }): React.JSX.Element {
+  const { palette } = useTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
+  const resolvedColor = color ?? palette.accentPrimary;
+  const resolvedEyeColor = eyeColor ?? palette.bgSurface;
+
   if (Platform.OS === 'web') {
     return React.createElement(
       'svg',
@@ -133,25 +140,25 @@ export function AndroidGlyph({
       },
       React.createElement('path', {
         d: 'M8.5 6.2L6.8 3.4M15.5 6.2L17.2 3.4',
-        stroke: color,
+        stroke: resolvedColor,
         strokeWidth: '1.7',
         strokeLinecap: 'round',
       }),
       React.createElement('path', {
         d: 'M6 11C6 7.686 8.686 5 12 5C15.314 5 18 7.686 18 11H6Z',
-        fill: color,
+        fill: resolvedColor,
       }),
       React.createElement('circle', {
         cx: '9.6',
         cy: '8.6',
         r: '1',
-        fill: eyeColor,
+        fill: resolvedEyeColor,
       }),
       React.createElement('circle', {
         cx: '14.4',
         cy: '8.6',
         r: '1',
-        fill: eyeColor,
+        fill: resolvedEyeColor,
       }),
       React.createElement('rect', {
         x: '6',
@@ -159,7 +166,7 @@ export function AndroidGlyph({
         width: '12',
         height: '6.8',
         rx: '1.5',
-        fill: color,
+        fill: resolvedColor,
       }),
       React.createElement('rect', {
         x: '3.2',
@@ -167,7 +174,7 @@ export function AndroidGlyph({
         width: '1.8',
         height: '5.4',
         rx: '0.9',
-        fill: color,
+        fill: resolvedColor,
       }),
       React.createElement('rect', {
         x: '19',
@@ -175,7 +182,7 @@ export function AndroidGlyph({
         width: '1.8',
         height: '5.4',
         rx: '0.9',
-        fill: color,
+        fill: resolvedColor,
       }),
       React.createElement('rect', {
         x: '8.5',
@@ -183,7 +190,7 @@ export function AndroidGlyph({
         width: '2',
         height: '3.4',
         rx: '1',
-        fill: color,
+        fill: resolvedColor,
       }),
       React.createElement('rect', {
         x: '13.5',
@@ -191,7 +198,7 @@ export function AndroidGlyph({
         width: '2',
         height: '3.4',
         rx: '1',
-        fill: color,
+        fill: resolvedColor,
       }),
     );
   }
@@ -204,26 +211,46 @@ export function AndroidGlyph({
         { width: size, height: size },
       ]}
     >
-      <View style={[styles.androidFallbackHead, { backgroundColor: color }]}>
+      <View
+        style={[
+          styles.androidFallbackHead,
+          { backgroundColor: resolvedColor },
+        ]}
+      >
         <View
-          style={[styles.androidFallbackEye, { backgroundColor: eyeColor }]}
+          style={[
+            styles.androidFallbackEye,
+            { backgroundColor: resolvedEyeColor },
+          ]}
         />
         <View
-          style={[styles.androidFallbackEye, { backgroundColor: eyeColor }]}
+          style={[
+            styles.androidFallbackEye,
+            { backgroundColor: resolvedEyeColor },
+          ]}
         />
       </View>
-      <View style={[styles.androidFallbackBody, { backgroundColor: color }]} />
+      <View
+        style={[
+          styles.androidFallbackBody,
+          { backgroundColor: resolvedColor },
+        ]}
+      />
     </View>
   );
 }
 
 export function BugGlyph({
-  color = PALETTE.inkSecondary,
+  color,
   size = 18,
 }: {
   color?: string;
   size?: number;
 }): React.JSX.Element {
+  const { palette } = useTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
+  const resolvedColor = color ?? palette.inkSecondary;
+
   if (Platform.OS === 'web') {
     return React.createElement(
       'svg',
@@ -240,13 +267,13 @@ export function BugGlyph({
       },
       React.createElement('path', {
         d: 'M9 7.5L7.2 5.2M15 7.5L16.8 5.2',
-        stroke: color,
+        stroke: resolvedColor,
         strokeWidth: '1.8',
         strokeLinecap: 'round',
       }),
       React.createElement('path', {
         d: 'M9 9C9 7.343 10.343 6 12 6C13.657 6 15 7.343 15 9V10H9V9Z',
-        fill: color,
+        fill: resolvedColor,
       }),
       React.createElement('rect', {
         x: '7.5',
@@ -254,12 +281,12 @@ export function BugGlyph({
         width: '9',
         height: '10.2',
         rx: '4.5',
-        stroke: color,
+        stroke: resolvedColor,
         strokeWidth: '1.8',
       }),
       React.createElement('path', {
         d: 'M12 10.2V19.6M4 11.5H7.4M16.6 11.5H20M3.5 15H7.3M16.7 15H20.5M4.5 18.5L7.8 17.2M19.5 18.5L16.2 17.2',
-        stroke: color,
+        stroke: resolvedColor,
         strokeWidth: '1.7',
         strokeLinecap: 'round',
       }),
@@ -271,17 +298,29 @@ export function BugGlyph({
       accessible={false}
       style={[styles.bugFallbackFrame, { width: size, height: size }]}
     >
-      <View style={[styles.bugFallbackHead, { backgroundColor: color }]} />
-      <View style={[styles.bugFallbackBody, { borderColor: color }]}>
-        <View style={[styles.bugFallbackSeam, { backgroundColor: color }]} />
+      <View
+        style={[styles.bugFallbackHead, { backgroundColor: resolvedColor }]}
+      />
+      <View style={[styles.bugFallbackBody, { borderColor: resolvedColor }]}>
+        <View
+          style={[styles.bugFallbackSeam, { backgroundColor: resolvedColor }]}
+        />
       </View>
       <View style={[styles.bugFallbackLegRow, styles.bugFallbackLegTop]}>
-        <View style={[styles.bugFallbackLeg, { backgroundColor: color }]} />
-        <View style={[styles.bugFallbackLeg, { backgroundColor: color }]} />
+        <View
+          style={[styles.bugFallbackLeg, { backgroundColor: resolvedColor }]}
+        />
+        <View
+          style={[styles.bugFallbackLeg, { backgroundColor: resolvedColor }]}
+        />
       </View>
       <View style={[styles.bugFallbackLegRow, styles.bugFallbackLegBottom]}>
-        <View style={[styles.bugFallbackLeg, { backgroundColor: color }]} />
-        <View style={[styles.bugFallbackLeg, { backgroundColor: color }]} />
+        <View
+          style={[styles.bugFallbackLeg, { backgroundColor: resolvedColor }]}
+        />
+        <View
+          style={[styles.bugFallbackLeg, { backgroundColor: resolvedColor }]}
+        />
       </View>
     </View>
   );
@@ -304,13 +343,102 @@ function withWebTooltip(
   );
 }
 
+export function ThemeModeGlyph({
+  isDark,
+  color,
+  size = 18,
+}: {
+  isDark: boolean;
+  color?: string;
+  size?: number;
+}): React.JSX.Element {
+  const { palette } = useTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
+  const resolvedColor = color ?? palette.inkPrimary;
+
+  if (Platform.OS === 'web') {
+    if (isDark) {
+      return React.createElement(
+        'svg',
+        {
+          width: size,
+          height: size,
+          viewBox: '0 0 24 24',
+          fill: 'none',
+          'aria-hidden': 'true',
+          style: { flexShrink: 0, display: 'block' },
+        },
+        React.createElement('circle', {
+          cx: '12',
+          cy: '12',
+          r: '4.4',
+          stroke: resolvedColor,
+          strokeWidth: '1.9',
+        }),
+        React.createElement('path', {
+          d: 'M12 2.8V5.1M12 18.9V21.2M21.2 12H18.9M5.1 12H2.8M18.5 5.5L16.9 7.1M7.1 16.9L5.5 18.5M18.5 18.5L16.9 16.9M7.1 7.1L5.5 5.5',
+          stroke: resolvedColor,
+          strokeWidth: '1.9',
+          strokeLinecap: 'round',
+        }),
+      );
+    }
+
+    return React.createElement(
+      'svg',
+      {
+        width: size,
+        height: size,
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        'aria-hidden': 'true',
+        style: { flexShrink: 0, display: 'block' },
+      },
+      React.createElement('path', {
+        d: 'M20.2 14.4A8.2 8.2 0 0 1 9.6 3.8a8.2 8.2 0 1 0 10.6 10.6Z',
+        stroke: resolvedColor,
+        strokeWidth: '1.9',
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+      }),
+    );
+  }
+
+  return (
+    <View
+      accessible={false}
+      style={[styles.themeGlyphFrame, { width: size, height: size }]}
+    >
+      {isDark ? (
+        <View
+          style={[
+            styles.sunFallbackCore,
+            { borderColor: resolvedColor },
+          ]}
+        />
+      ) : (
+        <View
+          style={[
+            styles.moonFallbackCrescent,
+            { borderColor: resolvedColor },
+          ]}
+        />
+      )}
+    </View>
+  );
+}
+
 export function ExportGlyph({
-  color = PALETTE.inkPrimary,
+  color,
   size = 20,
 }: {
   color?: string;
   size?: number;
 }): React.JSX.Element {
+  const { palette } = useTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
+  const resolvedColor = color ?? palette.inkPrimary;
+
   if (Platform.OS === 'web') {
     return React.createElement(
       'svg',
@@ -327,20 +455,20 @@ export function ExportGlyph({
       },
       React.createElement('path', {
         d: 'M12 3.75V15.25',
-        stroke: color,
+        stroke: resolvedColor,
         strokeWidth: '1.9',
         strokeLinecap: 'round',
       }),
       React.createElement('path', {
         d: 'M7.5 10.75L12 15.25L16.5 10.75',
-        stroke: color,
+        stroke: resolvedColor,
         strokeWidth: '1.9',
         strokeLinecap: 'round',
         strokeLinejoin: 'round',
       }),
       React.createElement('path', {
         d: 'M4.5 16.5V18.5C4.5 19.605 5.395 20.5 6.5 20.5H17.5C18.605 20.5 19.5 19.605 19.5 18.5V16.5',
-        stroke: color,
+        stroke: resolvedColor,
         strokeWidth: '1.9',
         strokeLinecap: 'round',
         strokeLinejoin: 'round',
@@ -353,25 +481,34 @@ export function ExportGlyph({
       accessible={false}
       style={[styles.trayGlyphFrame, { width: size, height: size }]}
     >
-      <View style={[styles.trayGlyphShaft, { backgroundColor: color }]} />
+      <View
+        style={[styles.trayGlyphShaft, { backgroundColor: resolvedColor }]}
+      />
       <View
         style={[
           styles.trayGlyphChevronDown,
-          { borderBottomColor: color, borderRightColor: color },
+          {
+            borderBottomColor: resolvedColor,
+            borderRightColor: resolvedColor,
+          },
         ]}
       />
-      <View style={[styles.trayGlyphBase, { borderColor: color }]} />
+      <View style={[styles.trayGlyphBase, { borderColor: resolvedColor }]} />
     </View>
   );
 }
 
 export function ImportGlyph({
-  color = PALETTE.finishedText,
+  color,
   size = 20,
 }: {
   color?: string;
   size?: number;
 }): React.JSX.Element {
+  const { palette } = useTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
+  const resolvedColor = color ?? palette.finishedText;
+
   if (Platform.OS === 'web') {
     return React.createElement(
       'svg',
@@ -388,20 +525,20 @@ export function ImportGlyph({
       },
       React.createElement('path', {
         d: 'M12 15.25V3.75',
-        stroke: color,
+        stroke: resolvedColor,
         strokeWidth: '1.9',
         strokeLinecap: 'round',
       }),
       React.createElement('path', {
         d: 'M7.5 8.25L12 3.75L16.5 8.25',
-        stroke: color,
+        stroke: resolvedColor,
         strokeWidth: '1.9',
         strokeLinecap: 'round',
         strokeLinejoin: 'round',
       }),
       React.createElement('path', {
         d: 'M4.5 16.5V18.5C4.5 19.605 5.395 20.5 6.5 20.5H17.5C18.605 20.5 19.5 19.605 19.5 18.5V16.5',
-        stroke: color,
+        stroke: resolvedColor,
         strokeWidth: '1.9',
         strokeLinecap: 'round',
         strokeLinejoin: 'round',
@@ -417,17 +554,17 @@ export function ImportGlyph({
       <View
         style={[
           styles.trayGlyphChevronUp,
-          { borderTopColor: color, borderLeftColor: color },
+          { borderTopColor: resolvedColor, borderLeftColor: resolvedColor },
         ]}
       />
       <View
         style={[
           styles.trayGlyphShaft,
           styles.trayGlyphShaftUp,
-          { backgroundColor: color },
+          { backgroundColor: resolvedColor },
         ]}
       />
-      <View style={[styles.trayGlyphBase, { borderColor: color }]} />
+      <View style={[styles.trayGlyphBase, { borderColor: resolvedColor }]} />
     </View>
   );
 }
@@ -445,6 +582,8 @@ function PolygonOpacitySlider({
   accessibilityLabel: string;
   onChange?: (nextOpacity: number) => void;
 }): React.JSX.Element {
+  const { palette } = useTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
   const clamped = clampPolygonOpacity(opacity);
   const percent = Math.round(clamped * 100);
   const trackWidthRef = React.useRef<number>(compact ? 76 : 96);
@@ -583,6 +722,8 @@ function ParcelUnsealMark({
 }: {
   compact: boolean;
 }): React.JSX.Element {
+  const { palette, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
   const size = compact ? 24 : 28;
   if (Platform.OS === 'web') {
     return React.createElement(
@@ -597,32 +738,34 @@ function ParcelUnsealMark({
           flexShrink: 0,
           display: 'block',
           borderRadius: compact ? '6px' : '7px',
-          boxShadow: 'inset 0 0 0 1px rgba(17, 29, 24, 0.14)',
+          boxShadow: isDark
+            ? 'inset 0 0 0 1px rgba(236, 243, 239, 0.16)'
+            : 'inset 0 0 0 1px rgba(17, 29, 24, 0.14)',
         },
       },
       React.createElement('rect', {
         width: '64',
         height: '64',
         rx: '14',
-        fill: '#EFF3F0',
+        fill: isDark ? '#192921' : '#EFF3F0',
       }),
       React.createElement('path', {
         d: 'M0 40H26L31 50L37 40H64V50C64 57.732 57.732 64 50 64H14C6.26801 64 0 57.732 0 50V40Z',
-        fill: '#5A6360',
+        fill: isDark ? '#4B5854' : '#5A6360',
       }),
       React.createElement('path', {
         d: 'M31 49C31 38 32 30 37 22',
-        stroke: '#176642',
+        stroke: isDark ? '#28B073' : '#176642',
         strokeWidth: '4',
         strokeLinecap: 'round',
       }),
       React.createElement('path', {
         d: 'M34 26C35 16 44 13 49 15C48 22 42 27 34 26Z',
-        fill: '#1F7A4C',
+        fill: isDark ? '#34C785' : '#1F7A4C',
       }),
       React.createElement('path', {
         d: 'M31 34C29 27 22 25 18 26C19 31 25 35 31 34Z',
-        fill: '#176642',
+        fill: isDark ? '#28B073' : '#176642',
       }),
     );
   }
@@ -653,6 +796,8 @@ function LocaleTogglePill({
   accessibilityLabel: string;
   onPress?: () => void;
 }): React.JSX.Element {
+  const { palette } = useTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
   return (
     <Pressable
       accessibilityRole="button"
@@ -692,6 +837,7 @@ export function MapControlsBar({
   isImporting = false,
   tier = 'expanded',
   onToggleLocale,
+  onToggleTheme,
   onOpenAbout,
   onOpenBugReport,
   onOpenInstallApp,
@@ -703,9 +849,12 @@ export function MapControlsBar({
   onImportPress,
   onExportError,
 }: MapControlsBarProps): React.JSX.Element {
+  const { palette } = useTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
   const isCompact = tier === 'compact';
   const isExpanded = tier === 'expanded';
   const locale = controls.locale;
+  const isDark = controls.colorScheme === 'dark';
   const t = getTranslations(locale).controls;
 
   const nextBasemapMode: BasemapMode =
@@ -765,8 +914,8 @@ export function MapControlsBar({
               ]}
             >
               <AndroidGlyph
-                color={PALETTE.accentPrimary}
-                eyeColor={PALETTE.bgSurface}
+                color={palette.accentPrimary}
+                eyeColor={palette.bgSurface}
                 size={isCompact ? 18 : 20}
               />
             </Pressable>,
@@ -787,8 +936,32 @@ export function MapControlsBar({
               ]}
             >
               <BugGlyph
-                color={PALETTE.inkSecondary}
+                color={palette.inkSecondary}
                 size={isCompact ? 17 : 18}
+              />
+            </Pressable>,
+          )
+        : null}
+      {!isCompact && onToggleTheme
+        ? withWebTooltip(
+            isDark ? t.lightModeTooltip : t.darkModeTooltip,
+            <Pressable
+              testID="theme-toggle-button"
+              accessibilityRole="button"
+              accessibilityLabel={
+                isDark ? t.switchToLightModeA11y : t.switchToDarkModeA11y
+              }
+              accessibilityState={{ selected: isDark }}
+              onPress={onToggleTheme}
+              style={({ pressed }) => [
+                styles.helpButton,
+                pressed ? styles.buttonPressed : null,
+              ]}
+            >
+              <ThemeModeGlyph
+                isDark={isDark}
+                color={palette.inkPrimary}
+                size={18}
               />
             </Pressable>,
           )
@@ -880,7 +1053,7 @@ export function MapControlsBar({
                       fontWeight: 700,
                       letterSpacing: '-0.35px',
                       lineHeight: '20px',
-                      color: PALETTE.inkPrimary,
+                      color: palette.inkPrimary,
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
@@ -989,6 +1162,33 @@ export function MapControlsBar({
           </Pressable>
         ) : null}
 
+        {isCompact && onToggleTheme
+          ? withWebTooltip(
+              isDark ? t.lightModeTooltip : t.darkModeTooltip,
+              <Pressable
+                testID="theme-toggle-button"
+                accessibilityRole="button"
+                accessibilityLabel={
+                  isDark ? t.switchToLightModeA11y : t.switchToDarkModeA11y
+                }
+                accessibilityState={{ selected: isDark }}
+                onPress={onToggleTheme}
+                style={({ pressed }) => [
+                  styles.controlButton,
+                  styles.iconControlButton,
+                  styles.secondaryButton,
+                  pressed ? styles.buttonPressed : null,
+                ]}
+              >
+                <ThemeModeGlyph
+                  isDark={isDark}
+                  color={palette.inkPrimary}
+                  size={18}
+                />
+              </Pressable>,
+            )
+          : null}
+
         {withWebTooltip(
           t.exportFull,
           <Pressable
@@ -1004,7 +1204,7 @@ export function MapControlsBar({
               pressed ? styles.buttonPressed : null,
             ]}
           >
-            <ExportGlyph color={PALETTE.inkPrimary} size={20} />
+            <ExportGlyph color={palette.inkPrimary} size={20} />
           </Pressable>,
         )}
 
@@ -1028,9 +1228,9 @@ export function MapControlsBar({
                 ]}
               >
                 {isImporting ? (
-                  <ActivityIndicator size="small" color={PALETTE.finishedText} />
+                  <ActivityIndicator size="small" color={palette.finishedText} />
                 ) : (
-                  <ImportGlyph color={PALETTE.finishedText} size={20} />
+                  <ImportGlyph color={palette.finishedText} size={20} />
                 )}
               </Pressable>,
             )
@@ -1224,7 +1424,8 @@ export function MapControlsBar({
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(PALETTE: ThemePalette) {
+  return StyleSheet.create({
   barShell: {
     backgroundColor: PALETTE.bgSurface,
     borderBottomWidth: 1,
@@ -1482,7 +1683,7 @@ const styles = StyleSheet.create({
     borderRadius: 7,
     borderWidth: 1,
     borderColor: PALETTE.borderSubtle,
-    backgroundColor: '#EFF3F0',
+    backgroundColor: PALETTE.bgGround,
     overflow: 'hidden',
     position: 'relative',
     flexShrink: 0,
@@ -1791,4 +1992,23 @@ const styles = StyleSheet.create({
     height: 1.6,
     borderRadius: 0.8,
   },
-});
+  themeGlyphFrame: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sunFallbackCore: {
+    width: 11,
+    height: 11,
+    borderRadius: 5.5,
+    borderWidth: 2,
+  },
+  moonFallbackCrescent: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderLeftWidth: 2.4,
+    borderBottomWidth: 2.4,
+    transform: [{ rotate: '-20deg' }],
+  },
+  });
+}

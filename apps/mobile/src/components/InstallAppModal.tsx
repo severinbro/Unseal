@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Platform,
   Pressable,
@@ -14,7 +14,8 @@ import {
   type Locale,
 } from '../i18n/translations';
 import { MIN_TOUCH_TARGET_DP } from '../state/viewModels';
-import { PALETTE, RADII } from '../theme/tokens';
+import { useTheme } from '../theme/themeContext';
+import { RADII, type ThemePalette } from '../theme/tokens';
 import { AndroidGlyph, triggerApkDownload } from './MapControlsBar';
 
 export interface InstallAppModalProps {
@@ -27,7 +28,13 @@ export interface InstallAppModalProps {
   onDownloadError?: ((message: string) => void) | undefined;
 }
 
-function StepList({ steps }: { steps: readonly string[] }): React.JSX.Element {
+function StepList({
+  steps,
+  styles,
+}: {
+  steps: readonly string[];
+  styles: ReturnType<typeof createStyles>;
+}): React.JSX.Element {
   return (
     <View style={styles.stepList}>
       {steps.map((step, index) => (
@@ -53,6 +60,9 @@ export function InstallAppModal({
   onClose,
   onDownloadError,
 }: InstallAppModalProps): React.JSX.Element | null {
+  const { palette } = useTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
+
   if (!visible) {
     return null;
   }
@@ -105,12 +115,12 @@ export function InstallAppModal({
 
       <View style={styles.sectionCard}>
         <Text style={styles.sectionTitle}>{t.androidPwaTitle}</Text>
-        <StepList steps={t.androidPwaSteps} />
+        <StepList steps={t.androidPwaSteps} styles={styles} />
       </View>
 
       <View style={styles.sectionCard}>
         <Text style={styles.sectionTitle}>{t.iosPwaTitle}</Text>
-        <StepList steps={t.iosPwaSteps} />
+        <StepList steps={t.iosPwaSteps} styles={styles} />
       </View>
 
       {showApkButton ? (
@@ -136,8 +146,8 @@ export function InstallAppModal({
               ]}
             >
               <AndroidGlyph
-                color={PALETTE.inkOnAccent}
-                eyeColor={PALETTE.accentPrimary}
+                color={palette.inkOnAccent}
+                eyeColor={palette.accentPrimary}
                 size={18}
               />
               <Text style={styles.primaryButtonLabel}>
@@ -151,7 +161,8 @@ export function InstallAppModal({
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(PALETTE: ThemePalette) {
+  return StyleSheet.create({
   card: {
     width: '100%',
     padding: 15,
@@ -284,4 +295,5 @@ const styles = StyleSheet.create({
   buttonPressed: {
     backgroundColor: PALETTE.bgRecessed,
   },
-});
+  });
+}

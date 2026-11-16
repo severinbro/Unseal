@@ -2,6 +2,22 @@ import type { TextStyle } from 'react-native';
 import type { SurfaceType } from '@entsiegelung/shared';
 
 export type ViewportTier = 'compact' | 'medium' | 'expanded';
+export type ColorScheme = 'light' | 'dark';
+export type ThemePreference = 'system' | 'light' | 'dark';
+
+export function isThemePreference(value: unknown): value is ThemePreference {
+  return value === 'system' || value === 'light' || value === 'dark';
+}
+
+export function resolveColorScheme(
+  preference: ThemePreference,
+  systemScheme?: ColorScheme | 'unspecified' | null,
+): ColorScheme {
+  if (preference === 'light' || preference === 'dark') {
+    return preference;
+  }
+  return systemScheme === 'dark' ? 'dark' : 'light';
+}
 
 export interface ResponsiveLayout {
   readonly width: number;
@@ -72,7 +88,63 @@ export function formatRecoveryCodeBlocks(code: string): string {
   return groups.join('-');
 }
 
-export const PALETTE = {
+export interface ThemePalette {
+  readonly bgGround: string;
+  readonly bgSurface: string;
+  readonly bgSubtle: string;
+  readonly bgRecessed: string;
+  readonly bgTinted: string;
+  readonly bgScrim: string;
+  readonly bgMapCanvas: string;
+  readonly bgFloatingPill: string;
+
+  readonly inkPrimary: string;
+  readonly inkSecondary: string;
+  readonly inkMuted: string;
+  readonly inkOnAccent: string;
+
+  readonly accentPrimary: string;
+  readonly accentPrimaryStrong: string;
+  readonly accentDisabled: string;
+
+  readonly borderSubtle: string;
+  readonly borderStrong: string;
+  readonly borderAccent: string;
+
+  readonly positiveBg: string;
+  readonly positiveBorder: string;
+  readonly positiveText: string;
+  readonly positiveDot: string;
+
+  readonly neutralBg: string;
+  readonly neutralBorder: string;
+  readonly neutralText: string;
+  readonly neutralDot: string;
+
+  readonly dangerBg: string;
+  readonly dangerBorder: string;
+  readonly dangerSolid: string;
+  readonly dangerText: string;
+  readonly dangerDot: string;
+
+  readonly infoBg: string;
+  readonly infoBorder: string;
+  readonly infoText: string;
+
+  readonly inProgressBg: string;
+  readonly inProgressBorder: string;
+  readonly inProgressSolid: string;
+  readonly inProgressText: string;
+  readonly inProgressDot: string;
+
+  readonly finishedBg: string;
+  readonly finishedBorder: string;
+  readonly finishedSolid: string;
+  readonly finishedText: string;
+  readonly finishedDot: string;
+}
+
+export const LIGHT_PALETTE: ThemePalette = {
   // Mineral sage & stone-paper daylight surfaces
   bgGround: '#EFF3F0',
   bgSurface: '#FFFFFF',
@@ -80,6 +152,8 @@ export const PALETTE = {
   bgRecessed: '#E8EEEA',
   bgTinted: '#E6F2EC',
   bgScrim: 'rgba(14, 25, 19, 0.54)',
+  bgMapCanvas: '#DFE7E2',
+  bgFloatingPill: 'rgba(255, 255, 255, 0.94)',
 
   // High-contrast surveyor ink (all >= 4.5:1 on light surfaces)
   inkPrimary: '#122019',
@@ -131,6 +205,73 @@ export const PALETTE = {
   finishedDot: '#0D9488',
 } as const;
 
+export const DARK_PALETTE: ThemePalette = {
+  // Nocturnal mineral-sage & botanical slate surfaces
+  bgGround: '#0F1613',
+  bgSurface: '#16201B',
+  bgSubtle: '#1D2923',
+  bgRecessed: '#121A16',
+  bgTinted: '#193126',
+  bgScrim: 'rgba(4, 9, 7, 0.72)',
+  bgMapCanvas: '#0C1210',
+  bgFloatingPill: 'rgba(22, 32, 27, 0.94)',
+
+  // High-contrast light ink (all >= 5.9:1 on dark surfaces)
+  inkPrimary: '#ECF3EF',
+  inkSecondary: '#B7C7BE',
+  inkMuted: '#93A89D',
+  inkOnAccent: '#062115',
+
+  // Luminous botanical emerald (all >= 6.1:1 with inkOnAccent & >= 6.9:1 on dark surfaces)
+  accentPrimary: '#34C785',
+  accentPrimaryStrong: '#28B073',
+  accentDisabled: '#587769',
+
+  // Borders (hairline & structural)
+  borderSubtle: '#26352D',
+  borderStrong: '#394D42',
+  borderAccent: '#2D6E51',
+
+  // Semantic & Community Score feedback
+  positiveBg: '#132E22',
+  positiveBorder: '#255D43',
+  positiveText: '#6EE7B7',
+  positiveDot: '#34D399',
+
+  neutralBg: '#2D2210',
+  neutralBorder: '#6B4E1B',
+  neutralText: '#FCD34D',
+  neutralDot: '#F59E0B',
+
+  dangerBg: '#311518',
+  dangerBorder: '#70262C',
+  dangerSolid: '#F87171',
+  dangerText: '#FCA5A5',
+  dangerDot: '#F87171',
+
+  infoBg: '#132438',
+  infoBorder: '#264B73',
+  infoText: '#93C5FD',
+
+  inProgressBg: '#142642',
+  inProgressBorder: '#2563EB',
+  inProgressSolid: '#60A5FA',
+  inProgressText: '#93C5FD',
+  inProgressDot: '#60A5FA',
+
+  finishedBg: '#112E2B',
+  finishedBorder: '#0D9488',
+  finishedSolid: '#2DD4BF',
+  finishedText: '#5EEAD4',
+  finishedDot: '#2DD4BF',
+} as const;
+
+export const PALETTE = LIGHT_PALETTE;
+
+export function getPalette(colorScheme: ColorScheme = 'light'): ThemePalette {
+  return colorScheme === 'dark' ? DARK_PALETTE : LIGHT_PALETTE;
+}
+
 export const SURFACE_SWATCHES: Record<
   SurfaceType,
   { readonly color: string; readonly code: string }
@@ -140,6 +281,22 @@ export const SURFACE_SWATCHES: Record<
   pavers: { color: '#8A5A36', code: 'PAV' },
   other: { color: '#556650', code: 'MIX' },
 };
+
+export const DARK_SURFACE_SWATCHES: Record<
+  SurfaceType,
+  { readonly color: string; readonly code: string }
+> = {
+  asphalt: { color: '#4B5955', code: 'ASP' },
+  concrete: { color: '#8A9892', code: 'CON' },
+  pavers: { color: '#B4794C', code: 'PAV' },
+  other: { color: '#6E8368', code: 'MIX' },
+};
+
+export function getSurfaceSwatches(
+  colorScheme: ColorScheme = 'light',
+): Record<SurfaceType, { readonly color: string; readonly code: string }> {
+  return colorScheme === 'dark' ? DARK_SURFACE_SWATCHES : SURFACE_SWATCHES;
+}
 
 export const RADII = {
   xs: 4,

@@ -25,6 +25,11 @@ import {
   type DraftPhotoAttachment,
   type DrawingStep,
 } from './appState';
+import {
+  resolveColorScheme,
+  type ColorScheme,
+  type ThemePreference,
+} from '../theme/tokens';
 
 export function formatInspectorDate(
   iso: string | null | undefined,
@@ -94,6 +99,8 @@ export const MIN_TOUCH_TARGET_DP = 44;
 
 export interface MapControlsModel {
   locale: Locale;
+  colorScheme: ColorScheme;
+  themePreference: ThemePreference;
   showOrthophotoToggle: boolean;
   basemapMode: BasemapMode;
   polygonOpacity: number;
@@ -155,8 +162,15 @@ export interface DrawingToolbarModel {
   submitError: string | null;
 }
 
-export function deriveMapControlsModel(state: AppState): MapControlsModel {
+export function deriveMapControlsModel(
+  state: AppState,
+  systemColorScheme?: ColorScheme | 'unspecified' | null,
+): MapControlsModel {
   const t = getTranslations(state.locale);
+  const colorScheme = resolveColorScheme(
+    state.themePreference,
+    systemColorScheme,
+  );
   const showOrthophotoToggle =
     state.config !== null && state.config.orthophoto !== null;
   const effectiveBasemapMode: BasemapMode = showOrthophotoToggle
@@ -166,6 +180,8 @@ export function deriveMapControlsModel(state: AppState): MapControlsModel {
 
   return {
     locale: state.locale,
+    colorScheme,
+    themePreference: state.themePreference,
     showOrthophotoToggle,
     basemapMode: effectiveBasemapMode,
     polygonOpacity: state.polygonOpacity,

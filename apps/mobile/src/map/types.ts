@@ -7,6 +7,7 @@ import type {
 import type {
   BasemapMode,
   CameraTarget,
+  ColorScheme,
   InteractionMode,
   ViewportState,
 } from '../state/appState';
@@ -41,6 +42,7 @@ export function computeNorthArrowRotationDeg(bearingDeg: number): number {
  */
 export interface MapCanvasProps {
   config: RuntimeConfig;
+  colorScheme?: ColorScheme | undefined;
   mode: InteractionMode;
   basemapMode: BasemapMode;
   features: PolygonFeature[];
@@ -57,4 +59,11 @@ export interface MapCanvasProps {
   onTileError: (reason: string) => void;
 }
 
-export type { BboxBounds, BasemapMode, CameraTarget, InteractionMode, ViewportState };
+export type {
+  BboxBounds,
+  BasemapMode,
+  CameraTarget,
+  ColorScheme,
+  InteractionMode,
+  ViewportState,
+};

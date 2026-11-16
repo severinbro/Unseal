@@ -3,7 +3,7 @@ import {
   SURFACE_TYPES,
   type SurfaceType,
 } from '@entsiegelung/shared';
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Image,
   Pressable,
@@ -23,12 +23,12 @@ import {
   MIN_TOUCH_TARGET_DP,
   type DrawingToolbarModel,
 } from '../state/viewModels';
+import { useTheme } from '../theme/themeContext';
 import {
   MONO_FONT_FAMILY,
-  PALETTE,
   RADII,
-  SURFACE_SWATCHES,
   TABULAR_NUMS_STYLE,
+  type ThemePalette,
 } from '../theme/tokens';
 
 export interface SurfaceTypeOption {
@@ -87,6 +87,9 @@ export function DrawingToolbar({
   onConfirmDiscard,
   onSubmit,
 }: DrawingToolbarProps): React.JSX.Element | null {
+  const { palette, surfaceSwatches } = useTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
+
   if (!toolbar.visible) {
     return null;
   }
@@ -333,7 +336,7 @@ export function DrawingToolbar({
             <View style={styles.surfaceGrid} accessibilityRole="radiogroup">
               {surfaceOptions.map((option) => {
                 const selected = toolbar.surfaceType === option.value;
-                const swatch = SURFACE_SWATCHES[option.value];
+                const swatch = surfaceSwatches[option.value];
                 return (
                   <Pressable
                     key={option.value}
@@ -399,7 +402,7 @@ export function DrawingToolbar({
               maxLength={GEOMETRY_LIMITS.MAX_NOTE_LENGTH}
               multiline
               placeholder={t.notePlaceholder}
-              placeholderTextColor={PALETTE.inkMuted}
+              placeholderTextColor={palette.inkMuted}
               style={styles.noteInput}
             />
             <Text testID="draft-note-public-hint" style={styles.notePublicHint}>
@@ -523,7 +526,8 @@ export function DrawingToolbar({
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(PALETTE: ThemePalette) {
+  return StyleSheet.create({
   card: {
     padding: 14,
     borderRadius: RADII.lg,
@@ -886,4 +890,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: PALETTE.inkOnAccent,
   },
-});
+  });
+}
