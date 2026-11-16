@@ -92,6 +92,7 @@ export interface AppState {
   basemapMode: BasemapMode;
   polygonOpacity: number;
   polygonFilter: PolygonFilter;
+  highlightMineOnly: boolean;
   tileWarning: string | null;
   viewport: ViewportState | null;
   spanTooWide: boolean;
@@ -137,6 +138,8 @@ export type AppAction =
   | { type: 'SET_BASEMAP_MODE'; mode: BasemapMode }
   | { type: 'SET_POLYGON_OPACITY'; opacity: number }
   | { type: 'SET_POLYGON_FILTER'; filter: PolygonFilter }
+  | { type: 'SET_HIGHLIGHT_MINE_ONLY'; enabled: boolean }
+  | { type: 'TOGGLE_HIGHLIGHT_MINE_ONLY' }
   | { type: 'TILE_LOAD_ERROR'; reason?: string }
   | {
       type: 'SET_CAMERA_TARGET';
@@ -212,6 +215,7 @@ export const initialAppState: AppState = {
   basemapMode: 'osm',
   polygonOpacity: DEFAULT_POLYGON_OPACITY,
   polygonFilter: 'all',
+  highlightMineOnly: false,
   tileWarning: null,
   viewport: null,
   spanTooWide: false,
@@ -522,6 +526,29 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         ...state,
         polygonFilter: action.filter,
         viewportRefreshSeq: state.viewportRefreshSeq + 1,
+      };
+    }
+
+    case 'SET_HIGHLIGHT_MINE_ONLY': {
+      const nextEnabled = state.currentUser !== null ? action.enabled : false;
+      if (state.highlightMineOnly === nextEnabled) {
+        return state;
+      }
+      return {
+        ...state,
+        highlightMineOnly: nextEnabled,
+      };
+    }
+
+    case 'TOGGLE_HIGHLIGHT_MINE_ONLY': {
+      if (state.currentUser === null) {
+        return state.highlightMineOnly
+          ? { ...state, highlightMineOnly: false }
+          : state;
+      }
+      return {
+        ...state,
+        highlightMineOnly: !state.highlightMineOnly,
       };
     }
 
@@ -1196,6 +1223,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         currentUser: null,
+        highlightMineOnly: false,
         isSubmittingDraft: false,
         viewportRefreshSeq: state.viewportRefreshSeq + 1,
         authModalOpen: true,
@@ -1218,6 +1246,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         currentUser: null,
+        highlightMineOnly: false,
         viewportRefreshSeq: state.viewportRefreshSeq + 1,
         features: scrubbedFeatures,
         isSubmittingDraft: false,
@@ -1277,6 +1306,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         currentUser: null,
+        highlightMineOnly: false,
         viewportRefreshSeq: state.viewportRefreshSeq + 1,
         features: anonymizedFeatures,
         overlappingFeatureIds: nextOverlap,

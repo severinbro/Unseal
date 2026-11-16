@@ -244,69 +244,150 @@ export type NormalizedPositiveOutlineExpression = [
   string,
 ];
 
-export type ScoreColorCaseExpression = [
-  'case',
-  ['==', ['get', 'status'], 'finished'],
-  string,
-  ['==', ['get', 'status'], 'in_progress'],
-  string,
-  ['<', ['get', 'score'], number],
-  string,
-  ['>', ['get', 'score'], number],
-  NormalizedPositiveFillExpression,
-  string,
+export type NotAuthorBooleanExpression = [
+  '!',
+  ['boolean', ['get', 'isAuthor'], boolean],
 ];
 
-export type SelectedOutlineColorExpression = [
-  'case',
-  ['boolean', ['get', 'selected'], boolean],
-  string,
-  ['==', ['get', 'status'], 'finished'],
-  string,
-  ['==', ['get', 'status'], 'in_progress'],
-  string,
-  ['<', ['get', 'score'], number],
-  string,
-  ['>', ['get', 'score'], number],
-  NormalizedPositiveOutlineExpression,
-  string,
-];
+export type ScoreColorCaseExpression =
+  | [
+      'case',
+      ['==', ['get', 'status'], 'finished'],
+      string,
+      ['==', ['get', 'status'], 'in_progress'],
+      string,
+      ['<', ['get', 'score'], number],
+      string,
+      ['>', ['get', 'score'], number],
+      NormalizedPositiveFillExpression,
+      string,
+    ]
+  | [
+      'case',
+      NotAuthorBooleanExpression,
+      string,
+      ['==', ['get', 'status'], 'finished'],
+      string,
+      ['==', ['get', 'status'], 'in_progress'],
+      string,
+      ['<', ['get', 'score'], number],
+      string,
+      ['>', ['get', 'score'], number],
+      NormalizedPositiveFillExpression,
+      string,
+    ];
 
-export type FillOpacityCaseExpression = [
-  'case',
-  ['boolean', ['get', 'selected'], boolean],
-  number,
-  ['==', ['get', 'status'], 'finished'],
-  number,
-  ['==', ['get', 'status'], 'in_progress'],
-  number,
-  number,
-];
+export type SelectedOutlineColorExpression =
+  | [
+      'case',
+      ['boolean', ['get', 'selected'], boolean],
+      string,
+      ['==', ['get', 'status'], 'finished'],
+      string,
+      ['==', ['get', 'status'], 'in_progress'],
+      string,
+      ['<', ['get', 'score'], number],
+      string,
+      ['>', ['get', 'score'], number],
+      NormalizedPositiveOutlineExpression,
+      string,
+    ]
+  | [
+      'case',
+      ['boolean', ['get', 'selected'], boolean],
+      string,
+      NotAuthorBooleanExpression,
+      string,
+      ['==', ['get', 'status'], 'finished'],
+      string,
+      ['==', ['get', 'status'], 'in_progress'],
+      string,
+      ['<', ['get', 'score'], number],
+      string,
+      ['>', ['get', 'score'], number],
+      NormalizedPositiveOutlineExpression,
+      string,
+    ];
 
-export type SelectedNumberCaseExpression = [
-  'case',
-  ['boolean', ['get', 'selected'], boolean],
-  number,
-  number,
-];
+export type FillOpacityCaseExpression =
+  | [
+      'case',
+      ['boolean', ['get', 'selected'], boolean],
+      number,
+      ['==', ['get', 'status'], 'finished'],
+      number,
+      ['==', ['get', 'status'], 'in_progress'],
+      number,
+      number,
+    ]
+  | [
+      'case',
+      ['boolean', ['get', 'selected'], boolean],
+      number,
+      NotAuthorBooleanExpression,
+      number,
+      ['==', ['get', 'status'], 'finished'],
+      number,
+      ['==', ['get', 'status'], 'in_progress'],
+      number,
+      number,
+    ];
 
-export type OutlineWidthCaseExpression = [
-  'case',
-  ['boolean', ['get', 'selected'], boolean],
-  number,
-  ['==', ['get', 'status'], 'finished'],
-  number,
-  ['==', ['get', 'status'], 'in_progress'],
-  number,
-  number,
-];
+export type SelectedNumberCaseExpression =
+  | [
+      'case',
+      ['boolean', ['get', 'selected'], boolean],
+      number,
+      number,
+    ]
+  | [
+      'case',
+      ['boolean', ['get', 'selected'], boolean],
+      number,
+      NotAuthorBooleanExpression,
+      number,
+      number,
+    ];
 
-export type SelectedColorCaseExpression = [
-  'case',
-  ['boolean', ['get', 'selected'], boolean],
-  string,
-  string,
-];
+export type OutlineWidthCaseExpression =
+  | [
+      'case',
+      ['boolean', ['get', 'selected'], boolean],
+      number,
+      ['==', ['get', 'status'], 'finished'],
+      number,
+      ['==', ['get', 'status'], 'in_progress'],
+      number,
+      number,
+    ]
+  | [
+      'case',
+      ['boolean', ['get', 'selected'], boolean],
+      number,
+      NotAuthorBooleanExpression,
+      number,
+      ['==', ['get', 'status'], 'finished'],
+      number,
+      ['==', ['get', 'status'], 'in_progress'],
+      number,
+      number,
+    ];
+
+export type SelectedColorCaseExpression =
+  | [
+      'case',
+      ['boolean', ['get', 'selected'], boolean],
+      string,
+      string,
+    ]
+  | [
+      'case',
+      ['boolean', ['get', 'selected'], boolean],
+      string,
+      NotAuthorBooleanExpression,
+      string,
+      string,
+    ];
 
 export type GeometryTypeFilterExpression = [
   '==',
@@ -637,6 +718,7 @@ function scaleOpacityChannel(
 export function buildPolygonLayerSpecs(
   polygonOpacity: number = DEFAULT_POLYGON_OPACITY,
   colorScheme: ColorScheme = 'light',
+  highlightMineOnly: boolean = false,
 ): PolygonLayerSpecsTuple {
   const isDark = colorScheme === 'dark';
   const op = clampPolygonOpacity(polygonOpacity);
@@ -644,7 +726,16 @@ export function buildPolygonLayerSpecs(
   const inProgressFillOpacity = scaleOpacityChannel(op, 0.42);
   const finishedFillOpacity = scaleOpacityChannel(op, 0.46);
   const selectedFillOpacity = scaleOpacityChannel(op, 0.58);
+  const mutedFillOpacity = scaleOpacityChannel(op, 0.16);
   const strokeAndMarkerOpacity = scaleOpacityChannel(op, 1);
+
+  const mutedFillColor = isDark ? '#64748b' : '#94a3b8';
+  const mutedOutlineColor = isDark ? '#94a3b8' : '#64748b';
+  const mutedCentroidStrokeColor = isDark ? '#475569' : '#cbd5e1';
+  const notAuthorExpr: NotAuthorBooleanExpression = [
+    '!',
+    ['boolean', ['get', 'isAuthor'], false],
+  ];
 
   const positiveGradient: NormalizedPositiveFillExpression = isDark
     ? [
@@ -690,18 +781,33 @@ export function buildPolygonLayerSpecs(
         '#052e16',
       ];
 
-  const scoreColor: ScoreColorCaseExpression = [
-    'case',
-    ['==', ['get', 'status'], 'finished'],
-    isDark ? '#14b8a6' : '#0d9488',
-    ['==', ['get', 'status'], 'in_progress'],
-    isDark ? '#3b82f6' : '#2563eb',
-    ['<', ['get', 'score'], 0],
-    isDark ? '#ef4444' : '#c44536',
-    ['>', ['get', 'score'], 0],
-    positiveGradient,
-    isDark ? '#f59e0b' : '#c87d1a',
-  ];
+  const scoreColor: ScoreColorCaseExpression = highlightMineOnly
+    ? [
+        'case',
+        notAuthorExpr,
+        mutedFillColor,
+        ['==', ['get', 'status'], 'finished'],
+        isDark ? '#14b8a6' : '#0d9488',
+        ['==', ['get', 'status'], 'in_progress'],
+        isDark ? '#3b82f6' : '#2563eb',
+        ['<', ['get', 'score'], 0],
+        isDark ? '#ef4444' : '#c44536',
+        ['>', ['get', 'score'], 0],
+        positiveGradient,
+        isDark ? '#f59e0b' : '#c87d1a',
+      ]
+    : [
+        'case',
+        ['==', ['get', 'status'], 'finished'],
+        isDark ? '#14b8a6' : '#0d9488',
+        ['==', ['get', 'status'], 'in_progress'],
+        isDark ? '#3b82f6' : '#2563eb',
+        ['<', ['get', 'score'], 0],
+        isDark ? '#ef4444' : '#c44536',
+        ['>', ['get', 'score'], 0],
+        positiveGradient,
+        isDark ? '#f59e0b' : '#c87d1a',
+      ];
 
   const fillLayer: ProposalFillLayerSpec = {
     id: 'proposals-fill',
@@ -709,16 +815,29 @@ export function buildPolygonLayerSpecs(
     source: PROPOSALS_POLYGON_SOURCE_ID,
     paint: {
       'fill-color': scoreColor,
-      'fill-opacity': [
-        'case',
-        ['boolean', ['get', 'selected'], false],
-        selectedFillOpacity,
-        ['==', ['get', 'status'], 'finished'],
-        finishedFillOpacity,
-        ['==', ['get', 'status'], 'in_progress'],
-        inProgressFillOpacity,
-        baseFillOpacity,
-      ],
+      'fill-opacity': highlightMineOnly
+        ? [
+            'case',
+            ['boolean', ['get', 'selected'], false],
+            selectedFillOpacity,
+            notAuthorExpr,
+            mutedFillOpacity,
+            ['==', ['get', 'status'], 'finished'],
+            finishedFillOpacity,
+            ['==', ['get', 'status'], 'in_progress'],
+            inProgressFillOpacity,
+            baseFillOpacity,
+          ]
+        : [
+            'case',
+            ['boolean', ['get', 'selected'], false],
+            selectedFillOpacity,
+            ['==', ['get', 'status'], 'finished'],
+            finishedFillOpacity,
+            ['==', ['get', 'status'], 'in_progress'],
+            inProgressFillOpacity,
+            baseFillOpacity,
+          ],
     },
   };
 
@@ -733,30 +852,60 @@ export function buildPolygonLayerSpecs(
       'line-join': 'round',
     },
     paint: {
-      'line-color': [
-        'case',
-        ['boolean', ['get', 'selected'], false],
-        selectedStrokeColor,
-        ['==', ['get', 'status'], 'finished'],
-        isDark ? '#5eead4' : '#0f766e',
-        ['==', ['get', 'status'], 'in_progress'],
-        isDark ? '#93c5fd' : '#1e40af',
-        ['<', ['get', 'score'], 0],
-        isDark ? '#fca5a5' : '#8f281d',
-        ['>', ['get', 'score'], 0],
-        positiveOutlineGradient,
-        isDark ? '#fcd34d' : '#8a530b',
-      ],
-      'line-width': [
-        'case',
-        ['boolean', ['get', 'selected'], false],
-        3.5,
-        ['==', ['get', 'status'], 'finished'],
-        2.75,
-        ['==', ['get', 'status'], 'in_progress'],
-        2.5,
-        2,
-      ],
+      'line-color': highlightMineOnly
+        ? [
+            'case',
+            ['boolean', ['get', 'selected'], false],
+            selectedStrokeColor,
+            notAuthorExpr,
+            mutedOutlineColor,
+            ['==', ['get', 'status'], 'finished'],
+            isDark ? '#5eead4' : '#0f766e',
+            ['==', ['get', 'status'], 'in_progress'],
+            isDark ? '#93c5fd' : '#1e40af',
+            ['<', ['get', 'score'], 0],
+            isDark ? '#fca5a5' : '#8f281d',
+            ['>', ['get', 'score'], 0],
+            positiveOutlineGradient,
+            isDark ? '#fcd34d' : '#8a530b',
+          ]
+        : [
+            'case',
+            ['boolean', ['get', 'selected'], false],
+            selectedStrokeColor,
+            ['==', ['get', 'status'], 'finished'],
+            isDark ? '#5eead4' : '#0f766e',
+            ['==', ['get', 'status'], 'in_progress'],
+            isDark ? '#93c5fd' : '#1e40af',
+            ['<', ['get', 'score'], 0],
+            isDark ? '#fca5a5' : '#8f281d',
+            ['>', ['get', 'score'], 0],
+            positiveOutlineGradient,
+            isDark ? '#fcd34d' : '#8a530b',
+          ],
+      'line-width': highlightMineOnly
+        ? [
+            'case',
+            ['boolean', ['get', 'selected'], false],
+            3.5,
+            notAuthorExpr,
+            1.4,
+            ['==', ['get', 'status'], 'finished'],
+            2.75,
+            ['==', ['get', 'status'], 'in_progress'],
+            2.5,
+            2,
+          ]
+        : [
+            'case',
+            ['boolean', ['get', 'selected'], false],
+            3.5,
+            ['==', ['get', 'status'], 'finished'],
+            2.75,
+            ['==', ['get', 'status'], 'in_progress'],
+            2.5,
+            2,
+          ],
       'line-opacity': strokeAndMarkerOpacity,
     },
   };
@@ -767,14 +916,32 @@ export function buildPolygonLayerSpecs(
     source: PROPOSALS_CENTROID_SOURCE_ID,
     paint: {
       'circle-color': scoreColor,
-      'circle-radius': ['case', ['boolean', ['get', 'selected'], false], 7, 5],
+      'circle-radius': highlightMineOnly
+        ? [
+            'case',
+            ['boolean', ['get', 'selected'], false],
+            7,
+            notAuthorExpr,
+            4,
+            5,
+          ]
+        : ['case', ['boolean', ['get', 'selected'], false], 7, 5],
       'circle-opacity': strokeAndMarkerOpacity,
-      'circle-stroke-color': [
-        'case',
-        ['boolean', ['get', 'selected'], false],
-        selectedStrokeColor,
-        isDark ? '#e2ece7' : '#ffffff',
-      ],
+      'circle-stroke-color': highlightMineOnly
+        ? [
+            'case',
+            ['boolean', ['get', 'selected'], false],
+            selectedStrokeColor,
+            notAuthorExpr,
+            mutedCentroidStrokeColor,
+            isDark ? '#e2ece7' : '#ffffff',
+          ]
+        : [
+            'case',
+            ['boolean', ['get', 'selected'], false],
+            selectedStrokeColor,
+            isDark ? '#e2ece7' : '#ffffff',
+          ],
       'circle-stroke-width': [
         'case',
         ['boolean', ['get', 'selected'], false],

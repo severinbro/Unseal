@@ -50,6 +50,7 @@ export interface MapCanvasProps {
   isRingClosed: boolean;
   selectedFeatureId: string | null;
   polygonOpacity?: number;
+  highlightMineOnly?: boolean;
   cameraTarget: CameraTarget | null;
   northResetSeq?: number;
   onViewportChange: (viewport: ViewportState) => void;
@@ -57,6 +58,7 @@ export interface MapCanvasProps {
   onMapTap: (point: [number, number]) => void;
   onFeaturePress: (featureIds: string[]) => void;
   onTileError: (reason: string) => void;
+  onZoomDividerOffsetChange?: (bottomPx: number) => void;
 }
 
 export type {

@@ -31,6 +31,7 @@ import {
 } from '../src/state/appState';
 import {
   buildCommentDisplayModel,
+  computeVisibleProposalCount,
   deriveAuthModalModel,
   deriveDrawingToolbarModel,
   deriveMapControlsModel,
@@ -1623,6 +1624,145 @@ describe('appReducer and viewModels v2', () => {
         method: 'GET',
         url: 'https://maps.example.org/api/v1/auth/me/export',
         auth: 'Bearer tok-export',
+      },
+    ]);
+  });
+
+  it('manages orthogonal highlightMineOnly toggle, adjusts computeVisibleProposalCount, resets on logout/expiry/deletion, and validates getPublicStats & getPersonalStats', async () => {
+    const minePoly = makePolygonFeature({
+      id: '77777777-7777-4777-8777-777777777777',
+      isAuthor: true,
+      authorPseudonym: SAMPLE_USER.pseudonym,
+    });
+    const communityPolyA = makePolygonFeature({
+      id: '88888888-8888-4888-8888-888888888888',
+      isAuthor: false,
+      authorPseudonym: 'community_one',
+    });
+    const communityPolyB = makePolygonFeature({
+      id: '99999999-9999-4999-8999-999999999999',
+      isAuthor: false,
+      authorPseudonym: 'community_two',
+    });
+
+    // Guests cannot enable highlightMineOnly
+    let state: AppState = appReducer(initialAppState, {
+      type: 'CONFIG_LOADED',
+      config: SAMPLE_CONFIG_WITH_ORTHO,
+    });
+    state = appReducer(state, {
+      type: 'TOGGLE_HIGHLIGHT_MINE_ONLY',
+    });
+    assert.equal(state.highlightMineOnly, false);
+    assert.equal(deriveMapControlsModel(state).highlightMineOnly, false);
+
+    // Authenticated user toggles highlightMineOnly orthogonally without changing polygonFilter or viewportRefreshSeq
+    state = appReducer(state, {
+      type: 'AUTH_SUCCEEDED',
+      user: SAMPLE_USER,
+    });
+    state = appReducer(state, {
+      type: 'VIEWPORT_FEATURES_LOADED',
+      features: [minePoly, communityPolyA, communityPolyB],
+      truncated: false,
+    });
+    state = appReducer(state, {
+      type: 'SET_POLYGON_FILTER',
+      filter: 'established',
+    });
+    const refreshBeforeToggle = state.viewportRefreshSeq;
+    assert.equal(computeVisibleProposalCount(state), 3);
+
+    state = appReducer(state, { type: 'TOGGLE_HIGHLIGHT_MINE_ONLY' });
+    assert.equal(state.highlightMineOnly, true);
+    assert.equal(state.polygonFilter, 'established');
+    assert.equal(state.viewportRefreshSeq, refreshBeforeToggle);
+    assert.equal(deriveMapControlsModel(state).highlightMineOnly, true);
+    assert.equal(computeVisibleProposalCount(state), 1);
+
+    // Resets automatically on LOGOUT_SUCCEEDED, SESSION_EXPIRED, and ACCOUNT_DELETED
+    const afterLogout = appReducer(state, { type: 'LOGOUT_SUCCEEDED' });
+    assert.equal(afterLogout.highlightMineOnly, false);
+    assert.equal(deriveMapControlsModel(afterLogout).highlightMineOnly, false);
+
+    const afterExpired = appReducer(state, { type: 'SESSION_EXPIRED' });
+    assert.equal(afterExpired.highlightMineOnly, false);
+
+    const afterDeleted = appReducer(state, { type: 'ACCOUNT_DELETED' });
+    assert.equal(afterDeleted.highlightMineOnly, false);
+
+    // Verify PpgisApiClient.getPublicStats (unauthenticated) and getPersonalStats (authenticated)
+    const mem = createMemorySessionStorage();
+    await mem.setToken('tok-stats');
+    const calls: { method: string; url: string; auth: string | null }[] = [];
+    const client = new PpgisApiClient(
+      'https://maps.example.org',
+      mem,
+      async (input, init) => {
+        const headers = new Headers(init?.headers);
+        const url = String(input);
+        calls.push({
+          method: init?.method ?? 'GET',
+          url,
+          auth: headers.get('authorization'),
+        });
+        if (url.endsWith('/api/v1/stats')) {
+          return new Response(
+            JSON.stringify({
+              totalPolygons: 12,
+              proposedCount: 8,
+              inProgressCount: 2,
+              finishedCount: 2,
+              needsReviewCount: 3,
+              totalAreaM2: 1840.5,
+              unsealedAreaM2: 310.2,
+              totalVotes: 29,
+              totalUpvotes: 24,
+              totalDownvotes: 5,
+              surfaceBreakdown: {
+                asphalt: { count: 5, areaM2: 900 },
+                concrete: { count: 4, areaM2: 520.5 },
+                pavers: { count: 2, areaM2: 270 },
+                other: { count: 1, areaM2: 150 },
+              },
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            totalPolygons: 3,
+            proposedCount: 2,
+            inProgressCount: 0,
+            finishedCount: 1,
+            totalAreaM2: 410,
+            unsealedAreaM2: 125,
+            ratedPolygonsCount: 9,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      },
+    );
+
+    const pubStats = await client.getPublicStats();
+    assert.equal(pubStats.totalPolygons, 12);
+    assert.equal(pubStats.needsReviewCount, 3);
+    assert.equal(pubStats.surfaceBreakdown.pavers.count, 2);
+
+    const myStats = await client.getPersonalStats();
+    assert.equal(myStats.finishedCount, 1);
+    assert.equal(myStats.ratedPolygonsCount, 9);
+
+    assert.deepEqual(calls, [
+      {
+        method: 'GET',
+        url: 'https://maps.example.org/api/v1/stats',
+        auth: null,
+      },
+      {
+        method: 'GET',
+        url: 'https://maps.example.org/api/v1/stats/me',
+        auth: 'Bearer tok-stats',
       },
     ]);
   });

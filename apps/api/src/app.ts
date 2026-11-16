@@ -89,6 +89,7 @@ import {
 } from './routes/geocode.js';
 import { registerPhotoRoutes } from './routes/photos.js';
 import { registerPolygonRoutes } from './routes/polygons.js';
+import { registerStatsRoutes } from './routes/stats.js';
 import { registerSystemRoutes } from './routes/system.js';
 import { registerVoteRoutes } from './routes/votes.js';
 import { normalizeRateLimitIp } from './util/rateLimit.js';
@@ -399,6 +400,7 @@ export async function buildApp(
       ? { exportStreamTimeoutMs: options.exportStreamTimeoutMs }
       : {}),
   });
+  registerStatsRoutes(app, polygonRepository);
 
   const photoRepository = new PhotoRepository(pool, config.uploadsDir);
   registerPhotoRoutes(app, photoRepository);
@@ -457,6 +459,7 @@ export {
   registerGeocodeRoutes,
   registerPhotoRoutes,
   registerPolygonRoutes,
+  registerStatsRoutes,
   registerVoteRoutes,
   requireAdmin,
   requireAuth,

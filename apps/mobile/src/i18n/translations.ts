@@ -96,9 +96,21 @@ export interface TranslationDictionary {
     readonly darkModeTooltip: string;
     readonly lightModeTooltip: string;
     readonly aboutButtonA11y: string;
+    readonly aboutButtonTooltip: string;
+    readonly statsButtonA11y: string;
+    readonly statsButtonTooltip: string;
     readonly bugReportButtonA11y: string;
     readonly bugReportButtonTooltip: string;
     readonly searchAddressA11y: string;
+    readonly searchPlaceholderBar: string;
+    readonly moreMenuA11y: string;
+    readonly moreMenuTooltip: string;
+    readonly menuSectionAppearance: string;
+    readonly menuSectionData: string;
+    readonly menuSectionHelp: string;
+    readonly layersButtonA11y: string;
+    readonly layersButtonTooltip: string;
+    readonly layersPopoverTitle: string;
     readonly apkDownloadA11y: string;
     readonly apkDownloadCompact: string;
     readonly apkDownloadFull: string;
@@ -145,6 +157,10 @@ export interface TranslationDictionary {
     readonly filterNeedsReviewCompact: string;
     readonly filterNeedsReviewFull: string;
     readonly filterNeedsReviewA11y: string;
+    readonly highlightMineCompact: string;
+    readonly highlightMineFull: string;
+    readonly highlightMineA11y: string;
+    readonly mineInViewSuffix: string;
     readonly polygonOpacityLabel: string;
     readonly polygonOpacityA11y: string;
   };
@@ -435,6 +451,8 @@ export interface TranslationDictionary {
     readonly recoverFailed: string;
     readonly logoutFailed: string;
     readonly deleteAccountFailed: string;
+    readonly openPersonalStatsButton: string;
+    readonly openPersonalStatsA11y: string;
   };
   readonly location: {
     readonly webHttpsRequired: string;
@@ -530,6 +548,51 @@ export interface TranslationDictionary {
     readonly invalidEmailError: string;
     readonly errorFallback: string;
   };
+  readonly stats: {
+    readonly modalA11y: string;
+    readonly title: string;
+    readonly subtitle: string;
+    readonly closeA11y: string;
+    readonly close: string;
+    readonly refresh: string;
+    readonly refreshA11y: string;
+    readonly tabGroupA11y: string;
+    readonly tabCommunity: string;
+    readonly tabPersonal: string;
+    readonly loading: string;
+    readonly retry: string;
+    readonly loadErrorFallback: string;
+    readonly polygonsSectionTitle: string;
+    readonly totalPolygonsLabel: string;
+    readonly proposedLabel: string;
+    readonly inProgressLabel: string;
+    readonly finishedLabel: string;
+    readonly needsReviewLabel: string;
+    readonly needsReviewHint: (days: number) => string;
+    readonly areaSectionTitle: string;
+    readonly areaMappedLabel: string;
+    readonly areaUnsealedLabel: string;
+    readonly votesSectionTitle: string;
+    readonly totalVotesLabel: string;
+    readonly totalUpvotesLabel: string;
+    readonly totalDownvotesLabel: string;
+    readonly surfaceSectionTitle: string;
+    readonly polygonsCountBadge: (count: number) => string;
+    readonly communityPrivacyFooter: string;
+    readonly personalSignInTitle: string;
+    readonly personalSignInBody: string;
+    readonly personalSignInButton: string;
+    readonly personalPolygonsTitle: string;
+    readonly personalSuggestedLabel: string;
+    readonly personalProposedOpenLabel: string;
+    readonly personalInProgressLabel: string;
+    readonly personalUnsealedLabel: string;
+    readonly personalAreaMappedLabel: string;
+    readonly personalAreaUnsealedLabel: string;
+    readonly personalEngagementTitle: string;
+    readonly personalRatedPolygonsLabel: string;
+    readonly personalPrivacyNote: string;
+  };
 }
 
 export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
@@ -568,9 +631,21 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       darkModeTooltip: 'Dunkelmodus',
       lightModeTooltip: 'Hellmodus',
       aboutButtonA11y: 'Über Unseal, Kartendaten und Datenschutz öffnen',
+      aboutButtonTooltip: 'Über Unseal & Datenschutz',
+      statsButtonA11y: 'Statistiken öffnen',
+      statsButtonTooltip: 'Statistiken',
       bugReportButtonA11y: 'Fehler melden',
       bugReportButtonTooltip: 'Fehler melden',
       searchAddressA11y: 'Adresse suchen und auf der Karte anzeigen',
+      searchPlaceholderBar: 'Adresse oder Ort suchen…',
+      moreMenuA11y: 'Weitere Optionen öffnen',
+      moreMenuTooltip: 'Weitere Optionen',
+      menuSectionAppearance: 'Darstellung',
+      menuSectionData: 'Daten',
+      menuSectionHelp: 'App & Hilfe',
+      layersButtonA11y: 'Kartenebenen und Deckkraft öffnen',
+      layersButtonTooltip: 'Kartenebenen & Deckkraft',
+      layersPopoverTitle: 'Kartenebenen',
       apkDownloadA11y: 'Android-App als APK-Datei herunterladen',
       apkDownloadCompact: 'APK',
       apkDownloadFull: 'Android-APK herunterladen',
@@ -624,6 +699,11 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       filterNeedsReviewFull: 'Prüfbedarf',
       filterNeedsReviewA11y:
         'Flächen mit Prüfbedarf (Bewertung 0 und ohne Stimmen) anzeigen',
+      highlightMineCompact: 'Meine',
+      highlightMineFull: 'Meine Beiträge',
+      highlightMineA11y:
+        'Eigene Vorschläge farbig hervorheben und übrige Flächen grau abblenden',
+      mineInViewSuffix: 'eigene im Ausschnitt',
       polygonOpacityLabel: 'Deckkraft',
       polygonOpacityA11y: 'Deckkraft der Polygone anpassen',
     },
@@ -1001,6 +1081,9 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       recoverFailed: 'Anfrage zum Zurücksetzen fehlgeschlagen.',
       logoutFailed: 'Abmeldung fehlgeschlagen.',
       deleteAccountFailed: 'Kontolöschung fehlgeschlagen.',
+      openPersonalStatsButton: 'Meine Beitragsstatistik anzeigen',
+      openPersonalStatsA11y:
+        'Persönliche Beitragsstatistik im Statistikfenster öffnen',
     },
     location: {
       webHttpsRequired:
@@ -1134,6 +1217,56 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       apkSha256Label: 'SHA-256-Prüfsumme:',
       apkDownloadButton: 'Android-APK herunterladen',
     },
+    stats: {
+      modalA11y: 'Statistiken',
+      title: 'Statistiken',
+      subtitle: 'Aktueller Bestand kartierter Flächen und Entsiegelungsfortschritt',
+      closeA11y: 'Statistiken schließen',
+      close: 'Schließen',
+      refresh: 'Aktualisieren',
+      refreshA11y: 'Statistiken neu laden',
+      tabGroupA11y: 'Statistikansicht auswählen',
+      tabCommunity: 'Gesamt',
+      tabPersonal: 'Meine Beiträge',
+      loading: 'Statistiken werden geladen…',
+      retry: 'Erneut laden',
+      loadErrorFallback: 'Statistiken konnten nicht geladen werden.',
+      polygonsSectionTitle: 'Kartierte Flächen (aktueller Bestand)',
+      totalPolygonsLabel: 'Flächen gesamt',
+      proposedLabel: 'Vorgeschlagen',
+      inProgressLabel: 'Wird entsiegelt',
+      finishedLabel: 'Entsiegelt',
+      needsReviewLabel: 'Prüfbedarf',
+      needsReviewHint: (days) =>
+        `Unbewertete Vorschläge (automatische Entfernung nach ${days} Tagen ohne Bewertung)`,
+      areaSectionTitle: 'Flächenbilanz',
+      areaMappedLabel: 'Kartierte Fläche gesamt',
+      areaUnsealedLabel: 'Bereits entsiegelt',
+      votesSectionTitle: 'Flächenbewertungen',
+      totalVotesLabel: 'Bewertungen gesamt',
+      totalUpvotesLabel: 'Zustimmungen (+)',
+      totalDownvotesLabel: 'Ablehnungen (−)',
+      surfaceSectionTitle: 'Aufschlüsselung nach Belagsart',
+      polygonsCountBadge: (count) =>
+        count === 1 ? '1 Fläche' : `${count} Flächen`,
+      communityPrivacyFooter:
+        'Es werden ausschließlich aktuell vorhandene Flächen gezählt; alle Gesamtwerte sind anonym.',
+      personalSignInTitle: 'Persönliche Beitragsübersicht',
+      personalSignInBody:
+        'Melde dich an, um deine vorgeschlagenen und entsiegelten Flächen sowie die Anzahl deiner abgegebenen Flächenbewertungen einzusehen.',
+      personalSignInButton: 'Anmelden oder Konto erstellen',
+      personalPolygonsTitle: 'Deine kartierten Flächen',
+      personalSuggestedLabel: 'Vorgeschlagen gesamt',
+      personalProposedOpenLabel: 'Offen vorgeschlagen',
+      personalInProgressLabel: 'Wird entsiegelt',
+      personalUnsealedLabel: 'Bereits entsiegelt',
+      personalAreaMappedLabel: 'Kartierte Fläche',
+      personalAreaUnsealedLabel: 'Entsiegelte Fläche',
+      personalEngagementTitle: 'Beteiligung an der Prüfung',
+      personalRatedPolygonsLabel: 'Bewertete Flächen',
+      personalPrivacyNote:
+        'Nur für dich sichtbar — direkt aus deinen aktuell vorhandenen Flächen und Flächenbewertungen berechnet, ohne zusätzliches Tracking.',
+    },
   },
   en: {
     app: {
@@ -1169,9 +1302,21 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       darkModeTooltip: 'Dark mode',
       lightModeTooltip: 'Light mode',
       aboutButtonA11y: 'Open About Unseal, map attributions, and privacy',
+      aboutButtonTooltip: 'About Unseal & Privacy',
+      statsButtonA11y: 'Open statistics',
+      statsButtonTooltip: 'Statistics',
       bugReportButtonA11y: 'Report a bug',
       bugReportButtonTooltip: 'Report a bug',
       searchAddressA11y: 'Search for an address and jump to it on the map',
+      searchPlaceholderBar: 'Search address or place…',
+      moreMenuA11y: 'Open more options',
+      moreMenuTooltip: 'More options',
+      menuSectionAppearance: 'Appearance',
+      menuSectionData: 'Data',
+      menuSectionHelp: 'App & Help',
+      layersButtonA11y: 'Open map layers and opacity',
+      layersButtonTooltip: 'Map layers & opacity',
+      layersPopoverTitle: 'Map Layers',
       apkDownloadA11y: 'Download Android APK package',
       apkDownloadCompact: 'APK',
       apkDownloadFull: 'Download Android APK',
@@ -1223,6 +1368,11 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       filterNeedsReviewFull: 'Needs review',
       filterNeedsReviewA11y:
         'Show polygons needing review (score of 0 and no ratings)',
+      highlightMineCompact: 'Mine',
+      highlightMineFull: 'My contributions',
+      highlightMineA11y:
+        'Highlight your own proposals in color and render other polygons in grey',
+      mineInViewSuffix: 'mine in view',
       polygonOpacityLabel: 'Opacity',
       polygonOpacityA11y: 'Adjust polygon opacity',
     },
@@ -1577,6 +1727,9 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       recoverFailed: 'Password recovery request failed.',
       logoutFailed: 'Logout failed.',
       deleteAccountFailed: 'Account deletion failed.',
+      openPersonalStatsButton: 'View my contribution statistics',
+      openPersonalStatsA11y:
+        'Open personal contribution statistics in the statistics dialog',
     },
     location: {
       webHttpsRequired:
@@ -1707,6 +1860,56 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         'As an alternative to the browser app, Android users can download and install the APK package directly (Android may prompt you to allow installs from your browser).',
       apkSha256Label: 'SHA-256 checksum:',
       apkDownloadButton: 'Download Android APK',
+    },
+    stats: {
+      modalA11y: 'Statistics',
+      title: 'Statistics',
+      subtitle: 'Current inventory of mapped polygons and unsealing progress',
+      closeA11y: 'Close statistics dialog',
+      close: 'Close',
+      refresh: 'Refresh',
+      refreshA11y: 'Reload statistics',
+      tabGroupA11y: 'Select statistics view',
+      tabCommunity: 'Community',
+      tabPersonal: 'My Contributions',
+      loading: 'Loading statistics…',
+      retry: 'Retry',
+      loadErrorFallback: 'Unable to load statistics.',
+      polygonsSectionTitle: 'Mapped Polygons (Current Inventory)',
+      totalPolygonsLabel: 'Total polygons',
+      proposedLabel: 'Proposed',
+      inProgressLabel: 'In progress',
+      finishedLabel: 'Finished',
+      needsReviewLabel: 'Needs review',
+      needsReviewHint: (days) =>
+        `Unrated proposals (removed automatically if not rated within ${days} days)`,
+      areaSectionTitle: 'Area Summary',
+      areaMappedLabel: 'Total area mapped',
+      areaUnsealedLabel: 'Unsealed so far',
+      votesSectionTitle: 'Polygon Ratings',
+      totalVotesLabel: 'Total ratings',
+      totalUpvotesLabel: 'Upvotes (+)',
+      totalDownvotesLabel: 'Downvotes (−)',
+      surfaceSectionTitle: 'Surface Type Breakdown',
+      polygonsCountBadge: (count) =>
+        count === 1 ? '1 polygon' : `${count} polygons`,
+      communityPrivacyFooter:
+        'Only currently existing polygons are counted; all community totals are anonymous.',
+      personalSignInTitle: 'Personal Contribution Summary',
+      personalSignInBody:
+        'Sign in to view how many polygons you have suggested and unsealed so far, as well as how many polygons you have rated.',
+      personalSignInButton: 'Sign in or create account',
+      personalPolygonsTitle: 'Your Mapped Polygons',
+      personalSuggestedLabel: 'Total suggested',
+      personalProposedOpenLabel: 'Currently proposed',
+      personalInProgressLabel: 'In progress',
+      personalUnsealedLabel: 'Unsealed so far',
+      personalAreaMappedLabel: 'Area mapped',
+      personalAreaUnsealedLabel: 'Area unsealed',
+      personalEngagementTitle: 'Review Participation',
+      personalRatedPolygonsLabel: 'Polygons rated',
+      personalPrivacyNote:
+        'Visible only to you — computed on the fly from your currently existing polygons and polygon ratings, with no extra tracking.',
     },
   },
 };

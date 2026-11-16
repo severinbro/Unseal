@@ -1324,10 +1324,10 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     assert.equal(cleared.flagCount, 0);
     assert.equal(cleared.isFlagged, false);
 
-    // Backdate BOTH polygons to 15 days ago (> 7 days -> 'established', 0 in 'new')
+    // Backdate BOTH polygons to 31 days ago (> 7 days -> 'established', 0 in 'new', and > 30 days default prune window)
     // and verify prune-stale-polygons deletes unclippedPoly (0 ratings) while keeping basePoly (2 ratings, net score 0)
     await pool.query(
-      `UPDATE polygons SET created_at = NOW() - INTERVAL '15 days' WHERE id = ANY($1::uuid[])`,
+      `UPDATE polygons SET created_at = NOW() - INTERVAL '31 days' WHERE id = ANY($1::uuid[])`,
       [[basePoly.id, unclippedPoly.id]],
     );
     const establishedAfterAging = await reviewerClient.listPolygons(
@@ -1339,9 +1339,27 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
       filter: 'new',
     });
     assert.equal(newAfterAging.features.length, 0);
+    // End-to-end public & personal stats reflect only currently existing polygons before & after 30-day pruning
+    const statsBeforePrune = await reviewerClient.getPublicStats();
+    assert.equal(statsBeforePrune.totalPolygons, 2);
+    assert.equal(statsBeforePrune.needsReviewCount, 1);
+    assert.equal(statsBeforePrune.totalVotes, 2);
+    const newcomerBeforePrune = await newcomerClient.getPersonalStats();
+    assert.equal(newcomerBeforePrune.totalPolygons, 2);
+    assert.equal(newcomerBeforePrune.ratedPolygonsCount, 0);
+    const reviewerBeforePrune = await reviewerClient.getPersonalStats();
+    assert.equal(reviewerBeforePrune.totalPolygons, 0);
+    assert.equal(reviewerBeforePrune.ratedPolygonsCount, 1);
+
     const pruneRes = await app.runAdminCommand(['prune-stale-polygons']);
     assert.equal(pruneRes.deletedPolygonCount, 1);
     assert.deepEqual(pruneRes.prunedPolygonIds, [unclippedPoly.id]);
+
+    const statsAfterPrune = await reviewerClient.getPublicStats();
+    assert.equal(statsAfterPrune.totalPolygons, 1);
+    assert.equal(statsAfterPrune.needsReviewCount, 0);
+    const newcomerAfterPrune = await newcomerClient.getPersonalStats();
+    assert.equal(newcomerAfterPrune.totalPolygons, 1);
 
     const remaining = await reviewerClient.listPolygons(HAMBURG_BBOX);
     assert.equal(remaining.features.length, 1);

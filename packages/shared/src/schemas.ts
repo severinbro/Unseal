@@ -883,3 +883,47 @@ export const CreateBugReportResponseSchema = z.object({
 });
 
 export type CreateBugReportResponse = z.infer<typeof CreateBugReportResponseSchema>;
+
+export const SurfaceStatItemSchema = z.object({
+  count: z.number().int().nonnegative(),
+  areaM2: z.number().finite().nonnegative(),
+});
+
+export type SurfaceStatItem = z.output<typeof SurfaceStatItemSchema>;
+
+export const SurfaceBreakdownSchema = z.object({
+  asphalt: SurfaceStatItemSchema,
+  concrete: SurfaceStatItemSchema,
+  pavers: SurfaceStatItemSchema,
+  other: SurfaceStatItemSchema,
+});
+
+export type SurfaceBreakdown = z.output<typeof SurfaceBreakdownSchema>;
+
+export const PublicStatsResponseSchema = z.object({
+  totalPolygons: z.number().int().nonnegative(),
+  proposedCount: z.number().int().nonnegative(),
+  inProgressCount: z.number().int().nonnegative(),
+  finishedCount: z.number().int().nonnegative(),
+  needsReviewCount: z.number().int().nonnegative(),
+  totalAreaM2: z.number().finite().nonnegative(),
+  unsealedAreaM2: z.number().finite().nonnegative(),
+  totalVotes: z.number().int().nonnegative(),
+  totalUpvotes: z.number().int().nonnegative(),
+  totalDownvotes: z.number().int().nonnegative(),
+  surfaceBreakdown: SurfaceBreakdownSchema,
+});
+
+export type PublicStatsResponse = z.output<typeof PublicStatsResponseSchema>;
+
+export const PersonalStatsResponseSchema = z.object({
+  totalPolygons: z.number().int().nonnegative(),
+  proposedCount: z.number().int().nonnegative(),
+  inProgressCount: z.number().int().nonnegative(),
+  finishedCount: z.number().int().nonnegative(),
+  totalAreaM2: z.number().finite().nonnegative(),
+  unsealedAreaM2: z.number().finite().nonnegative(),
+  ratedPolygonsCount: z.number().int().nonnegative(),
+});
+
+export type PersonalStatsResponse = z.output<typeof PersonalStatsResponseSchema>;

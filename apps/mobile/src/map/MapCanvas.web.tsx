@@ -119,6 +119,7 @@ export function MapCanvas({
   isRingClosed,
   selectedFeatureId,
   polygonOpacity = DEFAULT_POLYGON_OPACITY,
+  highlightMineOnly = false,
   cameraTarget,
   northResetSeq = 0,
   onViewportChange,
@@ -126,6 +127,7 @@ export function MapCanvas({
   onMapTap,
   onFeaturePress,
   onTileError,
+  onZoomDividerOffsetChange,
 }: MapCanvasProps): React.JSX.Element {
   const activeStyleUrl = resolveBasemapStyleUrl(config, colorScheme);
 
@@ -153,6 +155,8 @@ export function MapCanvas({
   selectedFeatureIdRef.current = selectedFeatureId;
   const polygonOpacityRef = useRef(polygonOpacity);
   polygonOpacityRef.current = polygonOpacity;
+  const highlightMineOnlyRef = useRef(highlightMineOnly);
+  highlightMineOnlyRef.current = highlightMineOnly;
   const draftVerticesRef = useRef(draftVertices);
   draftVerticesRef.current = draftVertices;
   const isRingClosedRef = useRef(isRingClosed);
@@ -168,6 +172,8 @@ export function MapCanvas({
   onFeaturePressRef.current = onFeaturePress;
   const onTileErrorRef = useRef(onTileError);
   onTileErrorRef.current = onTileError;
+  const onZoomDividerOffsetChangeRef = useRef(onZoomDividerOffsetChange);
+  onZoomDividerOffsetChangeRef.current = onZoomDividerOffsetChange;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -220,13 +226,50 @@ export function MapCanvas({
       'bottom-right',
     );
 
+    const emitZoomDividerOffset = (): void => {
+      const cb = onZoomDividerOffsetChangeRef.current;
+      if (!cb) {
+        return;
+      }
+      const ctrlGroup = container.querySelector(
+        '.maplibregl-ctrl-bottom-right .maplibregl-ctrl-group',
+      );
+      if (!ctrlGroup) {
+        return;
+      }
+      const containerRect = container.getBoundingClientRect();
+      const groupRect = ctrlGroup.getBoundingClientRect();
+      if (containerRect.height <= 0 || groupRect.height <= 0) {
+        return;
+      }
+      const offsetFromBottom =
+        containerRect.bottom - (groupRect.top + groupRect.height / 2);
+      if (Number.isFinite(offsetFromBottom) && offsetFromBottom > 0) {
+        cb(Math.round(offsetFromBottom));
+      }
+    };
+
     const resizeObserver =
       typeof ResizeObserver !== 'undefined'
         ? new ResizeObserver(() => {
             map.resize();
+            emitZoomDividerOffset();
           })
         : null;
     resizeObserver?.observe(container);
+    const bottomRightCtrl = container.querySelector(
+      '.maplibregl-ctrl-bottom-right',
+    );
+    if (bottomRightCtrl) {
+      resizeObserver?.observe(bottomRightCtrl);
+    }
+    const zoomGroupEl = container.querySelector(
+      '.maplibregl-ctrl-bottom-right .maplibregl-ctrl-group',
+    );
+    if (zoomGroupEl) {
+      resizeObserver?.observe(zoomGroupEl);
+    }
+    emitZoomDividerOffset();
 
     if (modeRef.current === 'drawing') {
       map.doubleClickZoom.disable();
@@ -285,6 +328,7 @@ export function MapCanvas({
       for (const proposalLayer of buildPolygonLayerSpecs(
         polygonOpacityRef.current,
         colorSchemeRef.current,
+        highlightMineOnlyRef.current,
       )) {
         if (!map.getLayer(proposalLayer.id)) {
           map.addLayer(proposalLayer);
@@ -505,6 +549,7 @@ export function MapCanvas({
     const [fillSpec, outlineSpec, centroidSpec] = buildPolygonLayerSpecs(
       polygonOpacity,
       colorScheme,
+      highlightMineOnly,
     );
     if (map.getLayer(fillSpec.id)) {
       map.setPaintProperty(
@@ -526,6 +571,11 @@ export function MapCanvas({
       );
       map.setPaintProperty(
         outlineSpec.id,
+        'line-width',
+        outlineSpec.paint['line-width'],
+      );
+      map.setPaintProperty(
+        outlineSpec.id,
         'line-opacity',
         outlineSpec.paint['line-opacity'],
       );
@@ -538,6 +588,11 @@ export function MapCanvas({
       );
       map.setPaintProperty(
         centroidSpec.id,
+        'circle-radius',
+        centroidSpec.paint['circle-radius'],
+      );
+      map.setPaintProperty(
+        centroidSpec.id,
         'circle-opacity',
         centroidSpec.paint['circle-opacity'],
       );
@@ -545,6 +600,11 @@ export function MapCanvas({
         centroidSpec.id,
         'circle-stroke-color',
         centroidSpec.paint['circle-stroke-color'],
+      );
+      map.setPaintProperty(
+        centroidSpec.id,
+        'circle-stroke-width',
+        centroidSpec.paint['circle-stroke-width'],
       );
       map.setPaintProperty(
         centroidSpec.id,
@@ -586,7 +646,7 @@ export function MapCanvas({
         draftVerticesSpec.paint['circle-stroke-color'],
       );
     }
-  }, [polygonOpacity, colorScheme]);
+  }, [polygonOpacity, colorScheme, highlightMineOnly]);
 
   useEffect(() => {
     const map = mapRef.current;

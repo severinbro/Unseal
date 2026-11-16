@@ -38,6 +38,9 @@ import {
   PolygonCollectionResponseSchema,
   PolygonFeatureSchema,
   RESERVED_PSEUDONYMS,
+  PublicStatsResponseSchema,
+  PersonalStatsResponseSchema,
+  TRUST_AND_MODERATION_LIMITS,
   RecoverRequestSchema,
   RegisterRequestSchema,
   RegisterResponseSchema,
@@ -1079,5 +1082,40 @@ describe('Review Focus 3: BboxQuerySchema vs checkBboxSpan and remaining wire sc
       signature: 'b'.repeat(64),
     });
     assert.equal(parsedChallenge.algorithm, 'SHA-256');
+    assert.equal(TRUST_AND_MODERATION_LIMITS.STALE_UNRATED_PRUNE_DAYS, 30);
+
+    const parsedPublicStats = PublicStatsResponseSchema.parse({
+      totalPolygons: 10,
+      proposedCount: 6,
+      inProgressCount: 2,
+      finishedCount: 2,
+      needsReviewCount: 3,
+      totalAreaM2: 1450.5,
+      unsealedAreaM2: 320.25,
+      totalVotes: 24,
+      totalUpvotes: 20,
+      totalDownvotes: 4,
+      surfaceBreakdown: {
+        asphalt: { count: 4, areaM2: 600.5 },
+        concrete: { count: 3, areaM2: 450 },
+        pavers: { count: 2, areaM2: 250 },
+        other: { count: 1, areaM2: 150 },
+      },
+    });
+    assert.equal(parsedPublicStats.totalPolygons, 10);
+    assert.equal(parsedPublicStats.needsReviewCount, 3);
+    assert.equal(parsedPublicStats.surfaceBreakdown.asphalt.count, 4);
+
+    const parsedPersonalStats = PersonalStatsResponseSchema.parse({
+      totalPolygons: 3,
+      proposedCount: 2,
+      inProgressCount: 0,
+      finishedCount: 1,
+      totalAreaM2: 410.2,
+      unsealedAreaM2: 120.5,
+      ratedPolygonsCount: 7,
+    });
+    assert.equal(parsedPersonalStats.finishedCount, 1);
+    assert.equal(parsedPersonalStats.ratedPolygonsCount, 7);
   });
 });

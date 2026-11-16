@@ -756,4 +756,195 @@ describe('styleBuilder and MapCanvas contract', () => {
       lightOutline.paint['line-color'],
     );
   });
+
+  it('highlights authored polygons in full status/score colors while rendering non-authored polygons in muted grey when highlightMineOnly is enabled', () => {
+    for (const scheme of ['light', 'dark'] as const) {
+      const [normalFill] = buildPolygonLayerSpecs(
+        DEFAULT_POLYGON_OPACITY,
+        scheme,
+        false,
+      );
+      const highlightLayers = buildPolygonLayerSpecs(
+        DEFAULT_POLYGON_OPACITY,
+        scheme,
+        true,
+      );
+      const [hlFill, hlOutline, hlCentroid] = highlightLayers;
+
+      const styleCandidate: StyleSpecification = {
+        version: 8,
+        sources: {
+          [PROPOSALS_POLYGON_SOURCE_ID]: {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: [] },
+          },
+          [PROPOSALS_CENTROID_SOURCE_ID]: {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: [] },
+          },
+        },
+        layers: [...highlightLayers],
+      };
+      assert.deepEqual(validateStyleMin(styleCandidate), []);
+
+      const fillColorSpec = styleSpecLatest['paint_fill']['fill-color'] as Parameters<
+        typeof styleExpression.createPropertyExpression
+      >[1];
+      const fillOpacitySpec = styleSpecLatest['paint_fill']['fill-opacity'] as Parameters<
+        typeof styleExpression.createPropertyExpression
+      >[1];
+      const lineColorSpec = styleSpecLatest['paint_line']['line-color'] as Parameters<
+        typeof styleExpression.createPropertyExpression
+      >[1];
+      const circleRadiusSpec = styleSpecLatest['paint_circle']['circle-radius'] as Parameters<
+        typeof styleExpression.createPropertyExpression
+      >[1];
+
+      const normalFillColorExpr = styleExpression.createPropertyExpression(
+        normalFill.paint['fill-color'],
+        fillColorSpec,
+      );
+      const hlFillColorExpr = styleExpression.createPropertyExpression(
+        hlFill.paint['fill-color'],
+        fillColorSpec,
+      );
+      const hlFillOpacityExpr = styleExpression.createPropertyExpression(
+        hlFill.paint['fill-opacity'],
+        fillOpacitySpec,
+      );
+      const hlLineColorExpr = styleExpression.createPropertyExpression(
+        hlOutline.paint['line-color'],
+        lineColorSpec,
+      );
+      const hlCircleRadiusExpr = styleExpression.createPropertyExpression(
+        hlCentroid.paint['circle-radius'],
+        circleRadiusSpec,
+      );
+
+      assert.equal(normalFillColorExpr.result, 'success');
+      assert.equal(hlFillColorExpr.result, 'success');
+      assert.equal(hlFillOpacityExpr.result, 'success');
+      assert.equal(hlLineColorExpr.result, 'success');
+      assert.equal(hlCircleRadiusExpr.result, 'success');
+
+      // Authored polygon keeps exact same fill color as normal mode
+      const authoredFinishedNormal = String(
+        normalFillColorExpr.value.evaluate(
+          { zoom: 16 },
+          {
+            type: 'Polygon',
+            properties: {
+              isAuthor: true,
+              status: 'finished',
+              score: 4,
+              municipalityNormalizedScore: 0.8,
+              selected: false,
+            },
+          },
+        ),
+      );
+      const authoredFinishedHl = String(
+        hlFillColorExpr.value.evaluate(
+          { zoom: 16 },
+          {
+            type: 'Polygon',
+            properties: {
+              isAuthor: true,
+              status: 'finished',
+              score: 4,
+              municipalityNormalizedScore: 0.8,
+              selected: false,
+            },
+          },
+        ),
+      );
+      assert.equal(authoredFinishedHl, authoredFinishedNormal);
+
+      // Non-authored polygon renders in muted grey with lower fill opacity and smaller 4px centroid
+      const otherFinishedHl = String(
+        hlFillColorExpr.value.evaluate(
+          { zoom: 16 },
+          {
+            type: 'Polygon',
+            properties: {
+              isAuthor: false,
+              status: 'finished',
+              score: 4,
+              municipalityNormalizedScore: 0.8,
+              selected: false,
+            },
+          },
+        ),
+      );
+      assert.notEqual(otherFinishedHl, authoredFinishedHl);
+
+      const authoredOpacity = Number(
+        hlFillOpacityExpr.value.evaluate(
+          { zoom: 16 },
+          {
+            type: 'Polygon',
+            properties: {
+              isAuthor: true,
+              status: 'proposed',
+              score: 2,
+              selected: false,
+            },
+          },
+        ),
+      );
+      const otherOpacity = Number(
+        hlFillOpacityExpr.value.evaluate(
+          { zoom: 16 },
+          {
+            type: 'Polygon',
+            properties: {
+              isAuthor: false,
+              status: 'proposed',
+              score: 2,
+              selected: false,
+            },
+          },
+        ),
+      );
+      assert.ok(otherOpacity < authoredOpacity);
+
+      // Selecting/tapping a greyed-out non-authored polygon still applies selected outline & opacity
+      const selectedOtherOpacity = Number(
+        hlFillOpacityExpr.value.evaluate(
+          { zoom: 16 },
+          {
+            type: 'Polygon',
+            properties: {
+              isAuthor: false,
+              status: 'proposed',
+              score: 0,
+              selected: true,
+            },
+          },
+        ),
+      );
+      assert.ok(selectedOtherOpacity > authoredOpacity);
+
+      const otherRadius = Number(
+        hlCircleRadiusExpr.value.evaluate(
+          { zoom: 16 },
+          {
+            type: 'Point',
+            properties: { isAuthor: false, selected: false },
+          },
+        ),
+      );
+      const authoredRadius = Number(
+        hlCircleRadiusExpr.value.evaluate(
+          { zoom: 16 },
+          {
+            type: 'Point',
+            properties: { isAuthor: true, selected: false },
+          },
+        ),
+      );
+      assert.equal(otherRadius, 4);
+      assert.equal(authoredRadius, 5);
+    }
+  });
 });

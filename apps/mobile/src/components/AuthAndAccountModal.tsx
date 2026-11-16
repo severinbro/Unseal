@@ -46,6 +46,7 @@ export interface AuthAndAccountModalProps {
   onDeleteAccount: (options: { purgeContent: boolean }) => Promise<void>;
   /** GDPR Art. 15/20 self-service data download. */
   onExportData?: () => Promise<void>;
+  onOpenPersonalStats?: () => void;
 }
 
 export function AuthAndAccountModal({
@@ -63,6 +64,7 @@ export function AuthAndAccountModal({
   onLogout,
   onDeleteAccount,
   onExportData,
+  onOpenPersonalStats,
 }: AuthAndAccountModalProps): React.JSX.Element | null {
   const { palette } = useTheme();
   const styles = useMemo(() => createStyles(palette), [palette]);
@@ -695,6 +697,21 @@ export function AuthAndAccountModal({
                 {modal.currentUser.email}
               </Text>
             </View>
+          ) : null}
+
+          {onOpenPersonalStats ? (
+            <Pressable
+              testID="account-open-personal-stats"
+              accessibilityRole="button"
+              accessibilityLabel={t.openPersonalStatsA11y}
+              disabled={isSubmitting}
+              onPress={onOpenPersonalStats}
+              style={[styles.touchButton, styles.secondaryButton]}
+            >
+              <Text style={styles.secondaryButtonLabel}>
+                {t.openPersonalStatsButton}
+              </Text>
+            </Pressable>
           ) : null}
 
           {onExportData ? (

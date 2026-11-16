@@ -15,6 +15,7 @@ import {
   type GeocodeResultItem,
   type LoginRequest,
   type PatchPolygonRequest,
+  type PersonalStatsResponse,
   type PhotoVoteResponse,
   type PolygonComment,
   type PolygonCommentListResponse,
@@ -22,6 +23,7 @@ import {
   type PolygonFlagReason,
   type PolygonPhoto,
   type PolygonStatus,
+  type PublicStatsResponse,
   type RegisterRequest,
 } from '@entsiegelung/shared';
 import React, {
@@ -59,13 +61,21 @@ import { DisclaimerBanner } from './src/components/DisclaimerBanner';
 import { DrawingToolbar } from './src/components/DrawingToolbar';
 import {
   GnssMapButton,
+  MapLayersButton,
   NorthArrowButton,
   SearchMapButton,
   TopRightMapControls,
 } from './src/components/GnssMapButton';
 import { InstallAppModal } from './src/components/InstallAppModal';
-import { MapControlsBar } from './src/components/MapControlsBar';
+import {
+  FloatingFilterStrip,
+  MapControlsBar,
+  MapLayersPopover,
+  NavbarOverflowMenu,
+  ProposeFabButton,
+} from './src/components/MapControlsBar';
 import { PolygonInspectorSheet } from './src/components/PolygonInspectorSheet';
+import { StatsModal, type StatsModalTab } from './src/components/StatsModal';
 import {
   getTranslations,
   localizeError,
@@ -103,6 +113,7 @@ import {
   type AppState,
 } from './src/state/appState';
 import {
+  computeVisibleProposalCount,
   deriveAuthModalModel,
   deriveDrawingToolbarModel,
   deriveMapControlsModel,
@@ -228,9 +239,16 @@ export function App(props: AppProps = {}): React.JSX.Element {
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [isImporting, setIsImporting] = useState<boolean>(false);
   const [aboutModalOpen, setAboutModalOpen] = useState<boolean>(false);
+  const [statsModalOpen, setStatsModalOpen] = useState<boolean>(false);
+  const [statsModalTab, setStatsModalTab] = useState<StatsModalTab>('community');
   const [installModalOpen, setInstallModalOpen] = useState<boolean>(false);
   const [searchModalOpen, setSearchModalOpen] = useState<boolean>(false);
   const [bugModalOpen, setBugModalOpen] = useState<boolean>(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState<boolean>(false);
+  const [layersPopoverOpen, setLayersPopoverOpen] = useState<boolean>(false);
+  const [zoomDividerBottomPx, setZoomDividerBottomPx] = useState<number | null>(
+    null,
+  );
   const [locationNotice, setLocationNotice] = useState<string | null>(null);
 
   const localeRef = useRef<Locale>(state.locale);
@@ -1317,6 +1335,25 @@ export function App(props: AppProps = {}): React.JSX.Element {
     [apiClient],
   );
 
+  const handleLoadPublicStats = useCallback(
+    (): Promise<PublicStatsResponse> => apiClient.getPublicStats(),
+    [apiClient],
+  );
+
+  const handleLoadPersonalStats = useCallback(
+    async (): Promise<PersonalStatsResponse> => {
+      try {
+        return await apiClient.getPersonalStats();
+      } catch (err: unknown) {
+        if (await handleSessionExpiredError(err)) {
+          setStatsModalOpen(false);
+        }
+        throw err;
+      }
+    },
+    [apiClient, handleSessionExpiredError],
+  );
+
   const statusBarNode =
     Platform.OS !== 'web' ? (
       <StatusBar
@@ -1523,29 +1560,57 @@ export function App(props: AppProps = {}): React.JSX.Element {
       >
         <MapControlsBar
           controls={mapControls}
-          proposalCount={state.features.length}
+          proposalCount={computeVisibleProposalCount(state)}
           exportGeoJsonUrl={apiClient.getExportGeoJsonUrl()}
           isImporting={isImporting}
           tier={layout.tier}
+          viewportWidth={layout.width}
+          moreMenuOpen={moreMenuOpen}
+          onToggleMoreMenu={() => {
+            setLayersPopoverOpen(false);
+            setMoreMenuOpen((prev) => !prev);
+          }}
+          onOpenSearch={() => {
+            setMoreMenuOpen(false);
+            setLayersPopoverOpen(false);
+            setSearchModalOpen(true);
+          }}
           onToggleLocale={handleToggleLocale}
           onToggleTheme={handleToggleTheme}
-          onOpenAbout={() => setAboutModalOpen(true)}
-        onOpenBugReport={() => setBugModalOpen(true)}
-        onOpenInstallApp={() => setInstallModalOpen(true)}
-        onSetBasemapMode={(mode) =>
-          dispatch({ type: 'SET_BASEMAP_MODE', mode })
-        }
-        onSetPolygonOpacity={(opacity) =>
-          dispatch({ type: 'SET_POLYGON_OPACITY', opacity })
-        }
-        onSetPolygonFilter={(filter) =>
-          dispatch({ type: 'SET_POLYGON_FILTER', filter })
-        }
-        onStartDraw={() => dispatch({ type: 'START_DRAW' })}
-        onOpenAccount={() => dispatch({ type: 'OPEN_AUTH_MODAL' })}
-        onImportPress={handleAdminImport}
-        onExportError={(message) => setLocationNotice(message)}
-      />
+          onOpenAbout={() => {
+            setMoreMenuOpen(false);
+            setLayersPopoverOpen(false);
+            setAboutModalOpen(true);
+          }}
+          onOpenStats={() => {
+            setMoreMenuOpen(false);
+            setLayersPopoverOpen(false);
+            setStatsModalTab('community');
+            setStatsModalOpen(true);
+          }}
+          onOpenBugReport={() => setBugModalOpen(true)}
+          onOpenInstallApp={() => setInstallModalOpen(true)}
+          onSetBasemapMode={(mode) =>
+            dispatch({ type: 'SET_BASEMAP_MODE', mode })
+          }
+          onSetPolygonOpacity={(opacity) =>
+            dispatch({ type: 'SET_POLYGON_OPACITY', opacity })
+          }
+          onSetPolygonFilter={(filter) =>
+            dispatch({ type: 'SET_POLYGON_FILTER', filter })
+          }
+          onToggleHighlightMine={() =>
+            dispatch({ type: 'TOGGLE_HIGHLIGHT_MINE_ONLY' })
+          }
+          onStartDraw={() => dispatch({ type: 'START_DRAW' })}
+          onOpenAccount={() => {
+            setMoreMenuOpen(false);
+            setLayersPopoverOpen(false);
+            dispatch({ type: 'OPEN_AUTH_MODAL' });
+          }}
+          onImportPress={handleAdminImport}
+          onExportError={(message) => setLocationNotice(message)}
+        />
 
       <View style={styles.mapStage}>
         <View style={styles.mapCanvasFill}>
@@ -1559,6 +1624,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
             isRingClosed={state.isRingClosed}
             selectedFeatureId={state.selectedFeatureId}
             polygonOpacity={state.polygonOpacity}
+            highlightMineOnly={mapControls.highlightMineOnly}
             cameraTarget={state.cameraTarget}
             northResetSeq={northResetSeq}
             onViewportChange={handleViewportChange}
@@ -1566,13 +1632,30 @@ export function App(props: AppProps = {}): React.JSX.Element {
             onMapTap={handleMapTap}
             onFeaturePress={handleFeaturePress}
             onTileError={handleTileError}
+            onZoomDividerOffsetChange={setZoomDividerBottomPx}
           />
         </View>
 
         <TopRightMapControls>
-          <SearchMapButton
+          {layout.isCompact ? (
+            <SearchMapButton
+              locale={state.locale}
+              onPress={() => {
+                setMoreMenuOpen(false);
+                setLayersPopoverOpen(false);
+                setSearchModalOpen(true);
+              }}
+              positioned={false}
+            />
+          ) : null}
+          <MapLayersButton
             locale={state.locale}
-            onPress={() => setSearchModalOpen(true)}
+            active={mapControls.basemapMode === 'orthophoto'}
+            expanded={layersPopoverOpen}
+            onPress={() => {
+              setMoreMenuOpen(false);
+              setLayersPopoverOpen((prev) => !prev);
+            }}
             positioned={false}
           />
           <GnssMapButton
@@ -1589,87 +1672,153 @@ export function App(props: AppProps = {}): React.JSX.Element {
           />
         </TopRightMapControls>
 
-        {hasVisibleBanner ? (
+        <View
+          pointerEvents="box-none"
+          style={[
+            styles.floatingTopLeftStack,
+            layout.isDocked && hasActivePanel
+              ? { left: layout.dockWidth + 26 }
+              : null,
+          ]}
+        >
+          <View pointerEvents="box-none" style={styles.floatingFilterRow}>
+            <FloatingFilterStrip
+              controls={mapControls}
+              compact={layout.isCompact}
+              onSetPolygonFilter={(filter) =>
+                dispatch({ type: 'SET_POLYGON_FILTER', filter })
+              }
+              onToggleHighlightMine={() =>
+                dispatch({ type: 'TOGGLE_HIGHLIGHT_MINE_ONLY' })
+              }
+            />
+          </View>
+
+          {hasVisibleBanner ? (
+            <View
+              pointerEvents="box-none"
+              style={styles.floatingBannerBox}
+            >
+              <DisclaimerBanner
+                controls={mapControls}
+                bboxFeatureLimit={state.config.limits.bboxFeatureLimit}
+                locationNotice={locationNotice}
+                compact={layout.isCompact}
+                onDismissDisclaimer={() =>
+                  dispatch({ type: 'DISMISS_FIRST_VISIT_DISCLAIMER' })
+                }
+                onDismissTileWarning={() =>
+                  dispatch({ type: 'DISMISS_TILE_WARNING' })
+                }
+                onDismissLocationNotice={() => setLocationNotice(null)}
+              />
+            </View>
+          ) : (
+            <View pointerEvents="none" style={styles.legendPill}>
+              <View style={styles.legendItem}>
+                <View
+                  style={[
+                    styles.legendSwatch,
+                    { backgroundColor: palette.positiveDot },
+                  ]}
+                />
+                <Text style={styles.legendLabel}>{tApp.legendBacked}</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View
+                  style={[
+                    styles.legendSwatch,
+                    { backgroundColor: palette.neutralDot },
+                  ]}
+                />
+                <Text style={styles.legendLabel}>{tApp.legendNew}</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View
+                  style={[
+                    styles.legendSwatch,
+                    { backgroundColor: palette.dangerDot },
+                  ]}
+                />
+                <Text style={styles.legendLabel}>{tApp.legendContested}</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View
+                  style={[
+                    styles.legendSwatch,
+                    { backgroundColor: palette.inProgressDot },
+                  ]}
+                />
+                <Text style={styles.legendLabel}>{tApp.legendInProgress}</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View
+                  style={[
+                    styles.legendSwatch,
+                    { backgroundColor: palette.finishedDot },
+                  ]}
+                />
+                <Text style={styles.legendLabel}>{tApp.legendFinished}</Text>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {state.mode === 'browse' && !(layout.isCompact && hasActivePanel) ? (
           <View
             pointerEvents="box-none"
             style={[
-              styles.floatingBannerOverlay,
-              layout.isDocked && hasActivePanel
-                ? { left: layout.dockWidth + 26, maxWidth: 520 }
-                : null,
-            ]}
-          >
-            <DisclaimerBanner
-              controls={mapControls}
-              bboxFeatureLimit={state.config.limits.bboxFeatureLimit}
-              locationNotice={locationNotice}
-              compact={layout.isCompact}
-              onDismissDisclaimer={() =>
-                dispatch({ type: 'DISMISS_FIRST_VISIT_DISCLAIMER' })
-              }
-              onDismissTileWarning={() =>
-                dispatch({ type: 'DISMISS_TILE_WARNING' })
-              }
-              onDismissLocationNotice={() => setLocationNotice(null)}
-            />
-          </View>
-        ) : (
-          <View
-            pointerEvents="none"
-            style={[
-              styles.legendPill,
+              styles.proposeFabAnchor,
+              {
+                bottom:
+                  zoomDividerBottomPx !== null
+                    ? Math.max(12, Math.round(zoomDividerBottomPx - 24))
+                    : layout.isCompact
+                      ? 64
+                      : 49,
+              },
               layout.isDocked && hasActivePanel
                 ? { left: layout.dockWidth + 26 }
                 : null,
             ]}
           >
-            <View style={styles.legendItem}>
-              <View
-                style={[
-                  styles.legendSwatch,
-                  { backgroundColor: palette.positiveDot },
-                ]}
-              />
-              <Text style={styles.legendLabel}>{tApp.legendBacked}</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View
-                style={[
-                  styles.legendSwatch,
-                  { backgroundColor: palette.neutralDot },
-                ]}
-              />
-              <Text style={styles.legendLabel}>{tApp.legendNew}</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View
-                style={[
-                  styles.legendSwatch,
-                  { backgroundColor: palette.dangerDot },
-                ]}
-              />
-              <Text style={styles.legendLabel}>{tApp.legendContested}</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View
-                style={[
-                  styles.legendSwatch,
-                  { backgroundColor: palette.inProgressDot },
-                ]}
-              />
-              <Text style={styles.legendLabel}>{tApp.legendInProgress}</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View
-                style={[
-                  styles.legendSwatch,
-                  { backgroundColor: palette.finishedDot },
-                ]}
-              />
-              <Text style={styles.legendLabel}>{tApp.legendFinished}</Text>
-            </View>
+            <ProposeFabButton
+              controls={mapControls}
+              onPress={() => {
+                setMoreMenuOpen(false);
+                setLayersPopoverOpen(false);
+                dispatch({ type: 'START_DRAW' });
+              }}
+            />
           </View>
-        )}
+        ) : null}
+
+        {layersPopoverOpen ? (
+          <>
+            <Pressable
+              accessible={false}
+              onPress={() => setLayersPopoverOpen(false)}
+              style={styles.popoverDismissScrim}
+            />
+            <View
+              style={[
+                styles.layersPopoverAnchor,
+                layout.isCompact ? { top: 68 } : null,
+              ]}
+            >
+              <MapLayersPopover
+                visible={layersPopoverOpen}
+                controls={mapControls}
+                onSetBasemapMode={(mode) =>
+                  dispatch({ type: 'SET_BASEMAP_MODE', mode })
+                }
+                onSetPolygonOpacity={(opacity) =>
+                  dispatch({ type: 'SET_POLYGON_OPACITY', opacity })
+                }
+              />
+            </View>
+          </>
+        ) : null}
 
         {Platform.OS !== 'web' ? (
           <Pressable
@@ -1741,6 +1890,39 @@ export function App(props: AppProps = {}): React.JSX.Element {
           </KeyboardAvoidingView>
         ) : null}
       </View>
+
+      {moreMenuOpen ? (
+        <>
+          <Pressable
+            accessible={false}
+            onPress={() => setMoreMenuOpen(false)}
+            style={styles.popoverDismissScrim}
+          />
+          <View
+            style={[
+              styles.overflowMenuAnchor,
+              layout.isCompact ? styles.overflowMenuAnchorCompact : null,
+            ]}
+          >
+            <NavbarOverflowMenu
+              visible={moreMenuOpen}
+              controls={mapControls}
+              exportGeoJsonUrl={apiClient.getExportGeoJsonUrl()}
+              isImporting={isImporting}
+              onClose={() => setMoreMenuOpen(false)}
+              onOpenStats={() => {
+                setLayersPopoverOpen(false);
+                setStatsModalTab('community');
+                setStatsModalOpen(true);
+              }}
+              onOpenInstallApp={() => setInstallModalOpen(true)}
+              onOpenBugReport={() => setBugModalOpen(true)}
+              onImportPress={handleAdminImport}
+              onExportError={(message) => setLocationNotice(message)}
+            />
+          </View>
+        </>
+      ) : null}
 
       {searchModalOpen ? (
         <KeyboardAvoidingView
@@ -1862,6 +2044,47 @@ export function App(props: AppProps = {}): React.JSX.Element {
         </View>
       ) : null}
 
+      {statsModalOpen ? (
+        <View
+          style={[
+            styles.modalBackdropOverlay,
+            layout.isCompact ? styles.modalBackdropCompact : null,
+          ]}
+        >
+          <Pressable
+            accessible={false}
+            onPress={() => setStatsModalOpen(false)}
+            style={styles.modalBackdropScrim}
+          />
+          <View
+            style={[
+              styles.modalDialogWrapper,
+              { maxWidth: Math.max(layout.modalMaxWidth, 540) },
+            ]}
+          >
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.modalScrollContent}
+            >
+              <StatsModal
+                visible={statsModalOpen}
+                locale={state.locale}
+                compact={layout.isCompact}
+                isAuthenticated={mapControls.isAuthenticated}
+                initialTab={statsModalTab}
+                onLoadPublicStats={handleLoadPublicStats}
+                onLoadPersonalStats={handleLoadPersonalStats}
+                onRequestSignIn={() => {
+                  setStatsModalOpen(false);
+                  dispatch({ type: 'OPEN_AUTH_MODAL', view: 'login' });
+                }}
+                onClose={() => setStatsModalOpen(false)}
+              />
+            </ScrollView>
+          </View>
+        </View>
+      ) : null}
+
       {installModalOpen ? (
         <View
           style={[
@@ -1946,6 +2169,11 @@ export function App(props: AppProps = {}): React.JSX.Element {
                 onLogout={handleLogout}
                 onDeleteAccount={handleDeleteAccount}
                 onExportData={handleExportData}
+                onOpenPersonalStats={() => {
+                  dispatch({ type: 'CLOSE_AUTH_MODAL' });
+                  setStatsModalTab('personal');
+                  setStatsModalOpen(true);
+                }}
               />
             </ScrollView>
           </View>
@@ -2025,19 +2253,24 @@ function createStyles(PALETTE: ThemePalette, isDark: boolean) {
   mapCanvasFill: {
     flex: 1,
   },
-  floatingBannerOverlay: {
+  floatingTopLeftStack: {
     position: 'absolute',
     top: 10,
     left: 10,
     right: 68,
-    maxWidth: 560,
+    gap: 8,
+    alignItems: 'flex-start',
     zIndex: 15,
   },
+  floatingFilterRow: {
+    maxWidth: '100%',
+  },
+  floatingBannerBox: {
+    width: '100%',
+    maxWidth: 540,
+  },
   legendPill: {
-    position: 'absolute',
-    left: 10,
-    top: 10,
-    maxWidth: '76%',
+    maxWidth: '100%',
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
@@ -2048,7 +2281,36 @@ function createStyles(PALETTE: ThemePalette, isDark: boolean) {
     backgroundColor: PALETTE.bgFloatingPill,
     borderWidth: 1,
     borderColor: PALETTE.borderSubtle,
-    zIndex: 10,
+  },
+  proposeFabAnchor: {
+    position: 'absolute',
+    left: 12,
+    bottom: 56,
+    zIndex: 18,
+  },
+  popoverDismissScrim: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 42,
+  },
+  overflowMenuAnchor: {
+    position: 'absolute',
+    top: 60,
+    right: 14,
+    zIndex: 45,
+  },
+  overflowMenuAnchorCompact: {
+    top: 56,
+    right: 8,
+  },
+  layersPopoverAnchor: {
+    position: 'absolute',
+    top: 12,
+    right: 68,
+    zIndex: 45,
   },
   legendItem: {
     flexDirection: 'row',

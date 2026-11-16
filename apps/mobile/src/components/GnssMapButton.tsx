@@ -41,6 +41,14 @@ export interface SearchMapButtonProps {
   positioned?: boolean;
 }
 
+export interface MapLayersButtonProps {
+  locale?: Locale;
+  active?: boolean;
+  expanded?: boolean;
+  onPress: () => void;
+  positioned?: boolean;
+}
+
 export interface TopRightMapControlsProps {
   children: React.ReactNode;
 }
@@ -279,6 +287,110 @@ export function SearchMapButton({
   );
 }
 
+function LayersDiamondGlyph({
+  active,
+  palette,
+  styles,
+}: {
+  active: boolean;
+  palette: ThemePalette;
+  styles: ReturnType<typeof createStyles>;
+}): React.JSX.Element {
+  const strokeColor = active ? palette.accentPrimary : palette.inkPrimary;
+  if (Platform.OS === 'web') {
+    return (
+      <View style={styles.glyphFrame} accessible={false}>
+        {React.createElement(
+          'svg',
+          {
+            width: 20,
+            height: 20,
+            viewBox: '0 0 24 24',
+            fill: 'none',
+            'aria-hidden': true,
+          },
+          React.createElement('path', {
+            d: 'M12 3.5L21 8.5L12 13.5L3 8.5L12 3.5Z',
+            stroke: strokeColor,
+            strokeWidth: 2,
+            strokeLinejoin: 'round',
+          }),
+          React.createElement('path', {
+            d: 'M3 13.2L12 18.2L21 13.2',
+            stroke: strokeColor,
+            strokeWidth: 2,
+            strokeLinecap: 'round',
+            strokeLinejoin: 'round',
+          }),
+          React.createElement('path', {
+            d: 'M3 17.5L12 22.5L21 17.5',
+            stroke: palette.accentPrimary,
+            strokeWidth: 2,
+            strokeLinecap: 'round',
+            strokeLinejoin: 'round',
+          }),
+        )}
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.glyphFrame} accessible={false}>
+      <View
+        style={[
+          styles.layersDiamondTop,
+          { borderColor: strokeColor },
+        ]}
+      />
+      <View
+        style={[
+          styles.layersDiamondBottom,
+          { borderColor: palette.accentPrimary },
+        ]}
+      />
+    </View>
+  );
+}
+
+export function MapLayersButton({
+  locale = DEFAULT_LOCALE,
+  active = false,
+  expanded = false,
+  onPress,
+  positioned = false,
+}: MapLayersButtonProps): React.JSX.Element {
+  const { palette, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(palette, isDark), [palette, isDark]);
+  const t = getTranslations(locale).controls;
+
+  const buttonNode = (
+    <Pressable
+      testID="map-layers-button"
+      accessibilityRole="button"
+      accessibilityLabel={t.layersButtonA11y}
+      accessibilityState={{ selected: active, expanded }}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.floatingButton,
+        positioned ? styles.floatingButtonPositioned : null,
+        active || expanded ? styles.floatingButtonActive : null,
+        pressed ? styles.floatingButtonPressed : null,
+      ]}
+    >
+      <LayersDiamondGlyph active={active || expanded} palette={palette} styles={styles} />
+    </Pressable>
+  );
+
+  if (Platform.OS === 'web') {
+    return React.createElement(
+      'div',
+      { title: t.layersButtonTooltip, style: { display: 'inline-flex' } },
+      buttonNode,
+    );
+  }
+  return buttonNode;
+}
+
 const BUTTON_SIZE_DP = Math.max(48, MIN_TOUCH_TARGET_DP);
 
 function createStyles(PALETTE: ThemePalette, isDark: boolean) {
@@ -321,6 +433,10 @@ function createStyles(PALETTE: ThemePalette, isDark: boolean) {
       zIndex: 25,
     },
     floatingButtonPressed: {
+      backgroundColor: PALETTE.bgTinted,
+      borderColor: PALETTE.accentPrimary,
+    },
+    floatingButtonActive: {
       backgroundColor: PALETTE.bgTinted,
       borderColor: PALETTE.accentPrimary,
     },
@@ -426,6 +542,27 @@ function createStyles(PALETTE: ThemePalette, isDark: boolean) {
       height: 2.4,
       borderRadius: 1.2,
       backgroundColor: PALETTE.accentPrimary,
+      transform: [{ rotate: '45deg' }],
+    },
+    layersDiamondTop: {
+      position: 'absolute',
+      top: 4,
+      left: 6,
+      width: 12,
+      height: 12,
+      borderWidth: 2,
+      borderRadius: 2,
+      transform: [{ rotate: '45deg' }],
+    },
+    layersDiamondBottom: {
+      position: 'absolute',
+      top: 9,
+      left: 6,
+      width: 12,
+      height: 12,
+      borderBottomWidth: 2,
+      borderRightWidth: 2,
+      borderRadius: 2,
       transform: [{ rotate: '45deg' }],
     },
   });

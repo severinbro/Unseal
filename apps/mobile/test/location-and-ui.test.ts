@@ -42,7 +42,10 @@ import {
   deriveDrawingToolbarModel,
   deriveInspectorOverviewMeta,
   deriveMapControlsModel,
+  deriveNavbarLayoutMode,
+  formatAreaDisplay,
   formatInspectorDate,
+  formatStatsInteger,
   MIN_TOUCH_TARGET_DP,
 } from '../src/state/viewModels';
 import {
@@ -1068,5 +1071,56 @@ describe('German default localization and DE <-> EN switching', () => {
     } finally {
       (globalThis as { document?: unknown }).document = prevDoc;
     }
+  });
+
+  it('formats statistics areas & integers cleanly in DE and EN and provides localized highlight-mine and 30-day review hints', () => {
+    assert.equal(formatAreaDisplay(0, 'de'), '0 m²');
+    assert.equal(formatAreaDisplay(6.4, 'de'), '6,4 m²');
+    assert.equal(formatAreaDisplay(6.4, 'en'), '6.4 m²');
+    assert.equal(formatAreaDisplay(420.6, 'de'), '421 m²');
+    assert.equal(formatAreaDisplay(12500, 'de'), '1,25 ha (12.500 m²)');
+    assert.equal(formatAreaDisplay(12500, 'en'), '1.25 ha (12,500 m²)');
+    assert.equal(formatStatsInteger(1420, 'de'), '1.420');
+    assert.equal(formatStatsInteger(1420, 'en'), '1,420');
+
+    const de = getTranslations('de');
+    const en = getTranslations('en');
+    assert.equal(de.controls.mineInViewSuffix, 'eigene im Ausschnitt');
+    assert.equal(en.controls.mineInViewSuffix, 'mine in view');
+    assert.match(de.stats.needsReviewHint(30), /30 Tagen/);
+    assert.match(en.stats.needsReviewHint(30), /30 days/);
+    assert.equal(de.stats.polygonsCountBadge(1), '1 Fläche');
+    assert.equal(de.stats.polygonsCountBadge(4), '4 Flächen');
+    assert.equal(en.stats.polygonsCountBadge(1), '1 polygon');
+    assert.equal(en.stats.polygonsCountBadge(4), '4 polygons');
+
+    // Single-row navbar + floating map overlays across phone (<768 px), tablet (768–1099 px), and wide (>=1100 px)
+    const phoneNav = deriveNavbarLayoutMode('compact', 390);
+    assert.equal(phoneNav.isCompact, true);
+    assert.equal(phoneNav.isSingleHeaderRow, true);
+    assert.equal(phoneNav.showSearchBarInNavbar, false);
+    assert.equal(phoneNav.showProposeFab, true);
+    assert.equal(phoneNav.useCompactCountBadge, true);
+
+    const narrowMediumNav = deriveNavbarLayoutMode('medium', 820);
+    assert.equal(narrowMediumNav.isCompact, false);
+    assert.equal(narrowMediumNav.isSingleHeaderRow, true);
+    assert.equal(narrowMediumNav.showSearchBarInNavbar, true);
+    assert.equal(narrowMediumNav.showProposeFab, true);
+    assert.equal(narrowMediumNav.useCompactCountBadge, true);
+
+    const laptopMediumNav = deriveNavbarLayoutMode('medium', 1024);
+    assert.equal(laptopMediumNav.isCompact, false);
+    assert.equal(laptopMediumNav.isSingleHeaderRow, true);
+    assert.equal(laptopMediumNav.showSearchBarInNavbar, true);
+    assert.equal(laptopMediumNav.showProposeFab, true);
+    assert.equal(laptopMediumNav.useCompactCountBadge, false);
+    assert.equal(laptopMediumNav.constrainAccountChipWidth, true);
+
+    const wideNav = deriveNavbarLayoutMode('expanded', 1440);
+    assert.equal(wideNav.isSingleHeaderRow, true);
+    assert.equal(wideNav.showSearchBarInNavbar, true);
+    assert.equal(wideNav.showProposeFab, true);
+    assert.equal(wideNav.constrainAccountChipWidth, false);
   });
 });

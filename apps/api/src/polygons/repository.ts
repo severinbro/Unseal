@@ -18,11 +18,13 @@ import {
   type FlagPolygonResponse,
   type ImportPolygonsResponse,
   type LandCoverCategory,
+  type PersonalStatsResponse,
   type PolygonFeature,
   type PolygonFilter,
   type PolygonFlagReason,
   type PolygonOrigin,
   type PolygonStatus,
+  type PublicStatsResponse,
   type SurfaceType,
 } from '@entsiegelung/shared';
 
@@ -1215,7 +1217,7 @@ export class PolygonRepository {
              $9::text = 'all'
              OR ($9::text = 'new' AND p.created_at > NOW() - INTERVAL '7 days')
              OR ($9::text = 'established' AND p.created_at <= NOW() - INTERVAL '7 days')
-             OR ($9::text = 'needs_review' AND p.score = 0 AND p.upvotes = 0 AND p.downvotes = 0)
+             OR ($9::text = 'needs_review' AND p.status = 'proposed' AND p.score = 0 AND p.upvotes = 0 AND p.downvotes = 0)
            )
          ORDER BY p.score DESC, p.created_at DESC, p.id ASC
          LIMIT $6
@@ -2036,5 +2038,136 @@ export class PolygonRepository {
     } finally {
       client.release();
     }
+  }
+
+  public async getPublicStats(): Promise<PublicStatsResponse> {
+    const res = await this.pool.query<{
+      total_polygons: string | number;
+      proposed_count: string | number;
+      in_progress_count: string | number;
+      finished_count: string | number;
+      needs_review_count: string | number;
+      total_area_m2: number;
+      unsealed_area_m2: number;
+      total_upvotes: string | number;
+      total_downvotes: string | number;
+      asphalt_count: string | number;
+      asphalt_area_m2: number;
+      concrete_count: string | number;
+      concrete_area_m2: number;
+      pavers_count: string | number;
+      pavers_area_m2: number;
+      other_count: string | number;
+      other_area_m2: number;
+    }>(
+      `SELECT
+         COUNT(*)::bigint AS total_polygons,
+         COUNT(*) FILTER (WHERE status = 'proposed')::bigint AS proposed_count,
+         COUNT(*) FILTER (WHERE status = 'in_progress')::bigint AS in_progress_count,
+         COUNT(*) FILTER (WHERE status = 'finished')::bigint AS finished_count,
+         COUNT(*) FILTER (
+           WHERE status = 'proposed'
+             AND upvotes = 0
+             AND downvotes = 0
+         )::bigint AS needs_review_count,
+         COALESCE(SUM(area_m2), 0)::float8 AS total_area_m2,
+         COALESCE(SUM(area_m2) FILTER (WHERE status = 'finished'), 0)::float8 AS unsealed_area_m2,
+         COALESCE(SUM(upvotes), 0)::bigint AS total_upvotes,
+         COALESCE(SUM(downvotes), 0)::bigint AS total_downvotes,
+         COUNT(*) FILTER (WHERE surface_type = 'asphalt')::bigint AS asphalt_count,
+         COALESCE(SUM(area_m2) FILTER (WHERE surface_type = 'asphalt'), 0)::float8 AS asphalt_area_m2,
+         COUNT(*) FILTER (WHERE surface_type = 'concrete')::bigint AS concrete_count,
+         COALESCE(SUM(area_m2) FILTER (WHERE surface_type = 'concrete'), 0)::float8 AS concrete_area_m2,
+         COUNT(*) FILTER (WHERE surface_type = 'pavers')::bigint AS pavers_count,
+         COALESCE(SUM(area_m2) FILTER (WHERE surface_type = 'pavers'), 0)::float8 AS pavers_area_m2,
+         COUNT(*) FILTER (
+           WHERE surface_type NOT IN ('asphalt', 'concrete', 'pavers')
+         )::bigint AS other_count,
+         COALESCE(
+           SUM(area_m2) FILTER (WHERE surface_type NOT IN ('asphalt', 'concrete', 'pavers')),
+           0
+         )::float8 AS other_area_m2
+       FROM polygons`,
+    );
+
+    const row = res.rows[0];
+    const roundArea = (val: number | undefined): number =>
+      Math.round(Math.max(0, Number(val ?? 0)) * 100) / 100;
+    const toCount = (val: string | number | undefined): number =>
+      Math.max(0, Math.trunc(Number(val ?? 0)));
+
+    const totalUpvotes = toCount(row?.total_upvotes);
+    const totalDownvotes = toCount(row?.total_downvotes);
+
+    return {
+      totalPolygons: toCount(row?.total_polygons),
+      proposedCount: toCount(row?.proposed_count),
+      inProgressCount: toCount(row?.in_progress_count),
+      finishedCount: toCount(row?.finished_count),
+      needsReviewCount: toCount(row?.needs_review_count),
+      totalAreaM2: roundArea(row?.total_area_m2),
+      unsealedAreaM2: roundArea(row?.unsealed_area_m2),
+      totalVotes: totalUpvotes + totalDownvotes,
+      totalUpvotes,
+      totalDownvotes,
+      surfaceBreakdown: {
+        asphalt: {
+          count: toCount(row?.asphalt_count),
+          areaM2: roundArea(row?.asphalt_area_m2),
+        },
+        concrete: {
+          count: toCount(row?.concrete_count),
+          areaM2: roundArea(row?.concrete_area_m2),
+        },
+        pavers: {
+          count: toCount(row?.pavers_count),
+          areaM2: roundArea(row?.pavers_area_m2),
+        },
+        other: {
+          count: toCount(row?.other_count),
+          areaM2: roundArea(row?.other_area_m2),
+        },
+      },
+    };
+  }
+
+  public async getPersonalStats(userId: string): Promise<PersonalStatsResponse> {
+    const res = await this.pool.query<{
+      total_polygons: string | number;
+      proposed_count: string | number;
+      in_progress_count: string | number;
+      finished_count: string | number;
+      total_area_m2: number;
+      unsealed_area_m2: number;
+      rated_polygons_count: string | number;
+    }>(
+      `SELECT
+         COUNT(*)::bigint AS total_polygons,
+         COUNT(*) FILTER (WHERE status = 'proposed')::bigint AS proposed_count,
+         COUNT(*) FILTER (WHERE status = 'in_progress')::bigint AS in_progress_count,
+         COUNT(*) FILTER (WHERE status = 'finished')::bigint AS finished_count,
+         COALESCE(SUM(area_m2), 0)::float8 AS total_area_m2,
+         COALESCE(SUM(area_m2) FILTER (WHERE status = 'finished'), 0)::float8 AS unsealed_area_m2,
+         (SELECT COUNT(*)::bigint FROM votes WHERE user_id = $1::uuid) AS rated_polygons_count
+       FROM polygons
+       WHERE user_id = $1::uuid`,
+      [userId],
+    );
+
+    const row = res.rows[0];
+    const roundArea = (val: number | undefined): number =>
+      Math.round(Math.max(0, Number(val ?? 0)) * 100) / 100;
+    const toCount = (val: string | number | undefined): number =>
+      Math.max(0, Math.trunc(Number(val ?? 0)));
+
+    return {
+      totalPolygons: toCount(row?.total_polygons),
+      proposedCount: toCount(row?.proposed_count),
+      inProgressCount: toCount(row?.in_progress_count),
+      finishedCount: toCount(row?.finished_count),
+      totalAreaM2: roundArea(row?.total_area_m2),
+      unsealedAreaM2: roundArea(row?.unsealed_area_m2),
+      ratedPolygonsCount: toCount(row?.rated_polygons_count),
+    };
   }
 }

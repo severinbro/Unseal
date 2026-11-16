@@ -97,6 +97,7 @@ export function MapCanvas({
   isRingClosed,
   selectedFeatureId,
   polygonOpacity = DEFAULT_POLYGON_OPACITY,
+  highlightMineOnly = false,
   cameraTarget,
   northResetSeq = 0,
   onViewportChange,
@@ -180,8 +181,8 @@ export function MapCanvas({
     [config, colorScheme],
   );
   const [proposalFillSpec, proposalOutlineSpec, proposalCentroidSpec] = useMemo(
-    () => buildPolygonLayerSpecs(polygonOpacity, colorScheme),
-    [polygonOpacity, colorScheme],
+    () => buildPolygonLayerSpecs(polygonOpacity, colorScheme, highlightMineOnly),
+    [polygonOpacity, colorScheme, highlightMineOnly],
   );
   const [draftFillSpec, draftLineSpec, draftVerticesSpec] = useMemo(
     () => buildDraftLayerSpecs(colorScheme),

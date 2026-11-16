@@ -20,6 +20,7 @@ import {
 import { clampPolygonOpacity } from '../map/styleBuilder';
 import type { BasemapMode } from '../state/appState';
 import {
+  deriveNavbarLayoutMode,
   MIN_TOUCH_TARGET_DP,
   type MapControlsModel,
 } from '../state/viewModels';
@@ -93,14 +94,20 @@ export interface MapControlsBarProps {
   exportGeoJsonUrl: string;
   isImporting?: boolean;
   tier?: ViewportTier;
+  viewportWidth?: number;
+  moreMenuOpen?: boolean;
+  onToggleMoreMenu?: () => void;
+  onOpenSearch?: () => void;
   onToggleLocale?: () => void;
   onToggleTheme?: () => void;
   onOpenAbout?: () => void;
+  onOpenStats?: () => void;
   onOpenBugReport?: () => void;
   onOpenInstallApp?: () => void;
   onSetBasemapMode: (mode: BasemapMode) => void;
   onSetPolygonOpacity?: (opacity: number) => void;
   onSetPolygonFilter?: (filter: PolygonFilter) => void;
+  onToggleHighlightMine?: () => void;
   onStartDraw: () => void;
   onOpenAccount: () => void;
   onImportPress?: () => void;
@@ -424,6 +431,70 @@ export function ThemeModeGlyph({
           ]}
         />
       )}
+    </View>
+  );
+}
+
+export function StatsGlyph({
+  color,
+  size = 18,
+}: {
+  color?: string;
+  size?: number;
+}): React.JSX.Element {
+  const { palette } = useTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
+  const resolvedColor = color ?? palette.inkPrimary;
+
+  if (Platform.OS === 'web') {
+    return React.createElement(
+      'svg',
+      {
+        width: size,
+        height: size,
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        'aria-hidden': 'true',
+        style: { flexShrink: 0, display: 'block' },
+      },
+      React.createElement('path', {
+        d: 'M5 19.5V13.5M12 19.5V6.5M19 19.5V10',
+        stroke: resolvedColor,
+        strokeWidth: '2.2',
+        strokeLinecap: 'round',
+      }),
+      React.createElement('path', {
+        d: 'M3.5 19.5H20.5',
+        stroke: resolvedColor,
+        strokeWidth: '1.8',
+        strokeLinecap: 'round',
+      }),
+    );
+  }
+
+  return (
+    <View
+      accessible={false}
+      style={[styles.statsGlyphFrame, { width: size, height: size }]}
+    >
+      <View
+        style={[
+          styles.statsGlyphBar,
+          { height: Math.round(size * 0.36), backgroundColor: resolvedColor },
+        ]}
+      />
+      <View
+        style={[
+          styles.statsGlyphBar,
+          { height: Math.round(size * 0.72), backgroundColor: resolvedColor },
+        ]}
+      />
+      <View
+        style={[
+          styles.statsGlyphBar,
+          { height: Math.round(size * 0.54), backgroundColor: resolvedColor },
+        ]}
+      />
     </View>
   );
 }
@@ -830,37 +901,444 @@ function LocaleTogglePill({
   );
 }
 
+function SearchInlineGlyph({
+  color,
+  accentColor,
+  size = 16,
+}: {
+  color: string;
+  accentColor: string;
+  size?: number;
+}): React.JSX.Element {
+  if (Platform.OS === 'web') {
+    return React.createElement(
+      'svg',
+      {
+        width: size,
+        height: size,
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        'aria-hidden': 'true',
+        style: { flexShrink: 0, display: 'block' },
+      },
+      React.createElement('circle', {
+        cx: '11',
+        cy: '11',
+        r: '6.5',
+        stroke: color,
+        strokeWidth: '2.1',
+      }),
+      React.createElement('path', {
+        d: 'M16 16L20.5 20.5',
+        stroke: accentColor,
+        strokeWidth: '2.3',
+        strokeLinecap: 'round',
+      }),
+    );
+  }
+  return (
+    <View
+      accessible={false}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        borderWidth: 2,
+        borderColor: color,
+      }}
+    />
+  );
+}
+
+function MenuGlyph({
+  color,
+  size = 18,
+}: {
+  color: string;
+  size?: number;
+}): React.JSX.Element {
+  if (Platform.OS === 'web') {
+    return React.createElement(
+      'svg',
+      {
+        width: size,
+        height: size,
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        'aria-hidden': 'true',
+        style: { flexShrink: 0, display: 'block' },
+      },
+      React.createElement('path', {
+        d: 'M4.5 7H19.5M4.5 12H19.5M4.5 17H19.5',
+        stroke: color,
+        strokeWidth: '2',
+        strokeLinecap: 'round',
+      }),
+    );
+  }
+  return (
+    <View
+      accessible={false}
+      style={{ width: size, height: size, justifyContent: 'center', gap: 3.5 }}
+    >
+      <View style={{ height: 2, borderRadius: 1, backgroundColor: color }} />
+      <View style={{ height: 2, borderRadius: 1, backgroundColor: color }} />
+      <View style={{ height: 2, borderRadius: 1, backgroundColor: color }} />
+    </View>
+  );
+}
+
+function PlusGlyph({
+  color,
+  size = 24,
+}: {
+  color: string;
+  size?: number;
+}): React.JSX.Element {
+  if (Platform.OS === 'web') {
+    return React.createElement(
+      'svg',
+      {
+        width: size,
+        height: size,
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        'aria-hidden': 'true',
+        style: { flexShrink: 0, display: 'block' },
+      },
+      React.createElement('path', {
+        d: 'M12 5V19M5 12H19',
+        stroke: color,
+        strokeWidth: '2.6',
+        strokeLinecap: 'round',
+      }),
+    );
+  }
+  return (
+    <View
+      accessible={false}
+      style={{
+        width: size,
+        height: size,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <View
+        style={{
+          position: 'absolute',
+          width: Math.round(size * 0.62),
+          height: 2.6,
+          borderRadius: 1.3,
+          backgroundColor: color,
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          width: 2.6,
+          height: Math.round(size * 0.62),
+          borderRadius: 1.3,
+          backgroundColor: color,
+        }}
+      />
+    </View>
+  );
+}
+
 export function MapControlsBar({
   controls,
   proposalCount,
-  exportGeoJsonUrl,
-  isImporting = false,
   tier = 'expanded',
+  viewportWidth,
+  moreMenuOpen = false,
+  onToggleMoreMenu,
+  onOpenSearch,
   onToggleLocale,
   onToggleTheme,
   onOpenAbout,
-  onOpenBugReport,
-  onOpenInstallApp,
-  onSetBasemapMode,
-  onSetPolygonOpacity,
-  onSetPolygonFilter,
-  onStartDraw,
   onOpenAccount,
-  onImportPress,
-  onExportError,
 }: MapControlsBarProps): React.JSX.Element {
   const { palette } = useTheme();
   const styles = useMemo(() => createStyles(palette), [palette]);
-  const isCompact = tier === 'compact';
-  const isExpanded = tier === 'expanded';
+  const navbarLayout = deriveNavbarLayoutMode(tier, viewportWidth);
+  const isCompact = navbarLayout.isCompact;
   const locale = controls.locale;
   const isDark = controls.colorScheme === 'dark';
   const t = getTranslations(locale).controls;
 
-  const nextBasemapMode: BasemapMode =
-    controls.basemapMode === 'osm' ? 'orthophoto' : 'osm';
+  const accountButtonA11y = controls.isAuthenticated
+    ? t.accountSettingsA11y(controls.accountLabel)
+    : t.signInOrRegisterA11y;
+
+  return (
+    <View
+      style={[
+        styles.barShell,
+        isCompact ? styles.barShellCompact : null,
+      ]}
+    >
+      <View style={styles.navbarSingleRow}>
+        <View
+          style={[
+            styles.brandGroup,
+            isCompact ? styles.brandGroupCompact : null,
+          ]}
+        >
+          <ParcelUnsealMark compact={isCompact} />
+          <View style={styles.titleInlineRow}>
+            {Platform.OS === 'web' ? (
+              React.createElement(
+                'h1',
+                {
+                  style: {
+                    margin: 0,
+                    padding: 0,
+                    fontSize: isCompact ? '16px' : '18px',
+                    fontWeight: 700,
+                    letterSpacing: '-0.35px',
+                    lineHeight: '20px',
+                    color: palette.inkPrimary,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    minWidth: 0,
+                    flexShrink: 1,
+                    fontFamily:
+                      'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                  },
+                },
+                'Unseal',
+              )
+            ) : (
+              <Text
+                accessibilityRole="header"
+                aria-level={1}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                style={[styles.title, isCompact ? styles.titleCompact : null]}
+              >
+                Unseal
+              </Text>
+            )}
+            <View
+              style={[
+                styles.countBadge,
+                isCompact ? styles.countBadgeCompact : null,
+              ]}
+            >
+              <View style={styles.countBadgeDot} />
+              <Text style={styles.countBadgeLabel}>
+                {navbarLayout.useCompactCountBadge
+                  ? `${proposalCount}`
+                  : `${proposalCount} ${
+                      controls.highlightMineOnly
+                        ? t.mineInViewSuffix
+                        : t.inViewSuffix
+                    }`}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {navbarLayout.showSearchBarInNavbar && onOpenSearch ? (
+          <View style={styles.searchSlotWrapper}>
+            <Pressable
+              testID="navbar-search-trigger"
+              accessibilityRole="button"
+              accessibilityLabel={t.searchAddressA11y}
+              onPress={onOpenSearch}
+              style={({ pressed }) => [
+                styles.navbarSearchPill,
+                pressed ? styles.buttonPressed : null,
+              ]}
+            >
+              <SearchInlineGlyph
+                color={palette.inkSecondary}
+                accentColor={palette.accentPrimary}
+                size={16}
+              />
+              <Text
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                style={styles.navbarSearchPlaceholder}
+              >
+                {t.searchPlaceholderBar}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        <View
+          style={[
+            styles.rightHeaderCluster,
+            isCompact ? styles.rightHeaderClusterCompact : null,
+          ]}
+        >
+          {onToggleTheme
+            ? withWebTooltip(
+                isDark ? t.lightModeTooltip : t.darkModeTooltip,
+                <Pressable
+                  testID="theme-toggle-button"
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    isDark ? t.switchToLightModeA11y : t.switchToDarkModeA11y
+                  }
+                  accessibilityState={{ selected: isDark }}
+                  onPress={onToggleTheme}
+                  style={({ pressed }) => [
+                    styles.helpButton,
+                    isCompact ? styles.helpButtonCompact : null,
+                    pressed ? styles.buttonPressed : null,
+                  ]}
+                >
+                  <ThemeModeGlyph
+                    isDark={isDark}
+                    color={palette.inkPrimary}
+                    size={isCompact ? 17 : 18}
+                  />
+                </Pressable>,
+              )
+            : null}
+
+          {onOpenAbout
+            ? withWebTooltip(
+                t.aboutButtonTooltip,
+                <Pressable
+                  testID="about-modal-button"
+                  accessibilityRole="button"
+                  accessibilityLabel={t.aboutButtonA11y}
+                  onPress={onOpenAbout}
+                  style={({ pressed }) => [
+                    styles.helpButton,
+                    isCompact ? styles.helpButtonCompact : null,
+                    pressed ? styles.buttonPressed : null,
+                  ]}
+                >
+                  <Text style={styles.helpButtonLabel}>?</Text>
+                </Pressable>,
+              )
+            : null}
+
+          {withWebTooltip(
+            t.switchLocaleA11y,
+            <LocaleTogglePill
+              locale={locale}
+              compact={isCompact}
+              accessibilityLabel={t.switchLocaleA11y}
+              {...(onToggleLocale ? { onPress: onToggleLocale } : {})}
+            />,
+          )}
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={accountButtonA11y}
+            onPress={onOpenAccount}
+            style={({ pressed }) => [
+              styles.accountChip,
+              isCompact ? styles.accountChipCompact : null,
+              navbarLayout.constrainAccountChipWidth && !isCompact
+                ? styles.accountChipMediumHeader
+                : null,
+              controls.isAuthenticated ? styles.accountChipActive : null,
+              pressed ? styles.buttonPressed : null,
+            ]}
+          >
+            <View
+              style={[
+                styles.accountStatusDot,
+                controls.isAuthenticated
+                  ? styles.accountStatusDotOnline
+                  : styles.accountStatusDotGuest,
+              ]}
+            />
+            <Text
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              style={[
+                styles.accountChipLabel,
+                isCompact ? styles.accountChipLabelCompact : null,
+                controls.isAuthenticated ? styles.accountChipLabelActive : null,
+              ]}
+            >
+              {controls.accountLabel}
+            </Text>
+          </Pressable>
+
+          {onToggleMoreMenu
+            ? withWebTooltip(
+                t.moreMenuTooltip,
+                <Pressable
+                  testID="more-menu-button"
+                  accessibilityRole="button"
+                  accessibilityLabel={t.moreMenuA11y}
+                  accessibilityState={{
+                    expanded: moreMenuOpen,
+                    selected: moreMenuOpen,
+                  }}
+                  onPress={onToggleMoreMenu}
+                  style={({ pressed }) => [
+                    styles.helpButton,
+                    isCompact ? styles.helpButtonCompact : null,
+                    moreMenuOpen ? styles.helpButtonActive : null,
+                    pressed ? styles.buttonPressed : null,
+                  ]}
+                >
+                  <MenuGlyph
+                    color={moreMenuOpen ? palette.accentPrimary : palette.inkPrimary}
+                    size={isCompact ? 17 : 18}
+                  />
+                </Pressable>,
+              )
+            : null}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+export interface NavbarOverflowMenuProps {
+  visible: boolean;
+  controls: MapControlsModel;
+  exportGeoJsonUrl: string;
+  isImporting?: boolean;
+  onClose: () => void;
+  onOpenStats?: () => void;
+  onOpenInstallApp?: () => void;
+  onOpenBugReport?: () => void;
+  onImportPress?: () => void;
+  onExportError: (message: string) => void;
+}
+
+export function NavbarOverflowMenu({
+  visible,
+  controls,
+  exportGeoJsonUrl,
+  isImporting = false,
+  onClose,
+  onOpenStats,
+  onOpenInstallApp,
+  onOpenBugReport,
+  onImportPress,
+  onExportError,
+}: NavbarOverflowMenuProps): React.JSX.Element | null {
+  const { palette, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
+
+  if (!visible) {
+    return null;
+  }
+
+  const locale = controls.locale;
+  const t = getTranslations(locale).controls;
+
+  const hasApkDownloadUrl =
+    controls.apkDownloadUrl !== null && controls.apkDownloadUrl.length > 0;
+  const showInstallButton =
+    Platform.OS === 'web' && (onOpenInstallApp !== undefined || hasApkDownloadUrl);
 
   const handleExportPress = (): void => {
+    onClose();
     void triggerGeoJsonExportDownload(exportGeoJsonUrl).catch(
       (err: unknown) => {
         const detail = localizeError(err, t.exportErrorFallback, locale);
@@ -869,12 +1347,8 @@ export function MapControlsBar({
     );
   };
 
-  const hasApkDownloadUrl =
-    controls.apkDownloadUrl !== null && controls.apkDownloadUrl.length > 0;
-  const showInstallButton =
-    Platform.OS === 'web' && (onOpenInstallApp !== undefined || hasApkDownloadUrl);
-
   const handleInstallPress = (): void => {
+    onClose();
     if (onOpenInstallApp) {
       onOpenInstallApp();
       return;
@@ -888,18 +1362,93 @@ export function MapControlsBar({
     });
   };
 
-  const accountButtonA11y = controls.isAuthenticated
-    ? t.accountSettingsA11y(controls.accountLabel)
-    : t.signInOrRegisterA11y;
+  return (
+    <View
+      testID="navbar-overflow-menu"
+      accessibilityRole="menu"
+      style={[
+        styles.popoverCard,
+        Platform.OS === 'web'
+          ? {
+              boxShadow: isDark
+                ? '0 8px 28px rgba(0, 0, 0, 0.55)'
+                : '0 8px 24px rgba(18, 32, 25, 0.18)',
+            }
+          : styles.nativePopoverShadow,
+      ]}
+    >
+      <View style={styles.menuSection}>
+        <Text style={styles.menuSectionLabel}>{t.menuSectionData}</Text>
+        {onOpenStats ? (
+          <Pressable
+            testID="stats-modal-button"
+            accessibilityRole="menuitem"
+            accessibilityLabel={t.statsButtonA11y}
+            onPress={() => {
+              onClose();
+              onOpenStats();
+            }}
+            style={({ pressed }) => [
+              styles.menuItemRow,
+              pressed ? styles.menuItemPressed : null,
+            ]}
+          >
+            <StatsGlyph color={palette.inkPrimary} size={18} />
+            <Text style={styles.menuItemLabel}>{t.statsButtonTooltip}</Text>
+          </Pressable>
+        ) : null}
+        <Pressable
+          testID="export-geojson-button"
+          accessibilityRole="menuitem"
+          accessibilityLabel={t.exportFull}
+          accessibilityHint={t.exportA11y}
+          onPress={handleExportPress}
+          style={({ pressed }) => [
+            styles.menuItemRow,
+            pressed ? styles.menuItemPressed : null,
+          ]}
+        >
+          <ExportGlyph color={palette.inkPrimary} size={18} />
+          <Text style={styles.menuItemLabel}>{t.exportFull}</Text>
+        </Pressable>
 
-  const utilityControls = (
-    <>
-      {showInstallButton
-        ? withWebTooltip(
-            onOpenInstallApp ? t.installAppFull : t.apkDownloadFull,
+        {controls.isAdmin && onImportPress ? (
+          <Pressable
+            testID="import-polygons-button"
+            accessibilityRole="menuitem"
+            accessibilityLabel={isImporting ? t.importingBusy : t.importFull}
+            accessibilityHint={t.importA11y}
+            accessibilityState={{ disabled: isImporting, busy: isImporting }}
+            disabled={isImporting}
+            onPress={() => {
+              onClose();
+              onImportPress();
+            }}
+            style={({ pressed }) => [
+              styles.menuItemRow,
+              isImporting ? styles.buttonDisabled : null,
+              pressed && !isImporting ? styles.menuItemPressed : null,
+            ]}
+          >
+            {isImporting ? (
+              <ActivityIndicator size="small" color={palette.finishedText} />
+            ) : (
+              <ImportGlyph color={palette.finishedText} size={18} />
+            )}
+            <Text style={[styles.menuItemLabel, { color: palette.finishedText }]}>
+              {isImporting ? t.importingBusy : t.importFull}
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+
+      {showInstallButton || onOpenBugReport ? (
+        <View style={styles.menuSection}>
+          <Text style={styles.menuSectionLabel}>{t.menuSectionHelp}</Text>
+          {showInstallButton ? (
             <Pressable
               testID="download-apk-button"
-              accessibilityRole="button"
+              accessibilityRole="menuitem"
               accessibilityLabel={
                 onOpenInstallApp ? t.installAppFull : t.apkDownloadFull
               }
@@ -908,455 +1457,322 @@ export function MapControlsBar({
               }
               onPress={handleInstallPress}
               style={({ pressed }) => [
-                styles.helpButton,
-                isCompact ? styles.helpButtonCompact : null,
-                pressed ? styles.buttonPressed : null,
+                styles.menuItemRow,
+                pressed ? styles.menuItemPressed : null,
               ]}
             >
               <AndroidGlyph
                 color={palette.accentPrimary}
                 eyeColor={palette.bgSurface}
-                size={isCompact ? 18 : 20}
-              />
-            </Pressable>,
-          )
-        : null}
-      {onOpenBugReport
-        ? withWebTooltip(
-            t.bugReportButtonTooltip,
-            <Pressable
-              testID="bug-report-button"
-              accessibilityRole="button"
-              accessibilityLabel={t.bugReportButtonA11y}
-              onPress={onOpenBugReport}
-              style={({ pressed }) => [
-                styles.helpButton,
-                isCompact ? styles.helpButtonCompact : null,
-                pressed ? styles.buttonPressed : null,
-              ]}
-            >
-              <BugGlyph
-                color={palette.inkSecondary}
-                size={isCompact ? 17 : 18}
-              />
-            </Pressable>,
-          )
-        : null}
-      {!isCompact && onToggleTheme
-        ? withWebTooltip(
-            isDark ? t.lightModeTooltip : t.darkModeTooltip,
-            <Pressable
-              testID="theme-toggle-button"
-              accessibilityRole="button"
-              accessibilityLabel={
-                isDark ? t.switchToLightModeA11y : t.switchToDarkModeA11y
-              }
-              accessibilityState={{ selected: isDark }}
-              onPress={onToggleTheme}
-              style={({ pressed }) => [
-                styles.helpButton,
-                pressed ? styles.buttonPressed : null,
-              ]}
-            >
-              <ThemeModeGlyph
-                isDark={isDark}
-                color={palette.inkPrimary}
                 size={18}
               />
-            </Pressable>,
-          )
-        : null}
-      {onOpenAbout ? (
-        <Pressable
-          testID="about-modal-button"
-          accessibilityRole="button"
-          accessibilityLabel={t.aboutButtonA11y}
-          onPress={onOpenAbout}
-          style={({ pressed }) => [
-            styles.helpButton,
-            isCompact ? styles.helpButtonCompact : null,
-            pressed ? styles.buttonPressed : null,
-          ]}
-        >
-          <Text style={styles.helpButtonLabel}>?</Text>
-        </Pressable>
+              <Text style={styles.menuItemLabel}>
+                {onOpenInstallApp ? t.installAppFull : t.apkDownloadFull}
+              </Text>
+            </Pressable>
+          ) : null}
+
+          {onOpenBugReport ? (
+            <Pressable
+              testID="bug-report-button"
+              accessibilityRole="menuitem"
+              accessibilityLabel={t.bugReportButtonA11y}
+              onPress={() => {
+                onClose();
+                onOpenBugReport();
+              }}
+              style={({ pressed }) => [
+                styles.menuItemRow,
+                pressed ? styles.menuItemPressed : null,
+              ]}
+            >
+              <BugGlyph color={palette.inkSecondary} size={18} />
+              <Text style={styles.menuItemLabel}>{t.bugReportButtonTooltip}</Text>
+            </Pressable>
+          ) : null}
+        </View>
       ) : null}
-      <LocaleTogglePill
-        locale={locale}
-        compact={isCompact}
-        accessibilityLabel={t.switchLocaleA11y}
-        {...(onToggleLocale ? { onPress: onToggleLocale } : {})}
-      />
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={accountButtonA11y}
-        onPress={onOpenAccount}
-        style={({ pressed }) => [
-          styles.accountChip,
-          isCompact ? styles.accountChipCompact : null,
-          controls.isAuthenticated ? styles.accountChipActive : null,
-          pressed ? styles.buttonPressed : null,
-        ]}
-      >
-        <View
-          style={[
-            styles.accountStatusDot,
-            controls.isAuthenticated
-              ? styles.accountStatusDotOnline
-              : styles.accountStatusDotGuest,
-          ]}
-        />
-        <Text
-          numberOfLines={1}
-          ellipsizeMode="tail"
-          style={[
-            styles.accountChipLabel,
-            isCompact ? styles.accountChipLabelCompact : null,
-            controls.isAuthenticated ? styles.accountChipLabelActive : null,
-          ]}
-        >
-          {controls.accountLabel}
-        </Text>
-      </Pressable>
-    </>
+    </View>
   );
+}
+
+export interface FloatingFilterStripProps {
+  controls: MapControlsModel;
+  compact?: boolean;
+  onSetPolygonFilter?: (filter: PolygonFilter) => void;
+  onToggleHighlightMine?: () => void;
+}
+
+export function FloatingFilterStrip({
+  controls,
+  compact = false,
+  onSetPolygonFilter,
+  onToggleHighlightMine,
+}: FloatingFilterStripProps): React.JSX.Element {
+  const { palette, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
+  const t = getTranslations(controls.locale).controls;
+  const chipElevation =
+    Platform.OS === 'web'
+      ? {
+          boxShadow: isDark
+            ? '0 2px 10px rgba(0, 0, 0, 0.42)'
+            : '0 2px 8px rgba(18, 32, 25, 0.14)',
+        }
+      : styles.nativeChipShadow;
 
   return (
-    <View
-      style={[
-        styles.barShell,
-        isCompact ? styles.barShellCompact : null,
-        isExpanded ? styles.barShellExpanded : null,
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.floatingFilterScroll}
+      contentContainerStyle={[
+        styles.filterStripContent,
+        compact ? styles.filterStripContentCompact : null,
       ]}
     >
       <View
-        style={isExpanded ? styles.topBarExpandedRow : styles.topBarStacked}
-      >
-        <View style={styles.brandAndAccountRow}>
-        <View
-          style={[
-            styles.brandGroup,
-            isCompact ? styles.brandGroupCompact : null,
-          ]}
-        >
-          <ParcelUnsealMark compact={isCompact} />
-          <View style={styles.titleBlock}>
-            <View style={styles.titleInlineRow}>
-              {Platform.OS === 'web' ? (
-                React.createElement(
-                  'h1',
-                  {
-                    style: {
-                      margin: 0,
-                      padding: 0,
-                      fontSize: isCompact ? '16px' : '18px',
-                      fontWeight: 700,
-                      letterSpacing: '-0.35px',
-                      lineHeight: '20px',
-                      color: palette.inkPrimary,
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      minWidth: 0,
-                      flexShrink: 1,
-                      fontFamily:
-                        'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-                    },
-                  },
-                  'Unseal',
-                )
-              ) : (
-                <Text
-                  accessibilityRole="header"
-                  aria-level={1}
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                  style={[styles.title, isCompact ? styles.titleCompact : null]}
-                >
-                  Unseal
-                </Text>
-              )}
-              <View
-                style={[
-                  styles.countBadge,
-                  isCompact ? styles.countBadgeCompact : null,
-                ]}
-              >
-                <View style={styles.countBadgeDot} />
-                <Text style={styles.countBadgeLabel}>
-                  {isCompact
-                    ? `${proposalCount}`
-                    : `${proposalCount} ${t.inViewSuffix}`}
-                </Text>
-              </View>
-            </View>
-            {!isCompact ? (
-              <Text numberOfLines={1} style={styles.subtitle}>
-                {controls.basemapMode === 'orthophoto'
-                  ? t.subtitleOrthophoto
-                  : t.subtitleOsm}
-              </Text>
-            ) : null}
-          </View>
-        </View>
-
-        {!isExpanded ? (
-          <View
-            style={[
-              styles.rightHeaderCluster,
-              isCompact ? styles.rightHeaderClusterCompact : null,
-            ]}
-          >
-            {utilityControls}
-          </View>
-        ) : null}
-      </View>
-
-      <View
+        accessibilityRole="radiogroup"
+        accessibilityLabel={t.filterGroupA11y}
         style={[
-          styles.controlsRow,
-          isCompact ? styles.controlsRowCompact : null,
-          isExpanded ? styles.controlsRowExpanded : null,
+          styles.filterRadioGroupRow,
+          compact ? styles.filterStripContentCompact : null,
         ]}
       >
-        {controls.showOrthophotoToggle ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={
-              controls.basemapMode === 'osm'
-                ? t.switchToOrthoA11y
-                : t.switchToOsmA11y
-            }
-            accessibilityState={{
-              selected: controls.basemapMode === 'orthophoto',
-            }}
-            onPress={() => onSetBasemapMode(nextBasemapMode)}
-            style={({ pressed }) => [
-              styles.controlButton,
-              isCompact ? styles.controlButtonCompact : null,
-              styles.secondaryButton,
-              controls.basemapMode === 'orthophoto'
-                ? styles.secondaryButtonSelected
-                : null,
-              pressed ? styles.buttonPressed : null,
-            ]}
-          >
-            <Text
-              numberOfLines={1}
-              style={[
-                styles.secondaryButtonLabel,
-                isCompact ? styles.compactButtonLabel : null,
-                controls.basemapMode === 'orthophoto'
-                  ? styles.secondaryButtonLabelSelected
-                  : null,
-              ]}
-            >
-              {isCompact
-                ? controls.basemapMode === 'osm'
-                  ? t.aerialCompact
-                  : t.streetCompact
-                : controls.basemapMode === 'osm'
-                  ? t.aerialFull
-                  : t.streetFull}
-            </Text>
-          </Pressable>
-        ) : null}
-
-        {isCompact && onToggleTheme
-          ? withWebTooltip(
-              isDark ? t.lightModeTooltip : t.darkModeTooltip,
-              <Pressable
-                testID="theme-toggle-button"
-                accessibilityRole="button"
-                accessibilityLabel={
-                  isDark ? t.switchToLightModeA11y : t.switchToDarkModeA11y
-                }
-                accessibilityState={{ selected: isDark }}
-                onPress={onToggleTheme}
-                style={({ pressed }) => [
-                  styles.controlButton,
-                  styles.iconControlButton,
-                  styles.secondaryButton,
-                  pressed ? styles.buttonPressed : null,
-                ]}
-              >
-                <ThemeModeGlyph
-                  isDark={isDark}
-                  color={palette.inkPrimary}
-                  size={18}
-                />
-              </Pressable>,
-            )
-          : null}
-
-        {withWebTooltip(
-          t.exportFull,
-          <Pressable
-            testID="export-geojson-button"
-            accessibilityRole="button"
-            accessibilityLabel={t.exportFull}
-            accessibilityHint={t.exportA11y}
-            onPress={handleExportPress}
-            style={({ pressed }) => [
-              styles.controlButton,
-              styles.iconControlButton,
-              styles.secondaryButton,
-              pressed ? styles.buttonPressed : null,
-            ]}
-          >
-            <ExportGlyph color={palette.inkPrimary} size={20} />
-          </Pressable>,
-        )}
-
-        {controls.isAdmin && onImportPress
-          ? withWebTooltip(
-              isImporting ? t.importingBusy : t.importFull,
-              <Pressable
-                testID="import-polygons-button"
-                accessibilityRole="button"
-                accessibilityLabel={isImporting ? t.importingBusy : t.importFull}
-                accessibilityHint={t.importA11y}
-                accessibilityState={{ disabled: isImporting, busy: isImporting }}
-                disabled={isImporting}
-                onPress={onImportPress}
-                style={({ pressed }) => [
-                  styles.controlButton,
-                  styles.iconControlButton,
-                  styles.adminImportButton,
-                  isImporting ? styles.buttonDisabled : null,
-                  pressed && !isImporting ? styles.buttonPressed : null,
-                ]}
-              >
-                {isImporting ? (
-                  <ActivityIndicator size="small" color={palette.finishedText} />
-                ) : (
-                  <ImportGlyph color={palette.finishedText} size={20} />
-                )}
-              </Pressable>,
-            )
-          : null}
-
         <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t.proposeA11y}
-          accessibilityState={{ disabled: !controls.canStartDraw }}
-          disabled={!controls.canStartDraw}
-          onPress={onStartDraw}
+          testID="filter-polygon-all"
+          accessibilityRole="radio"
+          accessibilityLabel={t.filterAllA11y}
+          accessibilityState={{
+            checked: controls.polygonFilter === 'all',
+            selected: controls.polygonFilter === 'all',
+          }}
+          onPress={() => onSetPolygonFilter?.('all')}
           style={({ pressed }) => [
-            styles.controlButton,
-            isCompact ? styles.controlButtonCompactPrimary : null,
-            styles.primaryButton,
-            !controls.canStartDraw ? styles.primaryButtonDisabled : null,
-            pressed && controls.canStartDraw
-              ? styles.primaryButtonPressed
-              : null,
+            styles.floatingFilterChip,
+            chipElevation,
+            compact ? styles.filterChipCompact : null,
+            controls.polygonFilter === 'all' ? styles.filterChipActive : null,
+            pressed ? styles.buttonPressed : null,
           ]}
         >
           <Text
             numberOfLines={1}
             style={[
-              styles.primaryButtonLabel,
-              isCompact ? styles.compactButtonLabel : null,
+              styles.filterChipLabel,
+              compact ? styles.filterChipLabelCompact : null,
+              controls.polygonFilter === 'all'
+                ? styles.filterChipLabelActive
+                : null,
             ]}
           >
-            {isCompact ? t.proposeCompact : t.proposeFull}
+            {t.filterAll}
           </Text>
         </Pressable>
 
-        {isExpanded ? utilityControls : null}
-        </View>
+        <Pressable
+          testID="filter-polygon-new"
+          accessibilityRole="radio"
+          accessibilityLabel={t.filterNewA11y}
+          accessibilityState={{
+            checked: controls.polygonFilter === 'new',
+            selected: controls.polygonFilter === 'new',
+          }}
+          onPress={() => onSetPolygonFilter?.('new')}
+          style={({ pressed }) => [
+            styles.floatingFilterChip,
+            chipElevation,
+            compact ? styles.filterChipCompact : null,
+            controls.polygonFilter === 'new' ? styles.filterChipActive : null,
+            pressed ? styles.buttonPressed : null,
+          ]}
+        >
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.filterChipLabel,
+              compact ? styles.filterChipLabelCompact : null,
+              controls.polygonFilter === 'new'
+                ? styles.filterChipLabelActive
+                : null,
+            ]}
+          >
+            {compact ? t.filterNewCompact : t.filterNewFull}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          testID="filter-polygon-established"
+          accessibilityRole="radio"
+          accessibilityLabel={t.filterEstablishedA11y}
+          accessibilityState={{
+            checked: controls.polygonFilter === 'established',
+            selected: controls.polygonFilter === 'established',
+          }}
+          onPress={() => onSetPolygonFilter?.('established')}
+          style={({ pressed }) => [
+            styles.floatingFilterChip,
+            chipElevation,
+            compact ? styles.filterChipCompact : null,
+            controls.polygonFilter === 'established'
+              ? styles.filterChipActive
+              : null,
+            pressed ? styles.buttonPressed : null,
+          ]}
+        >
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.filterChipLabel,
+              compact ? styles.filterChipLabelCompact : null,
+              controls.polygonFilter === 'established'
+                ? styles.filterChipLabelActive
+                : null,
+            ]}
+          >
+            {compact ? t.filterEstablishedCompact : t.filterEstablishedFull}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          testID="filter-polygon-needs-review"
+          accessibilityRole="radio"
+          accessibilityLabel={t.filterNeedsReviewA11y}
+          accessibilityState={{
+            checked: controls.polygonFilter === 'needs_review',
+            selected: controls.polygonFilter === 'needs_review',
+          }}
+          onPress={() => onSetPolygonFilter?.('needs_review')}
+          style={({ pressed }) => [
+            styles.floatingFilterChip,
+            chipElevation,
+            compact ? styles.filterChipCompact : null,
+            controls.polygonFilter === 'needs_review'
+              ? styles.filterChipWarningActive
+              : null,
+            pressed ? styles.buttonPressed : null,
+          ]}
+        >
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.filterChipLabel,
+              compact ? styles.filterChipLabelCompact : null,
+              controls.polygonFilter === 'needs_review'
+                ? styles.filterChipWarningLabelActive
+                : null,
+            ]}
+          >
+            {compact ? t.filterNeedsReviewCompact : t.filterNeedsReviewFull}
+          </Text>
+        </Pressable>
       </View>
 
-      <View
-        style={
-          isCompact ? styles.filterSectionCompact : styles.filterSectionDesktop
-        }
-      >
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={isCompact ? undefined : styles.filterScrollDesktop}
-          contentContainerStyle={[
-            styles.filterStripContent,
-            isCompact ? styles.filterStripContentCompact : null,
-          ]}
+      {controls.isAuthenticated && onToggleHighlightMine ? (
+        <>
+          <View style={styles.filterOrthogonalDivider} />
+          <Pressable
+            testID="highlight-mine-toggle"
+            accessibilityRole="switch"
+            accessibilityLabel={t.highlightMineA11y}
+            accessibilityState={{
+              checked: controls.highlightMineOnly,
+              selected: controls.highlightMineOnly,
+            }}
+            onPress={onToggleHighlightMine}
+            style={({ pressed }) => [
+              styles.floatingFilterChip,
+              chipElevation,
+              styles.highlightMineChip,
+              compact ? styles.filterChipCompact : null,
+              controls.highlightMineOnly ? styles.filterChipActive : null,
+              pressed ? styles.buttonPressed : null,
+            ]}
+          >
+            <View
+              style={[
+                styles.highlightMineDot,
+                controls.highlightMineOnly
+                  ? styles.highlightMineDotActive
+                  : null,
+              ]}
+            />
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.filterChipLabel,
+                compact ? styles.filterChipLabelCompact : null,
+                controls.highlightMineOnly
+                  ? styles.filterChipLabelActive
+                  : null,
+              ]}
+            >
+              {compact ? t.highlightMineCompact : t.highlightMineFull}
+            </Text>
+          </Pressable>
+        </>
+      ) : null}
+    </ScrollView>
+  );
+}
+
+export interface MapLayersPopoverProps {
+  visible: boolean;
+  controls: MapControlsModel;
+  onSetBasemapMode: (mode: BasemapMode) => void;
+  onSetPolygonOpacity?: (opacity: number) => void;
+}
+
+export function MapLayersPopover({
+  visible,
+  controls,
+  onSetBasemapMode,
+  onSetPolygonOpacity,
+}: MapLayersPopoverProps): React.JSX.Element | null {
+  const { palette, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
+
+  if (!visible) {
+    return null;
+  }
+
+  const t = getTranslations(controls.locale).controls;
+
+  return (
+    <View
+      testID="map-layers-popover"
+      style={[
+        styles.popoverCard,
+        styles.layersPopoverCard,
+        Platform.OS === 'web'
+          ? {
+              boxShadow: isDark
+                ? '0 8px 28px rgba(0, 0, 0, 0.55)'
+                : '0 8px 24px rgba(18, 32, 25, 0.18)',
+            }
+          : styles.nativePopoverShadow,
+      ]}
+    >
+      <Text style={styles.menuSectionLabel}>{t.layersPopoverTitle}</Text>
+
+      {controls.showOrthophotoToggle ? (
+        <View
           accessibilityRole="radiogroup"
-          accessibilityLabel={t.filterGroupA11y}
+          style={styles.basemapSegmentGroup}
         >
           <Pressable
-            testID="filter-polygon-all"
+            testID="basemap-segment-osm"
             accessibilityRole="radio"
-            accessibilityLabel={t.filterAllA11y}
+            accessibilityLabel={t.switchToOsmA11y}
             accessibilityState={{
-              checked: controls.polygonFilter === 'all',
-              selected: controls.polygonFilter === 'all',
+              checked: controls.basemapMode === 'osm',
+              selected: controls.basemapMode === 'osm',
             }}
-            onPress={() => onSetPolygonFilter?.('all')}
+            onPress={() => onSetBasemapMode('osm')}
             style={({ pressed }) => [
-              styles.filterChip,
-              isCompact ? styles.filterChipCompact : null,
-              controls.polygonFilter === 'all' ? styles.filterChipActive : null,
-              pressed ? styles.buttonPressed : null,
-            ]}
-          >
-            <Text
-              numberOfLines={1}
-              style={[
-                styles.filterChipLabel,
-                isCompact ? styles.filterChipLabelCompact : null,
-                controls.polygonFilter === 'all'
-                  ? styles.filterChipLabelActive
-                  : null,
-              ]}
-            >
-              {t.filterAll}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            testID="filter-polygon-new"
-            accessibilityRole="radio"
-            accessibilityLabel={t.filterNewA11y}
-            accessibilityState={{
-              checked: controls.polygonFilter === 'new',
-              selected: controls.polygonFilter === 'new',
-            }}
-            onPress={() => onSetPolygonFilter?.('new')}
-            style={({ pressed }) => [
-              styles.filterChip,
-              isCompact ? styles.filterChipCompact : null,
-              controls.polygonFilter === 'new' ? styles.filterChipActive : null,
-              pressed ? styles.buttonPressed : null,
-            ]}
-          >
-            <Text
-              numberOfLines={1}
-              style={[
-                styles.filterChipLabel,
-                isCompact ? styles.filterChipLabelCompact : null,
-                controls.polygonFilter === 'new'
-                  ? styles.filterChipLabelActive
-                  : null,
-              ]}
-            >
-              {isCompact ? t.filterNewCompact : t.filterNewFull}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            testID="filter-polygon-established"
-            accessibilityRole="radio"
-            accessibilityLabel={t.filterEstablishedA11y}
-            accessibilityState={{
-              checked: controls.polygonFilter === 'established',
-              selected: controls.polygonFilter === 'established',
-            }}
-            onPress={() => onSetPolygonFilter?.('established')}
-            style={({ pressed }) => [
-              styles.filterChip,
-              isCompact ? styles.filterChipCompact : null,
-              controls.polygonFilter === 'established'
-                ? styles.filterChipActive
+              styles.basemapSegmentOption,
+              controls.basemapMode === 'osm'
+                ? styles.basemapSegmentOptionActive
                 : null,
               pressed ? styles.buttonPressed : null,
             ]}
@@ -1364,33 +1780,29 @@ export function MapControlsBar({
             <Text
               numberOfLines={1}
               style={[
-                styles.filterChipLabel,
-                isCompact ? styles.filterChipLabelCompact : null,
-                controls.polygonFilter === 'established'
-                  ? styles.filterChipLabelActive
+                styles.basemapSegmentLabel,
+                controls.basemapMode === 'osm'
+                  ? styles.basemapSegmentLabelActive
                   : null,
               ]}
             >
-              {isCompact
-                ? t.filterEstablishedCompact
-                : t.filterEstablishedFull}
+              {t.streetCompact}
             </Text>
           </Pressable>
 
           <Pressable
-            testID="filter-polygon-needs-review"
+            testID="basemap-segment-orthophoto"
             accessibilityRole="radio"
-            accessibilityLabel={t.filterNeedsReviewA11y}
+            accessibilityLabel={t.switchToOrthoA11y}
             accessibilityState={{
-              checked: controls.polygonFilter === 'needs_review',
-              selected: controls.polygonFilter === 'needs_review',
+              checked: controls.basemapMode === 'orthophoto',
+              selected: controls.basemapMode === 'orthophoto',
             }}
-            onPress={() => onSetPolygonFilter?.('needs_review')}
+            onPress={() => onSetBasemapMode('orthophoto')}
             style={({ pressed }) => [
-              styles.filterChip,
-              isCompact ? styles.filterChipCompact : null,
-              controls.polygonFilter === 'needs_review'
-                ? styles.filterChipWarningActive
+              styles.basemapSegmentOption,
+              controls.basemapMode === 'orthophoto'
+                ? styles.basemapSegmentOptionActive
                 : null,
               pressed ? styles.buttonPressed : null,
             ]}
@@ -1398,30 +1810,69 @@ export function MapControlsBar({
             <Text
               numberOfLines={1}
               style={[
-                styles.filterChipLabel,
-                isCompact ? styles.filterChipLabelCompact : null,
-                controls.polygonFilter === 'needs_review'
-                  ? styles.filterChipWarningLabelActive
+                styles.basemapSegmentLabel,
+                controls.basemapMode === 'orthophoto'
+                  ? styles.basemapSegmentLabelActive
                   : null,
               ]}
             >
-              {isCompact
-                ? t.filterNeedsReviewCompact
-                : t.filterNeedsReviewFull}
+              {t.aerialCompact}
             </Text>
           </Pressable>
-        </ScrollView>
+        </View>
+      ) : null}
 
-        <PolygonOpacitySlider
-          opacity={controls.polygonOpacity}
-          compact={isCompact}
-          label={t.polygonOpacityLabel}
-          accessibilityLabel={t.polygonOpacityA11y}
-          {...(onSetPolygonOpacity ? { onChange: onSetPolygonOpacity } : {})}
-        />
-      </View>
+      <PolygonOpacitySlider
+        opacity={controls.polygonOpacity}
+        compact
+        label={t.polygonOpacityLabel}
+        accessibilityLabel={t.polygonOpacityA11y}
+        {...(onSetPolygonOpacity ? { onChange: onSetPolygonOpacity } : {})}
+      />
     </View>
   );
+}
+
+export interface ProposeFabButtonProps {
+  controls: MapControlsModel;
+  onPress: () => void;
+}
+
+export function ProposeFabButton({
+  controls,
+  onPress,
+}: ProposeFabButtonProps): React.JSX.Element {
+  const { palette, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(palette), [palette]);
+  const t = getTranslations(controls.locale).controls;
+  const tooltip = controls.drawDisabledReason ?? t.proposeFull;
+
+  const fabNode = (
+    <Pressable
+      testID="propose-fab-button"
+      accessibilityRole="button"
+      accessibilityLabel={t.proposeA11y}
+      accessibilityState={{ disabled: !controls.canStartDraw }}
+      disabled={!controls.canStartDraw}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.proposeFab,
+        !controls.canStartDraw ? styles.primaryButtonDisabled : null,
+        pressed && controls.canStartDraw ? styles.primaryButtonPressed : null,
+        Platform.OS === 'web'
+          ? {
+              boxShadow: isDark
+                ? '0 6px 20px rgba(0, 0, 0, 0.55)'
+                : '0 6px 18px rgba(16, 77, 49, 0.34)',
+            }
+          : styles.nativeFabShadow,
+      ]}
+    >
+      <PlusGlyph color={palette.inkOnAccent} size={22} />
+    </Pressable>
+  );
+
+  return withWebTooltip(tooltip, fabNode);
 }
 
 function createStyles(PALETTE: ThemePalette) {
@@ -1430,28 +1881,46 @@ function createStyles(PALETTE: ThemePalette) {
     backgroundColor: PALETTE.bgSurface,
     borderBottomWidth: 1,
     borderBottomColor: PALETTE.borderSubtle,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
   },
   barShellCompact: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
   },
-  barShellExpanded: {
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    gap: 8,
-  },
-  topBarStacked: {
-    gap: 8,
-  },
-  topBarExpandedRow: {
+  navbarSingleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 16,
+    gap: 10,
+    minHeight: 44,
+  },
+  searchSlotWrapper: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 130,
+    paddingHorizontal: 6,
+  },
+  navbarSearchPill: {
+    width: '100%',
+    maxWidth: 420,
+    minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: RADII.pill,
+    borderWidth: 1,
+    borderColor: PALETTE.borderStrong,
+    backgroundColor: PALETTE.bgSubtle,
+  },
+  navbarSearchPlaceholder: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+    color: PALETTE.inkSecondary,
   },
   filterSectionDesktop: {
     flexDirection: 'row',
@@ -1470,6 +1939,30 @@ function createStyles(PALETTE: ThemePalette) {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+  },
+  filterRadioGroupRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  filterOrthogonalDivider: {
+    width: 1,
+    height: 22,
+    backgroundColor: PALETTE.borderStrong,
+    marginHorizontal: 2,
+  },
+  highlightMineChip: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  highlightMineDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: PALETTE.inkMuted,
+  },
+  highlightMineDotActive: {
+    backgroundColor: PALETTE.accentPrimary,
   },
   filterStripContentCompact: {
     gap: 5,
@@ -1671,11 +2164,13 @@ function createStyles(PALETTE: ThemePalette) {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    flex: 1,
+    flexShrink: 0,
     minWidth: 0,
   },
   brandGroupCompact: {
     gap: 6,
+    flex: 1,
+    flexShrink: 1,
   },
   brandMark: {
     width: 28,
@@ -1771,7 +2266,12 @@ function createStyles(PALETTE: ThemePalette) {
     flexShrink: 0,
   },
   helpButtonCompact: {
-    paddingHorizontal: 8,
+    minWidth: 38,
+    paddingHorizontal: 7,
+  },
+  helpButtonActive: {
+    backgroundColor: PALETTE.bgTinted,
+    borderColor: PALETTE.accentPrimary,
   },
   helpButtonLabel: {
     fontSize: 14,
@@ -1835,6 +2335,10 @@ function createStyles(PALETTE: ThemePalette) {
     gap: 4,
     maxWidth: 100,
   },
+  accountChipMediumHeader: {
+    paddingHorizontal: 10,
+    maxWidth: 124,
+  },
   accountChipActive: {
     backgroundColor: PALETTE.bgTinted,
     borderColor: PALETTE.accentPrimary,
@@ -1896,6 +2400,12 @@ function createStyles(PALETTE: ThemePalette) {
   controlButtonCompactPrimary: {
     flex: 1.35,
     paddingHorizontal: 9,
+  },
+  controlButtonMediumStretch: {
+    flex: 1,
+  },
+  controlButtonMediumPrimaryStretch: {
+    flex: 1.25,
   },
   primaryButton: {
     backgroundColor: PALETTE.accentPrimary,
@@ -2009,6 +2519,137 @@ function createStyles(PALETTE: ThemePalette) {
     borderLeftWidth: 2.4,
     borderBottomWidth: 2.4,
     transform: [{ rotate: '-20deg' }],
+  },
+  statsGlyphFrame: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    gap: 2,
+    paddingBottom: 2,
+  },
+  statsGlyphBar: {
+    width: 2.6,
+    borderRadius: 1.3,
+  },
+  floatingFilterScroll: {
+    flexGrow: 0,
+  },
+  floatingFilterChip: {
+    minHeight: 38,
+    minWidth: MIN_TOUCH_TARGET_DP,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: RADII.pill,
+    borderWidth: 1,
+    borderColor: PALETTE.borderStrong,
+    backgroundColor: PALETTE.bgFloatingPill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nativeChipShadow: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  popoverCard: {
+    minWidth: 236,
+    maxWidth: 300,
+    padding: 12,
+    borderRadius: RADII.lg,
+    borderWidth: 1,
+    borderColor: PALETTE.borderStrong,
+    backgroundColor: PALETTE.bgSurface,
+    gap: 10,
+  },
+  layersPopoverCard: {
+    minWidth: 248,
+  },
+  nativePopoverShadow: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  menuSection: {
+    gap: 4,
+  },
+  menuSectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    color: PALETTE.inkMuted,
+    paddingHorizontal: 6,
+    paddingBottom: 2,
+  },
+  menuItemRow: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: RADII.md,
+  },
+  menuItemPressed: {
+    backgroundColor: PALETTE.bgRecessed,
+  },
+  menuItemLabel: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: PALETTE.inkPrimary,
+  },
+  basemapSegmentGroup: {
+    flexDirection: 'row',
+    padding: 3,
+    borderRadius: RADII.md,
+    backgroundColor: PALETTE.bgRecessed,
+    borderWidth: 1,
+    borderColor: PALETTE.borderSubtle,
+    gap: 3,
+  },
+  basemapSegmentOption: {
+    flex: 1,
+    minHeight: 36,
+    paddingHorizontal: 10,
+    borderRadius: RADII.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  basemapSegmentOptionActive: {
+    backgroundColor: PALETTE.bgSurface,
+    borderWidth: 1,
+    borderColor: PALETTE.borderAccent,
+  },
+  basemapSegmentLabel: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: PALETTE.inkSecondary,
+  },
+  basemapSegmentLabelActive: {
+    color: PALETTE.accentPrimary,
+    fontWeight: '700',
+  },
+  proposeFab: {
+    width: 48,
+    height: 48,
+    borderRadius: RADII.pill,
+    backgroundColor: PALETTE.accentPrimary,
+    borderWidth: 1,
+    borderColor: PALETTE.accentPrimaryStrong,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nativeFabShadow: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.34,
+    shadowRadius: 8,
+    elevation: 8,
   },
   });
 }

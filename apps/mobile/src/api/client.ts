@@ -9,6 +9,7 @@ import {
   FlagPolygonResponseSchema,
   GeocodeResponseSchema,
   ImportPolygonsResponseSchema,
+  PersonalStatsResponseSchema,
   PhotoVoteResponseSchema,
   PolygonCollectionResponseSchema,
   PolygonCommentListResponseSchema,
@@ -16,6 +17,7 @@ import {
   PolygonFeatureSchema,
   PolygonPhotoListResponseSchema,
   PolygonPhotoSchema,
+  PublicStatsResponseSchema,
   RegisterResponseSchema,
   ResetPasswordResponseSchema,
   RuntimeConfigSchema,
@@ -38,6 +40,7 @@ import {
   type ImportPolygonsResponse,
   type LoginRequest,
   type PatchPolygonRequest,
+  type PersonalStatsResponse,
   type PhotoVoteResponse,
   type PolygonCollectionResponse,
   type PolygonComment,
@@ -47,6 +50,7 @@ import {
   type PolygonPhoto,
   type PolygonPhotoListResponse,
   type PolygonStatus,
+  type PublicStatsResponse,
   type RegisterRequest,
   type RegisterResponse,
   type ResetPasswordRequest,
@@ -664,6 +668,24 @@ export class PpgisApiClient {
       includeAuth: true,
     });
     return AuthUserSchema.parse(json);
+  }
+
+  public async getPublicStats(): Promise<PublicStatsResponse> {
+    const json = await this.requestJson({
+      method: 'GET',
+      path: '/api/v1/stats',
+      includeAuth: false,
+    });
+    return PublicStatsResponseSchema.parse(json);
+  }
+
+  public async getPersonalStats(): Promise<PersonalStatsResponse> {
+    const json = await this.requestJson({
+      method: 'GET',
+      path: '/api/v1/stats/me',
+      includeAuth: true,
+    });
+    return PersonalStatsResponseSchema.parse(json);
   }
 
   /**

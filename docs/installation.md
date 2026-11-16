@@ -65,7 +65,7 @@ npm test
   ./android/gradlew -p android assembleDebug
   adb install -r android/app/build/outputs/apk/debug/app-debug.apk
   ```
-  *(For signed release APKs, see **Section 3** below — never distribute an APK signed with Expo's debug keystore.)*
+  *(For signed release APKs, see **Section 3** below - never distribute an APK signed with Expo's debug keystore.)*
 
 ---
 
@@ -184,7 +184,7 @@ docker compose exec api node apps/api/dist/cli/admin.js revoke-admin <pseudonym>
 docker compose exec api node apps/api/dist/cli/admin.js load-vg250
 
 # 3. Ban an abusive pseudonym (records keyed HMAC tombstones of pseudonym + email, purges the user's
-#    polygons/photos/comments/votes, recomputes scores) — and lift a ban once it is no longer justified
+#    polygons/photos/comments/votes, recomputes scores) - and lift a ban once it is no longer justified
 docker compose exec api node apps/api/dist/cli/admin.js ban-user <pseudonym> "spam brigading"
 docker compose exec api node apps/api/dist/cli/admin.js lift-ban <pseudonym> [email]
 
@@ -243,7 +243,7 @@ Users can download their own data in the app (*Konto → Meine Daten herunterlad
 | `BACKUP_RETENTION_DAYS` | *(empty → operator warning on `/auth/privacy`)* | How long backups are kept before deletion; stated in the privacy policy. |
 | `PSEUDONYM_RESERVATION_DAYS` | `365` | Days a self-deleted pseudonym stays reserved against impersonation before its tombstone is purged. Ban tombstones stay until lifted with `admin lift-ban`. |
 | `DISPOSABLE_EMAIL_BLOCKLIST_EXTRA` | *(empty)* | Comma-separated extra disposable email domains to block at signup. |
-| `REQUIRE_JURISDICTION` / `STALE_UNRATED_PRUNE_DAYS` / `NEW_USER_*` | `when_seeded` / `14` / `14`, `3` | VG250 jurisdiction enforcement, stale unrated proposal pruning days, and new-user badge thresholds. |
+| `REQUIRE_JURISDICTION` / `STALE_UNRATED_PRUNE_DAYS` / `NEW_USER_*` | `when_seeded` / `30` / `14`, `3` | VG250 jurisdiction enforcement, stale unrated proposal pruning days, and new-user badge thresholds. |
 | `DISCLAIMER_TEXT` / `ABUSE_CONTACT` | *(civic notice)* / *(empty)* | Public notice and optional moderation contact shown in inspector, legal pages & bug-report modal. |
 | `OPERATOR_NAME` / `OPERATOR_ADDRESS` / `OPERATOR_EMAIL` / `OPERATOR_PHONE` | *(empty)* | Legal operator identity rendered on `/auth/impressum` & `/auth/privacy` (§ 5 DDG / § 18 MStV / Art. 13 GDPR); `\n` separates address lines. |
 | `IMPRESSUM_URL` / `PRIVACY_POLICY_URL` / `TERMS_URL` / `LICENSES_URL` / `SOURCE_CODE_URL` | `<PUBLIC_BASE_URL>/auth/{impressum,privacy,terms,licenses}` | Override URLs for hosted legal notices and AGPL-3.0/MPL-2.0 source code repository link. |

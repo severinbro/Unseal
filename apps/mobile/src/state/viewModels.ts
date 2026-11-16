@@ -29,6 +29,7 @@ import {
   resolveColorScheme,
   type ColorScheme,
   type ThemePreference,
+  type ViewportTier,
 } from '../theme/tokens';
 
 export function formatInspectorDate(
@@ -46,6 +47,31 @@ export function formatInspectorDate(
   const mm = String(parsed.getUTCMonth() + 1).padStart(2, '0');
   const dd = String(parsed.getUTCDate()).padStart(2, '0');
   return locale === 'de' ? `${dd}.${mm}.${yyyy}` : `${yyyy}-${mm}-${dd}`;
+}
+
+export function formatStatsInteger(value: number, locale: Locale): string {
+  const safe = Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
+  return safe.toLocaleString(locale === 'de' ? 'de-DE' : 'en-US');
+}
+
+export function formatAreaDisplay(areaM2: number, locale: Locale): string {
+  const safe = Number.isFinite(areaM2) && areaM2 > 0 ? areaM2 : 0;
+  const numLocale = locale === 'de' ? 'de-DE' : 'en-US';
+  if (safe >= 10_000) {
+    const hectares = safe / 10_000;
+    const haFormatted = hectares.toLocaleString(numLocale, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    const m2Formatted = Math.round(safe).toLocaleString(numLocale);
+    return `${haFormatted} ha (${m2Formatted} m²)`;
+  }
+  const digits = safe > 0 && safe < 10 ? 1 : 0;
+  const formatted = safe.toLocaleString(numLocale, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+  });
+  return `${formatted} m²`;
 }
 
 export interface InspectorOverviewMetaModel {
@@ -105,6 +131,7 @@ export interface MapControlsModel {
   basemapMode: BasemapMode;
   polygonOpacity: number;
   polygonFilter: PolygonFilter;
+  highlightMineOnly: boolean;
   orthophotoAttribution: string | null;
   apkDownloadUrl: string | null;
   apkSha256: string | null;
@@ -162,6 +189,21 @@ export interface DrawingToolbarModel {
   submitError: string | null;
 }
 
+export function computeVisibleProposalCount(
+  state: Pick<AppState, 'features' | 'currentUser' | 'highlightMineOnly'>,
+): number {
+  if (state.currentUser !== null && state.highlightMineOnly) {
+    let mineCount = 0;
+    for (const feature of state.features) {
+      if (feature.properties.isAuthor) {
+        mineCount++;
+      }
+    }
+    return mineCount;
+  }
+  return state.features.length;
+}
+
 export function deriveMapControlsModel(
   state: AppState,
   systemColorScheme?: ColorScheme | 'unspecified' | null,
@@ -186,6 +228,7 @@ export function deriveMapControlsModel(
     basemapMode: effectiveBasemapMode,
     polygonOpacity: state.polygonOpacity,
     polygonFilter: state.polygonFilter,
+    highlightMineOnly: state.currentUser !== null && state.highlightMineOnly,
     orthophotoAttribution: state.config?.orthophoto?.attribution ?? null,
     apkDownloadUrl: state.config?.apkDownloadUrl ?? null,
     apkSha256: state.config?.apkSha256 ?? null,
@@ -454,4 +497,48 @@ export function pruneDeletedCommentSubtree(
     }
   }
   return comments.filter((item) => !removedIds.has(item.id));
+}
+
+export interface NavbarLayoutMode {
+  readonly isCompact: boolean;
+  readonly isSingleHeaderRow: boolean;
+  readonly showSearchBarInNavbar: boolean;
+  readonly showProposeFab: boolean;
+  readonly useCompactCountBadge: boolean;
+  readonly constrainAccountChipWidth: boolean;
+}
+
+/**
+ * Derives responsive single-row navbar rules for `MapControlsBar` + floating
+ * map overlays across phone (<768 px), tablet (768–1099 px), and wide (>=1100 px).
+ */
+export function deriveNavbarLayoutMode(
+  tier: ViewportTier,
+  viewportWidth?: number,
+): NavbarLayoutMode {
+  const isCompact = tier === 'compact';
+  if (isCompact) {
+    return {
+      isCompact: true,
+      isSingleHeaderRow: true,
+      showSearchBarInNavbar: false,
+      showProposeFab: true,
+      useCompactCountBadge: true,
+      constrainAccountChipWidth: true,
+    };
+  }
+
+  const hasKnownWidth =
+    viewportWidth !== undefined &&
+    Number.isFinite(viewportWidth) &&
+    viewportWidth > 0;
+
+  return {
+    isCompact: false,
+    isSingleHeaderRow: true,
+    showSearchBarInNavbar: true,
+    showProposeFab: true,
+    useCompactCountBadge: hasKnownWidth && viewportWidth < 920,
+    constrainAccountChipWidth: hasKnownWidth && viewportWidth < 1100,
+  };
 }
