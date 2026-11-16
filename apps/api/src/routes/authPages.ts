@@ -424,7 +424,7 @@ function buildPrivacyPolicyHtml(app: FastifyInstance): string {
        <ul>
          <li>Dein <strong>Pseudonym</strong> bei deinen Flächenvorschlägen, Fotos und Kommentaren. Deine E-Mail-Adresse wird nie öffentlich angezeigt.</li>
          <li>Ob du in den letzten ${recentDays} Tagen aktiv warst („Aktiv in den letzten ${recentDays} Tagen“). Gespeichert wird dafür nur das <em>Datum</em> deiner letzten Aktivität, keine Uhrzeit.</li>
-         <li>Der Hinweis „Neuer Beitragender“, solange dein Konto jünger als ${config.newUserMinAccountDays} Tage ist oder weniger als ${config.newUserMinCleanPolygons} positiv bewertete, nicht gemeldete Vorschläge hat.</li>
+         <li>Der Hinweis „Neue/r Beitragende/r“, solange dein Konto jünger als ${config.newUserMinAccountDays} Tage ist oder weniger als ${config.newUserMinCleanPolygons} positiv bewertete, nicht gemeldete Vorschläge hat.</li>
          <li>Deine Beiträge: Flächen, Belagsart, Notizen, Fotos, Kommentare sowie die Summe der Abstimmungen.</li>
          <li>Der öffentliche GeoJSON-Gesamtexport (CC0) enthält Geometrien, Belagsart, Notizen, Status, Gemeinde, Abstimmungszahlen und Zeitstempel, aber <strong>kein Pseudonym</strong> und keine sonstigen Kontodaten.</li>
        </ul>
@@ -489,7 +489,7 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
       'Impressum',
       `<h1>Impressum</h1>
        <p>Angaben gemäß § 5 Digitale-Dienste-Gesetz (DDG) und § 18 Abs. 2 Medienstaatsvertrag (MStV) für diese Unseal-Instanz:</p>
-       <h2>Verantwortliche Stelle / Betreiber</h2>
+       <h2>Verantwortliche Stelle / Betreibende</h2>
        ${operatorHtml}
        ${abuseHtml}
        <h2>Haftungs- &amp; Beteiligungshinweis</h2>

@@ -828,7 +828,7 @@ describe('German default localization and DE <-> EN switching', () => {
     };
     const metaDe = deriveInspectorOverviewMeta(flaggedNewFeature, 'de');
     assert.equal(metaDe.displayAuthorHandle, 'citizen_a');
-    assert.equal(metaDe.newContributorBadgeText, 'Neuer Beitragender');
+    assert.equal(metaDe.newContributorBadgeText, 'Neue/r Beitragende/r');
     assert.equal(metaDe.entryDateText, '12.11.2026');
     assert.equal(metaDe.authorActivityText, 'Aktiv in den letzten 30 Tagen');
     assert.equal(metaDe.needsReviewBadgeText, 'Prüfbedarf (2)');

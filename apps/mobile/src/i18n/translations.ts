@@ -829,12 +829,12 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       updatingStatus: 'Aktualisiert…',
       authorSectionTitle: 'Dein Vorschlag',
       manageReadonlyHint:
-        'Nur die erstellende Person kann diesen Vorschlag bearbeiten oder löschen. Administratoren können Flächen als „Wird entsiegelt“ oder „Entsiegelt“ markieren.',
+        'Nur die erstellende Person kann diesen Vorschlag bearbeiten oder löschen. Admins können Flächen als „Wird entsiegelt“ oder „Entsiegelt“ markieren.',
       photoErrorFallback: 'Fotoaktion fehlgeschlagen.',
       statusErrorFallback: 'Status konnte nicht geändert werden.',
       entryDateLabel: 'Eingetragen am',
       creatorSectionLabel: 'Vorgeschlagen von',
-      newContributorBadge: 'Neuer Beitragender',
+      newContributorBadge: 'Neue/r Beitragende/r',
       creatorActivityLabel: 'Aktivität',
       creatorActivityRecent: (days) => `Aktiv in den letzten ${days} Tagen`,
       creatorActivityInactive: 'Länger nicht aktiv',
@@ -961,7 +961,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       resetPassword: 'Link zum Zurücksetzen senden',
       accountSignedInHint: (pseudonym) =>
         `Angemeldet als @${pseudonym}. Auf der Karte und im GeoJSON-Export erscheint ausschließlich dein Pseudonym.`,
-      adminRoleBadge: 'Administrator',
+      adminRoleBadge: 'Admin',
       accountEmailLabel: 'Bestätigte E-Mail:',
       exportDataButton: 'Meine Daten herunterladen',
       exportDataA11y: 'Alle zu deinem Konto gespeicherten Daten als JSON-Datei herunterladen',
@@ -1877,7 +1877,7 @@ const GERMAN_API_ERROR_MESSAGES: Readonly<Record<ErrorCode, string>> = {
   FORBIDDEN_SELF_VOTE:
     'Eigene Vorschläge und Kommentare können nicht selbst bewertet werden.',
   FORBIDDEN_ADMIN_ONLY:
-    'Diese Funktion steht nur Administrator-Konten zur Verfügung.',
+    'Diese Funktion steht nur Admin-Konten zur Verfügung.',
   VOTING_CLOSED:
     'Für Flächen mit dem Status „Wird entsiegelt“ oder „Entsiegelt“ ist keine Abstimmung mehr möglich.',
   COMMENTS_CLOSED:
