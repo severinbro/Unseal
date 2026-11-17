@@ -29,9 +29,16 @@ import {
 } from '../src/storage/viewportStorage';
 import { createWebViewportStorage } from '../src/storage/viewportStorageAdapter.web';
 import {
+  HIGH_ACCURACY_GEOLOCATION_OPTIONS,
   requestCurrentCoordinates,
   type WebNavigatorLike,
 } from '../src/location/locateMe.web';
+import {
+  NATIVE_LOCATION_ACCURACY,
+  requestCurrentCoordinates as requestNativeCoordinates,
+  type NativeLocationModuleLike,
+  type NativeLocationWatchOptionsLike,
+} from '../src/location/locateMe.native';
 import {
   appReducer,
   initialAppState,
@@ -351,13 +358,19 @@ describe('locateMe.web requestCurrentCoordinates adapter', () => {
       },
     };
 
+    const interimFixes: Array<Extract<LocateMeResult, { ok: true }>> = [];
     const result = await requestCurrentCoordinates(
       refiningNav,
       true,
       'de',
       200,
+      (fix) => {
+        interimFixes.push(fix);
+      },
     );
-    assert.equal(capturedMaxAge, 0);
+    assert.equal(capturedMaxAge, HIGH_ACCURACY_GEOLOCATION_OPTIONS.maximumAge);
+    // 25 km regional GeoIP hub must not trigger an interim camera jump before Mainz arrives
+    assert.equal(interimFixes.length, 0);
     assert.equal(clearedId, 42);
     assert.deepEqual(result, {
       ok: true,
@@ -403,6 +416,300 @@ describe('locateMe.web requestCurrentCoordinates adapter', () => {
       lat: 50.1109,
       accuracyMeters: 18_000,
     });
+  });
+
+  it('rescues stalled high-accuracy watchPosition in parallel via low-accuracy fallback and emits neighborhood interim fix', async () => {
+    let clearedId: number | null = null;
+    let fallbackHighAccuracyFlag: boolean | undefined;
+    const interimFixes: Array<Extract<LocateMeResult, { ok: true }>> = [];
+
+    const stalledHighNav: WebNavigatorLike = {
+      geolocation: {
+        watchPosition() {
+          // Simulates stalled hardware GNSS indoors / desktop without GeoClue GPS
+          return 91;
+        },
+        clearWatch(id) {
+          clearedId = id;
+        },
+        getCurrentPosition(onSuccess, _onError, options) {
+          fallbackHighAccuracyFlag = options?.enableHighAccuracy;
+          setTimeout(() => {
+            onSuccess({
+              coords: {
+                longitude: 8.2473,
+                latitude: 50.0782,
+                accuracy: 600,
+              },
+            });
+          }, 10);
+        },
+      },
+    };
+
+    const startedAt = Date.now();
+    const result = await requestCurrentCoordinates(
+      stalledHighNav,
+      true,
+      'de',
+      40,
+      (fix) => {
+        interimFixes.push(fix);
+      },
+      { parallelLowAccuracyDelayMs: 15, hardWatchdogMs: 500 },
+    );
+    const elapsedMs = Date.now() - startedAt;
+
+    assert.equal(fallbackHighAccuracyFlag, false);
+    assert.equal(clearedId, 91);
+    assert.ok(elapsedMs < 350, `Expected fast parallel rescue, took ${elapsedMs}ms`);
+    assert.equal(interimFixes.length, 1);
+    assert.equal(interimFixes[0]?.accuracyMeters, 600);
+    assert.deepEqual(result, {
+      ok: true,
+      lng: 8.2473,
+      lat: 50.0782,
+      accuracyMeters: 600,
+    });
+  });
+
+  it('aborts hung browser geolocation backends via JS watchdog and clears watch instead of spinning forever', async () => {
+    let clearedId: number | null = null;
+    const hungNav: WebNavigatorLike = {
+      geolocation: {
+        getCurrentPosition() {
+          // Never invokes success or error (e.g. stalled Linux GeoClue2 D-Bus)
+        },
+        watchPosition() {
+          return 108;
+        },
+        clearWatch(id) {
+          clearedId = id;
+        },
+      },
+    };
+
+    const result = await requestCurrentCoordinates(
+      hungNav,
+      true,
+      'de',
+      30,
+      undefined,
+      { parallelLowAccuracyDelayMs: 10, hardWatchdogMs: 45 },
+    );
+    assert.equal(clearedId, 108);
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.match(result.reason, /Zeitüberschreitung/i);
+    }
+  });
+});
+
+describe('locateMe.native requestCurrentCoordinates adapter', () => {
+  it('returns fresh cached fix immediately, rejects negative CoreLocation accuracy, and disables Android settings dialog spam', async () => {
+    const now = 1_700_000_000_000;
+    let watchCalled = false;
+
+    const cachedNative: NativeLocationModuleLike = {
+      async requestForegroundPermissionsAsync() {
+        return { granted: true };
+      },
+      async hasServicesEnabledAsync() {
+        return true;
+      },
+      async getLastKnownPositionAsync() {
+        return {
+          coords: { longitude: 8.2739, latitude: 49.9989, accuracy: 22 },
+          timestamp: now - 12_000,
+        };
+      },
+      async watchPositionAsync() {
+        watchCalled = true;
+        return { remove() {} };
+      },
+      async getCurrentPositionAsync() {
+        throw new Error('should not be called');
+      },
+    };
+
+    const fastResult = await requestNativeCoordinates(
+      undefined,
+      undefined,
+      'de',
+      50,
+      undefined,
+      cachedNative,
+      { now: () => now },
+    );
+    assert.equal(watchCalled, false);
+    assert.deepEqual(fastResult, {
+      ok: true,
+      lng: 8.2739,
+      lat: 49.9989,
+      accuracyMeters: 22,
+    });
+
+    // Rejects invalid CoreLocation accuracy (-1), pans immediately on warm cache, refines via watchPositionAsync, and cleans up
+    const watchedOptions: NativeLocationWatchOptionsLike[] = [];
+    let removedCount = 0;
+    const interimFixes: Array<Extract<LocateMeResult, { ok: true }>> = [];
+
+    const streamingNative: NativeLocationModuleLike = {
+      async requestForegroundPermissionsAsync() {
+        return { granted: true };
+      },
+      async hasServicesEnabledAsync() {
+        return true;
+      },
+      async getLastKnownPositionAsync(opts) {
+        if ((opts?.maxAge ?? 0) <= 60_000) {
+          // Invalid CoreLocation reading must be ignored
+          return {
+            coords: { longitude: 0, latitude: 0, accuracy: -1 },
+            timestamp: now - 1_000,
+          };
+        }
+        return {
+          coords: { longitude: 8.27, latitude: 49.99, accuracy: 320 },
+          timestamp: now - 180_000,
+        };
+      },
+      async watchPositionAsync(options, callback) {
+        watchedOptions.push(options);
+        if (options.accuracy === NATIVE_LOCATION_ACCURACY.High) {
+          setTimeout(() => {
+            callback({
+              coords: { longitude: 8.2741, latitude: 49.9991, accuracy: 11 },
+              timestamp: now,
+            });
+          }, 15);
+        }
+        return {
+          remove() {
+            removedCount += 1;
+          },
+        };
+      },
+      async getCurrentPositionAsync() {
+        throw new Error('watchPositionAsync should be used');
+      },
+    };
+
+    const refined = await requestNativeCoordinates(
+      undefined,
+      undefined,
+      'de',
+      80,
+      (fix) => interimFixes.push(fix),
+      streamingNative,
+      { warmTimeoutMs: 200, coldHardTimeoutMs: 400, now: () => now },
+    );
+
+    assert.equal(watchedOptions.length, 2);
+    for (const opt of watchedOptions) {
+      assert.equal(opt.mayShowUserSettingsDialog, false);
+    }
+    assert.equal(removedCount, 2);
+    assert.ok(interimFixes.length >= 1);
+    assert.equal(interimFixes[0]?.accuracyMeters, 320);
+    assert.deepEqual(refined, {
+      ok: true,
+      lng: 8.2741,
+      lat: 49.9991,
+      accuracyMeters: 11,
+    });
+  });
+
+  it('keeps cold High GNSS stream alive past warmTimeoutMs when no network/cached fix exists, and hard-caps hung providers without hanging', async () => {
+    const now = 1_700_000_000_000;
+    let coldRemoved = 0;
+
+    const coldGnssNative: NativeLocationModuleLike = {
+      async requestForegroundPermissionsAsync() {
+        return { granted: true };
+      },
+      async hasServicesEnabledAsync() {
+        return true;
+      },
+      async getLastKnownPositionAsync() {
+        return null;
+      },
+      async watchPositionAsync(options, callback) {
+        if (options.accuracy === NATIVE_LOCATION_ACCURACY.High) {
+          // Arrives AFTER warmTimeoutMs (30ms), before coldHardTimeoutMs (200ms)
+          setTimeout(() => {
+            callback({
+              coords: { longitude: 9.9937, latitude: 53.5511, accuracy: 16 },
+              timestamp: now,
+            });
+          }, 55);
+        }
+        return {
+          remove() {
+            coldRemoved += 1;
+          },
+        };
+      },
+      async getCurrentPositionAsync() {
+        throw new Error('unexpected single-shot fallback');
+      },
+    };
+
+    const coldFix = await requestNativeCoordinates(
+      undefined,
+      undefined,
+      'de',
+      40,
+      undefined,
+      coldGnssNative,
+      { warmTimeoutMs: 25, coldHardTimeoutMs: 250, now: () => now },
+    );
+    assert.equal(coldRemoved, 2);
+    assert.deepEqual(coldFix, {
+      ok: true,
+      lng: 9.9937,
+      lat: 53.5511,
+      accuracyMeters: 16,
+    });
+
+    // Completely hung native provider terminates deterministically at coldHardTimeoutMs and removes subscriptions
+    let hungRemoved = 0;
+    const hungNative: NativeLocationModuleLike = {
+      async requestForegroundPermissionsAsync() {
+        return { granted: true };
+      },
+      async hasServicesEnabledAsync() {
+        return true;
+      },
+      async getLastKnownPositionAsync() {
+        return null;
+      },
+      async watchPositionAsync() {
+        return {
+          remove() {
+            hungRemoved += 1;
+          },
+        };
+      },
+      async getCurrentPositionAsync() {
+        return new Promise(() => {});
+      },
+    };
+
+    const hungResult = await requestNativeCoordinates(
+      undefined,
+      undefined,
+      'en',
+      20,
+      undefined,
+      hungNative,
+      { warmTimeoutMs: 20, coldHardTimeoutMs: 45, now: () => now },
+    );
+    assert.equal(hungRemoved, 2);
+    assert.equal(hungResult.ok, false);
+    if (!hungResult.ok) {
+      assert.match(hungResult.reason, /Unable to determine your current GPS position/i);
+    }
   });
 });
 
