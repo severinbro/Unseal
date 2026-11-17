@@ -96,6 +96,35 @@ function buildMultipartPayload(options: {
   };
 }
 
+function buildBulkMultipartPayload(
+  files: ReadonlyArray<{
+    fieldName: string;
+    fileName: string;
+    contentType: string;
+    fileBuffer: Buffer;
+  }>,
+): { body: Buffer; contentTypeHeader: string } {
+  const boundary = '----EntsiegelungBulkPhotoBoundary987654321';
+  const chunks: Buffer[] = [];
+  for (const file of files) {
+    chunks.push(
+      Buffer.from(
+        `--${boundary}\r\n` +
+          `Content-Disposition: form-data; name="${file.fieldName}"; filename="${file.fileName}"\r\n` +
+          `Content-Type: ${file.contentType}\r\n\r\n`,
+        'utf8',
+      ),
+    );
+    chunks.push(file.fileBuffer);
+    chunks.push(Buffer.from('\r\n', 'utf8'));
+  }
+  chunks.push(Buffer.from(`--${boundary}--\r\n`, 'utf8'));
+  return {
+    body: Buffer.concat(chunks),
+    contentTypeHeader: `multipart/form-data; boundary=${boundary}`,
+  };
+}
+
 function buildGeoPackageBinaryHeader(srsId: number, wkb: Buffer): Buffer {
   const header = Buffer.alloc(8);
   header[0] = 0x47; // 'G'
@@ -365,7 +394,45 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
       assert.equal(hhLowAfterFinish.properties.municipalityMaxScore, 3);
       assert.equal(hhLowAfterFinish.properties.municipalityNormalizedScore, 1);
 
-      // Revoking admin blocks status updates again
+      // Admin can delete (204) another user's polygon, but CANNOT alter its attributes via PATCH (403 FORBIDDEN_NOT_AUTHOR)
+      const otherUserPoly = await createPolygon(
+        app,
+        v1.sessionToken,
+        makeCourtyardRing(9.9985, 53.5535),
+        'VoterOne proposal moderated by admin',
+      );
+      const adminAlterOtherRes = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/polygons/${otherUserPoly.id}`,
+        headers: { authorization: `Bearer ${mapper.sessionToken}` },
+        payload: { surfaceType: 'pavers', note: 'Admin tried to rewrite note' },
+      });
+      assert.equal(adminAlterOtherRes.statusCode, 403);
+      assert.equal(
+        ApiErrorEnvelopeSchema.parse(adminAlterOtherRes.json()).error.code,
+        'FORBIDDEN_NOT_AUTHOR',
+      );
+
+      const adminDeleteOtherRes = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/polygons/${otherUserPoly.id}`,
+        headers: { authorization: `Bearer ${mapper.sessionToken}` },
+      });
+      assert.equal(adminDeleteOtherRes.statusCode, 204);
+
+      const getAfterAdminDelete = await app.inject({
+        method: 'GET',
+        url: `/api/v1/polygons/${otherUserPoly.id}`,
+      });
+      assert.equal(getAfterAdminDelete.statusCode, 404);
+
+      // Revoking admin blocks status updates and non-author deletes again
+      const secondOtherPoly = await createPolygon(
+        app,
+        v1.sessionToken,
+        makeCourtyardRing(9.9995, 53.5545),
+        'VoterOne second proposal',
+      );
       const revokeRes = await runAdminCommand(pool, ['revoke-admin', 'CityMapper']);
       assert.equal(revokeRes.role, 'user');
 
@@ -376,6 +443,17 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
         payload: { status: 'proposed' },
       });
       assert.equal(afterRevokePatch.statusCode, 403);
+
+      const afterRevokeDeleteOther = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/polygons/${secondOtherPoly.id}`,
+        headers: { authorization: `Bearer ${mapper.sessionToken}` },
+      });
+      assert.equal(afterRevokeDeleteOther.statusCode, 403);
+      assert.equal(
+        ApiErrorEnvelopeSchema.parse(afterRevokeDeleteOther.json()).error.code,
+        'FORBIDDEN_NOT_AUTHOR',
+      );
     } finally {
       await app.close();
     }
@@ -779,7 +857,34 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
       });
       assert.equal(traversalRes.statusCode, 404);
 
-      // 4) Rate farPhoto as "fake" (-1) by 3 distinct users -> credibilityScore = -3, isFlaggedFake = true
+      // 4) Self-voting (+1 or -1) on own uploaded photo is rejected with 403 FORBIDDEN_SELF_VOTE
+      for (const selfValue of [1, -1] as const) {
+        const selfNearRes = await app.inject({
+          method: 'PUT',
+          url: `/api/v1/photos/${nearPhoto.id}/vote`,
+          headers: { authorization: `Bearer ${uploader.sessionToken}` },
+          payload: { value: selfValue },
+        });
+        assert.equal(selfNearRes.statusCode, 403);
+        assert.equal(
+          ApiErrorEnvelopeSchema.parse(selfNearRes.json()).error.code,
+          'FORBIDDEN_SELF_VOTE',
+        );
+
+        const selfFarRes = await app.inject({
+          method: 'PUT',
+          url: `/api/v1/photos/${farPhoto.id}/vote`,
+          headers: { authorization: `Bearer ${rater1.sessionToken}` },
+          payload: { value: selfValue },
+        });
+        assert.equal(selfFarRes.statusCode, 403);
+        assert.equal(
+          ApiErrorEnvelopeSchema.parse(selfFarRes.json()).error.code,
+          'FORBIDDEN_SELF_VOTE',
+        );
+      }
+
+      // Rate farPhoto as "fake" (-1) by 3 distinct non-uploader users -> credibilityScore = -3, isFlaggedFake = true
       for (const rater of [uploader, rater2, rater3]) {
         const voteRes = await app.inject({
           method: 'PUT',
@@ -852,6 +957,43 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
       );
       assert.equal(polyAfterDeletes.properties.photoCount, 0);
       assert.equal((await fs.readdir(uploadsDir)).length, 0);
+
+      // 6) Bulk gallery upload: POST /api/v1/polygons/:id/photos/bulk accepts multiple images at once
+      const bulkMp = buildBulkMultipartPayload([
+        {
+          fieldName: 'photos',
+          fileName: 'gallery-1.jpg',
+          contentType: 'image/jpeg',
+          fileBuffer: nearJpeg,
+        },
+        {
+          fieldName: 'photos',
+          fileName: 'gallery-2.jpg',
+          contentType: 'image/jpeg',
+          fileBuffer: farJpeg,
+        },
+      ]);
+      const bulkUploadRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/polygons/${polygon.id}/photos/bulk`,
+        headers: {
+          authorization: `Bearer ${uploader.sessionToken}`,
+          'content-type': bulkMp.contentTypeHeader,
+        },
+        payload: bulkMp.body,
+      });
+      assert.equal(bulkUploadRes.statusCode, 201);
+      const bulkUploaded = PolygonPhotoListResponseSchema.parse(
+        bulkUploadRes.json(),
+      );
+      assert.equal(bulkUploaded.photos.length, 2);
+      assert.equal(bulkUploaded.photos[0]!.gpsVerified, true);
+      assert.equal(bulkUploaded.photos[1]!.gpsVerified, false);
+
+      const polyAfterBulk = PolygonFeatureSchema.parse(
+        (await app.inject({ method: 'GET', url: `/api/v1/polygons/${polygon.id}` })).json(),
+      );
+      assert.equal(polyAfterBulk.properties.photoCount, 2);
     } finally {
       await app.close();
     }

@@ -49,7 +49,7 @@ export type AuthModalView =
   | 'recover'
   | 'account';
 
-export const MAX_DRAFT_PHOTOS = 5;
+export const MAX_DRAFT_PHOTOS = PHOTO_LIMITS.MAX_PHOTOS_PER_POLYGON;
 
 export interface DraftPhotoAttachment {
   id: string;
@@ -164,6 +164,7 @@ export type AppAction =
   | { type: 'SET_DRAWING_SHEET_COLLAPSED'; collapsed: boolean }
   | { type: 'SET_DRAFT_META'; surfaceType?: SurfaceType; note?: string }
   | { type: 'ADD_DRAFT_PHOTO'; photo: DraftPhotoAttachment }
+  | { type: 'ADD_DRAFT_PHOTOS'; photos: readonly DraftPhotoAttachment[] }
   | { type: 'REMOVE_DRAFT_PHOTO'; photoId: string }
   | { type: 'REQUEST_DISCARD_DRAFT' }
   | { type: 'CANCEL_DISCARD_DRAFT' }
@@ -766,16 +767,40 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'ADD_DRAFT_PHOTO': {
+      const maxPhotos = Math.min(
+        MAX_DRAFT_PHOTOS,
+        PHOTO_LIMITS.MAX_PHOTOS_PER_POLYGON,
+      );
       if (
         state.mode !== 'drawing' ||
-        state.draftPhotos.length >=
-          Math.min(MAX_DRAFT_PHOTOS, PHOTO_LIMITS.MAX_PHOTOS_PER_POLYGON)
+        state.draftPhotos.length >= maxPhotos
       ) {
         return state;
       }
       return {
         ...state,
         draftPhotos: [...state.draftPhotos, action.photo],
+        draftSubmitError: null,
+      };
+    }
+
+    case 'ADD_DRAFT_PHOTOS': {
+      const maxPhotos = Math.min(
+        MAX_DRAFT_PHOTOS,
+        PHOTO_LIMITS.MAX_PHOTOS_PER_POLYGON,
+      );
+      if (
+        state.mode !== 'drawing' ||
+        action.photos.length === 0 ||
+        state.draftPhotos.length >= maxPhotos
+      ) {
+        return state;
+      }
+      const remaining = maxPhotos - state.draftPhotos.length;
+      const toAppend = action.photos.slice(0, remaining);
+      return {
+        ...state,
+        draftPhotos: [...state.draftPhotos, ...toAppend],
         draftSubmitError: null,
       };
     }

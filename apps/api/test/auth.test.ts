@@ -128,11 +128,12 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
   it('purgeExpiredPersonalData erases abandoned registrations, expired sessions, stale email links and expired pseudonym reservations but keeps bans', async () => {
     const passwordHash = await hashPassword('valid-password-123');
     const usersRes = await pool.query<{ id: string; pseudonym: string }>(
-      `INSERT INTO users (pseudonym, email, password_hash, email_verified_at, created_at)
+      `INSERT INTO users (pseudonym, email, password_hash, email_verified_at, login_blocked_at, failed_login_attempts, created_at)
        VALUES
-         ('AbandonedSignup', 'abandoned@example.org', $1, NULL, NOW() - INTERVAL '3 days'),
-         ('FreshSignup', 'fresh@example.org', $1, NULL, NOW() - INTERVAL '1 hour'),
-         ('ActiveCitizen', 'active@example.org', $1, NOW() - INTERVAL '10 days', NOW() - INTERVAL '10 days')
+         ('AbandonedSignup', 'abandoned@example.org', $1, NULL, NULL, 0, NOW() - INTERVAL '3 days'),
+         ('FreshSignup', 'fresh@example.org', $1, NULL, NULL, 0, NOW() - INTERVAL '1 hour'),
+         ('ActiveCitizen', 'active@example.org', $1, NOW() - INTERVAL '10 days', NULL, 0, NOW() - INTERVAL '10 days'),
+         ('LockedCitizen', 'locked@example.org', $1, NOW() - INTERVAL '20 days', NOW() - INTERVAL '5 days', 5, NOW() - INTERVAL '20 days')
        RETURNING id, pseudonym`,
       [passwordHash],
     );
@@ -178,7 +179,7 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
     );
     assert.deepEqual(
       remainingUsers.rows.map((r) => r.pseudonym),
-      ['ActiveCitizen', 'FreshSignup'],
+      ['ActiveCitizen', 'FreshSignup', 'LockedCitizen'],
     );
     const remainingReasons = await pool.query<{ reason: string }>(
       'SELECT reason FROM reserved_pseudonyms ORDER BY reason',
@@ -1003,10 +1004,11 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
       await busyApp.close();
     }
 
-    // 2. 11th session eviction + logout + optionalAuth/requireAdmin + composite failed-login throttling + lock ordering
+    // 2. 11th session eviction + logout + optionalAuth/requireAdmin + 5-failed-attempts account lockout & re-verification + lock ordering
+    const lockoutMailer = createMemoryMailer();
     const app = await buildApp(config, pool, {
       logger: createLogger({ enabled: false }),
-      mailer: createMemoryMailer(),
+      mailer: lockoutMailer,
       rateLimits: {
         loginIp: { max: 50, timeWindow: '15 minutes' },
       },
@@ -1100,8 +1102,9 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
       });
       assert.equal(logoutRes.statusCode, 204);
 
-      // Composite IPv6 /64 subnet + identifier login throttling
-      for (let attempt = 1; attempt <= 5; attempt += 1) {
+      // 5 failed login attempts block the account and require email re-verification
+      lockoutMailer.clear();
+      for (let attempt = 1; attempt <= 4; attempt += 1) {
         const failRes = await app.inject({
           method: 'POST',
           url: '/api/v1/auth/login',
@@ -1112,17 +1115,108 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
           },
         });
         assert.equal(failRes.statusCode, 401);
+        assert.equal(
+          ApiErrorEnvelopeSchema.parse(failRes.json()).error.code,
+          'AUTH_INVALID_CREDENTIALS',
+        );
       }
-      const sixthRes = await app.inject({
+      assert.equal(lockoutMailer.outbox.length, 0);
+
+      // 5th failed attempt blocks the account across ALL IPs and sends a reverify_login link
+      const fifthRes = await app.inject({
         method: 'POST',
         url: '/api/v1/auth/login',
-        remoteAddress: '2001:db8:cafe:42::9999',
+        remoteAddress: '2001:db8:cafe:99::5',
         payload: {
           identifier: 'MultiDevice',
           password: 'wrong-password-attempt',
         },
       });
-      assert.equal(sixthRes.statusCode, 429);
+      assert.equal(fifthRes.statusCode, 403);
+      assert.equal(
+        ApiErrorEnvelopeSchema.parse(fifthRes.json()).error.code,
+        'AUTH_ACCOUNT_LOCKED',
+      );
+      assert.equal(lockoutMailer.outbox.length, 1);
+      assert.equal(lockoutMailer.outbox[0]?.purpose, 'reverify_login');
+      assert.equal(lockoutMailer.outbox[0]?.to, multi.email);
+
+      // Even with the CORRECT password (and from a different IP), sign-in remains blocked until re-verified
+      const blockedCorrectPw = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        remoteAddress: '198.51.100.88',
+        payload: {
+          identifier: 'MultiDevice',
+          password: 'device-password-123',
+        },
+      });
+      assert.equal(blockedCorrectPw.statusCode, 403);
+      assert.equal(
+        ApiErrorEnvelopeSchema.parse(blockedCorrectPw.json()).error.code,
+        'AUTH_ACCOUNT_LOCKED',
+      );
+      // Does not send duplicate emails on subsequent blocked attempts
+      assert.equal(lockoutMailer.outbox.length, 1);
+
+      // Resend verification by pseudonym rotates the unlock token cleanly
+      const resendLocked = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/resend-verification',
+        remoteAddress: '198.51.100.88',
+        payload: { identifier: 'MultiDevice' },
+      });
+      assert.equal(resendLocked.statusCode, 202);
+      assert.equal(lockoutMailer.outbox.length, 2);
+      assert.equal(lockoutMailer.outbox[1]?.purpose, 'reverify_login');
+      const reverifyToken = extractTokenFromActionUrl(
+        lockoutMailer.outbox[1]!.actionUrl,
+      );
+
+      // Completing email verification unlocks the account and resets failed_login_attempts
+      const unlockVerifyRes = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/verify-email',
+        remoteAddress: '198.51.100.88',
+        payload: { token: reverifyToken },
+      });
+      assert.equal(unlockVerifyRes.statusCode, 200);
+
+      const unlockedLoginRes = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        remoteAddress: '198.51.100.88',
+        payload: {
+          identifier: 'MultiDevice',
+          password: 'device-password-123',
+        },
+      });
+      assert.equal(unlockedLoginRes.statusCode, 200);
+      SessionResponseSchema.parse(unlockedLoginRes.json());
+
+      // Probing a non-existent account is still rate-limited after 5 failures per IP/subnet + identifier
+      for (let attempt = 1; attempt <= 5; attempt += 1) {
+        const unknownFail = await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/login',
+          remoteAddress: `2001:db8:dead:beef::${attempt}`,
+          payload: {
+            identifier: 'nonexistent_probe_user',
+            password: 'wrong-password-attempt',
+          },
+        });
+        assert.equal(unknownFail.statusCode, 401);
+      }
+      const sixthUnknown = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        remoteAddress: '2001:db8:dead:beef::9999',
+        payload: {
+          identifier: 'nonexistent_probe_user',
+          password: 'wrong-password-attempt',
+        },
+      });
+      assert.equal(sixthUnknown.statusCode, 429);
 
       // Concurrent lockUserForWrite + recomputePolygonScores vs DELETE /api/v1/auth/me
       const author = await registerVerifiedUser(

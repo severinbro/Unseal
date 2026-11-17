@@ -110,7 +110,12 @@ async function createSessionWithClient(
   }
 
   await client.query(
-    "UPDATE users SET last_login_at = date_trunc('day', clock_timestamp()) WHERE id = $1",
+    `UPDATE users
+     SET
+       last_login_at = date_trunc('day', clock_timestamp()),
+       failed_login_attempts = 0,
+       login_blocked_at = NULL
+     WHERE id = $1`,
     [userId],
   );
 

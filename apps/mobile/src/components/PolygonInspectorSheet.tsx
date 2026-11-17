@@ -1,6 +1,7 @@
 import {
   COMMENT_LIMITS,
   GEOMETRY_LIMITS,
+  PHOTO_LIMITS,
   POLYGON_FLAG_REASONS,
   POLYGON_STATUSES,
   SURFACE_TYPES,
@@ -37,12 +38,14 @@ import {
 } from '../i18n/translations';
 import {
   buildCommentDisplayModel,
+  deriveInspectorManagePermissions,
   deriveInspectorOverviewMeta,
   formatInspectorDate,
   MIN_TOUCH_TARGET_DP,
   pruneDeletedCommentSubtree,
   type CommentDisplayModel,
   type CommentThreadNode,
+  type InspectorManagePermissionsModel,
   type InspectorOverviewMetaModel,
 } from '../state/viewModels';
 import { useTheme } from '../theme/themeContext';
@@ -56,11 +59,13 @@ import {
 export type InspectorTab = 'overview' | 'comments' | 'photos' | 'manage';
 export {
   buildCommentDisplayModel,
+  deriveInspectorManagePermissions,
   deriveInspectorOverviewMeta,
   formatInspectorDate,
   pruneDeletedCommentSubtree,
   type CommentDisplayModel,
   type CommentThreadNode,
+  type InspectorManagePermissionsModel,
   type InspectorOverviewMetaModel,
 };
 
@@ -95,6 +100,10 @@ export interface PolygonInspectorSheetProps {
   onUploadPhotoFromLibrary?: (
     polygonId: string,
   ) => Promise<PolygonPhoto | null>;
+  onUploadPhotosFromLibrary?: (
+    polygonId: string,
+    onProgress?: (current: number, total: number) => void,
+  ) => Promise<PolygonPhoto[]>;
   onVotePhoto?: (
     photoId: string,
     value: 1 | -1,
@@ -139,6 +148,7 @@ export function PolygonInspectorSheet({
   onListPhotos,
   onUploadPhotoFromCamera,
   onUploadPhotoFromLibrary,
+  onUploadPhotosFromLibrary,
   onVotePhoto,
   onClearPhotoVote,
   onDeletePhoto,
@@ -170,6 +180,10 @@ export function PolygonInspectorSheet({
   const [uploadingPhotoSource, setUploadingPhotoSource] = useState<
     'camera' | 'library' | null
   >(null);
+  const [uploadingPhotoProgress, setUploadingPhotoProgress] = useState<{
+    current: number;
+    total: number;
+  } | null>(null);
   const [revealedFakeIds, setRevealedFakeIds] = useState<
     Record<string, boolean>
   >({});
@@ -211,6 +225,7 @@ export function PolygonInspectorSheet({
     setPhotos([]);
     setPhotosLoadedForId(null);
     setUploadingPhotoSource(null);
+    setUploadingPhotoProgress(null);
     setRevealedFakeIds({});
     setLightboxPhoto(null);
     setComments([]);
@@ -387,7 +402,12 @@ export function PolygonInspectorSheet({
       });
   };
 
+  const managePermissions = deriveInspectorManagePermissions(feature, isAdmin);
+
   const handleSavePatch = (): void => {
+    if (!managePermissions.canEditDetails) {
+      return;
+    }
     setActionError(null);
     setIsBusy(true);
     const trimmed = editNote.trim();
@@ -425,6 +445,9 @@ export function PolygonInspectorSheet({
   };
 
   const handleConfirmDelete = (): void => {
+    if (!managePermissions.canDeletePolygon) {
+      return;
+    }
     setActionError(null);
     setIsBusy(true);
 
@@ -438,6 +461,37 @@ export function PolygonInspectorSheet({
   };
 
   const handleUploadPhoto = (source: 'camera' | 'library'): void => {
+    if (source === 'library' && onUploadPhotosFromLibrary) {
+      if (!isAuthenticated) {
+        onOpenAuth?.();
+        return;
+      }
+      setActionError(null);
+      setUploadingPhotoSource('library');
+      setUploadingPhotoProgress(null);
+      void onUploadPhotosFromLibrary(feature.id, (current, total) => {
+        setUploadingPhotoProgress({ current, total });
+      })
+        .then((uploadedList) => {
+          if (uploadedList.length > 0) {
+            const uploadedIds = new Set(uploadedList.map((item) => item.id));
+            setPhotos((prev) => [
+              ...[...uploadedList].reverse(),
+              ...prev.filter((p) => !uploadedIds.has(p.id)),
+            ]);
+            setPhotosLoadedForId(feature.id);
+          }
+        })
+        .catch((err: unknown) => {
+          setActionError(localizeError(err, t.photoErrorFallback, locale));
+        })
+        .finally(() => {
+          setUploadingPhotoSource(null);
+          setUploadingPhotoProgress(null);
+        });
+      return;
+    }
+
     const handler =
       source === 'camera'
         ? onUploadPhotoFromCamera
@@ -452,6 +506,7 @@ export function PolygonInspectorSheet({
 
     setActionError(null);
     setUploadingPhotoSource(source);
+    setUploadingPhotoProgress(null);
     void handler(feature.id)
       .then((uploaded) => {
         if (uploaded) {
@@ -467,10 +522,14 @@ export function PolygonInspectorSheet({
       })
       .finally(() => {
         setUploadingPhotoSource(null);
+        setUploadingPhotoProgress(null);
       });
   };
 
   const handlePhotoVote = (photo: PolygonPhoto, value: 1 | -1): void => {
+    if (photo.isUploader) {
+      return;
+    }
     if (!isAuthenticated) {
       onOpenAuth?.();
       return;
@@ -689,7 +748,7 @@ export function PolygonInspectorSheet({
       });
   };
 
-  const overviewMeta = deriveInspectorOverviewMeta(feature, locale);
+  const overviewMeta = deriveInspectorOverviewMeta(feature, locale, isAdmin);
   const entryDateText = overviewMeta.entryDateText;
   const authorActivityText = overviewMeta.authorActivityText;
   const displayAuthorHandle = overviewMeta.displayAuthorHandle;
@@ -921,13 +980,13 @@ export function PolygonInspectorSheet({
                     : t.statusProposedBadge}
               </Text>
             </View>
-            {properties.isFlagged ? (
+            {overviewMeta.needsReviewBadgeText !== null ? (
               <View
                 testID="needs-review-badge"
                 style={styles.needsReviewBadge}
               >
                 <Text style={styles.needsReviewBadgeLabel}>
-                  {t.needsReviewBadge(properties.flagCount)}
+                  {overviewMeta.needsReviewBadgeText}
                 </Text>
               </View>
             ) : null}
@@ -1498,13 +1557,17 @@ export function PolygonInspectorSheet({
                   testID="upload-photo-camera-button"
                   accessibilityRole="button"
                   accessibilityLabel={t.addPhotoCamera}
-                  disabled={uploadingPhotoSource !== null}
+                  disabled={
+                    uploadingPhotoSource !== null ||
+                    displayedPhotoCount >= PHOTO_LIMITS.MAX_PHOTOS_PER_POLYGON
+                  }
                   onPress={() => handleUploadPhoto('camera')}
                   style={[
                     styles.touchButton,
                     styles.flexButton,
                     styles.secondaryButton,
-                    uploadingPhotoSource !== null
+                    uploadingPhotoSource !== null ||
+                    displayedPhotoCount >= PHOTO_LIMITS.MAX_PHOTOS_PER_POLYGON
                       ? styles.disabledButton
                       : null,
                   ]}
@@ -1517,25 +1580,35 @@ export function PolygonInspectorSheet({
                 </Pressable>
               ) : null}
 
-              {onUploadPhotoFromLibrary ? (
+              {onUploadPhotosFromLibrary || onUploadPhotoFromLibrary ? (
                 <Pressable
                   testID="upload-photo-gallery-button"
                   accessibilityRole="button"
                   accessibilityLabel={t.addPhotoGallery}
-                  disabled={uploadingPhotoSource !== null}
+                  disabled={
+                    uploadingPhotoSource !== null ||
+                    displayedPhotoCount >= PHOTO_LIMITS.MAX_PHOTOS_PER_POLYGON
+                  }
                   onPress={() => handleUploadPhoto('library')}
                   style={[
                     styles.touchButton,
                     styles.flexButton,
                     styles.secondaryButton,
-                    uploadingPhotoSource !== null
+                    uploadingPhotoSource !== null ||
+                    displayedPhotoCount >= PHOTO_LIMITS.MAX_PHOTOS_PER_POLYGON
                       ? styles.disabledButton
                       : null,
                   ]}
                 >
                   <Text style={styles.secondaryButtonLabel}>
                     {uploadingPhotoSource === 'library'
-                      ? t.uploadingPhoto
+                      ? uploadingPhotoProgress !== null &&
+                        uploadingPhotoProgress.total > 1
+                        ? t.uploadingPhotosProgress(
+                            uploadingPhotoProgress.current,
+                            uploadingPhotoProgress.total,
+                          )
+                        : t.uploadingPhoto
                       : t.addPhotoGallery}
                   </Text>
                 </Pressable>
@@ -1616,21 +1689,28 @@ export function PolygonInspectorSheet({
 
                     <View style={styles.photoMetaRow}>
                       <Text style={styles.photoAuthorLabel}>
-                        @{photo.uploaderPseudonym}
+                        {t.commentAuthorLabel(
+                          photo.uploaderPseudonym,
+                          photo.isUploader,
+                        )}
                       </Text>
 
                       <View style={styles.photoRatingRow}>
                         <Pressable
                           accessibilityRole="button"
                           accessibilityLabel={t.rateRealA11y(photo.realVotes)}
-                          accessibilityState={{ selected: photo.myVote === 1 }}
-                          disabled={isBusy}
+                          accessibilityState={{
+                            selected: photo.myVote === 1,
+                            disabled: isBusy || photo.isUploader,
+                          }}
+                          disabled={isBusy || photo.isUploader}
                           onPress={() => handlePhotoVote(photo, 1)}
                           style={[
                             styles.photoVotePill,
                             photo.myVote === 1
                               ? styles.photoVotePillRealActive
                               : null,
+                            photo.isUploader ? styles.disabledButton : null,
                           ]}
                         >
                           <Text
@@ -1648,14 +1728,18 @@ export function PolygonInspectorSheet({
                         <Pressable
                           accessibilityRole="button"
                           accessibilityLabel={t.rateFakeA11y(photo.fakeVotes)}
-                          accessibilityState={{ selected: photo.myVote === -1 }}
-                          disabled={isBusy}
+                          accessibilityState={{
+                            selected: photo.myVote === -1,
+                            disabled: isBusy || photo.isUploader,
+                          }}
+                          disabled={isBusy || photo.isUploader}
                           onPress={() => handlePhotoVote(photo, -1)}
                           style={[
                             styles.photoVotePill,
                             photo.myVote === -1
                               ? styles.photoVotePillFakeActive
                               : null,
+                            photo.isUploader ? styles.disabledButton : null,
                           ]}
                         >
                           <Text
@@ -1697,7 +1781,8 @@ export function PolygonInspectorSheet({
         <View style={styles.tabSection}>
           {isAdmin &&
           (onPatchPolygonStatus ||
-            (properties.flagCount > 0 && onClearPolygonFlags)) ? (
+            (properties.flagCount > 0 && onClearPolygonFlags) ||
+            managePermissions.canAdminDeleteNonAuthorPolygon) ? (
             <View style={styles.manageCard}>
               <Text style={styles.manageSectionTitle}>
                 {t.adminSectionTitle}
@@ -1778,10 +1863,60 @@ export function PolygonInspectorSheet({
                   </Text>
                 </Pressable>
               ) : null}
+              {managePermissions.canAdminDeleteNonAuthorPolygon ? (
+                confirmingDelete ? (
+                  <View
+                    style={styles.deleteConfirmBox}
+                    accessibilityRole="alert"
+                  >
+                    <Text style={styles.deleteConfirmText}>
+                      {t.deleteConfirmPrompt}
+                    </Text>
+                    <View style={styles.buttonRow}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={t.keepProposalA11y}
+                        disabled={isBusy}
+                        onPress={() => setConfirmingDelete(false)}
+                        style={[styles.touchButton, styles.secondaryButton]}
+                      >
+                        <Text style={styles.secondaryButtonLabel}>
+                          {t.keepProposal}
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        testID="admin-confirm-delete-polygon-button"
+                        accessibilityRole="button"
+                        accessibilityLabel={t.confirmDeleteA11y}
+                        disabled={isBusy}
+                        onPress={handleConfirmDelete}
+                        style={[styles.touchButton, styles.dangerButton]}
+                      >
+                        <Text style={styles.primaryButtonLabel}>
+                          {isBusy ? t.deleting : t.confirmDelete}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : (
+                  <Pressable
+                    testID="admin-delete-polygon-button"
+                    accessibilityRole="button"
+                    accessibilityLabel={t.deleteProposalA11y}
+                    disabled={isBusy}
+                    onPress={() => setConfirmingDelete(true)}
+                    style={[styles.touchButton, styles.dangerOutlineButton]}
+                  >
+                    <Text style={styles.dangerOutlineLabel}>
+                      {t.deleteProposal}
+                    </Text>
+                  </Pressable>
+                )
+              ) : null}
             </View>
           ) : null}
 
-          {properties.isAuthor ? (
+          {managePermissions.canEditDetails ? (
             <View style={styles.manageCard}>
               <Text style={styles.manageSectionTitle}>
                 {t.authorSectionTitle}
@@ -1926,7 +2061,7 @@ export function PolygonInspectorSheet({
             </View>
           ) : null}
 
-          {!isAdmin && !properties.isAuthor ? (
+          {managePermissions.showReadonlyHint ? (
             <View style={styles.noteCard}>
               <Text style={styles.immutableNotice}>{t.manageReadonlyHint}</Text>
             </View>

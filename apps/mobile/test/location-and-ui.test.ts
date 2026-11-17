@@ -47,6 +47,7 @@ import {
 import {
   deriveAuthModalModel,
   deriveDrawingToolbarModel,
+  deriveInspectorManagePermissions,
   deriveInspectorOverviewMeta,
   deriveMapControlsModel,
   deriveNavbarLayoutMode,
@@ -1140,14 +1141,22 @@ describe('German default localization and DE <-> EN switching', () => {
         myFlag: true,
       },
     };
-    const metaDe = deriveInspectorOverviewMeta(flaggedNewFeature, 'de');
-    assert.equal(metaDe.displayAuthorHandle, 'citizen_a');
-    assert.equal(metaDe.newContributorBadgeText, 'Neue/r Beitragende/r');
-    assert.equal(metaDe.entryDateText, '12.11.2026');
-    assert.equal(metaDe.authorActivityText, 'Aktiv in den letzten 30 Tagen');
-    assert.equal(metaDe.needsReviewBadgeText, 'Prüfbedarf (2)');
-    assert.equal(metaDe.canFlagOrUnflag, true);
+    // Non-owner, non-admin viewer does NOT see the "Prüfbedarf" badge even if feature has isFlagged=true
+    const metaDeNonOwner = deriveInspectorOverviewMeta(flaggedNewFeature, 'de', false);
+    assert.equal(metaDeNonOwner.displayAuthorHandle, 'citizen_a');
+    assert.equal(metaDeNonOwner.newContributorBadgeText, 'Neue/r Beitragende/r');
+    assert.equal(metaDeNonOwner.entryDateText, '12.11.2026');
+    assert.equal(metaDeNonOwner.authorActivityText, 'Aktiv in den letzten 30 Tagen');
+    assert.equal(metaDeNonOwner.isFlagged, false);
+    assert.equal(metaDeNonOwner.needsReviewBadgeText, null);
+    assert.equal(metaDeNonOwner.canFlagOrUnflag, true);
 
+    // Admin viewer DOES see the "Prüfbedarf" badge on another user's polygon
+    const metaDeAdmin = deriveInspectorOverviewMeta(flaggedNewFeature, 'de', true);
+    assert.equal(metaDeAdmin.isFlagged, true);
+    assert.equal(metaDeAdmin.needsReviewBadgeText, 'Prüfbedarf (2)');
+
+    // Polygon owner (isAuthor=true) ALSO sees the "Needs review" badge on their own polygon
     const metaEn = deriveInspectorOverviewMeta(
       {
         ...flaggedNewFeature,
@@ -1165,8 +1174,45 @@ describe('German default localization and DE <-> EN switching', () => {
     assert.equal(metaEn.newContributorBadgeText, null);
     assert.equal(metaEn.entryDateText, '2026-11-12');
     assert.equal(metaEn.authorActivityText, 'Unknown');
+    assert.equal(metaEn.isFlagged, true);
     assert.equal(metaEn.needsReviewBadgeText, 'Needs review (2)');
     assert.equal(metaEn.canFlagOrUnflag, false);
+
+    // Inspector manage permissions: admins can delete (but NOT edit details of) other users' polygons
+    const strangerPerms = deriveInspectorManagePermissions(flaggedNewFeature, false);
+    assert.deepEqual(strangerPerms, {
+      canEditDetails: false,
+      canDeletePolygon: false,
+      canAdminDeleteNonAuthorPolygon: false,
+      showReadonlyHint: true,
+    });
+
+    const adminOnOtherPerms = deriveInspectorManagePermissions(flaggedNewFeature, true);
+    assert.deepEqual(adminOnOtherPerms, {
+      canEditDetails: false,
+      canDeletePolygon: true,
+      canAdminDeleteNonAuthorPolygon: true,
+      showReadonlyHint: false,
+    });
+
+    const ownFeature: PolygonFeature = {
+      ...flaggedNewFeature,
+      properties: { ...flaggedNewFeature.properties, isAuthor: true },
+    };
+    const authorPerms = deriveInspectorManagePermissions(ownFeature, false);
+    assert.deepEqual(authorPerms, {
+      canEditDetails: true,
+      canDeletePolygon: true,
+      canAdminDeleteNonAuthorPolygon: false,
+      showReadonlyHint: false,
+    });
+    const adminOnOwnPerms = deriveInspectorManagePermissions(ownFeature, true);
+    assert.deepEqual(adminOnOwnPerms, {
+      canEditDetails: true,
+      canDeletePolygon: true,
+      canAdminDeleteNonAuthorPolygon: false,
+      showReadonlyHint: false,
+    });
   });
 
   it('normalizes map bearing and computes north arrow rotation cleanly', () => {
@@ -1201,7 +1247,27 @@ describe('German default localization and DE <-> EN switching', () => {
         'Fallback',
         'de',
       ),
-      /Eigene Vorschläge und Kommentare/,
+      /Eigene Vorschläge, Fotos und Kommentare/,
+    );
+    assert.match(
+      localizeError(
+        new ApiError(
+          403,
+          'AUTH_ACCOUNT_LOCKED',
+          'Account blocked after 5 failed login attempts.',
+        ),
+        'Fallback',
+        'de',
+      ),
+      /5 fehlgeschlagenen Anmeldeversuchen/,
+    );
+    assert.equal(
+      getTranslations('de').inspector.uploadingPhotosProgress(2, 5),
+      'Lädt hoch (2/5)…',
+    );
+    assert.equal(
+      getTranslations('en').inspector.uploadingPhotosProgress(2, 5),
+      'Uploading (2/5)…',
     );
     assert.match(
       localizeError(

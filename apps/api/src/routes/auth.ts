@@ -11,6 +11,7 @@ import {
   RESERVED_PSEUDONYMS,
   RegisterRequestSchema,
   RegisterResponseSchema,
+  ResendVerificationRequestSchema,
   ResetPasswordRequestSchema,
   ResetPasswordResponseSchema,
   SessionResponseSchema,
@@ -185,6 +186,8 @@ interface UserAuthRow {
   pseudonym: string;
   email: string | null;
   email_verified_at: Date | null;
+  failed_login_attempts: number;
+  login_blocked_at: Date | null;
   role: string;
   password_hash: string;
   created_at: Date;
@@ -306,7 +309,10 @@ export async function consumeVerifyEmailToken(
 
     const userRes = await client.query<{ pseudonym: string }>(
       `UPDATE users
-       SET email_verified_at = COALESCE(email_verified_at, clock_timestamp())
+       SET
+         email_verified_at = COALESCE(email_verified_at, clock_timestamp()),
+         failed_login_attempts = 0,
+         login_blocked_at = NULL
        WHERE id = $1
        RETURNING pseudonym`,
       [tokenRow.user_id],
@@ -422,7 +428,9 @@ export async function consumePasswordResetToken(
       `UPDATE users
        SET
          password_hash = $2,
-         email_verified_at = COALESCE(email_verified_at, clock_timestamp())
+         email_verified_at = COALESCE(email_verified_at, clock_timestamp()),
+         failed_login_attempts = 0,
+         login_blocked_at = NULL
        WHERE id = $1`,
       [tokenRow.user_id, nextPasswordHash],
     );
@@ -761,24 +769,30 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       },
     },
     async (request, reply) => {
-      const body = EmailActionRequestSchema.parse(request.body);
-      const emailLower = body.email.toLowerCase();
+      const body = ResendVerificationRequestSchema.parse(request.body);
+      const identifierLower = body.identifier.toLowerCase();
 
       const userRes = await app.pool.query<{
         id: string;
         pseudonym: string;
-        email: string;
+        email: string | null;
         email_verified_at: Date | null;
+        login_blocked_at: Date | null;
       }>(
-        `SELECT id, pseudonym, email, email_verified_at
+        `SELECT id, pseudonym, email, email_verified_at, login_blocked_at
          FROM users
          WHERE LOWER(email) = $1
+            OR LOWER(pseudonym) = $1
          LIMIT 1`,
-        [emailLower],
+        [identifierLower],
       );
       const userRow = userRes.rows[0];
 
-      if (userRow && userRow.email_verified_at === null) {
+      if (
+        userRow &&
+        userRow.email !== null &&
+        (userRow.email_verified_at === null || userRow.login_blocked_at !== null)
+      ) {
         const verifyToken = generateEmailActionToken();
         const verifyTokenHash = hashOpaqueToken(verifyToken);
 
@@ -808,7 +822,10 @@ export function registerAuthRoutes(app: FastifyInstance): void {
           await app.mailer.sendActionEmail({
             to: userRow.email,
             pseudonym: userRow.pseudonym,
-            purpose: 'verify_email',
+            purpose:
+              userRow.login_blocked_at !== null
+                ? 'reverify_login'
+                : 'verify_email',
             actionUrl: verifyUrl,
           });
         } catch (err: unknown) {
@@ -865,8 +882,8 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       const identifierLower = body.identifier.toLowerCase();
       const compositeKey = `${normalizeRateLimitIp(request.ip)}:${identifierLower}`;
       const nowMs = Date.now();
-
-      failedLoginTracker.assertAllowed(compositeKey, nowMs);
+      const maxFailedAttempts =
+        loginAccountOverride?.max ?? AUTH_LIMITS.MAX_FAILED_LOGIN_ATTEMPTS;
 
       const userRes = await app.pool.query<UserAuthRow>(
         `SELECT
@@ -874,6 +891,8 @@ export function registerAuthRoutes(app: FastifyInstance): void {
            pseudonym,
            email,
            email_verified_at,
+           failed_login_attempts,
+           login_blocked_at,
            role,
            password_hash,
            created_at
@@ -886,6 +905,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       const userRow = userRes.rows[0];
 
       if (!userRow) {
+        failedLoginTracker.assertAllowed(compositeKey, nowMs);
         await verifyPassword(
           TIMING_GUARD_PASSWORD_HASH,
           body.password,
@@ -899,13 +919,109 @@ export function registerAuthRoutes(app: FastifyInstance): void {
         );
       }
 
+      if (userRow.login_blocked_at !== null) {
+        await verifyPassword(
+          TIMING_GUARD_PASSWORD_HASH,
+          body.password,
+          app.authSemaphore,
+        );
+        throw new ApiError(
+          403,
+          'AUTH_ACCOUNT_LOCKED',
+          `Account blocked after ${maxFailedAttempts} failed login attempts. Please verify your email address again via the link sent to your inbox.`,
+        );
+      }
+
       const passwordValid = await verifyPassword(
         userRow.password_hash,
         body.password,
         app.authSemaphore,
       );
       if (!passwordValid) {
-        failedLoginTracker.recordFailure(compositeKey, Date.now());
+        const client = await app.pool.connect();
+        let lockedAfterFailure = false;
+        let verifyTokenToSend: string | null = null;
+        try {
+          await client.query('BEGIN');
+          const failUpdateRes = await client.query<{
+            failed_login_attempts: number;
+            login_blocked_at: Date | null;
+            newly_blocked: boolean;
+          }>(
+            `UPDATE users
+             SET
+               failed_login_attempts = failed_login_attempts + 1,
+               login_blocked_at = CASE
+                 WHEN failed_login_attempts + 1 >= $2
+                   THEN COALESCE(login_blocked_at, clock_timestamp())
+                 ELSE login_blocked_at
+               END
+             WHERE id = $1
+             RETURNING
+               failed_login_attempts,
+               login_blocked_at,
+               (failed_login_attempts = $2) AS newly_blocked`,
+            [userRow.id, maxFailedAttempts],
+          );
+          const failRow = failUpdateRes.rows[0];
+          lockedAfterFailure = Boolean(failRow && failRow.login_blocked_at !== null);
+
+          if (failRow?.newly_blocked && userRow.email !== null) {
+            const verifyToken = generateEmailActionToken();
+            const verifyTokenHash = hashOpaqueToken(verifyToken);
+            await client.query(
+              `DELETE FROM email_tokens
+               WHERE user_id = $1
+                 AND purpose = 'verify_email'
+                 AND consumed_at IS NULL`,
+              [userRow.id],
+            );
+            await client.query(
+              `INSERT INTO email_tokens (user_id, purpose, token_hash, expires_at)
+               VALUES (
+                 $1,
+                 'verify_email',
+                 $2,
+                 clock_timestamp() + make_interval(hours => $3)
+               )`,
+              [userRow.id, verifyTokenHash, AUTH_LIMITS.EMAIL_VERIFY_TTL_HOURS],
+            );
+            verifyTokenToSend = verifyToken;
+          }
+
+          await client.query('COMMIT');
+        } catch (err: unknown) {
+          await rollbackQuietly(client, request.log);
+          throw err;
+        } finally {
+          client.release();
+        }
+
+        if (verifyTokenToSend !== null && userRow.email !== null) {
+          const verifyUrl = `${app.config.publicBaseUrl}/auth/verify-email?token=${encodeURIComponent(verifyTokenToSend)}`;
+          try {
+            await app.mailer.sendActionEmail({
+              to: userRow.email,
+              pseudonym: userRow.pseudonym,
+              purpose: 'reverify_login',
+              actionUrl: verifyUrl,
+            });
+          } catch (mailErr: unknown) {
+            request.log.error(
+              { err: mailErr, userId: userRow.id },
+              'Failed to dispatch failed-login re-verification email',
+            );
+          }
+        }
+
+        if (lockedAfterFailure) {
+          throw new ApiError(
+            403,
+            'AUTH_ACCOUNT_LOCKED',
+            `Account blocked after ${maxFailedAttempts} failed login attempts. Please verify your email address again via the link sent to your inbox.`,
+          );
+        }
+
         throw new ApiError(
           401,
           'AUTH_INVALID_CREDENTIALS',
@@ -914,6 +1030,12 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       }
 
       if (userRow.email !== null && userRow.email_verified_at === null) {
+        if (userRow.failed_login_attempts > 0) {
+          await app.pool.query(
+            'UPDATE users SET failed_login_attempts = 0 WHERE id = $1',
+            [userRow.id],
+          );
+        }
         throw new ApiError(
           403,
           'AUTH_EMAIL_UNVERIFIED',

@@ -627,7 +627,9 @@ export async function runAdminCommand(
         `UPDATE users
          SET email = $2,
              canonical_email_hash = $3,
-             email_verified_at = COALESCE(email_verified_at, clock_timestamp())
+             email_verified_at = COALESCE(email_verified_at, clock_timestamp()),
+             failed_login_attempts = 0,
+             login_blocked_at = NULL
          WHERE id = $1
          RETURNING pseudonym, email`,
         [userId, newEmailLower, canonicalHash],

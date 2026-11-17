@@ -281,12 +281,22 @@ export class PhotoRepository {
       const lockRes = await client.query<{
         id: string;
         polygon_id: string;
-      }>('SELECT id, polygon_id FROM polygon_photos WHERE id = $1 FOR UPDATE', [
-        params.photoId,
-      ]);
+        user_id: string | null;
+      }>(
+        'SELECT id, polygon_id, user_id FROM polygon_photos WHERE id = $1 FOR UPDATE',
+        [params.photoId],
+      );
       const photo = lockRes.rows[0];
       if (!photo) {
         throw new ApiError(404, 'NOT_FOUND', 'Photo not found.');
+      }
+
+      if (photo.user_id !== null && photo.user_id === params.userId) {
+        throw new ApiError(
+          403,
+          'FORBIDDEN_SELF_VOTE',
+          'You cannot vote on your own photo.',
+        );
       }
 
       await client.query(

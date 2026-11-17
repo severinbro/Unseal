@@ -531,6 +531,19 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     assert.equal(photoVoteRes.credibilityScore, 1);
     assert.equal(photoVoteRes.myVote, 1);
 
+    // Self-voting (+1 or -1) on own uploaded photo is rejected with 403 FORBIDDEN_SELF_VOTE
+    for (const selfVal of [1, -1] as const) {
+      await assert.rejects(
+        () => authorClient.putPhotoVote(uploadedPhoto.id, selfVal),
+        (err: unknown) => {
+          assert.ok(err instanceof ApiError);
+          assert.equal(err.statusCode, 403);
+          assert.equal(err.code, 'FORBIDDEN_SELF_VOTE');
+          return true;
+        },
+      );
+    }
+
     // Non-author cannot delete author's polygon (403 FORBIDDEN_NOT_AUTHOR)
     await assert.rejects(
       () => voterClient.deletePolygon(polygonId),
@@ -1254,9 +1267,14 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
       reason: 'implausible',
       note: 'Looks like roof area',
     });
-    assert.equal(flagRes.flagCount, 1);
-    assert.equal(flagRes.isFlagged, true);
+    // Non-owner, non-admin reviewer only sees myFlag=true; flagCount/isFlagged are visible only to polygon owner & admins
+    assert.equal(flagRes.flagCount, 0);
+    assert.equal(flagRes.isFlagged, false);
     assert.equal(flagRes.myFlag, true);
+
+    const ownerSeesFlag = await newcomerClient.getPolygon(basePoly.id);
+    assert.equal(ownerSeesFlag.properties.flagCount, 1);
+    assert.equal(ownerSeesFlag.properties.isFlagged, true);
 
     // Filter: single-choice 'new' (past 7 days) returns BOTH basePoly and unclippedPoly, while 'established' (>7 days) is empty
     const filteredNew = await reviewerClient.listPolygons(HAMBURG_BBOX, {

@@ -89,6 +89,7 @@ export interface InspectorOverviewMetaModel {
 export function deriveInspectorOverviewMeta(
   feature: PolygonFeature,
   locale: Locale,
+  isAdmin: boolean = false,
 ): InspectorOverviewMetaModel {
   const t = getTranslations(locale).inspector;
   const { properties } = feature;
@@ -103,6 +104,8 @@ export function deriveInspectorOverviewMeta(
       : properties.authorRecentlyActive === false
         ? t.creatorActivityInactive
         : t.creatorActivityUnknown;
+  const canSeeFlag = Boolean(properties.isAuthor) || isAdmin;
+  const visibleIsFlagged = canSeeFlag && properties.isFlagged;
 
   return {
     displayAuthorHandle,
@@ -112,12 +115,32 @@ export function deriveInspectorOverviewMeta(
       : null,
     entryDateText,
     authorActivityText,
-    isFlagged: properties.isFlagged,
-    needsReviewBadgeText: properties.isFlagged
+    isFlagged: visibleIsFlagged,
+    needsReviewBadgeText: visibleIsFlagged
       ? t.needsReviewBadge(properties.flagCount)
       : null,
     canFlagOrUnflag: !properties.isAuthor,
     myFlag: properties.myFlag,
+  };
+}
+
+export interface InspectorManagePermissionsModel {
+  canEditDetails: boolean;
+  canDeletePolygon: boolean;
+  canAdminDeleteNonAuthorPolygon: boolean;
+  showReadonlyHint: boolean;
+}
+
+export function deriveInspectorManagePermissions(
+  feature: PolygonFeature,
+  isAdmin: boolean,
+): InspectorManagePermissionsModel {
+  const isAuthor = Boolean(feature.properties.isAuthor);
+  return {
+    canEditDetails: isAuthor,
+    canDeletePolygon: isAuthor || isAdmin,
+    canAdminDeleteNonAuthorPolygon: isAdmin && !isAuthor,
+    showReadonlyHint: !isAdmin && !isAuthor,
   };
 }
 

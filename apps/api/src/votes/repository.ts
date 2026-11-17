@@ -1,5 +1,6 @@
 import {
   ApiError,
+  TRUST_AND_MODERATION_LIMITS,
   VoteResponseSchema,
   type PolygonStatus,
   type VoteRequest,
@@ -15,6 +16,11 @@ export interface PutVoteParams {
   polygonId: string;
   userId: string;
   value: VoteRequest['value'];
+}
+
+export interface VoteTrustConfig {
+  minAccountDays: number;
+  minCleanPolygons: number;
 }
 
 interface PolygonVoteTotalsRow {
@@ -39,9 +45,18 @@ async function rollbackPreservingError(
 
 export class VoteRepository {
   private readonly pool: pg.Pool;
+  private readonly trust: VoteTrustConfig;
 
-  constructor(pool: pg.Pool) {
+  constructor(pool: pg.Pool, trust: Partial<VoteTrustConfig> = {}) {
     this.pool = pool;
+    this.trust = {
+      minAccountDays:
+        trust.minAccountDays ??
+        TRUST_AND_MODERATION_LIMITS.NEW_USER_MIN_ACCOUNT_DAYS,
+      minCleanPolygons:
+        trust.minCleanPolygons ??
+        TRUST_AND_MODERATION_LIMITS.NEW_USER_MIN_CLEAN_POLYGONS,
+    };
   }
 
   public async putVote(params: PutVoteParams): Promise<VoteResponse> {
@@ -129,6 +144,32 @@ export class VoteRepository {
 
       await client.query('COMMIT');
 
+      if (lockedPolygon.user_id !== null && totals.score > 0) {
+        await client.query(
+          `UPDATE users u
+           SET trusted_at = COALESCE(u.trusted_at, NOW())
+           WHERE u.id = $1
+             AND u.trusted_at IS NULL
+             AND (
+               u.role = 'admin'
+               OR (
+                 u.created_at <= NOW() - make_interval(days => $2::int)
+                 AND (
+                   SELECT COUNT(*)
+                   FROM polygons p_clean
+                   WHERE p_clean.user_id = u.id
+                     AND p_clean.score > 0
+                 ) >= $3::int
+               )
+             )`,
+          [
+            lockedPolygon.user_id,
+            this.trust.minAccountDays,
+            this.trust.minCleanPolygons,
+          ],
+        );
+      }
+
       return VoteResponseSchema.parse({
         polygonId: totals.id,
         upvotes: totals.upvotes,
@@ -157,9 +198,10 @@ export class VoteRepository {
 
       const lockRes = await client.query<{
         id: string;
+        user_id: string | null;
         status: PolygonStatus;
       }>(
-        'SELECT id, status FROM polygons WHERE id = $1 FOR UPDATE',
+        'SELECT id, user_id, status FROM polygons WHERE id = $1 FOR UPDATE',
         [polygonId],
       );
       const lockedPolygon = lockRes.rows[0];
@@ -203,6 +245,32 @@ export class VoteRepository {
       }
 
       await client.query('COMMIT');
+
+      if (lockedPolygon.user_id !== null && totals.score > 0) {
+        await client.query(
+          `UPDATE users u
+           SET trusted_at = COALESCE(u.trusted_at, NOW())
+           WHERE u.id = $1
+             AND u.trusted_at IS NULL
+             AND (
+               u.role = 'admin'
+               OR (
+                 u.created_at <= NOW() - make_interval(days => $2::int)
+                 AND (
+                   SELECT COUNT(*)
+                   FROM polygons p_clean
+                   WHERE p_clean.user_id = u.id
+                     AND p_clean.score > 0
+                 ) >= $3::int
+               )
+             )`,
+          [
+            lockedPolygon.user_id,
+            this.trust.minAccountDays,
+            this.trust.minCleanPolygons,
+          ],
+        );
+      }
 
       return VoteResponseSchema.parse({
         polygonId: totals.id,

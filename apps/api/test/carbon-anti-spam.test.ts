@@ -957,7 +957,8 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
         [newPolyUnrated.id],
       );
 
-      // Reviewer flags BOTH newPolyUnrated and newPolyContested
+      // Reviewer flags BOTH newPolyUnrated and newPolyContested:
+      // non-owner / non-admin reviewer sees myFlag=true, while flagCount/isFlagged remain hidden (0 / false)
       for (const polyId of [newPolyUnrated.id, newPolyContested.id]) {
         const flagRes = await app.inject({
           method: 'POST',
@@ -968,10 +969,89 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
         });
         assert.equal(flagRes.statusCode, 200);
         const parsedFlag = FlagPolygonResponseSchema.parse(flagRes.json());
-        assert.equal(parsedFlag.flagCount, 1);
-        assert.equal(parsedFlag.isFlagged, true);
+        assert.equal(parsedFlag.flagCount, 0);
+        assert.equal(parsedFlag.isFlagged, false);
         assert.equal(parsedFlag.myFlag, true);
       }
+
+      // Anonymous / other non-admin users do NOT see the flag on GET /api/v1/polygons/:id,
+      // whereas the polygon owner (newUser) and admin DO see flagCount=1, isFlagged=true!
+      const strangerViewFlagged = PolygonFeatureSchema.parse(
+        (
+          await app.inject({
+            method: 'GET',
+            url: `/api/v1/polygons/${newPolyUnrated.id}`,
+            headers: { authorization: `Bearer ${voterB.sessionToken}` },
+          })
+        ).json(),
+      );
+      assert.equal(strangerViewFlagged.properties.flagCount, 0);
+      assert.equal(strangerViewFlagged.properties.isFlagged, false);
+
+      const ownerViewFlagged = PolygonFeatureSchema.parse(
+        (
+          await app.inject({
+            method: 'GET',
+            url: `/api/v1/polygons/${newPolyUnrated.id}`,
+            headers: { authorization: `Bearer ${newUser.sessionToken}` },
+          })
+        ).json(),
+      );
+      assert.equal(ownerViewFlagged.properties.flagCount, 1);
+      assert.equal(ownerViewFlagged.properties.isFlagged, true);
+
+      const adminViewFlagged = PolygonFeatureSchema.parse(
+        (
+          await app.inject({
+            method: 'GET',
+            url: `/api/v1/polygons/${newPolyUnrated.id}`,
+            headers: { authorization: `Bearer ${admin.sessionToken}` },
+          })
+        ).json(),
+      );
+      assert.equal(adminViewFlagged.properties.flagCount, 1);
+      assert.equal(adminViewFlagged.properties.isFlagged, true);
+
+      // Flagging a trusted contributor's polygon (or even downvoting one after trusted status is earned)
+      // NEVER strips their trusted contributor status (authorIsNewUser stays false!)
+      const flagVetRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/polygons/${vetPolys[0]!.id}/flag`,
+        remoteAddress: '198.51.100.43',
+        headers: { authorization: `Bearer ${voterA.sessionToken}` },
+        payload: { reason: 'duplicate' },
+      });
+      assert.equal(flagVetRes.statusCode, 200);
+      const vetAfterFlag = PolygonFeatureSchema.parse(
+        (
+          await app.inject({
+            method: 'GET',
+            url: `/api/v1/polygons/${vetPolys[0]!.id}`,
+            headers: { authorization: `Bearer ${vetUser.sessionToken}` },
+          })
+        ).json(),
+      );
+      assert.equal(vetAfterFlag.properties.isFlagged, true);
+      assert.equal(vetAfterFlag.properties.authorIsNewUser, false);
+
+      // Even if voterB downvotes vetPolys[0] to net score 0 after vetUser earned trusted status,
+      // trusted_at is locked in so vetUser stays authorIsNewUser = false!
+      await app.inject({
+        method: 'PUT',
+        url: `/api/v1/polygons/${vetPolys[0]!.id}/vote`,
+        remoteAddress: '198.51.100.44',
+        headers: { authorization: `Bearer ${voterB.sessionToken}` },
+        payload: { value: -1 },
+      });
+      const vetAfterDownvote = PolygonFeatureSchema.parse(
+        (
+          await app.inject({
+            method: 'GET',
+            url: `/api/v1/polygons/${vetPolys[1]!.id}`,
+          })
+        ).json(),
+      );
+      assert.equal(vetAfterDownvote.properties.authorIsNewUser, false);
 
       // Filter: filter=established (all except past 7 days) -> returns the 3 polygons aged 10 days
       const estListRes = await app.inject({
@@ -1015,7 +1095,55 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
       );
       assert.equal(needsReviewAfterFlag.features[0]?.properties.myFlag, true);
 
-      // Attach a photo to newPolyUnrated, age BOTH newPolyUnrated and newPolyContested to 15 days old, and prune!
+      // Attach a photo to newPolyUnrated, create a comment-only unrated polygon AND a truly empty unrated polygon,
+      // age all of them to 15 days old, and verify ONLY the truly empty unrated polygon is pruned!
+      const newPolyCommentOnlyRes = await app.inject({
+        method: 'POST',
+        url: '/api/v1/polygons',
+        remoteAddress: '198.51.100.41',
+        headers: { authorization: `Bearer ${newUser.sessionToken}` },
+        payload: {
+          geometry: {
+            type: 'Polygon',
+            coordinates: [makeCourtyardRing(9.995, 53.551)],
+          },
+          surfaceType: 'concrete',
+          note: 'Unrated candidate with community discussion',
+        },
+      });
+      assert.equal(newPolyCommentOnlyRes.statusCode, 201);
+      const newPolyCommentOnly = PolygonFeatureSchema.parse(
+        newPolyCommentOnlyRes.json(),
+      );
+
+      const commentOnUnratedRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/polygons/${newPolyCommentOnly.id}/comments`,
+        remoteAddress: '198.51.100.43',
+        headers: { authorization: `Bearer ${voterA.sessionToken}` },
+        payload: { body: 'This courtyard drains poorly after rain.' },
+      });
+      assert.equal(commentOnUnratedRes.statusCode, 201);
+
+      const newPolyTrulyEmptyRes = await app.inject({
+        method: 'POST',
+        url: '/api/v1/polygons',
+        remoteAddress: '198.51.100.41',
+        headers: { authorization: `Bearer ${newUser.sessionToken}` },
+        payload: {
+          geometry: {
+            type: 'Polygon',
+            coordinates: [makeCourtyardRing(9.997, 53.551)],
+          },
+          surfaceType: 'other',
+          note: 'Unrated candidate without ratings, comments, or media',
+        },
+      });
+      assert.equal(newPolyTrulyEmptyRes.statusCode, 201);
+      const newPolyTrulyEmpty = PolygonFeatureSchema.parse(
+        newPolyTrulyEmptyRes.json(),
+      );
+
       const jpegBuf = await sharp({
         create: {
           width: 64,
@@ -1048,7 +1176,12 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
 
       await pool.query(
         "UPDATE polygons SET created_at = NOW() - INTERVAL '15 days' WHERE id = ANY($1::uuid[])",
-        [[newPolyUnrated.id, newPolyContested.id]],
+        [[
+          newPolyUnrated.id,
+          newPolyCommentOnly.id,
+          newPolyTrulyEmpty.id,
+          newPolyContested.id,
+        ]],
       );
 
       const pruneRes = await runAdminCommand(
@@ -1058,10 +1191,39 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
       );
       assert.equal(pruneRes.command, 'prune-stale-polygons');
       assert.equal(pruneRes.deletedPolygonCount, 1);
-      assert.deepEqual(pruneRes.prunedPolygonIds, [newPolyUnrated.id]);
+      assert.deepEqual(pruneRes.prunedPolygonIds, [newPolyTrulyEmpty.id]);
 
-      // Photo file on disk was also removed
-      await assert.rejects(fs.access(path.join(uploadsDir, photoFileName)));
+      // Unrated polygon WITH photo survives pruning and keeps its photo file on disk!
+      await fs.access(path.join(uploadsDir, photoFileName));
+      const checkWithPhoto = await app.inject({
+        method: 'GET',
+        url: `/api/v1/polygons/${newPolyUnrated.id}`,
+      });
+      assert.equal(checkWithPhoto.statusCode, 200);
+
+      // Unrated polygon WITH comment survives pruning!
+      const checkWithComment = await app.inject({
+        method: 'GET',
+        url: `/api/v1/polygons/${newPolyCommentOnly.id}`,
+      });
+      assert.equal(checkWithComment.statusCode, 200);
+
+      // Once the photo is deleted from newPolyUnrated (leaving 0 votes, 0 photos, 0 comments), it becomes eligible for pruning
+      const delPhotoRes = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/photos/${uploadedPhoto.id}`,
+        remoteAddress: '198.51.100.41',
+        headers: { authorization: `Bearer ${newUser.sessionToken}` },
+      });
+      assert.equal(delPhotoRes.statusCode, 204);
+
+      const secondPruneRes = await runAdminCommand(
+        pool,
+        ['prune-stale-polygons', '14'],
+        { uploadsDir },
+      );
+      assert.equal(secondPruneRes.deletedPolygonCount, 1);
+      assert.deepEqual(secondPruneRes.prunedPolygonIds, [newPolyUnrated.id]);
 
       // Contested (+1/-1, score=0) polygon WAS RATED so it MUST survive pruning!
       const checkContested = await app.inject({

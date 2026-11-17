@@ -37,27 +37,30 @@ async function resolveWebBlobIfNeeded(
 function inferImageFilename(
   rawName: string | null | undefined,
   mimeType: string,
+  index = 0,
 ): string {
   if (rawName && rawName.trim().length > 0) {
     return rawName.trim();
   }
+  const suffix = index > 0 ? `-${index + 1}` : '';
   if (mimeType === 'image/png') {
-    return `site-photo-${Date.now()}.png`;
+    return `site-photo-${Date.now()}${suffix}.png`;
   }
   if (mimeType === 'image/webp') {
-    return `site-photo-${Date.now()}.webp`;
+    return `site-photo-${Date.now()}${suffix}.webp`;
   }
-  return `site-photo-${Date.now()}.jpg`;
+  return `site-photo-${Date.now()}${suffix}.jpg`;
 }
 
 async function assetToPickedImage(
   asset: ImagePicker.ImagePickerAsset,
+  index = 0,
 ): Promise<PickedImageSelection> {
   const mimeType =
     asset.mimeType && asset.mimeType.trim().length > 0
       ? asset.mimeType.trim()
       : 'image/jpeg';
-  const name = inferImageFilename(asset.fileName, mimeType);
+  const name = inferImageFilename(asset.fileName, mimeType, index);
   const maybeWebFile = (asset as { file?: Blob | undefined }).file;
   const webFile = await resolveWebBlobIfNeeded(
     asset.uri,
@@ -113,6 +116,63 @@ export async function pickPhotoFromCamera(
         locale === 'de'
           ? `Kamera konnte nicht geöffnet werden${detail ? `: ${detail}` : '.'}`
           : `Unable to open camera${detail ? `: ${detail}` : '.'}`,
+    };
+  }
+}
+
+export async function pickPhotosFromLibrary(
+  locale: Locale,
+  options?: { selectionLimit?: number },
+): Promise<PickerOutcome<PickedImageSelection[]>> {
+  try {
+    if (Platform.OS !== 'web') {
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        return {
+          status: 'error',
+          message:
+            locale === 'de'
+              ? 'Fotomediathek-Berechtigung verweigert.'
+              : 'Photo library permission denied.',
+        };
+      }
+    }
+
+    const selectionLimit =
+      options?.selectionLimit !== undefined && options.selectionLimit > 0
+        ? Math.trunc(options.selectionLimit)
+        : undefined;
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.92,
+      exif: true,
+      allowsMultipleSelection: true,
+      ...(selectionLimit !== undefined ? { selectionLimit } : {}),
+    });
+
+    if (result.canceled || result.assets.length === 0) {
+      return { status: 'canceled' };
+    }
+
+    const selectedAssets =
+      selectionLimit !== undefined
+        ? result.assets.slice(0, selectionLimit)
+        : result.assets;
+
+    const picked = await Promise.all(
+      selectedAssets.map((asset, index) => assetToPickedImage(asset, index)),
+    );
+    return { status: 'picked', value: picked };
+  } catch (err: unknown) {
+    const detail = err instanceof Error ? err.message : '';
+    return {
+      status: 'error',
+      message:
+        locale === 'de'
+          ? `Fotoauswahl fehlgeschlagen${detail ? `: ${detail}` : '.'}`
+          : `Photo selection failed${detail ? `: ${detail}` : '.'}`,
     };
   }
 }

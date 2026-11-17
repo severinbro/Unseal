@@ -775,6 +775,40 @@ describe('PpgisApiClient v2 against live HTTP server', () => {
       });
       assert.equal(uploadedPhoto.gpsVerified, true);
 
+      const progressSteps: Array<[number, number]> = [];
+      const batchResult = await client.uploadPolygonPhotos(
+        SAMPLE_POLYGON_ID,
+        [
+          {
+            uri: 'blob:test-jpg-1',
+            name: 'courtyard-1.jpg',
+            mimeType: 'image/jpeg',
+            webFile: new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], {
+              type: 'image/jpeg',
+            }),
+          },
+          {
+            uri: 'blob:test-jpg-2',
+            name: 'courtyard-2.jpg',
+            mimeType: 'image/jpeg',
+            webFile: new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], {
+              type: 'image/jpeg',
+            }),
+          },
+        ],
+        {
+          onProgress: (cur, tot) => {
+            progressSteps.push([cur, tot]);
+          },
+        },
+      );
+      assert.equal(batchResult.uploaded.length, 2);
+      assert.equal(batchResult.firstError, null);
+      assert.deepEqual(progressSteps, [
+        [1, 2],
+        [2, 2],
+      ]);
+
       const listedPhotos = await client.listPolygonPhotos(SAMPLE_POLYGON_ID);
       assert.equal(listedPhotos.photos.length, 1);
 
@@ -869,6 +903,40 @@ describe('appReducer and viewModels v2', () => {
     state = appReducer(state, {
       type: 'ADD_DRAFT_PHOTO',
       photo: sampleDraftPhoto,
+    });
+    assert.equal(state.draftPhotos.length, 1);
+
+    state = appReducer(state, {
+      type: 'ADD_DRAFT_PHOTOS',
+      photos: [
+        {
+          id: 'draft-2',
+          previewUri: 'file:///tmp/site-2.jpg',
+          file: {
+            uri: 'file:///tmp/site-2.jpg',
+            name: 'site-2.jpg',
+            mimeType: 'image/jpeg',
+          },
+        },
+        {
+          id: 'draft-3',
+          previewUri: 'file:///tmp/site-3.jpg',
+          file: {
+            uri: 'file:///tmp/site-3.jpg',
+            name: 'site-3.jpg',
+            mimeType: 'image/jpeg',
+          },
+        },
+      ],
+    });
+    assert.equal(state.draftPhotos.length, 3);
+    state = appReducer(state, {
+      type: 'REMOVE_DRAFT_PHOTO',
+      photoId: 'draft-2',
+    });
+    state = appReducer(state, {
+      type: 'REMOVE_DRAFT_PHOTO',
+      photoId: 'draft-3',
     });
     assert.equal(state.draftPhotos.length, 1);
 

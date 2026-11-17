@@ -20,13 +20,14 @@ import type { FastifyInstance } from 'fastify';
 
 const SAFE_WEBP_FILE_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:_thumb)?\.webp$/i;
+const BULK_PHOTO_BODY_LIMIT_BYTES = 55 * 1024 * 1024;
 
 export function registerPhotoRoutes(
   app: FastifyInstance,
   repository: PhotoRepository,
 ): void {
   const uploadLimit = app.rateLimitOverrides.mutatePolygon ?? {
-    max: 30,
+    max: 60,
     timeWindow: '15 minutes',
   };
   const photoVoteLimit = app.rateLimitOverrides.vote ?? {
@@ -136,6 +137,95 @@ export function registerPhotoRoutes(
       });
 
       return reply.status(201).send(PolygonPhotoSchema.parse(created));
+    },
+  );
+
+  app.post(
+    '/api/v1/polygons/:id/photos/bulk',
+    {
+      bodyLimit: BULK_PHOTO_BODY_LIMIT_BYTES,
+      config: {
+        rateLimit: uploadLimit,
+      },
+      preHandler: requireAuth,
+    },
+    async (request, reply) => {
+      const auth = request.auth!;
+      const { id } = UuidParamSchema.parse(request.params);
+
+      if (!request.isMultipart()) {
+        throw new ApiError(
+          415,
+          'UNSUPPORTED_MEDIA_TYPE',
+          'Multipart form-data upload is required for polygon photos.',
+        );
+      }
+
+      const rawBuffers: Buffer[] = [];
+      try {
+        for await (const part of request.files({
+          limits: {
+            fileSize: PHOTO_LIMITS.MAX_UPLOAD_BYTES,
+            files: PHOTO_LIMITS.MAX_PHOTOS_PER_POLYGON,
+          },
+        })) {
+          const buffer = await part.toBuffer();
+          if (part.file.truncated) {
+            throw new ApiError(
+              413,
+              'PAYLOAD_TOO_LARGE',
+              `Photo exceeds maximum size of ${Math.round(PHOTO_LIMITS.MAX_UPLOAD_BYTES / (1024 * 1024))} MB.`,
+            );
+          }
+          rawBuffers.push(buffer);
+        }
+      } catch (err: unknown) {
+        if (err instanceof ApiError) {
+          throw err;
+        }
+        const errCode =
+          typeof err === 'object' && err !== null && 'code' in err
+            ? (err as { code?: unknown }).code
+            : undefined;
+        if (errCode === 'FST_FILES_LIMIT') {
+          throw new ApiError(
+            422,
+            'VALIDATION_ERROR',
+            `At most ${PHOTO_LIMITS.MAX_PHOTOS_PER_POLYGON} photos can be uploaded per batch.`,
+          );
+        }
+        if (errCode === 'FST_REQ_FILE_TOO_LARGE') {
+          throw new ApiError(
+            413,
+            'PAYLOAD_TOO_LARGE',
+            `Photo exceeds maximum size of ${Math.round(PHOTO_LIMITS.MAX_UPLOAD_BYTES / (1024 * 1024))} MB.`,
+          );
+        }
+        throw err;
+      }
+
+      if (rawBuffers.length === 0) {
+        throw new ApiError(
+          422,
+          'VALIDATION_ERROR',
+          'No photo files provided in multipart upload.',
+        );
+      }
+
+      const createdPhotos = [];
+      for (const buffer of rawBuffers) {
+        const processed = await processUploadedPhoto(buffer);
+        const created = await repository.createPhoto({
+          polygonId: id,
+          userId: auth.user.id,
+          processed,
+        });
+        createdPhotos.push(created);
+      }
+
+      return reply
+        .status(201)
+        .send(PolygonPhotoListResponseSchema.parse({ photos: createdPhotos }));
     },
   );
 

@@ -12,7 +12,10 @@ import type { FastifyInstance } from 'fastify';
 
 export function registerVoteRoutes(
   app: FastifyInstance,
-  repository: VoteRepository = new VoteRepository(app.pool),
+  repository: VoteRepository = new VoteRepository(app.pool, {
+    minAccountDays: app.config.newUserMinAccountDays,
+    minCleanPolygons: app.config.newUserMinCleanPolygons,
+  }),
 ): void {
   if (!app.hasRequestDecorator('auth')) {
     app.decorateRequest('auth', null);

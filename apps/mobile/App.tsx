@@ -9,6 +9,7 @@
  */
 import {
   ApiError,
+  PHOTO_LIMITS,
   type CommentVoteResponse,
   type CreatePolygonCommentRequest,
   type FlagPolygonResponse,
@@ -105,11 +106,12 @@ import {
 import {
   pickGeoImportDocument,
   pickPhotoFromCamera,
-  pickPhotoFromLibrary,
+  pickPhotosFromLibrary,
 } from './src/media/pickers';
 import {
   appReducer,
   initialAppState,
+  MAX_DRAFT_PHOTOS,
   type AppAction,
   type AppState,
 } from './src/state/appState';
@@ -872,21 +874,29 @@ export function App(props: AppProps = {}): React.JSX.Element {
   }, [state.locale]);
 
   const handlePickDraftPhoto = useCallback((): void => {
-    void pickPhotoFromLibrary(state.locale).then((outcome) => {
+    const remainingSlots = Math.max(
+      1,
+      Math.min(MAX_DRAFT_PHOTOS, PHOTO_LIMITS.MAX_PHOTOS_PER_POLYGON) -
+        state.draftPhotos.length,
+    );
+    void pickPhotosFromLibrary(state.locale, {
+      selectionLimit: remainingSlots,
+    }).then((outcome) => {
       if (outcome.status === 'picked') {
+        const now = Date.now();
         dispatch({
-          type: 'ADD_DRAFT_PHOTO',
-          photo: {
-            id: `draft-photo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            previewUri: outcome.value.previewUri,
-            file: outcome.value.file,
-          },
+          type: 'ADD_DRAFT_PHOTOS',
+          photos: outcome.value.map((item, idx) => ({
+            id: `draft-photo-${now}-${idx}-${Math.random().toString(36).slice(2, 7)}`,
+            previewUri: item.previewUri,
+            file: item.file,
+          })),
         });
       } else if (outcome.status === 'error') {
         setLocationNotice(outcome.message);
       }
     });
-  }, [state.locale]);
+  }, [state.draftPhotos.length, state.locale]);
 
   const handleAdminImport = useCallback((): void => {
     const activeLocale = state.locale;
@@ -1124,35 +1134,59 @@ export function App(props: AppProps = {}): React.JSX.Element {
     [apiClient, handleSessionExpiredError],
   );
 
-  const handleInspectorUploadLibrary = useCallback(
-    async (polygonId: string): Promise<PolygonPhoto | null> => {
-      const picked = await pickPhotoFromLibrary(localeRef.current);
+  const handleInspectorUploadLibraryBatch = useCallback(
+    async (
+      polygonId: string,
+      onProgress?: (current: number, total: number) => void,
+    ): Promise<PolygonPhoto[]> => {
+      const currentCount =
+        featuresRef.current.find((f) => f.id === polygonId)?.properties
+          .photoCount ?? 0;
+      const remainingSlots = Math.max(
+        1,
+        PHOTO_LIMITS.MAX_PHOTOS_PER_POLYGON - currentCount,
+      );
+      const picked = await pickPhotosFromLibrary(localeRef.current, {
+        selectionLimit: remainingSlots,
+      });
       if (picked.status === 'canceled') {
-        return null;
+        return [];
       }
       if (picked.status === 'error') {
         throw new Error(picked.message);
       }
-      try {
-        const uploaded = await apiClient.uploadPolygonPhoto(
-          polygonId,
-          picked.value.file,
-        );
-        const currentCount =
+
+      const { uploaded, firstError } = await apiClient.uploadPolygonPhotos(
+        polygonId,
+        picked.value.map((item) => item.file),
+        onProgress ? { onProgress } : undefined,
+      );
+
+      if (uploaded.length > 0) {
+        const latestCount =
           featuresRef.current.find((f) => f.id === polygonId)?.properties
-            .photoCount ?? 0;
+            .photoCount ?? currentCount;
         dispatch({
           type: 'POLYGON_PHOTO_COUNT_SET',
           polygonId,
-          photoCount: currentCount + 1,
+          photoCount: latestCount + uploaded.length,
         });
-        return uploaded;
-      } catch (err: unknown) {
-        if (await handleSessionExpiredError(err)) {
-          return null;
-        }
-        throw err;
       }
+
+      if (firstError !== null) {
+        if (await handleSessionExpiredError(firstError)) {
+          return uploaded;
+        }
+        if (uploaded.length === 0) {
+          throw firstError;
+        }
+        const activeLocale = localeRef.current;
+        const fallback =
+          getTranslations(activeLocale).inspector.photoErrorFallback;
+        setLocationNotice(localizeError(firstError, fallback, activeLocale));
+      }
+
+      return uploaded;
     },
     [apiClient, handleSessionExpiredError],
   );
@@ -1534,7 +1568,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
             onDeletePolygon={handleDeletePolygon}
             onListPhotos={handleListPolygonPhotos}
             onUploadPhotoFromCamera={handleInspectorUploadCamera}
-            onUploadPhotoFromLibrary={handleInspectorUploadLibrary}
+            onUploadPhotosFromLibrary={handleInspectorUploadLibraryBatch}
             onVotePhoto={handleVotePhoto}
             onClearPhotoVote={handleClearPhotoVote}
             onDeletePhoto={handleDeletePhoto}

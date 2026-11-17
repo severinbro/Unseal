@@ -64,6 +64,7 @@ export interface ListPolygonsByBboxParams {
 export interface FlagPolygonParams {
   polygonId: string;
   userId: string;
+  actorIsAdmin?: boolean | undefined;
   reason: PolygonFlagReason;
   note?: string | null | undefined;
 }
@@ -71,6 +72,7 @@ export interface FlagPolygonParams {
 export interface UnflagPolygonParams {
   polygonId: string;
   userId: string;
+  actorIsAdmin?: boolean | undefined;
 }
 
 export interface ClearPolygonFlagsParams {
@@ -398,8 +400,8 @@ function mapExportRowToExportFeature(row: ExportPolygonRow): ExportPolygonFeatur
       municipalityNormalizedScore,
       photoCount: Math.max(0, Number(row.photo_count ?? 0)),
       commentCount: Math.max(0, Number(row.comment_count ?? 0)),
-      flagCount: Math.max(0, Number(row.flag_count ?? 0)),
-      isFlagged: Number(row.flag_count ?? 0) > 0,
+      flagCount: 0,
+      isFlagged: false,
       upvotes: row.upvotes,
       downvotes: row.downvotes,
       score: row.score,
@@ -442,17 +444,34 @@ function buildAuthorIsNewUserSql(
   minCleanParam: string,
 ): string {
   return `CASE
-    WHEN ${userAlias}.id IS NULL OR ${userAlias}.role = 'admin' THEN FALSE
+    WHEN ${userAlias}.id IS NULL
+      OR ${userAlias}.role = 'admin'
+      OR ${userAlias}.trusted_at IS NOT NULL
+      THEN FALSE
     WHEN ${userAlias}.created_at <= NOW() - make_interval(days => ${minDaysParam}::int)
       AND (
         SELECT COUNT(*)
         FROM polygons p_clean
         WHERE p_clean.user_id = ${userAlias}.id
-          AND p_clean.flag_count = 0
           AND p_clean.score > 0
       ) >= ${minCleanParam}::int
       THEN FALSE
     ELSE TRUE
+  END`;
+}
+
+function buildVisibleFlagCountSql(viewerParam: string): string {
+  return `CASE
+    WHEN ${viewerParam}::uuid IS NOT NULL AND (
+      p.user_id = ${viewerParam}::uuid
+      OR EXISTS (
+        SELECT 1
+        FROM users u_viewer
+        WHERE u_viewer.id = ${viewerParam}::uuid
+          AND u_viewer.role = 'admin'
+      )
+    ) THEN p.flag_count
+    ELSE 0
   END`;
 }
 
@@ -495,7 +514,7 @@ async function querySinglePolygonById(
        COALESCE(u.pseudonym, 'deleted') AS author_pseudonym,
        ${buildAuthorIsNewUserSql('u', '$3', '$4')} AS author_is_new_user,
        ${AUTHOR_RECENTLY_ACTIVE_SQL} AS author_recently_active,
-       p.flag_count,
+       ${buildVisibleFlagCountSql('$2')} AS flag_count,
        CASE
          WHEN $2::uuid IS NOT NULL THEN EXISTS (
            SELECT 1
@@ -569,6 +588,25 @@ export class PolygonRepository {
 
       // Global lock order: lock users row BEFORE touching polygons or polygon_creations
       await lockUserForWrite(client, params.userId);
+      await client.query(
+        `UPDATE users u
+         SET trusted_at = COALESCE(u.trusted_at, NOW())
+         WHERE u.id = $1
+           AND u.trusted_at IS NULL
+           AND (
+             u.role = 'admin'
+             OR (
+               u.created_at <= NOW() - make_interval(days => $2::int)
+               AND (
+                 SELECT COUNT(*)
+                 FROM polygons p_clean
+                 WHERE p_clean.user_id = u.id
+                   AND p_clean.score > 0
+               ) >= $3::int
+             )
+           )`,
+        [params.userId, this.trust.minAccountDays, this.trust.minCleanPolygons],
+      );
 
       const quotaRes = await client.query<{ count: number }>(
         `SELECT COUNT(*)::int AS count
@@ -1159,6 +1197,42 @@ export class PolygonRepository {
     const queryLimit = limit + 1;
     const filter: PolygonFilter = params.filter ?? 'all';
     const authorIsNewSql = buildAuthorIsNewUserSql('u', '$7', '$8');
+    const visibleFlagCountSql = buildVisibleFlagCountSql('$5');
+
+    await this.pool.query(
+      `UPDATE users u
+       SET trusted_at = COALESCE(u.trusted_at, NOW())
+       WHERE u.trusted_at IS NULL
+         AND EXISTS (
+           SELECT 1
+           FROM polygons p
+           WHERE p.user_id = u.id
+             AND ST_Intersects(
+               p.geom,
+               ST_MakeEnvelope($1, $2, $3, $4, 4326)
+             )
+         )
+         AND (
+           u.role = 'admin'
+           OR (
+             u.created_at <= NOW() - make_interval(days => $5::int)
+             AND (
+               SELECT COUNT(*)
+               FROM polygons p_clean
+               WHERE p_clean.user_id = u.id
+                 AND p_clean.score > 0
+             ) >= $6::int
+           )
+         )`,
+      [
+        params.bbox.minLng,
+        params.bbox.minLat,
+        params.bbox.maxLng,
+        params.bbox.maxLat,
+        this.trust.minAccountDays,
+        this.trust.minCleanPolygons,
+      ],
+    );
 
     const res = await this.pool.query<PolygonQueryRow>(
       `WITH bbox_polys AS (
@@ -1182,7 +1256,7 @@ export class PolygonRepository {
            COALESCE(u.pseudonym, 'deleted') AS author_pseudonym,
            ${authorIsNewSql} AS author_is_new_user,
            ${AUTHOR_RECENTLY_ACTIVE_SQL} AS author_recently_active,
-           p.flag_count,
+           ${visibleFlagCountSql} AS flag_count,
            CASE
              WHEN $5::uuid IS NOT NULL THEN EXISTS (
                SELECT 1
@@ -1298,6 +1372,28 @@ export class PolygonRepository {
     polygonId: string,
     viewerUserId: string | null,
   ): Promise<PolygonFeature | null> {
+    await this.pool.query(
+      `UPDATE users u
+       SET trusted_at = COALESCE(u.trusted_at, NOW())
+       FROM polygons p
+       WHERE p.id = $1
+         AND u.id = p.user_id
+         AND u.trusted_at IS NULL
+         AND (
+           u.role = 'admin'
+           OR (
+             u.created_at <= NOW() - make_interval(days => $2::int)
+             AND (
+               SELECT COUNT(*)
+               FROM polygons p_clean
+               WHERE p_clean.user_id = u.id
+                 AND p_clean.score > 0
+             ) >= $3::int
+           )
+         )`,
+      [polygonId, this.trust.minAccountDays, this.trust.minCleanPolygons],
+    );
+
     return querySinglePolygonById(
       this.pool,
       polygonId,
@@ -1467,12 +1563,16 @@ export class PolygonRepository {
         [params.polygonId],
       );
       const flagCount = Math.max(0, Number(countRes.rows[0]?.flag_count ?? 0));
+      const canSeeFlags =
+        Boolean(params.actorIsAdmin) ||
+        (existing.user_id !== null && existing.user_id === params.userId);
+      const visibleFlagCount = canSeeFlags ? flagCount : 0;
 
       await client.query('COMMIT');
       return {
         polygonId: params.polygonId,
-        flagCount,
-        isFlagged: flagCount > 0,
+        flagCount: visibleFlagCount,
+        isFlagged: visibleFlagCount > 0,
         myFlag: true,
         myFlagReason: params.reason,
       };
@@ -1492,11 +1592,12 @@ export class PolygonRepository {
       await client.query('BEGIN');
       await lockUserForWrite(client, params.userId);
 
-      const lockRes = await client.query<{ id: string }>(
-        'SELECT id FROM polygons WHERE id = $1 FOR UPDATE',
+      const lockRes = await client.query<{ id: string; user_id: string | null }>(
+        'SELECT id, user_id FROM polygons WHERE id = $1 FOR UPDATE',
         [params.polygonId],
       );
-      if (lockRes.rowCount === 0) {
+      const existing = lockRes.rows[0];
+      if (!existing) {
         throw new ApiError(404, 'NOT_FOUND', 'Polygon not found.');
       }
 
@@ -1515,12 +1616,16 @@ export class PolygonRepository {
         [params.polygonId],
       );
       const flagCount = Math.max(0, Number(countRes.rows[0]?.flag_count ?? 0));
+      const canSeeFlags =
+        Boolean(params.actorIsAdmin) ||
+        (existing.user_id !== null && existing.user_id === params.userId);
+      const visibleFlagCount = canSeeFlags ? flagCount : 0;
 
       await client.query('COMMIT');
       return {
         polygonId: params.polygonId,
-        flagCount,
-        isFlagged: flagCount > 0,
+        flagCount: visibleFlagCount,
+        isFlagged: visibleFlagCount > 0,
         myFlag: false,
         myFlagReason: null,
       };
@@ -1584,13 +1689,24 @@ export class PolygonRepository {
       await client.query('BEGIN');
 
       const lockRes = await client.query<{ id: string }>(
-        `SELECT id
-         FROM polygons
-         WHERE status = 'proposed'
-           AND upvotes = 0
-           AND downvotes = 0
-           AND created_at < NOW() - make_interval(days => $1::int)
-         FOR UPDATE SKIP LOCKED`,
+        `SELECT p.id
+         FROM polygons p
+         WHERE p.status = 'proposed'
+           AND p.upvotes = 0
+           AND p.downvotes = 0
+           AND p.photo_count = 0
+           AND p.comment_count = 0
+           AND p.created_at < NOW() - make_interval(days => $1::int)
+           AND NOT EXISTS (
+             SELECT 1 FROM votes v WHERE v.polygon_id = p.id
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM polygon_photos pp WHERE pp.polygon_id = p.id
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM polygon_comments pc WHERE pc.polygon_id = p.id
+           )
+         FOR UPDATE OF p SKIP LOCKED`,
         [safeDays],
       );
       deletedIds = lockRes.rows.map((r) => r.id);
@@ -1863,7 +1979,11 @@ export class PolygonRepository {
     };
   }
 
-  public async delete(polygonId: string, userId: string): Promise<void> {
+  public async delete(
+    polygonId: string,
+    userId: string,
+    actorIsAdmin: boolean = false,
+  ): Promise<void> {
     const client = await this.pool.connect();
     let photoFilesToDelete: Array<{ file_name: string; thumb_name: string }> = [];
     try {
@@ -1883,11 +2003,13 @@ export class PolygonRepository {
       if (!existing) {
         throw new ApiError(404, 'NOT_FOUND', 'Polygon not found.');
       }
-      if (existing.user_id === null || existing.user_id !== userId) {
+      const isAuthor =
+        existing.user_id !== null && existing.user_id === userId;
+      if (!isAuthor && !actorIsAdmin) {
         throw new ApiError(
           403,
           'FORBIDDEN_NOT_AUTHOR',
-          'Only the author of this polygon may delete it.',
+          'Only the author or an administrator may delete this polygon.',
         );
       }
 

@@ -294,6 +294,7 @@ export interface TranslationDictionary {
     readonly addPhotoCamera: string;
     readonly addPhotoGallery: string;
     readonly uploadingPhoto: string;
+    readonly uploadingPhotosProgress: (current: number, total: number) => string;
     readonly gpsVerifiedBadge: string;
     readonly rateReal: string;
     readonly rateFake: string;
@@ -892,6 +893,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       addPhotoCamera: 'Foto aufnehmen',
       addPhotoGallery: 'Aus Galerie',
       uploadingPhoto: 'Lädt hoch…',
+      uploadingPhotosProgress: (current, total) =>
+        `Lädt hoch (${current}/${total})…`,
       gpsVerifiedBadge: 'GPS verified',
       rateReal: 'Echt',
       rateFake: 'Fake',
@@ -917,7 +920,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       updatingStatus: 'Aktualisiert…',
       authorSectionTitle: 'Dein Vorschlag',
       manageReadonlyHint:
-        'Nur die erstellende Person kann diesen Vorschlag bearbeiten oder löschen. Admins können Flächen als „Wird entsiegelt“ oder „Entsiegelt“ markieren.',
+        'Nur die erstellende Person kann diesen Vorschlag bearbeiten. Löschen ist nur durch die erstellende Person oder Admins möglich; Admins können Flächen zudem als „Wird entsiegelt“ oder „Entsiegelt“ markieren.',
       photoErrorFallback: 'Fotoaktion fehlgeschlagen.',
       statusErrorFallback: 'Status konnte nicht geändert werden.',
       entryDateLabel: 'Eingetragen am',
@@ -1246,7 +1249,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       finishedLabel: 'Entsiegelt',
       needsReviewLabel: 'Prüfbedarf',
       needsReviewHint: (days) =>
-        `Unbewertete Vorschläge (automatische Entfernung nach ${days} Tagen ohne Bewertung)`,
+        `Unbewertete Vorschläge (automatische Entfernung nach ${days} Tagen ohne Stimmen, Kommentare oder Fotos)`,
       areaSectionTitle: 'Flächenbilanz',
       areaMappedLabel: 'Kartierte Fläche gesamt',
       areaUnsealedLabel: 'Bereits entsiegelt',
@@ -1552,6 +1555,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       addPhotoCamera: 'Take Photo',
       addPhotoGallery: 'From Gallery',
       uploadingPhoto: 'Uploading…',
+      uploadingPhotosProgress: (current, total) =>
+        `Uploading (${current}/${total})…`,
       gpsVerifiedBadge: 'GPS verified',
       rateReal: 'Real',
       rateFake: 'Fake',
@@ -1577,7 +1582,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       updatingStatus: 'Updating…',
       authorSectionTitle: 'Your Proposal',
       manageReadonlyHint:
-        'Only the creator can edit or delete this proposal. Administrators can mark sites as “In progress” or “Finished”.',
+        'Only the creator can edit this proposal. Only the creator or an administrator can delete it; administrators can also mark sites as “In progress” or “Finished”.',
       photoErrorFallback: 'Photo action failed.',
       statusErrorFallback: 'Unable to update polygon status.',
       entryDateLabel: 'Submitted on',
@@ -1898,7 +1903,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       finishedLabel: 'Finished',
       needsReviewLabel: 'Needs review',
       needsReviewHint: (days) =>
-        `Unrated proposals (removed automatically if not rated within ${days} days)`,
+        `Unrated proposals (removed automatically after ${days} days if they have no ratings, comments, or photos)`,
       areaSectionTitle: 'Area Summary',
       areaMappedLabel: 'Total area mapped',
       areaUnsealedLabel: 'Unsealed so far',
@@ -2084,6 +2089,8 @@ const GERMAN_API_ERROR_MESSAGES: Readonly<Record<ErrorCode, string>> = {
   AUTH_EMAIL_TAKEN: 'Diese E-Mail-Adresse ist bereits registriert.',
   AUTH_EMAIL_UNVERIFIED:
     'Bitte bestätige zuerst deine E-Mail-Adresse über den zugesandten Bestätigungslink.',
+  AUTH_ACCOUNT_LOCKED:
+    'Dein Konto wurde nach 5 fehlgeschlagenen Anmeldeversuchen vorübergehend gesperrt. Bitte bestätige deine E-Mail-Adresse erneut über den zugesandten Link.',
   AUTH_DISPOSABLE_EMAIL:
     'Wegwerf-E-Mail-Adressen sind für die Registrierung nicht zugelassen.',
   AUTH_CAPTCHA_REQUIRED:
@@ -2102,7 +2109,7 @@ const GERMAN_API_ERROR_MESSAGES: Readonly<Record<ErrorCode, string>> = {
   FORBIDDEN_SELF_FLAG:
     'Eigene Vorschläge können nicht selbst zur Prüfung gemeldet werden.',
   FORBIDDEN_SELF_VOTE:
-    'Eigene Vorschläge und Kommentare können nicht selbst bewertet werden.',
+    'Eigene Vorschläge, Fotos und Kommentare können nicht selbst bewertet werden.',
   FORBIDDEN_ADMIN_ONLY:
     'Diese Funktion steht nur Admin-Konten zur Verfügung.',
   VOTING_CLOSED:

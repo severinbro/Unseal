@@ -515,6 +515,7 @@ export function registerPolygonRoutes(
       const flagged = await repository.flagPolygon({
         polygonId: id,
         userId: auth.user.id,
+        actorIsAdmin: auth.user.role === 'admin',
         reason: body.reason,
         note: 'note' in body ? body.note : undefined,
       });
@@ -545,6 +546,7 @@ export function registerPolygonRoutes(
       const unflagged = await repository.unflagPolygon({
         polygonId: id,
         userId: auth.user.id,
+        actorIsAdmin: auth.user.role === 'admin',
       });
 
       return FlagPolygonResponseSchema.parse(unflagged);
@@ -590,7 +592,7 @@ export function registerPolygonRoutes(
       }
 
       const { id } = UuidParamSchema.parse(request.params);
-      await repository.delete(id, auth.user.id);
+      await repository.delete(id, auth.user.id, auth.user.role === 'admin');
       return reply.status(204).send();
     },
   );

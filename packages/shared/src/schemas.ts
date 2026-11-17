@@ -190,6 +190,32 @@ export const EmailActionRequestSchema = z
 
 export type EmailActionRequest = z.input<typeof EmailActionRequestSchema>;
 
+export const ResendVerificationRequestSchema = z.union([
+  z
+    .object({
+      email: EmailSchema,
+    })
+    .strict()
+    .transform((val) => ({
+      identifier: val.email.toLowerCase(),
+    })),
+  z
+    .object({
+      identifier: LoginIdentifierSchema,
+    })
+    .strict()
+    .transform((val) => ({
+      identifier: val.identifier.trim().toLowerCase(),
+    })),
+]);
+
+export type ResendVerificationRequest = z.input<
+  typeof ResendVerificationRequestSchema
+>;
+export type ParsedResendVerificationRequest = z.output<
+  typeof ResendVerificationRequestSchema
+>;
+
 export const EmailActionResponseSchema = z.object({
   status: z.literal('ok'),
   message: z.string().min(1),

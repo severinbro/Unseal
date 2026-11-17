@@ -12,7 +12,7 @@ export interface AuthEmailPayload {
    * response never reveals whether an address is registered (GDPR Art. 32).
    * Its `actionUrl` is the public app URL, never a token link.
    */
-  purpose: 'verify_email' | 'reset_password' | 'account_exists';
+  purpose: 'verify_email' | 'reverify_login' | 'reset_password' | 'account_exists';
   actionUrl: string;
 }
 
@@ -141,6 +141,59 @@ export function renderAuthEmailMessage(payload: AuthEmailPayload): {
     <hr style="border:none; border-top:1px solid #e3e8e4; margin:18px 0;" />
     <p style="font-size:13px; color:#526159; margin:0; line-height:1.45;">
       <strong>English:</strong> Please click the button or link above to confirm your email address for account <strong>${safeName}</strong>. If you did not request this, you can safely ignore this email.
+    </p>
+  </div>
+</body>
+</html>`;
+
+    return { subject, text, html };
+  }
+
+  if (payload.purpose === 'reverify_login') {
+    const subject =
+      'Unseal – Konto nach Fehlversuchen bestätigen / Re-verify your account';
+    const text = [
+      `Hallo ${payload.pseudonym},`,
+      '',
+      'nach 5 fehlgeschlagenen Anmeldeversuchen wurde die Anmeldung für dein Unseal-Konto vorübergehend gesperrt.',
+      'Bitte bestätige deine E-Mail-Adresse über folgenden Link, um dein Konto wieder freizuschalten (gültig für 24 Stunden):',
+      payload.actionUrl,
+      '',
+      'Falls du dein Passwort nicht mehr weißt, kannst du in der App „Passwort vergessen?“ nutzen.',
+      '',
+      '---',
+      `Hello ${payload.pseudonym},`,
+      '',
+      'After 5 failed sign-in attempts, sign-in for your Unseal account has been temporarily blocked.',
+      'Please confirm your email address using the link below to unlock your account (valid for 24 hours):',
+      payload.actionUrl,
+      '',
+      'If you forgot your password, you can also use "Forgot password?" in the app.',
+    ].join('\n');
+
+    const html = `<!doctype html>
+<html lang="de">
+<body style="font-family: system-ui, -apple-system, sans-serif; background:#f5f6f3; padding:24px; color:#18221d;">
+  <div style="max-width:540px; margin:0 auto; background:#ffffff; border:1px solid #d5ddd7; border-radius:14px; padding:28px;">
+    <h2 style="margin:0 0 12px; color:#176642;">Unseal</h2>
+    <p style="margin:0 0 14px;">Hallo <strong>${safeName}</strong>,</p>
+    <p style="margin:0 0 14px; line-height:1.5;">
+      nach 5 fehlgeschlagenen Anmeldeversuchen wurde die Anmeldung für dein Konto vorübergehend gesperrt.
+    </p>
+    <p style="margin:0 0 20px; line-height:1.5;">
+      Bitte bestätige deine E-Mail-Adresse, um dein Konto wieder freizuschalten (Link gültig für 24 Stunden):
+    </p>
+    <p style="margin:0 0 22px;">
+      <a href="${safeUrl}" style="display:inline-block; background:#1f6f4a; color:#ffffff; text-decoration:none; font-weight:700; padding:12px 20px; border-radius:999px;">
+        Konto wieder freischalten
+      </a>
+    </p>
+    <p style="font-size:13px; color:#526159; word-break:break-all; margin:0 0 18px;">
+      Direktlink: <a href="${safeUrl}" style="color:#1f6f4a;">${safeUrl}</a>
+    </p>
+    <hr style="border:none; border-top:1px solid #e3e8e4; margin:18px 0;" />
+    <p style="font-size:13px; color:#526159; margin:0; line-height:1.45;">
+      <strong>English:</strong> After 5 failed sign-in attempts, account <strong>${safeName}</strong> has been temporarily blocked. Click the link above to re-verify your email address and unlock sign-in, or use "Forgot password?" in the app.
     </p>
   </div>
 </body>

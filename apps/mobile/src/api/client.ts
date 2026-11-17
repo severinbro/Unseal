@@ -153,24 +153,33 @@ function buildUploadFormData(
   fieldName: string,
   file: UploadableFileInput,
 ): FormData {
+  return buildMultiUploadFormData(fieldName, [file]);
+}
+
+function buildMultiUploadFormData(
+  fieldName: string,
+  files: readonly UploadableFileInput[],
+): FormData {
   const form = new FormData();
-  if (file.webFile !== undefined) {
-    form.append(fieldName, file.webFile, file.name);
-    return form;
+  for (const file of files) {
+    if (file.webFile !== undefined) {
+      form.append(fieldName, file.webFile, file.name);
+      continue;
+    }
+    if (!file.uri || file.uri.trim().length === 0) {
+      throw new ApiError(
+        422,
+        'VALIDATION_ERROR',
+        'Selected file is missing a readable URI or Blob.',
+      );
+    }
+    const rnFilePart = {
+      uri: file.uri,
+      name: file.name,
+      type: file.mimeType,
+    };
+    form.append(fieldName, rnFilePart as unknown as Blob);
   }
-  if (!file.uri || file.uri.trim().length === 0) {
-    throw new ApiError(
-      422,
-      'VALIDATION_ERROR',
-      'Selected file is missing a readable URI or Blob.',
-    );
-  }
-  const rnFilePart = {
-    uri: file.uri,
-    name: file.name,
-    type: file.mimeType,
-  };
-  form.append(fieldName, rnFilePart as unknown as Blob);
   return form;
 }
 
@@ -420,6 +429,61 @@ export class PpgisApiClient {
     return PolygonPhotoSchema.parse(json);
   }
 
+  public async uploadPolygonPhotosBulk(
+    polygonId: string,
+    files: readonly UploadableFileInput[],
+  ): Promise<PolygonPhotoListResponse> {
+    const encodedId = assertNonEmptyId(polygonId);
+    if (files.length === 0) {
+      throw new ApiError(
+        422,
+        'VALIDATION_ERROR',
+        'At least one photo file must be selected.',
+      );
+    }
+    const formData = buildMultiUploadFormData('photos', files);
+    const json = await this.requestJson({
+      method: 'POST',
+      path: `/api/v1/polygons/${encodedId}/photos/bulk`,
+      formData,
+      includeAuth: true,
+    });
+    return PolygonPhotoListResponseSchema.parse(json);
+  }
+
+  public async uploadPolygonPhotos(
+    polygonId: string,
+    files: readonly UploadableFileInput[],
+    options?: {
+      onProgress?: (current: number, total: number) => void;
+    },
+  ): Promise<{ uploaded: PolygonPhoto[]; firstError: unknown }> {
+    assertNonEmptyId(polygonId);
+    const uploaded: PolygonPhoto[] = [];
+    let firstError: unknown = null;
+    const total = files.length;
+
+    for (let i = 0; i < total; i += 1) {
+      options?.onProgress?.(i + 1, total);
+      try {
+        const created = await this.uploadPolygonPhoto(polygonId, files[i]!);
+        uploaded.push(created);
+      } catch (err: unknown) {
+        if (firstError === null) {
+          firstError = err;
+        }
+        if (
+          err instanceof ApiError &&
+          (err.statusCode === 401 || err.statusCode === 404)
+        ) {
+          break;
+        }
+      }
+    }
+
+    return { uploaded, firstError };
+  }
+
   public async putPhotoVote(
     photoId: string,
     value: 1 | -1,
@@ -591,11 +655,17 @@ export class PpgisApiClient {
     }
   }
 
-  public async resendVerification(email: string): Promise<EmailActionResponse> {
+  public async resendVerification(
+    emailOrIdentifier: string,
+  ): Promise<EmailActionResponse> {
+    const trimmed = emailOrIdentifier.trim();
+    const body = trimmed.includes('@')
+      ? { email: trimmed }
+      : { identifier: trimmed };
     const json = await this.requestJson({
       method: 'POST',
       path: '/api/v1/auth/resend-verification',
-      body: { email },
+      body,
       includeAuth: false,
     });
     return EmailActionResponseSchema.parse(json);

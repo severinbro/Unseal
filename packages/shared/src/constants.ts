@@ -163,6 +163,7 @@ export const AUTH_LIMITS = {
   PASSWORD_RESET_TTL_MINUTES: 60,
   SESSION_TTL_DAYS: 30,
   MAX_SESSIONS_PER_USER: 10,
+  MAX_FAILED_LOGIN_ATTEMPTS: 5,
 } as const;
 
 export const RESERVED_PSEUDONYMS = ['deleted'] as const;

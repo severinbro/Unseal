@@ -166,9 +166,13 @@ export function AuthAndAccountModal({
       });
   };
 
-  const handleResendVerificationPress = (targetEmail: string): void => {
-    const cleaned = targetEmail.trim().toLowerCase();
-    if (!SIMPLE_EMAIL_RE.test(cleaned)) {
+  const handleResendVerificationPress = (targetIdentifier: string): void => {
+    const trimmed = targetIdentifier.trim();
+    const cleaned = trimmed.includes('@') ? trimmed.toLowerCase() : trimmed;
+    const isValidTarget = cleaned.includes('@')
+      ? SIMPLE_EMAIL_RE.test(cleaned)
+      : AUTH_LIMITS.PSEUDONYM_REGEX.test(cleaned);
+    if (!isValidTarget) {
       setLocalError(t.invalidEmail);
       return;
     }
@@ -208,13 +212,19 @@ export function AuthAndAccountModal({
         setPassword('');
       })
       .catch((err: unknown) => {
-        if (err instanceof ApiError && err.code === 'AUTH_EMAIL_UNVERIFIED') {
+        if (
+          err instanceof ApiError &&
+          (err.code === 'AUTH_EMAIL_UNVERIFIED' ||
+            err.code === 'AUTH_ACCOUNT_LOCKED')
+        ) {
           const fallbackEmail =
             modal.pendingVerificationEmail ?? email.trim().toLowerCase();
           if (SIMPLE_EMAIL_RE.test(trimmedIdentifier)) {
             setUnverifiedIdentifier(trimmedIdentifier.toLowerCase());
           } else if (SIMPLE_EMAIL_RE.test(fallbackEmail)) {
             setUnverifiedIdentifier(fallbackEmail);
+          } else if (AUTH_LIMITS.PSEUDONYM_REGEX.test(trimmedIdentifier)) {
+            setUnverifiedIdentifier(trimmedIdentifier);
           }
         }
         setLocalError(localizeError(err, t.loginFailed, locale));
