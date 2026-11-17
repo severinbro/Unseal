@@ -55,6 +55,7 @@ import { PpgisApiClient } from './src/api/client';
 import { saveDataExport } from './src/media/saveDataExport';
 import { AboutModal } from './src/components/AboutModal';
 import { AddressSearchModal } from './src/components/AddressSearchModal';
+import { AnimatedIntroOverlay } from './src/components/AnimatedIntroOverlay';
 import { AuthAndAccountModal } from './src/components/AuthAndAccountModal';
 import { BugReportModal } from './src/components/BugReportModal';
 import { DisclaimerBanner } from './src/components/DisclaimerBanner';
@@ -137,6 +138,11 @@ import {
   type ThemeStorage,
 } from './src/storage/themeStorage';
 import { platformThemeStorage } from './src/storage/themeStorageAdapter';
+import {
+  createMemoryIntroStorage,
+  resolveDefaultIntroStorage,
+  type IntroStorage,
+} from './src/storage/introStorage';
 import { ThemeProvider } from './src/theme/themeContext';
 import {
   deriveResponsiveLayout,
@@ -206,6 +212,8 @@ export interface AppProps {
   sessionStorage?: SessionStorage;
   viewportStorage?: ViewportStorage;
   themeStorage?: ThemeStorage;
+  introStorage?: IntroStorage;
+  skipIntro?: boolean;
   ephemeralSession?: boolean;
   apiClient?: PpgisApiClient;
   initialLocale?: Locale;
@@ -250,6 +258,34 @@ export function App(props: AppProps = {}): React.JSX.Element {
     null,
   );
   const [locationNotice, setLocationNotice] = useState<string | null>(null);
+
+  const introStore = useMemo<IntroStorage>(() => {
+    if (props.introStorage) {
+      return props.introStorage;
+    }
+    if (props.ephemeralSession) {
+      return createMemoryIntroStorage();
+    }
+    return resolveDefaultIntroStorage(Platform.OS);
+  }, [props.introStorage, props.ephemeralSession]);
+
+  const [introVisible, setIntroVisible] = useState<boolean>(() => {
+    if (props.skipIntro) {
+      return false;
+    }
+    return introStore.shouldPlayIntro();
+  });
+
+  useEffect(() => {
+    if (introVisible) {
+      introStore.markIntroPlayed();
+    }
+  }, [introStore, introVisible]);
+
+  const handleFinishIntro = useCallback((): void => {
+    introStore.markIntroPlayed();
+    setIntroVisible(false);
+  }, [introStore]);
 
   const localeRef = useRef<Locale>(state.locale);
   localeRef.current = state.locale;
@@ -1362,198 +1398,180 @@ export function App(props: AppProps = {}): React.JSX.Element {
       />
     ) : null;
 
+  let screenContent: React.JSX.Element;
+
   if (state.configStatus === 'loading') {
-    return (
-      <ThemeProvider
-        colorScheme={activeColorScheme}
-        themePreference={state.themePreference}
-      >
-        {statusBarNode}
-        <SafeAreaView style={styles.centeredScreen}>
-          <ActivityIndicator size="large" color={palette.accentPrimary} />
-          <Text style={styles.statusTitle}>{tApp.loadingTitle}</Text>
-        </SafeAreaView>
-      </ThemeProvider>
+    screenContent = (
+      <SafeAreaView style={styles.centeredScreen}>
+        <ActivityIndicator size="large" color={palette.accentPrimary} />
+        <Text style={styles.statusTitle}>{tApp.loadingTitle}</Text>
+      </SafeAreaView>
     );
-  }
-
-  if (state.configStatus === 'error' || state.config === null) {
-    return (
-      <ThemeProvider
-        colorScheme={activeColorScheme}
-        themePreference={state.themePreference}
-      >
-        {statusBarNode}
-        <SafeAreaView style={styles.centeredScreen}>
-          <View style={styles.errorCard}>
-            <Text style={styles.errorTitle}>{tApp.errorTitle}</Text>
-            <Text style={styles.errorBody}>
-              {state.configError ?? tApp.errorFallback}
-            </Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={tApp.retryA11y}
-              onPress={() => {
-                void bootstrapApp();
-              }}
-              style={styles.retryButton}
-            >
-              <Text style={styles.retryButtonLabel}>{tApp.retryButton}</Text>
-            </Pressable>
-          </View>
-        </SafeAreaView>
-      </ThemeProvider>
+  } else if (state.configStatus === 'error' || state.config === null) {
+    screenContent = (
+      <SafeAreaView style={styles.centeredScreen}>
+        <View style={styles.errorCard}>
+          <Text style={styles.errorTitle}>{tApp.errorTitle}</Text>
+          <Text style={styles.errorBody}>
+            {state.configError ?? tApp.errorFallback}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={tApp.retryA11y}
+            onPress={() => {
+              void bootstrapApp();
+            }}
+            style={styles.retryButton}
+          >
+            <Text style={styles.retryButtonLabel}>{tApp.retryButton}</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
     );
-  }
+  } else {
+    const hasActivePanel = drawingToolbar.visible || selectedFeature !== null;
+    const isDrawingCollapsed = drawingToolbar.visible && drawingToolbar.collapsed;
+    const activeMaxHeight = drawingToolbar.visible
+      ? layout.drawingSheetMaxHeightPx
+      : layout.sheetMaxHeightPx;
+    const hasVisibleBanner =
+      (mapControls.tileWarning !== null && mapControls.tileWarning.length > 0) ||
+      (locationNotice !== null && locationNotice.length > 0) ||
+      mapControls.showZoomInPrompt ||
+      mapControls.showTruncatedNotice;
 
-  const hasActivePanel = drawingToolbar.visible || selectedFeature !== null;
-  const isDrawingCollapsed = drawingToolbar.visible && drawingToolbar.collapsed;
-  const activeMaxHeight = drawingToolbar.visible
-    ? layout.drawingSheetMaxHeightPx
-    : layout.sheetMaxHeightPx;
-  const hasVisibleBanner =
-    (mapControls.tileWarning !== null && mapControls.tileWarning.length > 0) ||
-    (locationNotice !== null && locationNotice.length > 0) ||
-    mapControls.showZoomInPrompt ||
-    mapControls.showTruncatedNotice;
+    const privacyPolicyUrl =
+      state.config.privacyPolicyUrl ?? apiClient.getPrivacyPolicyUrl();
+    const impressumUrl =
+      state.config.impressumUrl ?? apiClient.getImpressumUrl();
+    const termsUrl = state.config.termsUrl ?? apiClient.getTermsUrl();
+    const licensesUrl = state.config.licensesUrl ?? apiClient.getLicensesUrl();
+    const sourceCodeUrl = state.config.sourceCodeUrl ?? null;
 
-  const privacyPolicyUrl =
-    state.config.privacyPolicyUrl ?? apiClient.getPrivacyPolicyUrl();
-  const impressumUrl =
-    state.config.impressumUrl ?? apiClient.getImpressumUrl();
-  const termsUrl = state.config.termsUrl ?? apiClient.getTermsUrl();
-  const licensesUrl = state.config.licensesUrl ?? apiClient.getLicensesUrl();
-  const sourceCodeUrl = state.config.sourceCodeUrl ?? null;
+    const latchA11yLabel = drawingToolbar.visible
+      ? isDrawingCollapsed
+        ? dict.drawing.expandSheetA11y
+        : dict.drawing.minimizeSheetA11y
+      : dict.inspector.closeA11y;
 
-  const latchA11yLabel = drawingToolbar.visible
-    ? isDrawingCollapsed
-      ? dict.drawing.expandSheetA11y
-      : dict.drawing.minimizeSheetA11y
-    : dict.inspector.closeA11y;
-
-  const sheetLatchHeader = (
-    <View
-      {...sheetLatchPanResponder.panHandlers}
-      style={styles.sheetLatchContainer}
-    >
-      <Pressable
-        testID="sheet-grab-latch"
-        accessibilityRole="button"
-        accessibilityLabel={latchA11yLabel}
-        accessibilityState={
-          drawingToolbar.visible
-            ? { expanded: !isDrawingCollapsed }
-            : undefined
-        }
-        hitSlop={{ top: 8, bottom: 8, left: 16, right: 16 }}
-        onPress={handleSheetLatchPress}
-        style={({ pressed }) => [
-          styles.sheetGrabHeader,
-          isDrawingCollapsed ? styles.sheetGrabHeaderCollapsed : null,
-          pressed ? styles.sheetGrabHeaderPressed : null,
-        ]}
+    const sheetLatchHeader = (
+      <View
+        {...sheetLatchPanResponder.panHandlers}
+        style={styles.sheetLatchContainer}
       >
-        <View style={styles.sheetGrabPill} />
-        {isDrawingCollapsed ? (
-          <View style={styles.collapsedSummaryRow}>
-            <View style={styles.collapsedStepBadge}>
-              <Text style={styles.collapsedStepBadgeLabel}>
-                {drawingToolbar.step === 'geometry'
-                  ? dict.drawing.stepGeometryLabel
-                  : dict.drawing.stepDetailsLabel}
+        <Pressable
+          testID="sheet-grab-latch"
+          accessibilityRole="button"
+          accessibilityLabel={latchA11yLabel}
+          accessibilityState={
+            drawingToolbar.visible
+              ? { expanded: !isDrawingCollapsed }
+              : undefined
+          }
+          hitSlop={{ top: 8, bottom: 8, left: 16, right: 16 }}
+          onPress={handleSheetLatchPress}
+          style={({ pressed }) => [
+            styles.sheetGrabHeader,
+            isDrawingCollapsed ? styles.sheetGrabHeaderCollapsed : null,
+            pressed ? styles.sheetGrabHeaderPressed : null,
+          ]}
+        >
+          <View style={styles.sheetGrabPill} />
+          {isDrawingCollapsed ? (
+            <View style={styles.collapsedSummaryRow}>
+              <View style={styles.collapsedStepBadge}>
+                <Text style={styles.collapsedStepBadgeLabel}>
+                  {drawingToolbar.step === 'geometry'
+                    ? dict.drawing.stepGeometryLabel
+                    : dict.drawing.stepDetailsLabel}
+                </Text>
+              </View>
+              <Text style={styles.collapsedTelemetryText}>
+                {drawingToolbar.distinctVertexCount}/{drawingToolbar.maxVertices}{' '}
+                · {drawingToolbar.areaM2.toFixed(1)} m²
+              </Text>
+              <Text style={styles.collapsedExpandLabel}>
+                ▲ {dict.drawing.detailsToggle}
               </Text>
             </View>
-            <Text style={styles.collapsedTelemetryText}>
-              {drawingToolbar.distinctVertexCount}/{drawingToolbar.maxVertices}{' '}
-              · {drawingToolbar.areaM2.toFixed(1)} m²
-            </Text>
-            <Text style={styles.collapsedExpandLabel}>
-              ▲ {dict.drawing.detailsToggle}
-            </Text>
-          </View>
-        ) : null}
-      </Pressable>
-    </View>
-  );
+          ) : null}
+        </Pressable>
+      </View>
+    );
 
-  const activePanelContent =
-    hasActivePanel && !isDrawingCollapsed ? (
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator
-        contentContainerStyle={styles.panelScrollContent}
-      >
-        <DrawingToolbar
-          toolbar={drawingToolbar}
-          locale={state.locale}
-          compact={layout.isCompact || drawingToolbar.visible}
-          onUndoVertex={() => dispatch({ type: 'UNDO_VERTEX' })}
-          onCloseRing={() => dispatch({ type: 'CLOSE_RING' })}
-          onAdvanceToDetails={() => dispatch({ type: 'ADVANCE_TO_DETAILS' })}
-          onBackToGeometry={() => dispatch({ type: 'BACK_TO_GEOMETRY' })}
-          onSelectSurfaceType={(surfaceType) =>
-            dispatch({ type: 'SET_DRAFT_META', surfaceType })
-          }
-          onChangeNote={(note) => dispatch({ type: 'SET_DRAFT_META', note })}
-          onTakeDraftPhoto={handleTakeDraftPhoto}
-          onPickDraftPhoto={handlePickDraftPhoto}
-          onRemoveDraftPhoto={(photoId) =>
-            dispatch({ type: 'REMOVE_DRAFT_PHOTO', photoId })
-          }
-          onRequestDiscard={() => dispatch({ type: 'REQUEST_DISCARD_DRAFT' })}
-          onCancelDiscard={() => dispatch({ type: 'CANCEL_DISCARD_DRAFT' })}
-          onConfirmDiscard={() => dispatch({ type: 'CONFIRM_DISCARD_DRAFT' })}
-          onSubmit={() => dispatch({ type: 'SUBMIT_DRAFT' })}
-        />
+    const activePanelContent =
+      hasActivePanel && !isDrawingCollapsed ? (
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator
+          contentContainerStyle={styles.panelScrollContent}
+        >
+          <DrawingToolbar
+            toolbar={drawingToolbar}
+            locale={state.locale}
+            compact={layout.isCompact || drawingToolbar.visible}
+            onUndoVertex={() => dispatch({ type: 'UNDO_VERTEX' })}
+            onCloseRing={() => dispatch({ type: 'CLOSE_RING' })}
+            onAdvanceToDetails={() => dispatch({ type: 'ADVANCE_TO_DETAILS' })}
+            onBackToGeometry={() => dispatch({ type: 'BACK_TO_GEOMETRY' })}
+            onSelectSurfaceType={(surfaceType) =>
+              dispatch({ type: 'SET_DRAFT_META', surfaceType })
+            }
+            onChangeNote={(note) => dispatch({ type: 'SET_DRAFT_META', note })}
+            onTakeDraftPhoto={handleTakeDraftPhoto}
+            onPickDraftPhoto={handlePickDraftPhoto}
+            onRemoveDraftPhoto={(photoId) =>
+              dispatch({ type: 'REMOVE_DRAFT_PHOTO', photoId })
+            }
+            onRequestDiscard={() => dispatch({ type: 'REQUEST_DISCARD_DRAFT' })}
+            onCancelDiscard={() => dispatch({ type: 'CANCEL_DISCARD_DRAFT' })}
+            onConfirmDiscard={() => dispatch({ type: 'CONFIRM_DISCARD_DRAFT' })}
+            onSubmit={() => dispatch({ type: 'SUBMIT_DRAFT' })}
+          />
 
-        <PolygonInspectorSheet
-          feature={selectedFeature}
-          overlapIndex={state.overlapIndex}
-          overlapCount={state.overlappingFeatureIds.length}
-          disclaimerText={state.config.disclaimerText}
-          abuseContact={state.config.abuseContact}
-          isAuthenticated={mapControls.isAuthenticated}
-          isAdmin={mapControls.isAdmin}
-          locale={state.locale}
-          compact={layout.isCompact}
-          resolveUploadUrl={resolveUploadUrl}
-          onOpenAuth={() => dispatch({ type: 'OPEN_AUTH_MODAL', view: 'login' })}
-          onCycleOverlap={() => dispatch({ type: 'CYCLE_OVERLAP_FEATURE' })}
-          onClose={() =>
-            dispatch({ type: 'SELECT_FEATURES_AT_TAP', featureIds: [] })
-          }
-          onVoteIntent={(polygonId, value) =>
-            dispatch({ type: 'CAST_VOTE', polygonId, value })
-          }
-          onCastVote={handleCastVote}
-          onClearVote={handleClearVote}
-          onPatchPolygon={handlePatchPolygon}
-          onPatchPolygonStatus={handlePatchPolygonStatus}
-          onDeletePolygon={handleDeletePolygon}
-          onListPhotos={handleListPolygonPhotos}
-          onUploadPhotoFromCamera={handleInspectorUploadCamera}
-          onUploadPhotoFromLibrary={handleInspectorUploadLibrary}
-          onVotePhoto={handleVotePhoto}
-          onClearPhotoVote={handleClearPhotoVote}
-          onDeletePhoto={handleDeletePhoto}
-          onListComments={handleListPolygonComments}
-          onCreateComment={handleCreatePolygonComment}
-          onVoteComment={handleVoteComment}
-          onClearCommentVote={handleClearCommentVote}
-          onDeleteComment={handleDeleteComment}
-          onFlagPolygon={handleFlagPolygon}
-          onUnflagPolygon={handleUnflagPolygon}
-          onClearPolygonFlags={handleClearPolygonFlags}
-        />
-      </ScrollView>
-    ) : null;
+          <PolygonInspectorSheet
+            feature={selectedFeature}
+            overlapIndex={state.overlapIndex}
+            overlapCount={state.overlappingFeatureIds.length}
+            disclaimerText={state.config.disclaimerText}
+            abuseContact={state.config.abuseContact}
+            isAuthenticated={mapControls.isAuthenticated}
+            isAdmin={mapControls.isAdmin}
+            locale={state.locale}
+            compact={layout.isCompact}
+            resolveUploadUrl={resolveUploadUrl}
+            onOpenAuth={() => dispatch({ type: 'OPEN_AUTH_MODAL', view: 'login' })}
+            onCycleOverlap={() => dispatch({ type: 'CYCLE_OVERLAP_FEATURE' })}
+            onClose={() =>
+              dispatch({ type: 'SELECT_FEATURES_AT_TAP', featureIds: [] })
+            }
+            onVoteIntent={(polygonId, value) =>
+              dispatch({ type: 'CAST_VOTE', polygonId, value })
+            }
+            onCastVote={handleCastVote}
+            onClearVote={handleClearVote}
+            onPatchPolygon={handlePatchPolygon}
+            onPatchPolygonStatus={handlePatchPolygonStatus}
+            onDeletePolygon={handleDeletePolygon}
+            onListPhotos={handleListPolygonPhotos}
+            onUploadPhotoFromCamera={handleInspectorUploadCamera}
+            onUploadPhotoFromLibrary={handleInspectorUploadLibrary}
+            onVotePhoto={handleVotePhoto}
+            onClearPhotoVote={handleClearPhotoVote}
+            onDeletePhoto={handleDeletePhoto}
+            onListComments={handleListPolygonComments}
+            onCreateComment={handleCreatePolygonComment}
+            onVoteComment={handleVoteComment}
+            onClearCommentVote={handleClearCommentVote}
+            onDeleteComment={handleDeleteComment}
+            onFlagPolygon={handleFlagPolygon}
+            onUnflagPolygon={handleUnflagPolygon}
+            onClearPolygonFlags={handleClearPolygonFlags}
+          />
+        </ScrollView>
+      ) : null;
 
-  return (
-    <ThemeProvider
-      colorScheme={activeColorScheme}
-      themePreference={state.themePreference}
-    >
-      {statusBarNode}
+    screenContent = (
       <SafeAreaView
         style={styles.appContainer}
         accessibilityHint={SESSION_TOKEN_KEY}
@@ -2180,6 +2198,24 @@ export function App(props: AppProps = {}): React.JSX.Element {
         </KeyboardAvoidingView>
       ) : null}
       </SafeAreaView>
+    );
+  }
+
+  return (
+    <ThemeProvider
+      colorScheme={activeColorScheme}
+      themePreference={state.themePreference}
+    >
+      <View style={styles.rootShell}>
+        {statusBarNode}
+        {screenContent}
+        {introVisible ? (
+          <AnimatedIntroOverlay
+            locale={state.locale}
+            onFinish={handleFinishIntro}
+          />
+        ) : null}
+      </View>
     </ThemeProvider>
   );
 }
@@ -2188,6 +2224,11 @@ export default App;
 
 function createStyles(PALETTE: ThemePalette, isDark: boolean) {
   return StyleSheet.create({
+  rootShell: {
+    flex: 1,
+    position: 'relative',
+    backgroundColor: PALETTE.bgGround,
+  },
   appContainer: {
     flex: 1,
     backgroundColor: PALETTE.bgGround,

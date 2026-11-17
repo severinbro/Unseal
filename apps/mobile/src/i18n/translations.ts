@@ -593,6 +593,14 @@ export interface TranslationDictionary {
     readonly personalRatedPolygonsLabel: string;
     readonly personalPrivacyNote: string;
   };
+  readonly intro: {
+    readonly overlayA11y: string;
+    readonly title: string;
+    readonly subtitle: string;
+    readonly tagline: string;
+    readonly skipButton: string;
+    readonly skipA11y: string;
+  };
 }
 
 export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
@@ -1267,6 +1275,14 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       personalPrivacyNote:
         'Nur für dich sichtbar — direkt aus deinen aktuell vorhandenen Flächen und Flächenbewertungen berechnet, ohne zusätzliches Tracking.',
     },
+    intro: {
+      overlayA11y: 'Unseal Startanimation',
+      title: 'Unseal',
+      subtitle: 'Gemeinschaftliche Entsiegelungskarte',
+      tagline: 'Asphalt öffnen · Natur zurückbringen',
+      skipButton: 'Überspringen',
+      skipA11y: 'Intro-Animation überspringen',
+    },
   },
   en: {
     app: {
@@ -1910,6 +1926,14 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       personalRatedPolygonsLabel: 'Polygons rated',
       personalPrivacyNote:
         'Visible only to you — computed on the fly from your currently existing polygons and polygon ratings, with no extra tracking.',
+    },
+    intro: {
+      overlayA11y: 'Unseal opening animation',
+      title: 'Unseal',
+      subtitle: 'Civic Unsealing Map',
+      tagline: 'Break the seal · Bring back living ground',
+      skipButton: 'Skip',
+      skipA11y: 'Skip intro animation',
     },
   },
 };
