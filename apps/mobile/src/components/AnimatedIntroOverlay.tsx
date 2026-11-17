@@ -35,12 +35,12 @@ interface ParticleSpec {
 }
 
 const BURST_PARTICLES: readonly ParticleSpec[] = [
-  { id: 'p1', dx: -44, dy: -38, size: 7, rotateDeg: '-40deg', kind: 'emerald' },
-  { id: 'p2', dx: 46, dy: -34, size: 6, rotateDeg: '35deg', kind: 'emerald' },
-  { id: 'p3', dx: -56, dy: -10, size: 5, rotateDeg: '-70deg', kind: 'mineral' },
-  { id: 'p4', dx: 54, dy: -8, size: 5, rotateDeg: '65deg', kind: 'mineral' },
-  { id: 'p5', dx: -24, dy: -56, size: 6, rotateDeg: '-25deg', kind: 'emerald' },
-  { id: 'p6', dx: 26, dy: -54, size: 5, rotateDeg: '28deg', kind: 'mineral' },
+  { id: 'p1', dx: -36, dy: -34, size: 6, rotateDeg: '-35deg', kind: 'mineral' },
+  { id: 'p2', dx: 38, dy: -30, size: 5.5, rotateDeg: '32deg', kind: 'mineral' },
+  { id: 'p3', dx: -48, dy: -12, size: 5, rotateDeg: '-65deg', kind: 'emerald' },
+  { id: 'p4', dx: 46, dy: -10, size: 5, rotateDeg: '60deg', kind: 'emerald' },
+  { id: 'p5', dx: -20, dy: -50, size: 5.5, rotateDeg: '-22deg', kind: 'emerald' },
+  { id: 'p6', dx: 22, dy: -48, size: 5, rotateDeg: '26deg', kind: 'mineral' },
 ];
 
 const USE_NATIVE_DRIVER = Platform.OS !== 'web';
@@ -64,6 +64,23 @@ function detectWebReducedMotion(): boolean {
   }
 }
 
+function renderWebLogoSvg(
+  size: number,
+  children: React.ReactNode,
+): React.ReactElement {
+  return React.createElement(
+    'svg',
+    {
+      width: size,
+      height: size,
+      viewBox: '0 0 64 64',
+      fill: 'none',
+      style: { display: 'block' },
+    },
+    children,
+  );
+}
+
 export function AnimatedIntroOverlay({
   locale = DEFAULT_LOCALE,
   onFinish,
@@ -71,9 +88,10 @@ export function AnimatedIntroOverlay({
   const { palette, isDark } = useTheme();
   const { width, height } = useWindowDimensions();
   const isCompact = width < 420 || height < 680;
+  const tileSize = isCompact ? 108 : 128;
   const styles = useMemo(
-    () => createStyles(palette, isDark, isCompact),
-    [palette, isDark, isCompact],
+    () => createStyles(palette, isDark, isCompact, tileSize),
+    [palette, isDark, isCompact, tileSize],
   );
   const t = getTranslations(locale).intro;
 
@@ -184,7 +202,7 @@ export function AnimatedIntroOverlay({
         Animated.parallel([
           Animated.timing(gridOpacity, {
             toValue: 1,
-            duration: 380,
+            duration: 360,
             easing: Easing.out(Easing.quad),
             useNativeDriver: USE_NATIVE_DRIVER,
           }),
@@ -196,24 +214,24 @@ export function AnimatedIntroOverlay({
           }),
           Animated.timing(bracketProgress, {
             toValue: 1,
-            duration: 420,
+            duration: 400,
             easing: Easing.out(Easing.cubic),
             useNativeDriver: USE_NATIVE_DRIVER,
           }),
           Animated.timing(progressSweep, {
             toValue: 0.25,
-            duration: 420,
+            duration: 400,
             easing: Easing.out(Easing.quad),
             useNativeDriver: USE_NATIVE_DRIVER,
           }),
         ]),
 
-        // Stage 2 & 3: Asphalt slabs crack open, radar rings pulse, particles burst, sprout & leaves unfurl
+        // Stage 2 & 3: V-notch fractures open, curved stem rises, upward leaves unfurl into the Unseal logo
         Animated.parallel([
           Animated.timing(crackProgress, {
             toValue: 1,
-            duration: 540,
-            easing: Easing.out(Easing.back(1.35)),
+            duration: 500,
+            easing: Easing.out(Easing.cubic),
             useNativeDriver: USE_NATIVE_DRIVER,
           }),
           Animated.timing(ring1Progress, {
@@ -232,20 +250,20 @@ export function AnimatedIntroOverlay({
             }),
           ]),
           Animated.sequence([
-            Animated.delay(60),
+            Animated.delay(80),
             Animated.timing(particleProgress, {
               toValue: 1,
-              duration: 760,
+              duration: 740,
               easing: Easing.out(Easing.cubic),
               useNativeDriver: USE_NATIVE_DRIVER,
             }),
           ]),
           Animated.sequence([
-            Animated.delay(160),
+            Animated.delay(150),
             Animated.spring(sproutProgress, {
               toValue: 1,
-              tension: 68,
-              friction: 8,
+              tension: 66,
+              friction: 8.5,
               useNativeDriver: USE_NATIVE_DRIVER,
             }),
           ]),
@@ -259,7 +277,7 @@ export function AnimatedIntroOverlay({
             }),
           ]),
           Animated.sequence([
-            Animated.delay(380),
+            Animated.delay(390),
             Animated.spring(rightLeafProgress, {
               toValue: 1,
               tension: 62,
@@ -271,7 +289,7 @@ export function AnimatedIntroOverlay({
             Animated.delay(460),
             Animated.timing(brandProgress, {
               toValue: 1,
-              duration: 560,
+              duration: 540,
               easing: Easing.out(Easing.cubic),
               useNativeDriver: USE_NATIVE_DRIVER,
             }),
@@ -284,8 +302,8 @@ export function AnimatedIntroOverlay({
           }),
         ]),
 
-        // Stage 4: Short settling beat before revealing the live map
-        Animated.delay(380),
+        // Stage 4: Brief beat on the complete Unseal mark before dissolving into the map
+        Animated.delay(420),
       ]);
 
       activeComposite.start(({ finished }) => {
@@ -380,34 +398,22 @@ export function AnimatedIntroOverlay({
     outputRange: [0, 0.42, 0],
   });
 
-  const leftSlabX = crackProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, isCompact ? -15 : -19],
+  // Asphalt fracture wedge & seam glow
+  const wedgeOpacity = crackProgress.interpolate({
+    inputRange: [0, 0.22, 0.72, 1],
+    outputRange: [1, 0.92, 0.25, 0],
   });
-  const leftSlabY = crackProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 5],
+  const wedgeScale = crackProgress.interpolate({
+    inputRange: [0, 0.35, 1],
+    outputRange: [1, 0.86, 0.35],
   });
-  const leftSlabRotate = crackProgress.interpolate({
+  const wedgeTranslateY = crackProgress.interpolate({
     inputRange: [0, 1],
-    outputRange: ['0deg', '-13deg'],
-  });
-
-  const rightSlabX = crackProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, isCompact ? 15 : 19],
-  });
-  const rightSlabY = crackProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 5],
-  });
-  const rightSlabRotate = crackProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '13deg'],
+    outputRange: [0, -tileSize * 0.14],
   });
 
   const crackBeamOpacity = crackProgress.interpolate({
-    inputRange: [0, 0.28, 0.85, 1],
+    inputRange: [0, 0.25, 0.78, 1],
     outputRange: [0, 0.95, 0.35, 0],
   });
   const crackBeamScaleY = crackProgress.interpolate({
@@ -415,56 +421,71 @@ export function AnimatedIntroOverlay({
     outputRange: [0.2, 1.15, 0.9],
   });
 
-  const soilGlowOpacity = crackProgress.interpolate({
-    inputRange: [0, 0.4, 1],
-    outputRange: [0, 0.85, 1],
-  });
-  const soilGlowScale = crackProgress.interpolate({
+  // Pivot math for Web SVG layers matching unseal-icon.svg (64x64 viewBox)
+  // Stem base: (31, 49) -> offset from center (32, 32)
+  const stemPivotX = ((31 - 32) / 64) * tileSize;
+  const stemPivotY = ((49 - 32) / 64) * tileSize;
+  const stemScaleY = sproutProgress.interpolate({
     inputRange: [0, 1],
-    outputRange: [0.4, 1],
+    outputRange: [0.06, 1],
+  });
+  const stemOpacity = sproutProgress.interpolate({
+    inputRange: [0, 0.12, 1],
+    outputRange: [0, 1, 1],
   });
 
-  const stemScaleY = sproutProgress.interpolate({
+  // Left leaf attachment on stem: (31, 34)
+  const leftLeafPivotX = ((31 - 32) / 64) * tileSize;
+  const leftLeafPivotY = ((34 - 32) / 64) * tileSize;
+  const leftLeafScale = leftLeafProgress.interpolate({
     inputRange: [0, 1],
     outputRange: [0.08, 1],
   });
-  const stemTranslateY = sproutProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [22, 0],
-  });
-
-  const leftLeafScale = leftLeafProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.15, 1],
-  });
-  const leftLeafTranslateX = leftLeafProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [10, 0],
-  });
-  const leftLeafTranslateY = leftLeafProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [8, 0],
-  });
   const leftLeafRotate = leftLeafProgress.interpolate({
     inputRange: [0, 1],
-    outputRange: ['-64deg', '-26deg'],
+    outputRange: ['-34deg', '0deg'],
+  });
+  const leftLeafOpacity = leftLeafProgress.interpolate({
+    inputRange: [0, 0.15, 1],
+    outputRange: [0, 1, 1],
   });
 
+  // Right leaf attachment on stem: (34, 26)
+  const rightLeafPivotX = ((34 - 32) / 64) * tileSize;
+  const rightLeafPivotY = ((26 - 32) / 64) * tileSize;
   const rightLeafScale = rightLeafProgress.interpolate({
     inputRange: [0, 1],
-    outputRange: [0.15, 1],
-  });
-  const rightLeafTranslateX = rightLeafProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-12, 0],
-  });
-  const rightLeafTranslateY = rightLeafProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [10, 0],
+    outputRange: [0.08, 1],
   });
   const rightLeafRotate = rightLeafProgress.interpolate({
     inputRange: [0, 1],
-    outputRange: ['64deg', '24deg'],
+    outputRange: ['36deg', '0deg'],
+  });
+  const rightLeafOpacity = rightLeafProgress.interpolate({
+    inputRange: [0, 0.15, 1],
+    outputRange: [0, 1, 1],
+  });
+
+  // Native fallback slab split & leaf transforms
+  const nativeLeftSlabX = crackProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -tileSize * 0.08],
+  });
+  const nativeRightSlabX = crackProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, tileSize * 0.08],
+  });
+  const nativeStemTranslateY = sproutProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [tileSize * 0.24, 0],
+  });
+  const nativeLeftLeafRotate = leftLeafProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['-22deg', '14deg'],
+  });
+  const nativeRightLeafRotate = rightLeafProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['26deg', '-6deg'],
   });
 
   const titleTranslateY = brandProgress.interpolate({
@@ -483,6 +504,12 @@ export function AnimatedIntroOverlay({
     inputRange: [0, 1],
     outputRange: [-PROGRESS_TRACK_WIDTH / 2, 0],
   });
+
+  const asphaltColor = isDark ? '#43504B' : '#5A6360';
+  const stemColor = isDark ? palette.accentPrimaryStrong : '#176642';
+  const leftLeafColor = isDark ? palette.accentPrimaryStrong : '#176642';
+  const rightLeafColor = isDark ? palette.accentPrimary : '#1F7A4C';
+  const tileFillColor = isDark ? palette.bgSurface : '#EFF3F0';
 
   return (
     <Animated.View
@@ -622,7 +649,7 @@ export function AnimatedIntroOverlay({
                     backgroundColor:
                       particle.kind === 'emerald'
                         ? palette.positiveDot
-                        : palette.inkMuted,
+                        : asphaltColor,
                     opacity: pOpacity,
                     transform: [
                       { translateX: pX },
@@ -636,122 +663,221 @@ export function AnimatedIntroOverlay({
             );
           })}
 
-          {/* Central Unseal Parcel Tile */}
+          {/* Central Unseal Logo Tile */}
           <Animated.View
             style={[
               styles.parcelTile,
               {
+                backgroundColor: tileFillColor,
                 opacity: tileProgress,
                 transform: [{ scale: tileScale }],
               },
             ]}
           >
-            {/* Living Soil / Permeable Botanical Glow Revealed Beneath Asphalt */}
-            <Animated.View
-              style={[
-                styles.soilGlow,
-                {
-                  opacity: soilGlowOpacity,
-                  transform: [{ scale: soilGlowScale }],
-                },
-              ]}
-            />
+            {Platform.OS === 'web' ? (
+              <View pointerEvents="none" style={styles.svgStack}>
+                {/* Permanent V-notch asphalt base matching unseal-icon.svg */}
+                <View style={styles.svgLayer}>
+                  {renderWebLogoSvg(
+                    tileSize,
+                    React.createElement('path', {
+                      d: 'M0 40H26L31 50L37 40H64V64H0V40Z',
+                      fill: asphaltColor,
+                    }),
+                  )}
+                </View>
 
-            {/* Luminous Fracture Seam Flash */}
-            <Animated.View
-              style={[
-                styles.crackBeam,
-                {
-                  opacity: crackBeamOpacity,
-                  transform: [{ scaleY: crackBeamScaleY }],
-                },
-              ]}
-            />
+                {/* Sealed center asphalt wedge that fractures away on crack */}
+                <Animated.View
+                  style={[
+                    styles.svgLayer,
+                    {
+                      opacity: wedgeOpacity,
+                      transform: [
+                        { translateY: wedgeTranslateY },
+                        { scale: wedgeScale },
+                      ],
+                    },
+                  ]}
+                >
+                  {renderWebLogoSvg(
+                    tileSize,
+                    React.createElement('path', {
+                      d: 'M25.5 40H37.5L31 50.5Z',
+                      fill: asphaltColor,
+                    }),
+                  )}
+                </Animated.View>
 
-            {/* Botanical Sprout: Stem + Two Unfurling Leaves */}
-            <View pointerEvents="none" style={styles.sproutGroup}>
-              <Animated.View
-                style={[
-                  styles.leftLeaf,
-                  {
-                    opacity: leftLeafProgress,
-                    transform: [
-                      { translateX: leftLeafTranslateX },
-                      { translateY: leftLeafTranslateY },
-                      { rotate: leftLeafRotate },
-                      { scale: leftLeafScale },
-                    ],
-                  },
-                ]}
-              >
-                <View style={styles.leafVeinLeft} />
-              </Animated.View>
+                {/* Brief emerald fracture seam highlight */}
+                <Animated.View
+                  style={[
+                    styles.crackBeam,
+                    {
+                      opacity: crackBeamOpacity,
+                      transform: [{ scaleY: crackBeamScaleY }],
+                    },
+                  ]}
+                />
 
-              <Animated.View
-                style={[
-                  styles.rightLeaf,
-                  {
-                    opacity: rightLeafProgress,
-                    transform: [
-                      { translateX: rightLeafTranslateX },
-                      { translateY: rightLeafTranslateY },
-                      { rotate: rightLeafRotate },
-                      { scale: rightLeafScale },
-                    ],
-                  },
-                ]}
-              >
-                <View style={styles.leafVeinRight} />
-              </Animated.View>
+                {/* Curved stem rising from inside the V-notch */}
+                <Animated.View
+                  style={[
+                    styles.svgLayer,
+                    {
+                      opacity: stemOpacity,
+                      transform: [
+                        { translateX: stemPivotX },
+                        { translateY: stemPivotY },
+                        { scaleY: stemScaleY },
+                        { translateX: -stemPivotX },
+                        { translateY: -stemPivotY },
+                      ],
+                    },
+                  ]}
+                >
+                  {renderWebLogoSvg(
+                    tileSize,
+                    React.createElement('path', {
+                      d: 'M31 49C31 38 32 30 37 22',
+                      fill: 'none',
+                      stroke: stemColor,
+                      strokeWidth: 4,
+                      strokeLinecap: 'round',
+                    }),
+                  )}
+                </Animated.View>
 
-              <Animated.View
-                style={[
-                  styles.sproutStem,
-                  {
-                    opacity: sproutProgress,
-                    transform: [
-                      { translateY: stemTranslateY },
-                      { scaleY: stemScaleY },
-                    ],
-                  },
-                ]}
-              />
-            </View>
+                {/* Left leaf sweeping upward-left from stem */}
+                <Animated.View
+                  style={[
+                    styles.svgLayer,
+                    {
+                      opacity: leftLeafOpacity,
+                      transform: [
+                        { translateX: leftLeafPivotX },
+                        { translateY: leftLeafPivotY },
+                        { rotate: leftLeafRotate },
+                        { scale: leftLeafScale },
+                        { translateX: -leftLeafPivotX },
+                        { translateY: -leftLeafPivotY },
+                      ],
+                    },
+                  ]}
+                >
+                  {renderWebLogoSvg(
+                    tileSize,
+                    React.createElement('path', {
+                      d: 'M31 34C29 27 22 25 18 26C19 31 25 35 31 34Z',
+                      fill: leftLeafColor,
+                    }),
+                  )}
+                </Animated.View>
 
-            {/* Left & Right Sealed Asphalt/Concrete Slabs that Crack Apart */}
-            <View pointerEvents="none" style={styles.slabsBand}>
-              <Animated.View
-                style={[
-                  styles.slabLeft,
-                  {
-                    transform: [
-                      { translateX: leftSlabX },
-                      { translateY: leftSlabY },
-                      { rotate: leftSlabRotate },
-                    ],
-                  },
-                ]}
-              >
-                <View style={styles.slabHighlight} />
-                <View style={styles.slabSpeckleOne} />
-                <View style={styles.slabSpeckleTwo} />
-              </Animated.View>
-              <Animated.View
-                style={[
-                  styles.slabRight,
-                  {
-                    transform: [
-                      { translateX: rightSlabX },
-                      { translateY: rightSlabY },
-                      { rotate: rightSlabRotate },
-                    ],
-                  },
-                ]}
-              >
-                <View style={styles.slabHighlight} />
-                <View style={styles.slabSpeckleRight} />
-              </Animated.View>
-            </View>
+                {/* Primary crown leaf sweeping upward-right from stem */}
+                <Animated.View
+                  style={[
+                    styles.svgLayer,
+                    {
+                      opacity: rightLeafOpacity,
+                      transform: [
+                        { translateX: rightLeafPivotX },
+                        { translateY: rightLeafPivotY },
+                        { rotate: rightLeafRotate },
+                        { scale: rightLeafScale },
+                        { translateX: -rightLeafPivotX },
+                        { translateY: -rightLeafPivotY },
+                      ],
+                    },
+                  ]}
+                >
+                  {renderWebLogoSvg(
+                    tileSize,
+                    React.createElement('path', {
+                      d: 'M34 26C35 16 44 13 49 15C48 22 42 27 34 26Z',
+                      fill: rightLeafColor,
+                    }),
+                  )}
+                </Animated.View>
+              </View>
+            ) : (
+              /* Native RN fallback matching the same upward-leaf & V-notch silhouette */
+              <>
+                <Animated.View
+                  style={[
+                    styles.crackBeam,
+                    {
+                      opacity: crackBeamOpacity,
+                      transform: [{ scaleY: crackBeamScaleY }],
+                    },
+                  ]}
+                />
+
+                <View pointerEvents="none" style={styles.nativeSproutGroup}>
+                  <Animated.View
+                    style={[
+                      styles.nativeLeftLeaf,
+                      {
+                        backgroundColor: leftLeafColor,
+                        opacity: leftLeafOpacity,
+                        transform: [
+                          { rotate: nativeLeftLeafRotate },
+                          { scale: leftLeafScale },
+                        ],
+                      },
+                    ]}
+                  />
+                  <Animated.View
+                    style={[
+                      styles.nativeRightLeaf,
+                      {
+                        backgroundColor: rightLeafColor,
+                        opacity: rightLeafOpacity,
+                        transform: [
+                          { rotate: nativeRightLeafRotate },
+                          { scale: rightLeafScale },
+                        ],
+                      },
+                    ]}
+                  />
+                  <Animated.View
+                    style={[
+                      styles.nativeSproutStem,
+                      {
+                        backgroundColor: stemColor,
+                        opacity: stemOpacity,
+                        transform: [
+                          { translateY: nativeStemTranslateY },
+                          { rotate: '9deg' },
+                          { scaleY: stemScaleY },
+                        ],
+                      },
+                    ]}
+                  />
+                </View>
+
+                <View pointerEvents="none" style={styles.nativeSlabsBand}>
+                  <Animated.View
+                    style={[
+                      styles.nativeSlabLeft,
+                      {
+                        backgroundColor: asphaltColor,
+                        transform: [{ translateX: nativeLeftSlabX }],
+                      },
+                    ]}
+                  />
+                  <Animated.View
+                    style={[
+                      styles.nativeSlabRight,
+                      {
+                        backgroundColor: asphaltColor,
+                        transform: [{ translateX: nativeRightSlabX }],
+                      },
+                    ]}
+                  />
+                </View>
+              </>
+            )}
           </Animated.View>
         </View>
 
@@ -843,13 +969,10 @@ function createStyles(
   PALETTE: ThemePalette,
   isDark: boolean,
   isCompact: boolean,
+  tileSize: number,
 ) {
-  const stageSize = isCompact ? 156 : 186;
-  const tileSize = isCompact ? 104 : 122;
-  const slabHeight = isCompact ? 34 : 40;
-  const slabColor = isDark ? '#3E4B47' : '#4C5653';
-  const slabHighlightColor = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.22)';
-  const slabSpeckleColor = isDark ? 'rgba(15, 22, 19, 0.45)' : 'rgba(18, 32, 25, 0.25)';
+  const stageSize = isCompact ? 162 : 192;
+  const slabHeight = Math.round(tileSize * (24 / 64));
 
   return StyleSheet.create({
     overlayRoot: {
@@ -981,13 +1104,13 @@ function createStyles(
     parcelTile: {
       width: tileSize,
       height: tileSize,
-      borderRadius: isCompact ? 24 : 28,
-      backgroundColor: PALETTE.bgSurface,
+      borderRadius: Math.round(tileSize * (14 / 64)),
       borderWidth: 1.5,
       borderColor: PALETTE.borderStrong,
       overflow: 'hidden',
       alignItems: 'center',
       justifyContent: 'flex-end',
+      position: 'relative',
       ...(Platform.OS === 'web'
         ? {
             boxShadow: isDark
@@ -1002,136 +1125,80 @@ function createStyles(
             elevation: 10,
           }),
     },
-    soilGlow: {
+    svgStack: {
+      position: 'relative',
+      width: tileSize,
+      height: tileSize,
+    },
+    svgLayer: {
       position: 'absolute',
-      bottom: -14,
-      width: tileSize * 0.72,
-      height: tileSize * 0.54,
-      borderRadius: tileSize * 0.36,
-      backgroundColor: PALETTE.bgTinted,
-      borderWidth: 1,
-      borderColor: PALETTE.borderAccent,
+      top: 0,
+      left: 0,
+      width: tileSize,
+      height: tileSize,
     },
     crackBeam: {
       position: 'absolute',
-      bottom: 8,
-      width: 4,
-      height: tileSize * 0.44,
+      left: tileSize * (31 / 64) - 1.5,
+      bottom: tileSize * (14 / 64),
+      width: 3,
+      height: tileSize * 0.28,
       borderRadius: 2,
       backgroundColor: PALETTE.accentPrimary,
     },
-    sproutGroup: {
+    nativeSproutGroup: {
       position: 'absolute',
-      bottom: isCompact ? 16 : 20,
+      top: 0,
+      left: 0,
       width: tileSize,
-      height: tileSize * 0.68,
-      alignItems: 'center',
-      justifyContent: 'flex-end',
+      height: tileSize,
     },
-    sproutStem: {
-      width: isCompact ? 6 : 7,
-      height: isCompact ? 42 : 50,
+    nativeSproutStem: {
+      position: 'absolute',
+      left: tileSize * (32 / 64) - 4,
+      bottom: tileSize * (14 / 64),
+      width: isCompact ? 6.5 : 8,
+      height: tileSize * (28 / 64),
       borderRadius: 4,
-      backgroundColor: PALETTE.accentPrimary,
     },
-    leftLeaf: {
+    nativeLeftLeaf: {
       position: 'absolute',
-      bottom: isCompact ? 19 : 23,
-      left: isCompact ? 20 : 24,
-      width: isCompact ? 28 : 34,
-      height: isCompact ? 18 : 21,
-      backgroundColor: PALETTE.accentPrimaryStrong,
-      borderTopLeftRadius: 22,
-      borderBottomRightRadius: 22,
-      borderTopRightRadius: 4,
-      borderBottomLeftRadius: 4,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    rightLeaf: {
-      position: 'absolute',
-      bottom: isCompact ? 28 : 34,
-      right: isCompact ? 16 : 20,
-      width: isCompact ? 34 : 40,
-      height: isCompact ? 21 : 24,
-      backgroundColor: PALETTE.positiveDot,
+      left: tileSize * (17 / 64),
+      top: tileSize * (24 / 64),
+      width: tileSize * (15 / 64),
+      height: tileSize * (10 / 64),
       borderTopRightRadius: 24,
       borderBottomLeftRadius: 24,
-      borderTopLeftRadius: 4,
-      borderBottomRightRadius: 4,
-      justifyContent: 'center',
-      alignItems: 'center',
+      borderTopLeftRadius: 2,
+      borderBottomRightRadius: 2,
     },
-    leafVeinLeft: {
-      width: '62%',
-      height: 1.5,
-      borderRadius: 1,
-      backgroundColor: 'rgba(255, 255, 255, 0.34)',
-      transform: [{ rotate: '14deg' }],
+    nativeRightLeaf: {
+      position: 'absolute',
+      left: tileSize * (33 / 64),
+      top: tileSize * (13 / 64),
+      width: tileSize * (18 / 64),
+      height: tileSize * (13 / 64),
+      borderTopLeftRadius: 28,
+      borderBottomRightRadius: 28,
+      borderTopRightRadius: 2,
+      borderBottomLeftRadius: 2,
     },
-    leafVeinRight: {
-      width: '64%',
-      height: 1.5,
-      borderRadius: 1,
-      backgroundColor: 'rgba(255, 255, 255, 0.38)',
-      transform: [{ rotate: '-14deg' }],
-    },
-    slabsBand: {
+    nativeSlabsBand: {
       width: tileSize + 8,
       height: slabHeight,
       flexDirection: 'row',
       alignItems: 'stretch',
       justifyContent: 'center',
     },
-    slabLeft: {
+    nativeSlabLeft: {
       flex: 1,
       height: slabHeight,
-      backgroundColor: slabColor,
-      borderTopRightRadius: 4,
-      borderRightWidth: 1,
-      borderRightColor: 'rgba(0,0,0,0.18)',
-      overflow: 'hidden',
+      borderTopRightRadius: 3,
     },
-    slabRight: {
+    nativeSlabRight: {
       flex: 1,
       height: slabHeight,
-      backgroundColor: slabColor,
-      borderTopLeftRadius: 4,
-      borderLeftWidth: 1,
-      borderLeftColor: 'rgba(255,255,255,0.08)',
-      overflow: 'hidden',
-    },
-    slabHighlight: {
-      height: 2,
-      width: '100%',
-      backgroundColor: slabHighlightColor,
-    },
-    slabSpeckleOne: {
-      position: 'absolute',
-      top: 11,
-      left: 14,
-      width: 5,
-      height: 3,
-      borderRadius: 1.5,
-      backgroundColor: slabSpeckleColor,
-    },
-    slabSpeckleTwo: {
-      position: 'absolute',
-      top: 20,
-      left: 30,
-      width: 4,
-      height: 4,
-      borderRadius: 2,
-      backgroundColor: slabSpeckleColor,
-    },
-    slabSpeckleRight: {
-      position: 'absolute',
-      top: 14,
-      right: 18,
-      width: 6,
-      height: 3,
-      borderRadius: 1.5,
-      backgroundColor: slabSpeckleColor,
+      borderTopLeftRadius: 3,
     },
     brandBlock: {
       marginTop: isCompact ? 22 : 28,
