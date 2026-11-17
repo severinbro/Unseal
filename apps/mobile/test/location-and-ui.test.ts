@@ -1101,6 +1101,11 @@ describe('German default localization and DE <-> EN switching', () => {
     assert.equal(de.stats.polygonsCountBadge(4), '4 Flächen');
     assert.equal(en.stats.polygonsCountBadge(1), '1 polygon');
     assert.equal(en.stats.polygonsCountBadge(4), '4 polygons');
+    assert.equal(de.intro.title, 'Unseal');
+    assert.equal(en.intro.title, 'Unseal');
+    assert.ok(de.intro.subtitle.length > 0 && en.intro.subtitle.length > 0);
+    assert.ok(de.intro.tagline.length > 0 && en.intro.tagline.length > 0);
+    assert.ok(de.intro.skipButton.length > 0 && en.intro.skipButton.length > 0);
 
     // Single-row navbar + floating map overlays across phone (<768 px), tablet (768–1099 px), and wide (>=1100 px)
     const phoneNav = deriveNavbarLayoutMode('compact', 390);

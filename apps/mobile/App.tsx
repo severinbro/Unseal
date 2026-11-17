@@ -138,11 +138,6 @@ import {
   type ThemeStorage,
 } from './src/storage/themeStorage';
 import { platformThemeStorage } from './src/storage/themeStorageAdapter';
-import {
-  createMemoryIntroStorage,
-  resolveDefaultIntroStorage,
-  type IntroStorage,
-} from './src/storage/introStorage';
 import { ThemeProvider } from './src/theme/themeContext';
 import {
   deriveResponsiveLayout,
@@ -212,7 +207,6 @@ export interface AppProps {
   sessionStorage?: SessionStorage;
   viewportStorage?: ViewportStorage;
   themeStorage?: ThemeStorage;
-  introStorage?: IntroStorage;
   skipIntro?: boolean;
   ephemeralSession?: boolean;
   apiClient?: PpgisApiClient;
@@ -259,33 +253,13 @@ export function App(props: AppProps = {}): React.JSX.Element {
   );
   const [locationNotice, setLocationNotice] = useState<string | null>(null);
 
-  const introStore = useMemo<IntroStorage>(() => {
-    if (props.introStorage) {
-      return props.introStorage;
-    }
-    if (props.ephemeralSession) {
-      return createMemoryIntroStorage();
-    }
-    return resolveDefaultIntroStorage(Platform.OS);
-  }, [props.introStorage, props.ephemeralSession]);
-
-  const [introVisible, setIntroVisible] = useState<boolean>(() => {
-    if (props.skipIntro) {
-      return false;
-    }
-    return introStore.shouldPlayIntro();
-  });
-
-  useEffect(() => {
-    if (introVisible) {
-      introStore.markIntroPlayed();
-    }
-  }, [introStore, introVisible]);
+  const [introVisible, setIntroVisible] = useState<boolean>(
+    () => !props.skipIntro,
+  );
 
   const handleFinishIntro = useCallback((): void => {
-    introStore.markIntroPlayed();
     setIntroVisible(false);
-  }, [introStore]);
+  }, []);
 
   const localeRef = useRef<Locale>(state.locale);
   localeRef.current = state.locale;
