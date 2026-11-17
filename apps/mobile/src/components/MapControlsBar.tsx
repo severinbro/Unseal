@@ -1683,20 +1683,11 @@ export function FloatingFilterStrip({
             style={({ pressed }) => [
               styles.floatingFilterChip,
               chipElevation,
-              styles.highlightMineChip,
               compact ? styles.filterChipCompact : null,
               controls.highlightMineOnly ? styles.filterChipActive : null,
               pressed ? styles.buttonPressed : null,
             ]}
           >
-            <View
-              style={[
-                styles.highlightMineDot,
-                controls.highlightMineOnly
-                  ? styles.highlightMineDotActive
-                  : null,
-              ]}
-            />
             <Text
               numberOfLines={1}
               style={[
@@ -1950,19 +1941,6 @@ function createStyles(PALETTE: ThemePalette) {
     height: 22,
     backgroundColor: PALETTE.borderStrong,
     marginHorizontal: 2,
-  },
-  highlightMineChip: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  highlightMineDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: PALETTE.inkMuted,
-  },
-  highlightMineDotActive: {
-    backgroundColor: PALETTE.accentPrimary,
   },
   filterStripContentCompact: {
     gap: 5,

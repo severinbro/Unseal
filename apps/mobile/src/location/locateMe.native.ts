@@ -1,4 +1,4 @@
-import * as Location from 'expo-location';
+import type { LocationAccuracy } from 'expo-location';
 
 import {
   DEFAULT_LOCALE,
@@ -9,12 +9,77 @@ import type { LocateMeResult } from './locateMe.types';
 
 export type { LocateMeResult } from './locateMe.types';
 
-const FRESH_LAST_KNOWN_MAX_AGE_MS = 45_000;
-const FRESH_LAST_KNOWN_MAX_ACCURACY_M = 80;
-const FALLBACK_LAST_KNOWN_MAX_AGE_MS = 180_000;
-const FALLBACK_LAST_KNOWN_MAX_ACCURACY_M = 500;
-const HIGH_ACCURACY_GRACE_AFTER_BALANCED_MS = 1_200;
-const OVERALL_POSITION_TIMEOUT_MS = 5_000;
+export const NATIVE_LOCATION_ACCURACY = {
+  Lowest: 1 as LocationAccuracy,
+  Low: 2 as LocationAccuracy,
+  Balanced: 3 as LocationAccuracy,
+  High: 4 as LocationAccuracy,
+  Highest: 5 as LocationAccuracy,
+  BestForNavigation: 6 as LocationAccuracy,
+} as const;
+
+export const FRESH_LAST_KNOWN_MAX_AGE_MS = 60_000;
+export const FRESH_LAST_KNOWN_MAX_ACCURACY_M = 100;
+export const FALLBACK_LAST_KNOWN_MAX_AGE_MS = 600_000;
+export const FALLBACK_LAST_KNOWN_MAX_ACCURACY_M = 1_500;
+export const STALE_STREAM_FIX_MAX_AGE_MS = 600_000;
+export const STREET_ACCURACY_THRESHOLD_M = 50;
+export const INTERIM_PAN_MAX_ACCURACY_M = 2_500;
+export const HIGH_ACCURACY_GRACE_AFTER_BALANCED_MS = 1_200;
+export const WARM_FIX_TIMEOUT_MS = 3_500;
+export const COLD_GNSS_HARD_TIMEOUT_MS = 10_000;
+
+export interface NativeLocationCoordsLike {
+  readonly longitude: number;
+  readonly latitude: number;
+  readonly accuracy?: number | null;
+}
+
+export interface NativeLocationObjectLike {
+  readonly coords: NativeLocationCoordsLike;
+  readonly timestamp?: number;
+}
+
+export interface NativePermissionResponseLike {
+  readonly granted: boolean;
+  readonly canAskAgain?: boolean;
+}
+
+export interface NativeLocationSubscriptionLike {
+  remove(): void;
+}
+
+export interface NativeLocationWatchOptionsLike {
+  readonly accuracy?: LocationAccuracy;
+  readonly distanceInterval?: number;
+  readonly timeInterval?: number;
+  readonly mayShowUserSettingsDialog?: boolean;
+}
+
+export interface NativeLastKnownOptionsLike {
+  readonly maxAge?: number;
+  readonly requiredAccuracy?: number;
+}
+
+export interface NativeLocationModuleLike {
+  requestForegroundPermissionsAsync(): Promise<NativePermissionResponseLike>;
+  hasServicesEnabledAsync?(): Promise<boolean>;
+  getLastKnownPositionAsync(
+    options?: NativeLastKnownOptionsLike,
+  ): Promise<NativeLocationObjectLike | null>;
+  watchPositionAsync?(
+    options: NativeLocationWatchOptionsLike,
+    callback: (location: NativeLocationObjectLike) => void,
+    errorHandler?: (reason: string) => void,
+  ): Promise<NativeLocationSubscriptionLike>;
+  getCurrentPositionAsync(
+    options?: NativeLocationWatchOptionsLike,
+  ): Promise<NativeLocationObjectLike>;
+}
+
+async function resolveDefaultLocationModule(): Promise<NativeLocationModuleLike> {
+  return import('expo-location');
+}
 
 function isValidCoordinatePair(lng: number, lat: number): boolean {
   return (
@@ -26,34 +91,78 @@ function isValidCoordinatePair(lng: number, lat: number): boolean {
 }
 
 function toSuccessResult(
-  position: Location.LocationObject,
+  position: NativeLocationObjectLike,
+  maxAgeMs?: number,
+  nowMs: number = Date.now(),
 ): Extract<LocateMeResult, { ok: true }> | null {
   const { longitude, latitude, accuracy } = position.coords;
   if (!isValidCoordinatePair(longitude, latitude)) {
+    return null;
+  }
+  // CoreLocation reports negative horizontalAccuracy when coordinates are invalid.
+  if (typeof accuracy === 'number' && (!Number.isFinite(accuracy) || accuracy < 0)) {
+    return null;
+  }
+  if (
+    maxAgeMs !== undefined &&
+    typeof position.timestamp === 'number' &&
+    Number.isFinite(position.timestamp) &&
+    position.timestamp > 0 &&
+    nowMs - position.timestamp > maxAgeMs
+  ) {
     return null;
   }
   return {
     ok: true,
     lng: longitude,
     lat: latitude,
-    ...(typeof accuracy === 'number' &&
-    Number.isFinite(accuracy) &&
-    accuracy >= 0
-      ? { accuracyMeters: accuracy }
-      : {}),
+    ...(typeof accuracy === 'number' ? { accuracyMeters: accuracy } : {}),
   };
+}
+
+function isBetterFix(
+  candidate: Extract<LocateMeResult, { ok: true }>,
+  current: Extract<LocateMeResult, { ok: true }> | null,
+): boolean {
+  if (current === null) {
+    return true;
+  }
+  if (candidate.accuracyMeters === undefined) {
+    return false;
+  }
+  if (current.accuracyMeters === undefined) {
+    return true;
+  }
+  return candidate.accuracyMeters < current.accuracyMeters;
+}
+
+export interface NativeTimingOverrides {
+  readonly warmTimeoutMs?: number;
+  readonly coldHardTimeoutMs?: number;
+  readonly now?: () => number;
 }
 
 export async function requestCurrentCoordinates(
   _nav?: unknown,
   _isSecureContext?: boolean,
   locale: Locale = DEFAULT_LOCALE,
-  _refinementWindowMs?: number,
+  refinementWindowMs: number = HIGH_ACCURACY_GRACE_AFTER_BALANCED_MS,
   onInterimFix?: (fix: Extract<LocateMeResult, { ok: true }>) => void,
+  locationModule?: NativeLocationModuleLike,
+  timingOverrides?: NativeTimingOverrides,
 ): Promise<LocateMeResult> {
   const t = getTranslations(locale).location;
+  const nowFn = timingOverrides?.now ?? Date.now;
+  const warmTimeoutMs = timingOverrides?.warmTimeoutMs ?? WARM_FIX_TIMEOUT_MS;
+  const coldHardTimeoutMs = Math.max(
+    warmTimeoutMs,
+    timingOverrides?.coldHardTimeoutMs ?? COLD_GNSS_HARD_TIMEOUT_MS,
+  );
+
   try {
-    const permission = await Location.requestForegroundPermissionsAsync();
+    const locationApi = locationModule ?? (await resolveDefaultLocationModule());
+
+    const permission = await locationApi.requestForegroundPermissionsAsync();
     if (!permission.granted) {
       const reason =
         permission.canAskAgain === false
@@ -65,14 +174,28 @@ export async function requestCurrentCoordinates(
       };
     }
 
-    // 1. Instant return (<50ms) when OS FusedLocationProvider already has a fresh accurate fix.
+    if (typeof locationApi.hasServicesEnabledAsync === 'function') {
+      const enabled = await locationApi.hasServicesEnabledAsync();
+      if (!enabled) {
+        return {
+          ok: false,
+          reason: t.nativeGenericError(''),
+        };
+      }
+    }
+
+    // 1. Instant return (<50ms) when OS FusedLocationProvider / locationd has a fresh accurate fix.
     try {
-      const freshCached = await Location.getLastKnownPositionAsync({
+      const freshCached = await locationApi.getLastKnownPositionAsync({
         maxAge: FRESH_LAST_KNOWN_MAX_AGE_MS,
         requiredAccuracy: FRESH_LAST_KNOWN_MAX_ACCURACY_M,
       });
       if (freshCached) {
-        const parsedFresh = toSuccessResult(freshCached);
+        const parsedFresh = toSuccessResult(
+          freshCached,
+          FRESH_LAST_KNOWN_MAX_AGE_MS,
+          nowFn(),
+        );
         if (parsedFresh) {
           return parsedFresh;
         }
@@ -81,14 +204,19 @@ export async function requestCurrentCoordinates(
       // Continue to live location acquisition if cached fix check is unsupported.
     }
 
+    // 2. Warm recent cache (<10 min) for immediate interim camera pan while live sensors refine.
     let fallbackCachedFix: Extract<LocateMeResult, { ok: true }> | null = null;
     try {
-      const recentCached = await Location.getLastKnownPositionAsync({
+      const recentCached = await locationApi.getLastKnownPositionAsync({
         maxAge: FALLBACK_LAST_KNOWN_MAX_AGE_MS,
         requiredAccuracy: FALLBACK_LAST_KNOWN_MAX_ACCURACY_M,
       });
       if (recentCached) {
-        fallbackCachedFix = toSuccessResult(recentCached);
+        fallbackCachedFix = toSuccessResult(
+          recentCached,
+          FALLBACK_LAST_KNOWN_MAX_AGE_MS,
+          nowFn(),
+        );
         if (fallbackCachedFix) {
           onInterimFix?.(fallbackCachedFix);
         }
@@ -97,16 +225,37 @@ export async function requestCurrentCoordinates(
       // Ignore cached fallback errors.
     }
 
-    // 2. Race fused Wi-Fi/cell/GNSS Balanced fix (~0.3–1s) against High-accuracy GNSS
-    //    instead of blocking 15–30s waiting on cold satellite lock indoors.
+    // 3. Stream cancellable Balanced (Wi-Fi/cell) + High (GNSS) updates in parallel with
+    //    `mayShowUserSettingsDialog: false` (avoiding blocking system Location Accuracy modals)
+    //    and strict two-stage timeouts (fast settle when warm, bounded cold GNSS window, zero hangs).
+    const canWatch = typeof locationApi.watchPositionAsync === 'function';
+
     const liveFix = await new Promise<
       Extract<LocateMeResult, { ok: true }> | null
     >((resolve) => {
       let settled = false;
-      let balancedCandidate: Extract<LocateMeResult, { ok: true }> | null =
-        null;
-      let pendingCount = 2;
+      let warmElapsed = false;
+      let bestFix: Extract<LocateMeResult, { ok: true }> | null = null;
+      let pendingStreams = 2;
       let graceTimer: ReturnType<typeof setTimeout> | null = null;
+      const subscriptions: NativeLocationSubscriptionLike[] = [];
+
+      const cleanupAll = (): void => {
+        if (graceTimer !== null) {
+          clearTimeout(graceTimer);
+          graceTimer = null;
+        }
+        clearTimeout(warmTimer);
+        clearTimeout(hardTimer);
+        while (subscriptions.length > 0) {
+          const sub = subscriptions.pop();
+          try {
+            sub?.remove();
+          } catch {
+            // Ignore teardown errors on already-removed native subscriptions.
+          }
+        }
+      };
 
       const finish = (
         result: Extract<LocateMeResult, { ok: true }> | null,
@@ -115,70 +264,145 @@ export async function requestCurrentCoordinates(
           return;
         }
         settled = true;
-        if (graceTimer !== null) {
-          clearTimeout(graceTimer);
-          graceTimer = null;
-        }
-        clearTimeout(overallTimer);
+        cleanupAll();
         resolve(result);
       };
 
-      const markBranchFailed = (): void => {
-        pendingCount -= 1;
-        if (pendingCount <= 0) {
-          finish(balancedCandidate);
+      const markStreamFailed = (): void => {
+        pendingStreams -= 1;
+        if (pendingStreams <= 0) {
+          finish(bestFix);
         }
       };
 
-      const overallTimer = setTimeout(() => {
-        finish(balancedCandidate);
-      }, OVERALL_POSITION_TIMEOUT_MS);
+      const handleCandidatePosition = (pos: NativeLocationObjectLike): void => {
+        if (settled) {
+          return;
+        }
+        const parsed = toSuccessResult(
+          pos,
+          STALE_STREAM_FIX_MAX_AGE_MS,
+          nowFn(),
+        );
+        if (!parsed) {
+          return;
+        }
 
-      Location.getCurrentPositionAsync({
-        accuracy: Location.LocationAccuracy.High,
-      })
-        .then((pos) => {
-          const parsed = toSuccessResult(pos);
-          if (parsed) {
-            finish(parsed);
-          } else {
-            markBranchFailed();
-          }
-        })
-        .catch(() => {
-          markBranchFailed();
-        });
-
-      Location.getCurrentPositionAsync({
-        accuracy: Location.LocationAccuracy.Balanced,
-      })
-        .then((pos) => {
-          const parsed = toSuccessResult(pos);
-          if (!parsed) {
-            markBranchFailed();
-            return;
-          }
-          balancedCandidate = parsed;
-          onInterimFix?.(parsed);
-          // If fused Balanced fix is already street-accurate (<= 50 m), finish immediately.
+        if (isBetterFix(parsed, bestFix)) {
+          bestFix = parsed;
           if (
-            parsed.accuracyMeters !== undefined &&
-            parsed.accuracyMeters <= 50
+            parsed.accuracyMeters === undefined ||
+            parsed.accuracyMeters <= INTERIM_PAN_MAX_ACCURACY_M
           ) {
-            finish(parsed);
-            return;
+            onInterimFix?.(parsed);
           }
-          // Otherwise allow a brief window for hardware GNSS to refine before settling.
-          if (!settled && graceTimer === null) {
-            graceTimer = setTimeout(() => {
-              graceTimer = null;
-              finish(balancedCandidate);
-            }, HIGH_ACCURACY_GRACE_AFTER_BALANCED_MS);
-          }
-        })
-        .catch(() => {
-          markBranchFailed();
-        });
+        }
+
+        // Street-accurate fix, zero refinement window, or already in cold-GNSS overtime: settle now.
+        if (
+          (parsed.accuracyMeters !== undefined &&
+            parsed.accuracyMeters <= STREET_ACCURACY_THRESHOLD_M) ||
+          refinementWindowMs <= 0 ||
+          warmElapsed
+        ) {
+          finish(bestFix);
+          return;
+        }
+
+        if (graceTimer === null) {
+          graceTimer = setTimeout(() => {
+            graceTimer = null;
+            finish(bestFix);
+          }, refinementWindowMs);
+        }
+      };
+
+      // Stage 1 timer: if any warm/cached or live fix is available, never block past warmTimeoutMs.
+      // Only when no fix at all exists yet (true cold satellite start without network location),
+      // keep the High GNSS watcher alive up to coldHardTimeoutMs instead of discarding its lock.
+      const warmTimer = setTimeout(() => {
+        warmElapsed = true;
+        if (bestFix !== null || fallbackCachedFix !== null) {
+          finish(bestFix);
+        }
+      }, warmTimeoutMs);
+
+      // Stage 2 hard ceiling: guarantees deterministic completion and watcher teardown.
+      const hardTimer = setTimeout(() => {
+        finish(bestFix);
+      }, coldHardTimeoutMs);
+
+      if (canWatch && locationApi.watchPositionAsync) {
+        for (const accuracy of [
+          NATIVE_LOCATION_ACCURACY.High,
+          NATIVE_LOCATION_ACCURACY.Balanced,
+        ]) {
+          let streamFailed = false;
+          const failOnce = (): void => {
+            if (streamFailed) {
+              return;
+            }
+            streamFailed = true;
+            markStreamFailed();
+          };
+
+          locationApi
+            .watchPositionAsync(
+              {
+                accuracy,
+                distanceInterval: 0,
+                timeInterval: 500,
+                mayShowUserSettingsDialog: false,
+              },
+              handleCandidatePosition,
+              () => {
+                failOnce();
+              },
+            )
+            .then((sub) => {
+              if (settled) {
+                try {
+                  sub.remove();
+                } catch {
+                  // Ignore late teardown error.
+                }
+                return;
+              }
+              subscriptions.push(sub);
+            })
+            .catch(() => {
+              failOnce();
+            });
+        }
+        return;
+      }
+
+      // Bounded single-shot fallback if watchPositionAsync is unavailable.
+      for (const accuracy of [
+        NATIVE_LOCATION_ACCURACY.High,
+        NATIVE_LOCATION_ACCURACY.Balanced,
+      ]) {
+        locationApi
+          .getCurrentPositionAsync({
+            accuracy,
+            mayShowUserSettingsDialog: false,
+          })
+          .then((pos) => {
+            const parsed = toSuccessResult(
+              pos,
+              STALE_STREAM_FIX_MAX_AGE_MS,
+              nowFn(),
+            );
+            if (!parsed) {
+              markStreamFailed();
+              return;
+            }
+            handleCandidatePosition(pos);
+          })
+          .catch(() => {
+            markStreamFailed();
+          });
+      }
     });
 
     if (liveFix) {
@@ -188,17 +412,10 @@ export async function requestCurrentCoordinates(
       return fallbackCachedFix;
     }
 
-    const lowFallback = await Location.getCurrentPositionAsync({
-      accuracy: Location.LocationAccuracy.Low,
-    });
-    const parsedLow = toSuccessResult(lowFallback);
-    if (!parsedLow) {
-      return {
-        ok: false,
-        reason: t.nativeInvalidCoords,
-      };
-    }
-    return parsedLow;
+    return {
+      ok: false,
+      reason: t.nativeGenericError(''),
+    };
   } catch (err: unknown) {
     const detail = err instanceof Error ? err.message.trim() : '';
     const suffix = detail.length > 0 ? ` (${detail})` : '';

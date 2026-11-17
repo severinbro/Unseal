@@ -703,8 +703,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       filterEstablishedFull: 'Etabliert',
       filterEstablishedA11y:
         'Etablierte Flächen (alle außer den letzten 7 Tagen) anzeigen',
-      filterNeedsReviewCompact: 'Prüfbedarf',
-      filterNeedsReviewFull: 'Prüfbedarf',
+      filterNeedsReviewCompact: 'Prüfen',
+      filterNeedsReviewFull: 'Prüfen',
       filterNeedsReviewA11y:
         'Flächen mit Prüfbedarf (Bewertung 0 und ohne Stimmen) anzeigen',
       highlightMineCompact: 'Meine',
@@ -1137,7 +1137,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       featureReviewBullet:
         'Bewerten & Prüfen: Vorschläge mit +1/−1 gewichten, Fotos als Echt/Fake einstufen oder Unstimmigkeiten zur Prüfung melden.',
       featureControlsBullet:
-        'Ansicht & Filter: Straßenkarte/Luftbild (DOP20), Hell-/Dunkelmodus mit dunkler Basiskarte, stufenloser Deckkraft-Regler sowie Einzelauswahl-Filter (Alle, Neu: letzte 7 Tage, Etabliert: älter als 7 Tage, Prüfbedarf: Bewertung 0 ohne Stimmen).',
+        'Ansicht & Filter: Straßenkarte/Luftbild (DOP20), Hell-/Dunkelmodus mit dunkler Basiskarte, stufenloser Deckkraft-Regler sowie Einzelauswahl-Filter (Alle, Neu: letzte 7 Tage, Etabliert: älter als 7 Tage, Prüfen: Bewertung 0 ohne Stimmen).',
       featureDataBullet:
         'Offene Geodaten: Ein-Klick-GeoJSON-Export (sowie .geojson/.gpkg-Import für Admins).',
       legendTitle: 'Farben & Status',
@@ -1380,8 +1380,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       filterEstablishedFull: 'Established',
       filterEstablishedA11y:
         'Show established polygons (all except past 7 days)',
-      filterNeedsReviewCompact: 'Needs review',
-      filterNeedsReviewFull: 'Needs review',
+      filterNeedsReviewCompact: 'Review',
+      filterNeedsReviewFull: 'Review',
       filterNeedsReviewA11y:
         'Show polygons needing review (score of 0 and no ratings)',
       highlightMineCompact: 'Mine',
@@ -1791,7 +1791,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       featureReviewBullet:
         'Vote & review: Score proposals +1/−1, rate photos Real/Fake, or flag questionable entries for community review.',
       featureControlsBullet:
-        'View & filters: Street/DOP20 aerial toggle, light/dark mode with dark basemap, dynamic polygon opacity slider, plus single-choice filters (All, New: past 7 days, Established: older than 7 days, Needs review: score 0 with no ratings).',
+        'View & filters: Street/DOP20 aerial toggle, light/dark mode with dark basemap, dynamic polygon opacity slider, plus single-choice filters (All, New: past 7 days, Established: older than 7 days, Review: score 0 with no ratings).',
       featureDataBullet:
         'Open geodata: One-click GeoJSON export (plus .geojson/.gpkg import for admins).',
       legendTitle: 'Colors & Status',
