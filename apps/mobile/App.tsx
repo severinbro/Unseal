@@ -1405,14 +1405,19 @@ export function App(props: AppProps = {}): React.JSX.Element {
   } else {
     const hasActivePanel = drawingToolbar.visible || selectedFeature !== null;
     const isDrawingCollapsed = drawingToolbar.visible && drawingToolbar.collapsed;
-    const activeMaxHeight = drawingToolbar.visible
-      ? layout.drawingSheetMaxHeightPx
-      : layout.sheetMaxHeightPx;
     const hasVisibleBanner =
       (mapControls.tileWarning !== null && mapControls.tileWarning.length > 0) ||
       (locationNotice !== null && locationNotice.length > 0) ||
       mapControls.showZoomInPrompt ||
       mapControls.showTruncatedNotice;
+    const activeMaxHeight = drawingToolbar.visible
+      ? layout.isDocked
+        ? Math.max(
+            220,
+            layout.drawingSheetMaxHeightPx - (hasVisibleBanner ? 148 : 92),
+          )
+        : layout.drawingSheetMaxHeightPx
+      : layout.sheetMaxHeightPx;
 
     const privacyPolicyUrl =
       state.config.privacyPolicyUrl ?? apiClient.getPrivacyPolicyUrl();
@@ -1668,7 +1673,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
           pointerEvents="box-none"
           style={[
             styles.floatingTopLeftStack,
-            layout.isDocked && hasActivePanel
+            layout.isDocked && selectedFeature !== null
               ? { left: layout.dockWidth + 26 }
               : null,
           ]}
@@ -1838,6 +1843,9 @@ export function App(props: AppProps = {}): React.JSX.Element {
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={[
               styles.sideDockShell,
+              drawingToolbar.visible
+                ? styles.sideDockBottomShell
+                : styles.sideDockTopShell,
               {
                 width: layout.dockWidth,
                 maxHeight: activeMaxHeight,
@@ -2454,9 +2462,14 @@ function createStyles(PALETTE: ThemePalette, isDark: boolean) {
   },
   sideDockShell: {
     position: 'absolute',
-    top: 14,
     left: 14,
     zIndex: 20,
+  },
+  sideDockTopShell: {
+    top: 14,
+  },
+  sideDockBottomShell: {
+    bottom: 14,
   },
   sideDockDrawingShell: {
     backgroundColor: PALETTE.bgSurface,

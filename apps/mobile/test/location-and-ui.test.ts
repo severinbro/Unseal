@@ -921,6 +921,10 @@ describe('German default localization and DE <-> EN switching', () => {
     assert.equal(getTranslations('en').installApp.apkDownloadButton, 'Download Android APK');
     assert.equal(getTranslations('de').controls.polygonOpacityLabel, 'Deckkraft');
     assert.equal(getTranslations('en').controls.polygonOpacityLabel, 'Opacity');
+    assert.equal(getTranslations('de').controls.filterNeedsReviewCompact, 'Prüfen');
+    assert.equal(getTranslations('de').controls.filterNeedsReviewFull, 'Prüfen');
+    assert.equal(getTranslations('en').controls.filterNeedsReviewCompact, 'Review');
+    assert.equal(getTranslations('en').controls.filterNeedsReviewFull, 'Review');
     assert.equal(getTranslations('de').about.title, 'Über Unseal');
     assert.match(getTranslations('de').about.featureControlsBullet, /Deckkraft-Regler/);
     assert.match(getTranslations('en').about.featureControlsBullet, /opacity slider/);
