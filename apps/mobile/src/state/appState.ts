@@ -207,7 +207,7 @@ export type AppAction =
 
 export const initialAppState: AppState = {
   locale: DEFAULT_LOCALE,
-  themePreference: 'system',
+  themePreference: 'light',
   configStatus: 'loading',
   config: null,
   configError: null,

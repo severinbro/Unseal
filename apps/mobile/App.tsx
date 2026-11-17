@@ -236,7 +236,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
       const startTheme =
         init.themePreference ??
         readPersistedThemePreferenceSync() ??
-        'system';
+        'light';
       return {
         ...initialAppState,
         locale: startLocale,

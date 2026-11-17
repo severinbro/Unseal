@@ -24,7 +24,7 @@ export interface ThemeContextValue {
 
 const DEFAULT_THEME_CONTEXT: ThemeContextValue = {
   colorScheme: 'light',
-  themePreference: 'system',
+  themePreference: 'light',
   palette: LIGHT_PALETTE,
   surfaceSwatches: SURFACE_SWATCHES,
   isDark: false,
@@ -42,7 +42,7 @@ export interface ThemeProviderProps {
 
 export function ThemeProvider({
   colorScheme,
-  themePreference = 'system',
+  themePreference = 'light',
   children,
 }: ThemeProviderProps): React.JSX.Element {
   const value = useMemo<ThemeContextValue>(

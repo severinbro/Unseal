@@ -1018,6 +1018,14 @@ describe('German default localization and DE <-> EN switching', () => {
       type: 'CONFIG_LOADED',
       config: SAMPLE_CONFIG,
     });
+    assert.equal(state.themePreference, 'light');
+    assert.equal(deriveMapControlsModel(state, 'dark').colorScheme, 'light');
+    assert.equal(deriveMapControlsModel(state, 'light').colorScheme, 'light');
+
+    state = appReducer(state, {
+      type: 'SET_THEME_PREFERENCE',
+      preference: 'system',
+    });
     assert.equal(state.themePreference, 'system');
     assert.equal(deriveMapControlsModel(state, 'dark').colorScheme, 'dark');
     assert.equal(deriveMapControlsModel(state, 'light').colorScheme, 'light');
