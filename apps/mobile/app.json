@@ -40,7 +40,17 @@
     "web": {
       "bundler": "metro",
       "output": "single",
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "name": "Unseal - Gemeinschaftliche Entsiegelungskarte",
+      "shortName": "Unseal",
+      "description": "Gemeinschaftliche Karte für Entsiegelungsvorschläge in Kommunen (Open-Source-PPGIS).",
+      "lang": "de",
+      "themeColor": "#EFF3F0",
+      "backgroundColor": "#EFF3F0",
+      "display": "standalone",
+      "orientation": "any",
+      "startUrl": "/",
+      "scope": "/"
     },
     "plugins": [
       "@maplibre/maplibre-react-native",

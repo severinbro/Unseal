@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
   ApiError,
@@ -106,7 +109,7 @@ const SAMPLE_CONFIG: RuntimeConfig = {
   impressumUrl: 'https://maps.example.org/auth/impressum',
   termsUrl: 'https://maps.example.org/auth/terms',
   licensesUrl: 'https://maps.example.org/auth/licenses',
-  sourceCodeUrl: 'https://github.com/sebroccoli/Entsiegelungskartierung',
+  sourceCodeUrl: 'https://github.com/severinbro/Unseal',
   bugReportContact: 'bugs@example.org',
   apkDownloadUrl: 'https://maps.example.org/downloads/unseal.apk',
   apkSha256: null,
@@ -1444,15 +1447,20 @@ describe('German default localization and DE <-> EN switching', () => {
     assert.match(WEB_CRAFT_CSS, /\.maplibregl-ctrl-attrib a/);
 
     const dataset: Record<string, string> = {};
+    const themeColorMeta = { content: '#EFF3F0' };
     const prevDoc = (globalThis as { document?: unknown }).document;
     try {
       (globalThis as { document?: unknown }).document = {
         documentElement: { dataset },
+        querySelector: (sel: string) =>
+          sel === 'meta[name="theme-color"]' ? themeColorMeta : null,
       };
       injectWebCraftStyles('de', 'dark');
       assert.equal(dataset['theme'], 'dark');
+      assert.equal(themeColorMeta.content, DARK_PALETTE.bgGround);
       syncWebDocumentTheme('light');
       assert.equal(dataset['theme'], 'light');
+      assert.equal(themeColorMeta.content, LIGHT_PALETTE.bgGround);
     } finally {
       (globalThis as { document?: unknown }).document = prevDoc;
     }
@@ -1512,5 +1520,93 @@ describe('German default localization and DE <-> EN switching', () => {
     assert.equal(wideNav.showSearchBarInNavbar, true);
     assert.equal(wideNav.showProposeFab, true);
     assert.equal(wideNav.constrainAccountChipWidth, false);
+  });
+
+  it('provides a complete Web App Manifest, HTML manifest/apple-touch-icon links, and matching PNG icon dimensions', () => {
+    const testDir = path.dirname(fileURLToPath(import.meta.url));
+    const publicDir = path.resolve(testDir, '..', 'public');
+    const manifestPath = path.join(publicDir, 'manifest.webmanifest');
+    const indexHtmlPath = path.join(publicDir, 'index.html');
+
+    assert.equal(fs.existsSync(manifestPath), true);
+    assert.equal(fs.existsSync(indexHtmlPath), true);
+
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as {
+      id?: string;
+      name?: string;
+      short_name?: string;
+      lang?: string;
+      start_url?: string;
+      scope?: string;
+      display?: string;
+      background_color?: string;
+      theme_color?: string;
+      icons?: Array<{
+        src: string;
+        sizes: string;
+        type: string;
+        purpose?: string;
+      }>;
+    };
+
+    assert.equal(manifest.id, '/');
+    assert.equal(manifest.short_name, 'Unseal');
+    assert.match(manifest.name ?? '', /^Unseal\b/);
+    assert.equal(manifest.lang, 'de');
+    assert.equal(manifest.start_url, '/');
+    assert.equal(manifest.scope, '/');
+    assert.equal(manifest.display, 'standalone');
+    assert.equal(manifest.background_color, LIGHT_PALETTE.bgGround);
+    assert.equal(manifest.theme_color, LIGHT_PALETTE.bgGround);
+    assert.ok(Array.isArray(manifest.icons) && manifest.icons.length >= 4);
+
+    const readPngDimensions = (filePath: string): { width: number; height: number } => {
+      const buf = fs.readFileSync(filePath);
+      // PNG signature (8 bytes) + IHDR length/type (8 bytes) + big-endian width/height (8 bytes)
+      assert.equal(buf.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+      return {
+        width: buf.readUInt32BE(16),
+        height: buf.readUInt32BE(20),
+      };
+    };
+
+    for (const icon of manifest.icons!) {
+      assert.equal(icon.type, 'image/png');
+      const rel = icon.src.replace(/^\//, '');
+      const iconFile = path.join(publicDir, rel);
+      assert.equal(fs.existsSync(iconFile), true, `Missing icon ${icon.src}`);
+      const dims = readPngDimensions(iconFile);
+      assert.equal(`${dims.width}x${dims.height}`, icon.sizes);
+    }
+
+    assert.equal(
+      manifest.icons!.some((i) => i.sizes === '192x192' && i.purpose === 'any'),
+      true,
+    );
+    assert.equal(
+      manifest.icons!.some((i) => i.sizes === '512x512' && i.purpose === 'any'),
+      true,
+    );
+    assert.equal(
+      manifest.icons!.some((i) => i.sizes === '192x192' && i.purpose === 'maskable'),
+      true,
+    );
+    assert.equal(
+      manifest.icons!.some((i) => i.sizes === '512x512' && i.purpose === 'maskable'),
+      true,
+    );
+
+    const appleTouchPath = path.join(publicDir, 'apple-touch-icon.png');
+    assert.equal(fs.existsSync(appleTouchPath), true);
+    assert.deepEqual(readPngDimensions(appleTouchPath), { width: 180, height: 180 });
+
+    const html = fs.readFileSync(indexHtmlPath, 'utf8');
+    assert.match(html, /<html\s+lang="%LANG_ISO_CODE%">/);
+    assert.match(html, /<title>%WEB_TITLE%<\/title>/);
+    assert.match(html, /<link\s+rel="manifest"\s+href="\/manifest\.webmanifest"\s*\/>/);
+    assert.match(
+      html,
+      /<link\s+rel="apple-touch-icon"\s+sizes="180x180"\s+href="\/apple-touch-icon\.png"\s*\/>/,
+    );
   });
 });

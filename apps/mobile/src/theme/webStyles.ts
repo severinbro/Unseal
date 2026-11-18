@@ -25,11 +25,17 @@ interface WebHtmlElementLike {
   dataset?: Record<string, string>;
 }
 
+interface WebMetaElementLike {
+  content?: string;
+  setAttribute?(name: string, value: string): void;
+}
+
 interface WebCraftDocumentLike {
   title?: string;
   head?: WebHeadLike | null;
   documentElement?: WebHtmlElementLike | null;
   getElementById?(id: string): unknown;
+  querySelector?(selector: string): WebMetaElementLike | null;
   createElement?(tagName: 'style'): WebStyleElementLike;
 }
 
@@ -219,12 +225,35 @@ export function syncWebDocumentLocale(locale: Locale = DEFAULT_LOCALE): void {
   doc.title = getTranslations(locale).app.documentTitle;
 }
 
-export function syncWebDocumentTheme(colorScheme: ColorScheme = 'light'): void {
-  const doc = resolveWebDocument();
-  if (!doc?.documentElement?.dataset) {
+function syncThemeColorMeta(
+  doc: WebCraftDocumentLike,
+  colorScheme: ColorScheme,
+): void {
+  if (typeof doc.querySelector !== 'function') {
     return;
   }
-  doc.documentElement.dataset['theme'] = colorScheme;
+  const meta = doc.querySelector('meta[name="theme-color"]');
+  if (!meta) {
+    return;
+  }
+  const nextColor =
+    colorScheme === 'dark' ? DARK_PALETTE.bgGround : LIGHT_PALETTE.bgGround;
+  if (typeof meta.setAttribute === 'function') {
+    meta.setAttribute('content', nextColor);
+  } else {
+    meta.content = nextColor;
+  }
+}
+
+export function syncWebDocumentTheme(colorScheme: ColorScheme = 'light'): void {
+  const doc = resolveWebDocument();
+  if (!doc) {
+    return;
+  }
+  if (doc.documentElement?.dataset) {
+    doc.documentElement.dataset['theme'] = colorScheme;
+  }
+  syncThemeColorMeta(doc, colorScheme);
 }
 
 export function injectWebCraftStyles(
@@ -243,6 +272,7 @@ export function injectWebCraftStyles(
       doc.documentElement.dataset['theme'] = colorScheme;
     }
   }
+  syncThemeColorMeta(doc, colorScheme);
 
   doc.title = getTranslations(locale).app.documentTitle;
 

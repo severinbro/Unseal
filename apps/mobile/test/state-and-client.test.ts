@@ -71,7 +71,7 @@ const SAMPLE_CONFIG_NO_ORTHO: RuntimeConfig = {
   impressumUrl: 'https://maps.example.org/auth/impressum',
   termsUrl: 'https://maps.example.org/auth/terms',
   licensesUrl: 'https://maps.example.org/auth/licenses',
-  sourceCodeUrl: 'https://github.com/sebroccoli/Entsiegelungskartierung',
+  sourceCodeUrl: 'https://github.com/severinbro/Unseal',
   bugReportContact: 'bugs@example.org',
   apkDownloadUrl: null,
   apkSha256: null,

@@ -44,9 +44,14 @@
 	handle {
 		header {
 			Permissions-Policy "geolocation=(self), camera=(self), microphone=()"
-			Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https:; worker-src 'self' blob:; font-src 'self' data: https:; frame-ancestors 'none'"
+			Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https:; worker-src 'self' blob:; font-src 'self' data: https:; manifest-src 'self'; frame-ancestors 'none'"
 		}
 		root * /srv/www
+		@manifest_json {
+			path /manifest.json
+			file /manifest.webmanifest
+		}
+		rewrite @manifest_json /manifest.webmanifest
 		try_files {path} /index.html
 		file_server
 	}
