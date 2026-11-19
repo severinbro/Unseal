@@ -4,14 +4,14 @@
 
 Unauthenticated visitors can explore OpenStreetMap vector basemaps in light or dark mode (with automatic OS detection and a one-tap theme toggle), toggle built-in Germany-wide **DOP20 aerial orthophotos** (`EPSG:3857`) beneath proposal geometries, center on their position via the floating top-right **GNSS** button, inspect proposals and site photos, open the **`?` About** dialog, download the standalone Android `.apk` (when hosted on the server), and export all proposals as RFC 7946 GeoJSON (`GET /api/v1/polygons/export.geojson`, `CC0-1.0`) for direct analysis in QGIS or desktop GIS tools.
 
-Contributors register pseudonymous accounts backed by **email link confirmation**, acceptance of the Privacy Policy and Terms of Use (`CC0 1.0` for polygon geometries/notes, `CC BY 4.0` for photos/comments), and **VPS-hosted legal & password recovery pages** (`/auth/verify-email`, `/auth/reset-password`, `/auth/impressum`, `/auth/privacy`, `/auth/terms`, `/auth/licenses`). Email addresses are never exposed publicly — only the user's chosen `pseudonym` appears.
+Contributors register pseudonymous accounts backed by **email link confirmation**, acceptance of the Privacy Policy and Terms of Use (`CC0 1.0` for polygon geometries/notes, `CC BY 4.0` for photos/comments), and **VPS-hosted legal & password recovery pages** (`/auth/verify-email`, `/auth/reset-password`, `/auth/impressum`, `/auth/privacy`, `/auth/terms`, `/auth/licenses`). Email addresses are never exposed publicly - only the user's chosen `pseudonym` appears.
 
 ---
 
 ## Key Capabilities
 
 * **2-Step Progressive Drawing Wizard & 4-Tab Inspector:**
-  * *Creation:* Step 1 (`1. Umriss`) keeps >80% of the map visible while placing polygon vertices (`2–500,000 m²`, topology & `< 2°` spike validation); Step 2 (`2. Details`) captures surface material (`Asphalt`, `Beton`, `Pflaster`, `Sonstige Versiegelung`), optional site notes, and optional camera/gallery photos.
+  * *Creation:* Step 1 (`1. Umriss`) keeps >80% of the map visible while placing polygon vertices (`2-500,000 m²`, topology & `< 2°` spike validation); Step 2 (`2. Details`) captures surface material (`Asphalt`, `Beton`, `Pflaster`, `Sonstige Versiegelung`), optional site notes, and optional camera/gallery photos.
   * *Inspection & Per-Polygon Threaded Discussion:* Sticky summary + `+1` / `-1` voting header above 4 segmented tabs (`Übersicht` | `Kommentare (N)` | `Fotos (N)` | `Verwaltung`) with nested replies, `+1` comment upvotes, and automatic top-rated comment pinning (`★ Top-Kommentar`).
 * **Municipality-Bounded Score Coloring (Germany `BKG VG250`):**
   * Positive proposal scores (`score > 0`) scale along an emerald intensity gradient bounded to each German municipality's (`vg250_gem`) own positive score range (`municipalityNormalizedScore` in `[0, 1]`), so smaller municipalities are not drowned out by large cities. Statuses cover `proposed`, `in_progress` (`⟳ Wird entsiegelt`), and `finished` (`✓ Entsiegelt`).
@@ -78,15 +78,37 @@ docker compose up -d --build
 
 ---
 
+## Example Workflow (Participatory Mapping to Desktop GIS)
+
+1. **Seed municipal boundaries & start the service:** With `AUTO_SEED_VG250=true` (enabled by default in `docker-compose.yml`), Unseal loads German `BKG VG250` municipality boundaries so positive vote scores normalize within each municipality (`[0, 1]`).
+2. **Map or import candidate depaving sites:**
+   * *Interactive mapping:* Open the Web or mobile client, toggle `DOP20` aerial orthophotos beneath the map, trace an impervious surface (`2-20,000 m²`), select its material (`Asphalt`, `Beton`, `Pflaster`, `Sonstige Versiegelung`), and optionally attach an on-site camera photo (checked in memory against a `3 m` polygon buffer before 100% EXIF stripping).
+   * *Field-survey bulk import (`admin`):* Upload existing `.gpkg` (e.g. `QField` surveys) or `.geojson` inventories directly via the Inspector's `Verwaltung` tab, automatically reprojecting to `EPSG:4326` and running PostGIS topology, compactness, overlap-clipping, and land-cover checks.
+3. **Prioritize & stream open `CC0-1.0` GeoJSON into QGIS:**
+   ```bash
+   curl -fsS http://127.0.0.1:3000/api/v1/polygons/export.geojson -o unseal-proposals.geojson
+   ```
+   Load `unseal-proposals.geojson` (or connect QGIS directly via *Data Source Manager -> Vector -> Protocol: HTTP(S), cloud -> GeoJSON*) to overlay community-ranked depaving polygons (`score`, `municipalityNormalizedScore`, `areaM2`, `surfaceType`, `origin`, `wasAutoClipped`) against municipal heat, stormwater runoff, or `ALKIS` parcel layers.
+
+---
+
 ## Documentation
 
-* **[`docs/installation.md`](./docs/installation.md)** — Full local setup, testing, Web/Android/iOS builds, **Android release APK signing & manifest hardening**, operator `admin.ts` CLI, and environment variable reference.
-* **[`docs/vps-setup.md`](./docs/vps-setup.md)** — Turnkey Linux VPS deployment (`docker-compose.vps.yml`, Caddy auto-HTTPS, DNS, SMTP, admin account promotion, and backups).
+* **[`docs/installation.md`](./docs/installation.md)** - Full local setup, testing, Web/Android/iOS builds, **Android release APK signing & manifest hardening**, operator `admin.ts` CLI, and environment variable reference.
+* **[`docs/vps-setup.md`](./docs/vps-setup.md)** - Turnkey Linux VPS deployment (`docker-compose.vps.yml`, Caddy auto-HTTPS, DNS, SMTP, admin account promotion, and backups).
+
+---
+
+## Community, Contributing & Citation
+
+* **Contributing, reporting bugs & seeking support:** See [`CONTRIBUTING.md`](./CONTRIBUTING.md) and open bug reports, feature requests, or support questions in [GitHub Issues](https://github.com/severinbro/Unseal/issues).
+* **Code of Conduct:** Participation in this project is governed by our [Contributor Covenant Code of Conduct](./CODE_OF_CONDUCT.md).
+* **Citing Unseal:** Machine-readable citation metadata is provided in [`CITATION.cff`](./CITATION.cff).
 
 ---
 
 ## Split Open-Source Licensing (`AGPL-3.0-or-later` & `MPL-2.0`)
 
-* **Server & Repository Root (`AGPL-3.0-or-later`):** `apps/api` and root files (except workspaces providing their own `LICENSE`) are licensed under the **GNU Affero General Public License v3.0 or later** — see [`LICENSE`](./LICENSE) and [`apps/api/LICENSE`](./apps/api/LICENSE).
-* **Mobile/Web Client & Shared Schemas (`MPL-2.0`):** `apps/mobile` and `packages/shared` are licensed under the **Mozilla Public License 2.0** — see [`apps/mobile/LICENSE`](./apps/mobile/LICENSE) and [`packages/shared/LICENSE`](./packages/shared/LICENSE).
-* **AGPLv3 Section 13 Network-Interaction Clarification:** Client packages and applications licensed under `MPL-2.0` (including `packages/shared`, `apps/mobile`, and independent HTTP/GeoJSON clients) that communicate with the `apps/api` HTTP service over a computer network are separate works and remain covered by `MPL-2.0`.
+* **Server & Repository Root (`AGPL-3.0-or-later`):** `apps/api` and root files (except workspaces providing their own `LICENSE`) are licensed under the **GNU Affero General Public License v3.0 or later** - see [`LICENSE`](./LICENSE) and [`apps/api/LICENSE`](./apps/api/LICENSE).
+* **Mobile/Web Client & Shared Schemas (`MPL-2.0`):** `apps/mobile` and `packages/shared` are licensed under the **Mozilla Public License 2.0** - see [`apps/mobile/LICENSE`](./apps/mobile/LICENSE) and [`packages/shared/LICENSE`](./packages/shared/LICENSE).
+* **Split-License Scope, AGPLv3 §13 Clarification & Third-Party Notices:** See [`LICENSING.md`](./LICENSING.md) (including the AGPLv3 Section 13 network-interaction clarification that `MPL-2.0` HTTP/GeoJSON clients remain separate works under `MPL-2.0`) and [`THIRD_PARTY_NOTICES.txt`](./THIRD_PARTY_NOTICES.txt) for complete third-party software, native SDK, Docker stack, and geodata licenses.

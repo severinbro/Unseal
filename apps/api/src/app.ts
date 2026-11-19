@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Unseal Contributors
+
 import crypto from 'node:crypto';
 import fastifyCompress from '@fastify/compress';
 import fastifyCors from '@fastify/cors';

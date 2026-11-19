@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (C) 2026 Unseal Contributors
+
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 import {
@@ -214,10 +217,11 @@ export function MapCanvas({
     // In MapLibre GL JS, 'bottom-*' positions insert each newly added control
     // before firstChild. Register AttributionControl first so it stays pinned
     // to the bottom-right corner and NavigationControl stacks above it.
+    const bkgYear = new Date().getUTCFullYear();
     map.addControl(
       new AttributionControl({
         compact: false,
-        customAttribution: 'VG250: © GeoBasis-DE / BKG (dl-de/by-2-0)',
+        customAttribution: `VG250: © <a href="https://www.bkg.bund.de" target="_blank" rel="noopener noreferrer">BKG</a> ${bkgYear} (<a href="https://www.govdata.de/dl-de/by-2-0" target="_blank" rel="noopener noreferrer">dl-de/by-2-0</a>, Daten verändert)`,
       }),
       'bottom-right',
     );

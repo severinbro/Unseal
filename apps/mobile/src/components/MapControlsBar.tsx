@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (C) 2026 Unseal Contributors
+
 import type { PolygonFilter } from '@entsiegelung/shared';
 import React, { useMemo } from 'react';
 import {

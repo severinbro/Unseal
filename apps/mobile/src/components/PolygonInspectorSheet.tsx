@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (C) 2026 Unseal Contributors
+
 import {
   COMMENT_LIMITS,
   GEOMETRY_LIMITS,
@@ -22,13 +25,30 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Linking,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+
+const CC_BY_4_0_URL = 'https://creativecommons.org/licenses/by/4.0/';
+
+function openLicenseUrl(url: string): void {
+  if (Platform.OS === 'web') {
+    const scope = globalThis as {
+      window?: { open?: (u: string, target?: string, features?: string) => void };
+    };
+    if (typeof scope.window?.open === 'function') {
+      scope.window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+  }
+  void Linking.openURL(url);
+}
 
 import {
   DEFAULT_LOCALE,
@@ -1543,6 +1563,15 @@ export function PolygonInspectorSheet({
               {commentDisplay.roots.map((rootNode) =>
                 renderCommentThreadNode(rootNode),
               )}
+              <Pressable
+                accessibilityRole="link"
+                onPress={() => openLicenseUrl(CC_BY_4_0_URL)}
+                style={styles.ccLicenseNoticeLink}
+              >
+                <Text style={styles.ccLicenseNoticeText}>
+                  {t.commentLicenseNotice}
+                </Text>
+              </Pressable>
             </View>
           )}
         </View>
@@ -1772,6 +1801,15 @@ export function PolygonInspectorSheet({
                   </View>
                 );
               })}
+              <Pressable
+                accessibilityRole="link"
+                onPress={() => openLicenseUrl(CC_BY_4_0_URL)}
+                style={styles.ccLicenseNoticeLink}
+              >
+                <Text style={styles.ccLicenseNoticeText}>
+                  {t.photoLicenseNotice}
+                </Text>
+              </Pressable>
             </View>
           )}
         </View>
@@ -2094,12 +2132,22 @@ export function PolygonInspectorSheet({
                 resizeMode="contain"
               />
               <View style={styles.lightboxFooter}>
-                <Text style={styles.lightboxAuthor}>
-                  @{lightboxPhoto.uploaderPseudonym}
-                  {lightboxPhoto.gpsVerified
-                    ? ` · ${t.gpsVerifiedBadge}`
-                    : ''}
-                </Text>
+                <View style={styles.lightboxMetaCol}>
+                  <Text style={styles.lightboxAuthor}>
+                    @{lightboxPhoto.uploaderPseudonym}
+                    {lightboxPhoto.gpsVerified
+                      ? ` · ${t.gpsVerifiedBadge}`
+                      : ''}
+                  </Text>
+                  <Pressable
+                    accessibilityRole="link"
+                    onPress={() => openLicenseUrl(CC_BY_4_0_URL)}
+                  >
+                    <Text style={styles.lightboxLicenseLink}>
+                      {t.photoLightboxLicense}
+                    </Text>
+                  </Pressable>
+                </View>
                 <Pressable
                   accessibilityRole="button"
                   onPress={() => setLightboxPhoto(null)}
@@ -3045,6 +3093,25 @@ function createStyles(PALETTE: ThemePalette) {
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
+  },
+  lightboxMetaCol: {
+    flex: 1,
+    gap: 2,
+  },
+  lightboxLicenseLink: {
+    color: '#D1FAE5',
+    fontSize: 11.5,
+    textDecorationLine: 'underline',
+  },
+  ccLicenseNoticeLink: {
+    alignSelf: 'flex-start',
+    paddingVertical: 4,
+  },
+  ccLicenseNoticeText: {
+    fontSize: 11,
+    lineHeight: 15,
+    color: PALETTE.inkMuted,
+    textDecorationLine: 'underline',
   },
   lightboxCloseBtn: {
     minHeight: 40,

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Unseal Contributors
+
 import { createReadStream } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -67,6 +70,10 @@ export function registerPhotoRoutes(
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Cross-Origin-Resource-Policy', 'cross-origin');
     reply.header('Cache-Control', 'public, max-age=31536000, immutable');
+    reply.header(
+      'Link',
+      '<https://creativecommons.org/licenses/by/4.0/>; rel="license"',
+    );
     return reply.send(createReadStream(fullPath));
   });
 
@@ -78,6 +85,10 @@ export function registerPhotoRoutes(
     async (request, reply) => {
       reply.header('Vary', 'Authorization');
       reply.header('Cache-Control', 'no-store');
+      reply.header(
+        'Link',
+        '<https://creativecommons.org/licenses/by/4.0/>; rel="license"',
+      );
       const { id } = UuidParamSchema.parse(request.params);
       const viewerUserId = request.auth?.user.id ?? null;
       const photos = await repository.listByPolygon(id, viewerUserId);

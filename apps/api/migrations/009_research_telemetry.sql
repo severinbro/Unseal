@@ -1,3 +1,6 @@
+-- SPDX-License-Identifier: AGPL-3.0-or-later
+-- Copyright (C) 2026 Unseal Contributors
+
 -- Provenance & auto-clipping metadata on polygons (non-personal spatial attributes).
 ALTER TABLE polygons
   ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT 'citizen'

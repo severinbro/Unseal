@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (C) 2026 Unseal Contributors
+
 /**
  * Platform-neutral GPS coordinate acquisition result contract.
  *

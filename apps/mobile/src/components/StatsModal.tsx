@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (C) 2026 Unseal Contributors
+
 import {
   SURFACE_TYPES,
   TRUST_AND_MODERATION_LIMITS,

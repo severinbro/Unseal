@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (C) 2026 Unseal Contributors
+
 export const SURFACE_TYPES = ['asphalt', 'concrete', 'pavers', 'other'] as const;
 
 export type SurfaceType = (typeof SURFACE_TYPES)[number];

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Unseal Contributors
+
 import {
   CommentVoteRequestSchema,
   CommentVoteResponseSchema,
@@ -33,6 +36,10 @@ export function registerCommentRoutes(
     async (request, reply) => {
       reply.header('Vary', 'Authorization');
       reply.header('Cache-Control', 'no-store');
+      reply.header(
+        'Link',
+        '<https://creativecommons.org/licenses/by/4.0/>; rel="license"',
+      );
       const { id } = UuidParamSchema.parse(request.params);
       const viewerUserId = request.auth?.user.id ?? null;
       const list = await repository.listByPolygon(id, viewerUserId);

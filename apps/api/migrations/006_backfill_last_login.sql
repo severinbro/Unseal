@@ -1,3 +1,6 @@
+-- SPDX-License-Identifier: AGPL-3.0-or-later
+-- Copyright (C) 2026 Unseal Contributors
+
 -- Backfill last_login_at for accounts that authenticated prior to migration 005
 UPDATE users u
 SET last_login_at = COALESCE(

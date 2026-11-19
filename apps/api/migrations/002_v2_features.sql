@@ -1,3 +1,6 @@
+-- SPDX-License-Identifier: AGPL-3.0-or-later
+-- Copyright (C) 2026 Unseal Contributors
+
 ALTER TABLE users
   ALTER COLUMN recovery_code_hash DROP NOT NULL;
 

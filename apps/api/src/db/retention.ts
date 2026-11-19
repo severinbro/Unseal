@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Unseal Contributors
+
 import type pg from 'pg';
 
 /** Unconfirmed registrations are erased after this many hours (stated in the privacy policy). */

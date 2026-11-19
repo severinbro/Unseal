@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (C) 2026 Unseal Contributors
+
 import {
   ApiError,
   type ErrorCode,
@@ -342,6 +345,9 @@ export interface TranslationDictionary {
     readonly votingClosedInProgressHint: string;
     readonly votingClosedFinishedHint: string;
     readonly commentsClosedFinishedHint: string;
+    readonly commentLicenseNotice: string;
+    readonly photoLicenseNotice: string;
+    readonly photoLightboxLicense: string;
   };
   readonly auth: {
     readonly modalA11y: string;
@@ -622,9 +628,9 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       legendInProgress: '⟳ Wird entsiegelt',
       legendFinished: '✓ Entsiegelt',
       nativeAttributionOsm:
-        '© OpenStreetMap-Mitwirkende (ODbL) · OpenFreeMap · VG250: © GeoBasis-DE / BKG (dl-de/by-2-0)',
+        '© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap · VG250: © BKG 2026 (dl-de/by-2-0, verändert)',
       nativeAttributionOrtho:
-        'DOP20: © GeoBasis-DE / Landesvermessungsämter (dl-de/by-2-0) · VG250: © BKG',
+        'DOP20/DOP10: © Länder (dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; verändert) · VG250: © BKG 2026',
     },
     controls: {
       signInShort: 'Anmelden',
@@ -632,7 +638,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       subtitleOrthophoto: 'Luftbild (DOP20)',
       subtitleOsm: 'OpenStreetMap-Straßenkarte',
       subtitleRegistry: 'Offenes Entsiegelungsregister',
-      osmAttributionShort: '© OpenStreetMap (ODbL) · OpenFreeMap · VG250 © BKG',
+      osmAttributionShort:
+        '© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap · VG250 © BKG 2026',
       imageryPrefix: 'Bilddaten:',
       switchLocaleA11y: 'Sprache auf Englisch (EN) umstellen',
       switchToDarkModeA11y: 'Dunkelmodus mit dunkler Hintergrundkarte aktivieren',
@@ -680,7 +687,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       exportCompact: 'GeoJSON',
       exportFull: 'GeoJSON-Export',
       exportErrorFallback: 'GeoJSON-Export konnte nicht geöffnet werden.',
-      importA11y: 'Polygone aus GeoJSON oder GeoPackage importieren (Admin)',
+      importA11y:
+        'Polygone aus GeoJSON oder GeoPackage importieren (Admin; Veröffentlichung erfolgt unter CC0 1.0)',
       importCompact: 'Import',
       importFull: 'Import (.geojson/.gpkg)',
       importingBusy: 'Import…',
@@ -957,6 +965,11 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         'Abstimmung geschlossen – diese Fläche wurde bereits entsiegelt.',
       commentsClosedFinishedHint:
         'Kommentare sind für bereits entsiegelte Flächen geschlossen.',
+      commentLicenseNotice:
+        'Kommentare: CC BY 4.0 (Namensnennung: @Pseudonym)',
+      photoLicenseNotice:
+        'Fotos: CC BY 4.0 (Namensnennung: @Pseudonym · bearbeitet: EXIF entfernt, WebP)',
+      photoLightboxLicense: 'CC BY 4.0 (EXIF entfernt, WebP)',
     },
     auth: {
       modalA11y: 'Benutzerkonto',
@@ -1051,7 +1064,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       resettingPassword: 'Sendet Link…',
       resetPassword: 'Link zum Zurücksetzen senden',
       accountSignedInHint: (pseudonym) =>
-        `Angemeldet als @${pseudonym}. Auf der Karte und im GeoJSON-Export erscheint ausschließlich dein Pseudonym.`,
+        `Angemeldet als @${pseudonym}. Auf der Karte erscheint ausschließlich dein Pseudonym; der öffentliche CC0-GeoJSON-Export enthält kein Pseudonym.`,
       adminRoleBadge: 'Admin',
       accountEmailLabel: 'Bestätigte E-Mail:',
       exportDataButton: 'Meine Daten herunterladen',
@@ -1153,9 +1166,11 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       footerTitle: 'Datenschutz, Rechtliches & App',
       privacyAndLicenseBody:
         'Öffentlich erscheint nur dein Pseudonym; E-Mails dienen nur Bestätigung & Recovery (jederzeit nach Art. 17 DSGVO löschbar). Beiträge: CC0 1.0 (Geometrien/Notizen) & CC BY 4.0 (Fotos/Kommentare). Software: AGPL-3.0 (API) & MPL-2.0 (App).',
-      attributionOsmShort: '© OpenStreetMap / OpenFreeMap (ODbL)',
-      attributionDop20Short: 'DOP20 © Länder (dl-de/by-2-0)',
-      attributionVg250Short: 'VG250 © BKG (dl-de/by-2-0)',
+      attributionOsmShort:
+        '© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap (MIT)',
+      attributionDop20Short:
+        'DOP20/DOP10 © Länder (dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; verändert)',
+      attributionVg250Short: 'VG250 © BKG 2026 (dl-de/by-2-0, Daten verändert)',
       impressumLinkLabel: 'Impressum',
       privacyLinkLabel: 'Datenschutz',
       termsLinkLabel: 'Nutzungsbedingungen',
@@ -1303,9 +1318,9 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       legendInProgress: '⟳ In progress',
       legendFinished: '✓ Finished',
       nativeAttributionOsm:
-        '© OpenStreetMap contributors (ODbL) · OpenFreeMap · VG250: © GeoBasis-DE / BKG (dl-de/by-2-0)',
+        '© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap · VG250: © BKG 2026 (dl-de/by-2-0, modified)',
       nativeAttributionOrtho:
-        'DOP20: © GeoBasis-DE / State Survey Offices (dl-de/by-2-0) · VG250: © BKG',
+        'DOP20/DOP10: © State Surveys (dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; modified) · VG250: © BKG 2026',
     },
     controls: {
       signInShort: 'Sign in',
@@ -1313,7 +1328,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       subtitleOrthophoto: 'Aerial Orthophoto (DOP20)',
       subtitleOsm: 'OpenStreetMap Street Layer',
       subtitleRegistry: 'Open civic unsealing registry',
-      osmAttributionShort: '© OpenStreetMap (ODbL) · OpenFreeMap · VG250 © BKG',
+      osmAttributionShort:
+        '© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap · VG250 © BKG 2026',
       imageryPrefix: 'Imagery:',
       switchLocaleA11y: 'Switch language to German (DE)',
       switchToDarkModeA11y: 'Switch to dark mode with dark background map',
@@ -1360,7 +1376,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       exportCompact: 'GeoJSON',
       exportFull: 'Export GeoJSON',
       exportErrorFallback: 'Unable to open GeoJSON export URL.',
-      importA11y: 'Import polygons from GeoJSON or GeoPackage (Admin)',
+      importA11y:
+        'Import polygons from GeoJSON or GeoPackage (Admin; published under CC0 1.0)',
       importCompact: 'Import',
       importFull: 'Import (.geojson/.gpkg)',
       importingBusy: 'Importing…',
@@ -1618,6 +1635,11 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         'Voting closed — this area has already been unsealed.',
       commentsClosedFinishedHint:
         'Comments are closed for finished areas.',
+      commentLicenseNotice:
+        'Comments: CC BY 4.0 (attribution: @pseudonym)',
+      photoLicenseNotice:
+        'Photos: CC BY 4.0 (attribution: @pseudonym · modified: EXIF stripped, WebP)',
+      photoLightboxLicense: 'CC BY 4.0 (EXIF stripped, WebP)',
     },
     auth: {
       modalA11y: 'Contributor account modal',
@@ -1709,7 +1731,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       resettingPassword: 'Sending…',
       resetPassword: 'Send Recovery Link',
       accountSignedInHint: (pseudonym) =>
-        `Signed in as @${pseudonym}. Only your pseudonym appears publicly on polygons, photos, and GeoJSON exports.`,
+        `Signed in as @${pseudonym}. Only your pseudonym appears publicly on the map; the public CC0 GeoJSON export omits pseudonyms.`,
       adminRoleBadge: 'Administrator',
       accountEmailLabel: 'Verified email:',
       exportDataButton: 'Download my data',
@@ -1809,9 +1831,11 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       footerTitle: 'Privacy, Legal & App',
       privacyAndLicenseBody:
         'Only your pseudonym is public; emails are used strictly for confirmation & recovery (erasable anytime under GDPR Art. 17). Contributions: CC0 1.0 (geometries/notes) & CC BY 4.0 (photos/comments). Code: AGPL-3.0 (API) & MPL-2.0 (App).',
-      attributionOsmShort: '© OpenStreetMap / OpenFreeMap (ODbL)',
-      attributionDop20Short: 'DOP20 © State Surveys (dl-de/by-2-0)',
-      attributionVg250Short: 'VG250 © BKG (dl-de/by-2-0)',
+      attributionOsmShort:
+        '© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap (MIT)',
+      attributionDop20Short:
+        'DOP20/DOP10 © State Surveys (dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; modified)',
+      attributionVg250Short: 'VG250 © BKG 2026 (dl-de/by-2-0, modified)',
       impressumLinkLabel: 'Impressum',
       privacyLinkLabel: 'Privacy Policy',
       termsLinkLabel: 'Terms of Use',

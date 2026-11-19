@@ -1,0 +1,45 @@
+name: Draft PDF
+
+on:
+  push:
+    paths:
+      - 'papers/joss/**'
+      - '.github/workflows/draft-pdf.yml'
+  pull_request:
+    paths:
+      - 'papers/joss/**'
+      - '.github/workflows/draft-pdf.yml'
+  workflow_dispatch:
+
+jobs:
+  paper:
+    runs-on: ubuntu-latest
+    name: Paper Draft
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check paper presence
+        id: check_paper
+        run: |
+          if [ -f "papers/joss/paper.md" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "papers/joss/paper.md is not tracked in this branch yet; skipping draft build."
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build draft PDF
+        if: steps.check_paper.outputs.exists == 'true'
+        uses: openjournals/openjournals-draft-action@master
+        with:
+          journal: joss
+          paper-path: papers/joss/paper.md
+
+      - name: Upload compiled PDF artifact
+        if: steps.check_paper.outputs.exists == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper
+          path: papers/joss/paper.pdf
+          if-no-files-found: error

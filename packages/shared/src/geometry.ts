@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (C) 2026 Unseal Contributors
+
 import { area } from '@turf/area';
 import { polygon } from '@turf/helpers';
 import { kinks } from '@turf/kinks';

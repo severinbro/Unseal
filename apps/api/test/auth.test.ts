@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Unseal Contributors
+
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
@@ -1433,13 +1436,75 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
       assert.equal(licRes.statusCode, 200);
       assert.match(licRes.body, /AGPL-3\.0-or-later/);
       assert.match(licRes.body, /MPL-2\.0/);
+      assert.match(licRes.body, /MapLibre React Native \(MIT\)/);
+      assert.match(licRes.body, /MapLibre Native Android\/iOS \(BSD-2-Clause\)/);
+      assert.match(licRes.body, /@node-rs\/argon2 \(MIT\)/);
+      assert.match(licRes.body, /Nodemailer \(MIT-0\)/);
+      assert.match(licRes.body, /PostGIS \(GPL-2\.0-or-later\)/);
+      assert.match(licRes.body, /OpenMapTiles/);
+      assert.match(licRes.body, /https:\/\/www\.bkg\.bund\.de/);
+      assert.match(licRes.body, /Daten verändert/);
+      assert.match(licRes.body, /Bayerische Vermessungsverwaltung.*CC BY 4\.0/);
+      assert.match(licRes.body, /Land NRW.*dl-de\/zero-2-0/);
+      assert.match(licRes.body, /\/auth\/third-party-notices/);
+
+      const noticesRes = await configuredApp.inject({
+        method: 'GET',
+        url: '/auth/third-party-notices',
+      });
+      assert.equal(noticesRes.statusCode, 200);
+      assert.match(
+        String(noticesRes.headers['content-type'] ?? ''),
+        /text\/plain/,
+      );
+      assert.match(noticesRes.body, /THIRD-PARTY SOFTWARE & GEODATA NOTICES/);
 
       assert.equal(exportRes.statusCode, 200);
       assert.equal(exportRes.headers['content-license'], 'CC0-1.0');
       assert.equal(
         exportRes.headers.link,
-        '<https://unseal.example.org/auth/terms>; rel="license"',
+        '<https://creativecommons.org/publicdomain/zero/1.0/>; rel="license", <https://unseal.example.org/auth/terms>; rel="terms-of-service"',
       );
+      const exportPayload = exportRes.json() as {
+        type: string;
+        license?: string;
+        licenseUrl?: string;
+        attribution?: string;
+        features: unknown[];
+      };
+      assert.equal(exportPayload.type, 'FeatureCollection');
+      assert.equal(exportPayload.license, 'CC0-1.0');
+      assert.equal(
+        exportPayload.licenseUrl,
+        'https://creativecommons.org/publicdomain/zero/1.0/',
+      );
+      assert.match(exportPayload.attribution ?? '', /BKG.*dl-de\/by-2-0/);
+
+      // Dynamic /auth/licenses: disabled orthophoto & custom basemap must not claim OpenFreeMap/DOP20
+      const customApp = await buildApp(
+        loadEnvConfig({
+          OSM_STYLE_URL: 'https://tiles.custom.example/style.json',
+          ORTHOPHOTO_URL_TEMPLATE: 'none',
+        }),
+        pool,
+        {
+          logger: createLogger({ enabled: false }),
+          mailer: createMemoryMailer(),
+        },
+      );
+      try {
+        const customLicRes = await customApp.inject({
+          method: 'GET',
+          url: '/auth/licenses',
+        });
+        assert.equal(customLicRes.statusCode, 200);
+        assert.match(customLicRes.body, /tiles\.custom\.example/);
+        assert.equal(customLicRes.body.includes('OpenFreeMap'), false);
+        assert.match(customLicRes.body, /Luftbilder:<\/strong> Auf dieser Instanz deaktiviert/);
+        assert.equal(customLicRes.body.includes('Bayerische Vermessungsverwaltung'), false);
+      } finally {
+        await customApp.close();
+      }
 
       const user = await registerVerifiedUser(
         configuredApp,

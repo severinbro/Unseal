@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (C) 2026 Unseal Contributors
+
 import { ApiError, type AltchaChallengeResponse } from '@entsiegelung/shared';
 
 const SHA256_K = new Uint32Array([

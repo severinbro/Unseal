@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Unseal Contributors
+
 import { loadEnvConfig } from '../config.js';
 import { runMigrations } from './migrate.js';
 import { createDbPool } from './pool.js';

@@ -1,3 +1,6 @@
+-- SPDX-License-Identifier: AGPL-3.0-or-later
+-- Copyright (C) 2026 Unseal Contributors
+
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS canonical_email_hash BYTEA;

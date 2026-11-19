@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Unseal Contributors
+
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { after, before, beforeEach, describe, it } from 'node:test';
@@ -1178,10 +1181,21 @@ describe('PPGIS-4: PostGIS polygon CRUD, authoritative validation, span/sliver c
         headers: { 'accept-encoding': 'identity' },
       });
       assert.equal(emptyExportRes.statusCode, 200);
-      assert.deepEqual(JSON.parse(emptyExportRes.body), {
-        type: 'FeatureCollection',
-        features: [],
-      });
+      const emptyExportPayload = JSON.parse(emptyExportRes.body) as {
+        type: string;
+        license?: string;
+        licenseUrl?: string;
+        attribution?: string;
+        features: unknown[];
+      };
+      assert.equal(emptyExportPayload.type, 'FeatureCollection');
+      assert.equal(emptyExportPayload.license, 'CC0-1.0');
+      assert.equal(
+        emptyExportPayload.licenseUrl,
+        'https://creativecommons.org/publicdomain/zero/1.0/',
+      );
+      assert.match(emptyExportPayload.attribution ?? '', /BKG.*dl-de\/by-2-0/);
+      assert.deepEqual(emptyExportPayload.features, []);
       assert.equal(exportSemaphore.active, 0);
 
       // 2. Two real concurrent in-flight export requests saturate exportSemaphore -> 3rd returns 503

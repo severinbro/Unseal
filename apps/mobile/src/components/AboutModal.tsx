@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (C) 2026 Unseal Contributors
+
+import type { RuntimeConfig } from '@entsiegelung/shared';
 import React, { useMemo } from 'react';
 import {
   Linking,
@@ -23,6 +27,8 @@ export interface AboutModalProps {
   visible: boolean;
   locale?: Locale;
   compact?: boolean;
+  osmStyleUrl?: string | undefined;
+  orthophoto?: RuntimeConfig['orthophoto'] | undefined;
   privacyPolicyUrl: string;
   impressumUrl?: string | undefined;
   termsUrl?: string | undefined;
@@ -33,6 +39,17 @@ export interface AboutModalProps {
   onClose: () => void;
   onOpenInstallApp?: () => void;
   onDownloadError?: (message: string) => void;
+}
+
+function safeHostOf(url: string | undefined): string | null {
+  if (!url) {
+    return null;
+  }
+  try {
+    return new URL(url).host;
+  } catch {
+    return null;
+  }
 }
 
 function openExternalUrl(url: string): void {
@@ -52,6 +69,8 @@ export function AboutModal({
   visible,
   locale = DEFAULT_LOCALE,
   compact = false,
+  osmStyleUrl,
+  orthophoto,
   privacyPolicyUrl,
   impressumUrl,
   termsUrl,
@@ -205,48 +224,74 @@ export function AboutModal({
         ) : null}
 
         <View style={styles.attributionChipsRow}>
-          <Pressable
-            accessibilityRole="link"
-            onPress={() =>
-              openExternalUrl('https://www.openstreetmap.org/copyright')
-            }
-            style={({ pressed }) => [
-              styles.attributionChip,
-              pressed ? styles.buttonPressed : null,
-            ]}
-          >
-            <Text style={styles.attributionChipText}>
-              {t.attributionOsmShort}
-            </Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="link"
-            onPress={() =>
-              openExternalUrl('https://www.govdata.de/dl-de/by-2-0')
-            }
-            style={({ pressed }) => [
-              styles.attributionChip,
-              pressed ? styles.buttonPressed : null,
-            ]}
-          >
-            <Text style={styles.attributionChipText}>
-              {t.attributionDop20Short}
-            </Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="link"
-            onPress={() =>
-              openExternalUrl('https://www.govdata.de/dl-de/by-2-0')
-            }
-            style={({ pressed }) => [
-              styles.attributionChip,
-              pressed ? styles.buttonPressed : null,
-            ]}
-          >
-            <Text style={styles.attributionChipText}>
-              {t.attributionVg250Short}
-            </Text>
-          </Pressable>
+          {(() => {
+            const styleHost = safeHostOf(osmStyleUrl);
+            const usesOpenFreeMap =
+              osmStyleUrl === undefined || styleHost === 'tiles.openfreemap.org';
+            const basemapLabel = usesOpenFreeMap
+              ? t.attributionOsmShort
+              : styleHost
+                ? `Basemap: ${styleHost}`
+                : t.attributionOsmShort;
+            const basemapLink = usesOpenFreeMap
+              ? 'https://www.openstreetmap.org/copyright'
+              : licensesUrl ?? 'https://www.openstreetmap.org/copyright';
+            const isBuiltinDop20 =
+              orthophoto === undefined ||
+              (orthophoto !== null &&
+                orthophoto.urlTemplate.includes('/api/v1/tiles/dop20/'));
+            const showOrthoChip = orthophoto !== null;
+            const orthoChipLabel = isBuiltinDop20
+              ? t.attributionDop20Short
+              : orthophoto && orthophoto.attribution.trim().length > 0
+                ? orthophoto.attribution.trim()
+                : null;
+            const orthoChipLink =
+              licensesUrl ?? 'https://www.govdata.de/dl-de/by-2-0';
+
+            return (
+              <>
+                <Pressable
+                  accessibilityRole="link"
+                  onPress={() => openExternalUrl(basemapLink)}
+                  style={({ pressed }) => [
+                    styles.attributionChip,
+                    pressed ? styles.buttonPressed : null,
+                  ]}
+                >
+                  <Text style={styles.attributionChipText}>{basemapLabel}</Text>
+                </Pressable>
+                {showOrthoChip && orthoChipLabel ? (
+                  <Pressable
+                    accessibilityRole="link"
+                    onPress={() => openExternalUrl(orthoChipLink)}
+                    style={({ pressed }) => [
+                      styles.attributionChip,
+                      pressed ? styles.buttonPressed : null,
+                    ]}
+                  >
+                    <Text style={styles.attributionChipText}>
+                      {orthoChipLabel}
+                    </Text>
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  accessibilityRole="link"
+                  onPress={() =>
+                    openExternalUrl('https://www.govdata.de/dl-de/by-2-0')
+                  }
+                  style={({ pressed }) => [
+                    styles.attributionChip,
+                    pressed ? styles.buttonPressed : null,
+                  ]}
+                >
+                  <Text style={styles.attributionChipText}>
+                    {t.attributionVg250Short}
+                  </Text>
+                </Pressable>
+              </>
+            );
+          })()}
         </View>
       </View>
 

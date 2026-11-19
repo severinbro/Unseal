@@ -12,7 +12,7 @@ All backend services run inside isolated Docker networks defined in [`docker-com
 2. **`api` (`apps/api/Dockerfile` on `db_internal` + `edge_net`):**
    - Runs numbered SQL migrations (`001_initial_schema.sql` through `008_privacy_hardening.sql`) automatically on boot and re-keys canonical email hashes with `TOMBSTONE_SECRET`.
    - Runs an hourly privacy retention job (unconfirmed sign-ups after 48 h, expired sessions, stale email links, expired pseudonym reservations).
-   - Logs only request id, method, URL path, status and timing — no client IPs, headers or query strings. Container logs are rotated (3 × 10 MB per service).
+   - Logs only request id, method, URL path, status and timing - no client IPs, headers or query strings. Container logs are rotated (3 × 10 MB per service).
    - Automatically downloads and seeds Germany's **BKG VG250 OpenData municipality boundaries** (`vg250_gem`, `~11,000` municipalities) on first startup when `AUTO_SEED_VG250=true`.
    - Hosts the **clickable web pages** for email confirmation (`GET/POST /auth/verify-email?token=...`), password recovery (`GET/POST /auth/reset-password?token=...`), and legal/GDPR pages (`/auth/impressum`, `/auth/privacy`, `/auth/terms`, `/auth/licenses`).
    - Processes uploaded site photos (`<= 3 m` EXIF GPS polygon tolerance check -> `"GPS verified"`, followed by 100% EXIF stripping and WebP conversion) onto the persistent `uploads_data` Docker volume (`/uploads/*`), and optionally serves `/downloads/unseal.apk`.
@@ -146,7 +146,7 @@ If you distribute the signed APK via the VPS (`/downloads/unseal.apk`), place it
 
 ## Backups (PostGIS + Uploaded Photos)
 
-Back up both the PostGIS database and the `uploads_data` WebP photo volume regularly. Backups contain the same personal data as the live system (email addresses, pseudonyms, photos), so **encrypt them** and **delete them after `BACKUP_RETENTION_DAYS`** — the privacy policy states that period, and data a user deleted only disappears from backups once they expire.
+Back up both the PostGIS database and the `uploads_data` WebP photo volume regularly. Backups contain the same personal data as the live system (email addresses, pseudonyms, photos), so **encrypt them** and **delete them after `BACKUP_RETENTION_DAYS`** - the privacy policy states that period, and data a user deleted only disappears from backups once they expire.
 
 ```bash
 # 1. Logical PostGIS dump (users, polygons, municipalities, votes, photo metadata), encrypted with a passphrase
@@ -175,7 +175,7 @@ The code keeps data collection small, but running a public instance makes you th
 
 - [ ] **Legal notice & controller:** fill in `OPERATOR_NAME`, `OPERATOR_ADDRESS`, `OPERATOR_EMAIL` and a privacy contact (`ABUSE_CONTACT`); check `/auth/impressum` and `/auth/privacy`.
 - [ ] **Processing agreements (Art. 28):** sign data processing agreements with your VPS host and your SMTP provider, and name them in `PRIVACY_HOSTING_PROVIDER` / `PRIVACY_EMAIL_PROVIDER`.
-- [ ] **Third parties:** if you change `OSM_STYLE_URL`, `OSM_DARK_STYLE_URL`, or `ORTHOPHOTO_URL_TEMPLATE`, `/auth/privacy` names the new hosts automatically — check that provider's own privacy terms and whether it transfers data outside the EU/EEA.
+- [ ] **Third parties:** if you change `OSM_STYLE_URL`, `OSM_DARK_STYLE_URL`, or `ORTHOPHOTO_URL_TEMPLATE`, `/auth/privacy` names the new hosts automatically - check that provider's own privacy terms and whether it transfers data outside the EU/EEA.
 - [ ] **Record of processing activities (Art. 30):** document the processing described on `/auth/privacy` (accounts, contributions, abuse prevention, logs, bug reports).
 - [ ] **Security (Art. 32):** set `TOMBSTONE_SECRET` and a strong `POSTGRES_PASSWORD`; keep the VPS patched; encrypt backups.
 - [ ] **Retention:** set `BACKUP_RETENTION_DAYS` and delete bug-report emails once handled.

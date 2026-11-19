@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Unseal Contributors
+
 import { isIP } from 'node:net';
 
 function parseIpv4Hextets(ipv4Part: string): [number, number] | null {

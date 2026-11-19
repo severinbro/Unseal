@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Unseal Contributors
+
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -841,6 +844,10 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
       });
       assert.equal(servedImgRes.statusCode, 200);
       assert.equal(servedImgRes.headers['content-type'], 'image/webp');
+      assert.equal(
+        servedImgRes.headers.link,
+        '<https://creativecommons.org/licenses/by/4.0/>; rel="license"',
+      );
       const servedMeta = await sharp(servedImgRes.rawPayload).metadata();
       assert.equal(servedMeta.format, 'webp');
       assert.equal(servedMeta.exif, undefined);
@@ -912,6 +919,10 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
         headers: { authorization: `Bearer ${rater1.sessionToken}` },
       });
       assert.equal(listPhotosRes.statusCode, 200);
+      assert.equal(
+        listPhotosRes.headers.link,
+        '<https://creativecommons.org/licenses/by/4.0/>; rel="license"',
+      );
       const photoList = PolygonPhotoListResponseSchema.parse(listPhotosRes.json());
       assert.equal(photoList.photos.length, 2);
       // Ordered by credibility_score DESC -> nearPhoto (+1) first, farPhoto (-3, flagged fake) second
@@ -1140,6 +1151,10 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
         headers: { authorization: `Bearer ${bob.sessionToken}` },
       });
       assert.equal(listPolyARes.statusCode, 200);
+      assert.equal(
+        listPolyARes.headers.link,
+        '<https://creativecommons.org/licenses/by/4.0/>; rel="license"',
+      );
       const polyAList = PolygonCommentListResponseSchema.parse(listPolyARes.json());
       assert.equal(polyAList.topCommentId, reply.id);
       assert.equal(polyAList.comments[0]?.id, reply.id);

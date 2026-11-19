@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Unseal Contributors
+
 import { Readable } from 'node:stream';
 
 import {
@@ -196,11 +199,13 @@ export function registerPolygonRoutes(
               );
             }
 
+            const exportYear = new Date().getUTCFullYear();
+            const collectionPrefix = `{"type":"FeatureCollection","license":"CC0-1.0","licenseUrl":"https://creativecommons.org/publicdomain/zero/1.0/","attribution":${JSON.stringify(
+              `Proposal geometries and notes: CC0 1.0 Universal (https://creativecommons.org/publicdomain/zero/1.0/). Municipality codes/names derived from VG250: © BKG ${exportYear} (https://www.bkg.bund.de), dl-de/by-2-0 (https://www.govdata.de/dl-de/by-2-0; Daten verändert).`,
+            )},"features":[`;
+
             if (firstBatch.features.length === 0) {
-              yield Buffer.from(
-                '{"type":"FeatureCollection","features":[]}',
-                'utf8',
-              );
+              yield Buffer.from(`${collectionPrefix}]}`, 'utf8');
               return;
             }
 
@@ -212,7 +217,7 @@ export function registerPolygonRoutes(
             cursor = firstBatch.nextCursor;
 
             yield Buffer.from(
-              `{"type":"FeatureCollection","features":[${firstSerialized.chunk}`,
+              `${collectionPrefix}${firstSerialized.chunk}`,
               'utf8',
             );
 
@@ -281,7 +286,10 @@ export function registerPolygonRoutes(
 
         reply.header('Content-Type', 'application/geo+json');
         reply.header('Content-License', 'CC0-1.0');
-        reply.header('Link', `<${app.config.termsUrl}>; rel="license"`);
+        reply.header(
+          'Link',
+          `<https://creativecommons.org/publicdomain/zero/1.0/>; rel="license", <${app.config.termsUrl}>; rel="terms-of-service"`,
+        );
         reply.header(
           'Content-Disposition',
           'attachment; filename="entsiegelung-proposals.geojson"',

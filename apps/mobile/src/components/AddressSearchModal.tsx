@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (C) 2026 Unseal Contributors
+
 import type { GeocodeResultItem } from '@entsiegelung/shared';
 import React, { useEffect, useMemo, useState } from 'react';
 import {

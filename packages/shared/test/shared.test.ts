@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (C) 2026 Unseal Contributors
+
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -79,14 +82,55 @@ const VALID_COURTYARD_VERTICES: [number, number][] = [
 ];
 
 describe('@entsiegelung/shared bootstrap, licensing, and compiled ESM contract', () => {
-  it('ships split AGPL-3.0-or-later root LICENSE (with §13 HTTP client clarification) and MPL-2.0 shared LICENSE', () => {
+  it('ships verbatim AGPL-3.0-or-later and MPL-2.0 LICENSE files, split LICENSING.md notice, and THIRD_PARTY_NOTICES.txt', () => {
     const rootLicense = fs.readFileSync(path.join(repoRoot, 'LICENSE'), 'utf8');
+    const apiLicense = fs.readFileSync(
+      path.join(repoRoot, 'apps', 'api', 'LICENSE'),
+      'utf8',
+    );
+    const mobileLicense = fs.readFileSync(
+      path.join(repoRoot, 'apps', 'mobile', 'LICENSE'),
+      'utf8',
+    );
     const sharedLicense = fs.readFileSync(path.join(sharedRoot, 'LICENSE'), 'utf8');
+    const licensingNotice = fs.readFileSync(
+      path.join(repoRoot, 'LICENSING.md'),
+      'utf8',
+    );
+    const thirdPartyNotices = fs.readFileSync(
+      path.join(repoRoot, 'THIRD_PARTY_NOTICES.txt'),
+      'utf8',
+    );
 
-    assert.match(rootLicense, /GNU AFFERO GENERAL PUBLIC LICENSE/);
-    assert.match(rootLicense, /Section 13/i);
-    assert.match(rootLicense, /MPL-2\.0/);
-    assert.match(sharedLicense, /Mozilla Public License Version 2\.0/);
+    // Verbatim FSF AGPLv3 and Mozilla MPL-2.0 texts (no prepended headers)
+    assert.equal(
+      rootLicense.startsWith('GNU AFFERO GENERAL PUBLIC LICENSE'),
+      true,
+    );
+    assert.equal(
+      apiLicense.startsWith('GNU AFFERO GENERAL PUBLIC LICENSE'),
+      true,
+    );
+    assert.equal(
+      sharedLicense.startsWith('Mozilla Public License Version 2.0'),
+      true,
+    );
+    assert.equal(
+      mobileLicense.startsWith('Mozilla Public License Version 2.0'),
+      true,
+    );
+
+    // Split license scope & AGPLv3 Section 13 clarification in LICENSING.md
+    assert.match(licensingNotice, /Copyright \(C\) 2026 Unseal Contributors/);
+    assert.match(licensingNotice, /AGPL-3\.0-or-later/);
+    assert.match(licensingNotice, /Section 13/i);
+    assert.match(licensingNotice, /MPL-2\.0/);
+
+    // Complete third-party notices present and accurate
+    assert.match(thirdPartyNotices, /@maplibre\/maplibre-react-native@.* : MIT/);
+    assert.match(thirdPartyNotices, /@node-rs\/argon2@.* : MIT/);
+    assert.match(thirdPartyNotices, /nodemailer@.* : MIT-0/);
+    assert.match(thirdPartyNotices, /MapLibre Native Android SDK.*BSD-2-Clause/);
   });
 
   it('contains zero Node Buffer references across packages/shared/src for Hermes and browser compatibility', () => {

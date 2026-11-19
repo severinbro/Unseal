@@ -1,30 +1,3 @@
-Entsiegelungskartierung - Split Open-Source Licensing Notice
-============================================================
-
-1. Server & Repository Components (`AGPL-3.0-or-later`):
-   Except where a workspace directory provides its own `LICENSE` file, this
-   repository (including `apps/api`) is free software licensed under the terms
-   of the GNU Affero General Public License as published by the Free Software
-   Foundation, either version 3 of the License, or (at your option) any later
-   version (`AGPL-3.0-or-later`).
-
-2. Client & Shared Contract Packages (`MPL-2.0`):
-   The workspace packages `packages/shared` (see `packages/shared/LICENSE`) and
-   `apps/mobile` (see `apps/mobile/LICENSE`) are licensed separately under the
-   Mozilla Public License Version 2.0 (`MPL-2.0`).
-
-3. AGPLv3 Section 13 Network-Interaction Clarification:
-   For the avoidance of doubt regarding Section 13 of the GNU Affero General
-   Public License, client packages and applications licensed under `MPL-2.0`
-   (including `packages/shared` and `apps/mobile`, as well as independent HTTP
-   or GeoJSON API clients) that communicate with the `apps/api` HTTP service
-   over a computer network are separate works and remain covered by `MPL-2.0`
-   (or their respective licenses). Communicating with the HTTP API over a
-   network does not cause `MPL-2.0` client packages to become derivative or
-   combined works under the GNU Affero General Public License.
-
---------------------------------------------------------------------------------
-
 GNU AFFERO GENERAL PUBLIC LICENSE
 Version 3, 19 November 2007
 

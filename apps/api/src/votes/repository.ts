@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Unseal Contributors
+
 import {
   ApiError,
   TRUST_AND_MODERATION_LIMITS,

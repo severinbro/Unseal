@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (C) 2026 Unseal Contributors
+
 /**
  * Entsiegelungskartierung mobile and web root application shell.
  *
@@ -1865,7 +1868,9 @@ export function App(props: AppProps = {}): React.JSX.Element {
           >
             <Text numberOfLines={1} style={styles.nativeAttributionText}>
               {mapControls.basemapMode === 'orthophoto'
-                ? tApp.nativeAttributionOrtho
+                ? state.config.orthophoto?.attribution?.trim()
+                  ? `${state.config.orthophoto.attribution.trim()} · ${tApp.nativeAttributionOsm}`
+                  : tApp.nativeAttributionOrtho
                 : tApp.nativeAttributionOsm}
             </Text>
           </Pressable>
@@ -2056,6 +2061,8 @@ export function App(props: AppProps = {}): React.JSX.Element {
                 visible={aboutModalOpen}
                 locale={state.locale}
                 compact={layout.isCompact}
+                osmStyleUrl={state.config.osmStyleUrl}
+                orthophoto={state.config.orthophoto}
                 privacyPolicyUrl={privacyPolicyUrl}
                 impressumUrl={impressumUrl}
                 termsUrl={termsUrl}

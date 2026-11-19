@@ -1,3 +1,10 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Unseal Contributors
+
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { ZodError } from 'zod';
 
 import {
@@ -12,8 +19,34 @@ import {
   consumeVerifyEmailToken,
   inspectEmailActionToken,
 } from './auth.js';
+import { GERMAN_STATE_DOP20_PROVIDERS } from './dop20Tiles.js';
 
 import type { FastifyInstance, FastifyReply } from 'fastify';
+
+let cachedThirdPartyNotices: string | null = null;
+
+async function readThirdPartyNoticesText(): Promise<string | null> {
+  if (cachedThirdPartyNotices !== null) {
+    return cachedThirdPartyNotices;
+  }
+  const candidates = [
+    fileURLToPath(new URL('../../../../THIRD_PARTY_NOTICES.txt', import.meta.url)),
+    path.resolve(process.cwd(), 'THIRD_PARTY_NOTICES.txt'),
+    path.resolve(process.cwd(), '../../THIRD_PARTY_NOTICES.txt'),
+  ];
+  for (const candidate of candidates) {
+    try {
+      const content = await fs.readFile(candidate, 'utf8');
+      if (content.length > 0) {
+        cachedThirdPartyNotices = content;
+        return content;
+      }
+    } catch {
+      // Try next candidate path.
+    }
+  }
+  return null;
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -515,18 +548,89 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
        <p>Mit der Registrierung eines Kontos und dem Einstellen von Beiträgen auf dieser Unseal-Instanz akzeptierst du folgende Regeln und Lizenzbedingungen:</p>
        <ul>
          <li><strong>Unverbindliche Bürgerbeteiligung:</strong> ${escapeHtml(app.config.disclaimerText)} Ein Eintrag begründet keinen Rechtsanspruch auf Entsiegelung und greift nicht in bestehende Eigentumsrechte ein.</li>
-         <li><strong>Lizenz für Flächenvorschläge &amp; Notizen (CC0 1.0):</strong> Alle von dir eingezeichneten Polygon-Geometrien, Belagsangaben und Beschreibungstexte stellst du unter der Verzichtserklärung <a href="https://creativecommons.org/publicdomain/zero/1.0/deed.de" target="_blank" rel="noopener noreferrer"><strong>Creative Commons Zero 1.0 (CC0 1.0 Universal)</strong></a> gemeinfrei zur Verfügung, sodass Kommunen, Forschung und Öffentlichkeit den GeoJSON-Export frei weiterverwenden können.</li>
-         <li><strong>Lizenz für Vor-Ort-Fotos &amp; Kommentare (CC BY 4.0):</strong> Hochgeladene Fotos und Diskussionskommentare lizenzierst du unter <a href="https://creativecommons.org/licenses/by/4.0/deed.de" target="_blank" rel="noopener noreferrer"><strong>Creative Commons Namensnennung 4.0 International (CC BY 4.0)</strong></a> mit Namensnennung deines öffentlichen Pseudonyms (bzw. anonymisiert als <code>deleted</code> nach Kontolöschung, sofern du deine Beiträge dabei nicht mitlöschst).</li>
+         <li><strong>Lizenz für Flächenvorschläge &amp; Notizen (CC0 1.0):</strong> Alle von dir eingezeichneten Polygon-Geometrien, Belagsangaben und Beschreibungstexte stellst du unter der Verzichtserklärung <a href="https://creativecommons.org/publicdomain/zero/1.0/deed.de" target="_blank" rel="noopener noreferrer"><strong>Creative Commons Zero 1.0 (CC0 1.0 Universal)</strong></a> gemeinfrei zur Verfügung, sodass Kommunen, Forschung und Öffentlichkeit den GeoJSON-Export frei weiterverwenden können. Auch durch Admin-Konten importierte Bestandsdatensätze (<code>.geojson</code> / <code>.gpkg</code>) werden in diesem öffentlichen <code>CC0-1.0</code>-Export bereitgestellt und dürfen daher nur importiert werden, wenn entsprechende Rechte zur Freigabe unter CC0 1.0 bestehen.</li>
+         <li><strong>Lizenz für Vor-Ort-Fotos &amp; Kommentare (CC BY 4.0):</strong> Hochgeladene Fotos und Diskussionskommentare lizenzierst du unter <a href="https://creativecommons.org/licenses/by/4.0/deed.de" target="_blank" rel="noopener noreferrer"><strong>Creative Commons Namensnennung 4.0 International (CC BY 4.0)</strong></a> mit Namensnennung deines öffentlichen Pseudonyms (bzw. anonymisiert als <code>deleted</code> nach Kontolöschung, sofern du deine Beiträge dabei nicht mitlöschst). Hochgeladene Fotos werden serverseitig bearbeitet (vollständige Entfernung von EXIF-/XMP-/IPTC-Metadaten, Konvertierung nach WebP sowie Skalierung/Vorschaubild).</li>
          <li><strong>Zulässige Inhalte &amp; Fotorechte (§ 59 UrhG / § 22 KUG / DSGVO):</strong> Du darfst nur eigene Fotos hochladen, die von öffentlich zugänglichen Wegen oder Plätzen aus aufgenommen wurden (Panoramafreiheit) oder für die eine ausdrückliche Erlaubnis der Berechtigten vorliegt. Lade <strong>keine</strong> Aufnahmen hoch, auf denen erkennbare Personen, Gesichter, Kfz-Kennzeichen oder nicht öffentlich einsehbare Privatbereiche (z. B. über Zäune hinweg oder per Drohne) abgebildet sind.</li>
          <li><strong>Moderation &amp; Meldeverfahren (DSA):</strong> Rechtswidrige, beleidigende, irreführende oder Spam-Beiträge können entfernt und Konten gesperrt werden. ${abuseNote}</li>
        </ul>
-       <p class="en-sub"><strong>English summary:</strong> Contributions are non-binding civic suggestions. By registering and contributing, you dedicate polygon geometries, surface classifications, and proposal notes under <strong>CC0 1.0 Universal</strong> (for public GeoJSON reuse), and license uploaded site photos and comments under <strong>CC BY 4.0</strong> attributed to your pseudonym. Only upload photos you created yourself from public vantage points without identifiable faces, license plates, or private non-public areas.</p>
+       <p class="en-sub"><strong>English summary:</strong> Contributions are non-binding civic suggestions. By registering and contributing, you dedicate polygon geometries, surface classifications, and proposal notes under <strong>CC0 1.0 Universal</strong> (for public GeoJSON reuse; admin bulk imports enter the same CC0-1.0 export and must only contain CC0-eligible data), and license uploaded site photos and comments under <strong>CC BY 4.0</strong> attributed to your pseudonym (uploaded photos are modified server-side by stripping EXIF/XMP/IPTC metadata and re-encoding/resizing to WebP). Only upload photos you created yourself from public vantage points without identifiable faces, license plates, or private non-public areas.</p>
        ${buildLegalNavHtml(app)}`,
       { wide: true },
     );
   });
 
+  app.get('/auth/third-party-notices', async (_request, reply) => {
+    const notices = await readThirdPartyNoticesText();
+    if (notices === null) {
+      return reply
+        .status(200)
+        .header('Content-Type', 'text/plain; charset=utf-8')
+        .header('X-Content-Type-Options', 'nosniff')
+        .send(
+          `Third-party license notices are maintained in THIRD_PARTY_NOTICES.txt in the source repository: ${app.config.sourceCodeUrl}\n`,
+        );
+    }
+    return reply
+      .status(200)
+      .header('Content-Type', 'text/plain; charset=utf-8')
+      .header('Cache-Control', 'public, max-age=3600')
+      .header('X-Content-Type-Options', 'nosniff')
+      .send(notices);
+  });
+
   app.get('/auth/licenses', async (_request, reply) => {
+    const config = app.config;
+    const currentYear = new Date().getUTCFullYear();
+    const noticesHref = `${config.publicBaseUrl}/auth/third-party-notices`;
+    const styleHosts = Array.from(
+      new Set(
+        [hostOf(config.osmStyleUrl), hostOf(config.osmDarkStyleUrl)].filter(
+          (h): h is string => h !== null,
+        ),
+      ),
+    );
+    const usesOpenFreeMap = styleHosts.includes('tiles.openfreemap.org');
+    const basemapLicenseHtml = usesOpenFreeMap
+      ? `<li><strong>Straßenkarte (Vektorkacheln):</strong> <a href="https://openfreemap.org" target="_blank" rel="noopener noreferrer">OpenFreeMap</a> (MIT), Kachelschema &amp; Stile © <a href="https://openmaptiles.org/" target="_blank" rel="noopener noreferrer">OpenMapTiles</a> (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a> / BSD-3-Clause), Kartendaten © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap-Mitwirkende (ODbL)</a>.</li>`
+      : styleHosts.length > 0
+        ? `<li><strong>Straßenkarte (konfigurierter Anbieter):</strong> Kartenstil und Kacheln von ${styleHosts.map((h) => `<code>${escapeHtml(h)}</code>`).join(' bzw. ')} (Lizenzangaben gemäß Kartenstil-Metadaten; bei OSM-basierten Stilen © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap-Mitwirkende (ODbL)</a>).</li>`
+        : '<li><strong>Straßenkarte:</strong> Selbst gehosteter Kartenstil dieses Servers.</li>';
+
+    const ortho = config.orthophoto;
+    let orthoLicenseHtml: string;
+    let orthoEnglishSummary: string;
+    if (ortho === null) {
+      orthoLicenseHtml =
+        '<li><strong>Luftbilder:</strong> Auf dieser Instanz deaktiviert.</li>';
+      orthoEnglishSummary = 'Aerial orthophotos are disabled on this instance.';
+    } else if (ortho.urlTemplate.includes('/api/v1/tiles/dop20/')) {
+      const stateItemsHtml = GERMAN_STATE_DOP20_PROVIDERS.map(
+        (provider) =>
+          `<li><strong>${escapeHtml(provider.name)}:</strong> ${escapeHtml(provider.attribution)} (${currentYear}), <a href="${escapeHtml(provider.licenseUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(provider.licenseId)}</a></li>`,
+      ).join('\n             ');
+      orthoLicenseHtml = `<li><strong>Luftbilder (DOP20 / DOP10, Daten verändert – Kachel-Reprojektion/Komposition an Landesgrenzen):</strong> Amtliche Open-Data-WMS-Dienste der Vermessungsverwaltungen der deutschen Bundesländer unter <a href="https://www.govdata.de/dl-de/by-2-0" target="_blank" rel="noopener noreferrer">dl-de/by-2-0</a>, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a> sowie <a href="https://www.govdata.de/dl-de/zero-2-0" target="_blank" rel="noopener noreferrer">dl-de/zero-2-0</a>:
+           <details style="margin-top:6px;">
+             <summary style="cursor:pointer;font-weight:600;">Einzelne Quellenvermerke &amp; Lizenzen aller 16 Bundesländer anzeigen</summary>
+             <ul style="margin-top:8px;">
+               ${stateItemsHtml}
+             </ul>
+           </details>
+         </li>`;
+      orthoEnglishSummary =
+        'German state aerial orthophotos (DOP20/DOP10, modified via cross-border tile compositing) are provided by the German State Survey Offices under dl-de/by-2-0, CC BY 4.0, and dl-de/zero-2-0 (full per-state list above).';
+    } else {
+      const orthoHost = hostOf(ortho.urlTemplate);
+      const attrText = ortho.attribution.trim()
+        ? escapeHtml(ortho.attribution.trim())
+        : orthoHost
+          ? `<code>${escapeHtml(orthoHost)}</code>`
+          : 'benutzerdefinierte Quelle';
+      orthoLicenseHtml = `<li><strong>Luftbilder (konfigurierter Anbieter):</strong> ${attrText}${orthoHost ? ` (<code>${escapeHtml(orthoHost)}</code>)` : ''}.</li>`;
+      orthoEnglishSummary = ortho.attribution.trim()
+        ? `Aerial orthophotos: ${escapeHtml(ortho.attribution.trim())}.`
+        : 'Aerial orthophotos are served from a custom configured source.';
+    }
+
     return sendHostedHtml(
       reply,
       200,
@@ -534,17 +638,24 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
       `<h1>Open-Source-Lizenzen &amp; Geodaten-Quellen</h1>
        <h2>1. Software-Lizenzen (Unseal)</h2>
        <ul>
-         <li><strong>Backend-API (<code>apps/api</code>):</strong> Lizenziert unter der <strong>GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later)</strong>. Gemäß § 13 AGPLv3 steht der vollständige korrespondierende Quellcode kostenlos unter <a href="${escapeHtml(app.config.sourceCodeUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(app.config.sourceCodeUrl)}</a> bereit.</li>
-         <li><strong>Client-App &amp; gemeinsame Schemas (<code>apps/mobile</code>, <code>packages/shared</code>):</strong> Lizenziert unter der <strong>Mozilla Public License 2.0 (MPL-2.0)</strong>.</li>
-         <li><strong>Wesentliche Drittanbieter-Bibliotheken:</strong> Expo &amp; React Native (MIT), MapLibre GL JS &amp; MapLibre React Native (BSD-3-Clause), Fastify (MIT), PostgreSQL &amp; PostGIS (PostgreSQL License / GPL-2.0), sharp / libvips (Apache-2.0 / LGPL-3.0), Turf.js (MIT), @node-rs/argon2 (MIT/Apache-2.0), Zod (MIT), Nodemailer (MIT), Pino (MIT). Vollständige Paketlizenzen sind im Quellcode-Repository dokumentiert.</li>
+         <li><strong>Backend-API &amp; Repository-Wurzel (<code>apps/api</code>):</strong> Lizenziert unter der <strong>GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later)</strong> (Copyright © 2026 Unseal Contributors). Gemäß § 13 AGPLv3 steht der vollständige korrespondierende Quellcode kostenlos unter <a href="${escapeHtml(config.sourceCodeUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(config.sourceCodeUrl)}</a> bereit (Details zur Split-Lizenzierung in <code>LICENSING.md</code>).</li>
+         <li><strong>Client-App &amp; gemeinsame Schemas (<code>apps/mobile</code>, <code>packages/shared</code>):</strong> Lizenziert unter der <strong>Mozilla Public License 2.0 (MPL-2.0)</strong> (Copyright © 2026 Unseal Contributors).</li>
+         <li><strong>Wesentliche Drittanbieter-Bibliotheken &amp; Laufzeitkomponenten:</strong> Expo, React &amp; React Native (MIT), MapLibre GL JS (BSD-3-Clause), MapLibre React Native (MIT), MapLibre Native Android/iOS (BSD-2-Clause), Fastify &amp; Plugins (MIT), PostgreSQL (PostgreSQL License) &amp; PostGIS (GPL-2.0-or-later), sharp (Apache-2.0) / libvips (LGPL-3.0-or-later), Turf.js (MIT), @node-rs/argon2 (MIT), exifr (MIT), pg (MIT), Zod (MIT), Nodemailer (MIT-0), Pino (MIT), Node.js (MIT), Caddy (Apache-2.0).</li>
+         <li><strong>Vollständige Paketlizenzen &amp; Copyright-Hinweise:</strong> Alle npm-Abhängigkeiten, wiedergegebenen Lizenztexte, nativen Mobile-SDKs und Docker-Komponenten sind in <a href="${escapeHtml(noticesHref)}"><code>THIRD_PARTY_NOTICES.txt</code></a> (sowie im Quellcode-Repository) vollständig dokumentiert.</li>
        </ul>
        <h2>2. Geodaten- &amp; Kartenquellen</h2>
        <ul>
-         <li><strong>Straßenkarte &amp; Adresssuche:</strong> Vektorkacheln über OpenFreeMap; Kartendaten und Nominatim-Geocodierung © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap-Mitwirkende (ODbL)</a>.</li>
-         <li><strong>Verwaltungsgrenzen (VG250):</strong> © GeoBasis-DE / Bundesamt für Kartographie und Geodäsie (BKG), <a href="https://www.govdata.de/dl-de/by-2-0" target="_blank" rel="noopener noreferrer">Datenlizenz Deutschland – Namensnennung 2.0 (dl-de/by-2-0)</a>.</li>
-         <li><strong>Luftbilder (DOP20 / DOP10):</strong> © GeoBasis-DE / Vermessungsverwaltungen der jeweiligen Bundesländer (bereitgestellt gemäß <code>dl-de/by-2-0</code> bzw. Landes-Open-Data-Lizenz).</li>
+         ${basemapLicenseHtml}
+         <li><strong>Adresssuche (Geocodierung):</strong> OpenStreetMap Nominatim, Daten © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap-Mitwirkende (ODbL)</a>.</li>
+         <li><strong>Verwaltungsgrenzen (VG250):</strong> © <a href="https://www.bkg.bund.de" target="_blank" rel="noopener noreferrer">BKG</a> ${currentYear}, <a href="https://www.govdata.de/dl-de/by-2-0" target="_blank" rel="noopener noreferrer">Datenlizenz Deutschland – Namensnennung 2.0 (dl-de/by-2-0)</a> (Daten verändert).</li>
+         ${orthoLicenseHtml}
        </ul>
-       <p class="en-sub"><strong>English summary:</strong> Unseal API is licensed under AGPL-3.0-or-later (Corresponding Source available at <a href="${escapeHtml(app.config.sourceCodeUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(app.config.sourceCodeUrl)}</a>); the mobile/web client and shared schemas are licensed under MPL-2.0. Basemap and geocoding data © OpenStreetMap contributors (ODbL); German municipality boundaries © BKG and aerial orthophotos © German State Survey Offices (dl-de/by-2-0).</p>
+       <h2>3. Nutzerbeiträge &amp; Offene Daten</h2>
+       <ul>
+         <li><strong>Flächenvorschläge &amp; Notizen:</strong> <a href="https://creativecommons.org/publicdomain/zero/1.0/deed.de" target="_blank" rel="noopener noreferrer">CC0 1.0 Universal</a> (GeoJSON-Export).</li>
+         <li><strong>Vor-Ort-Fotos &amp; Kommentare:</strong> <a href="https://creativecommons.org/licenses/by/4.0/deed.de" target="_blank" rel="noopener noreferrer">CC BY 4.0 International</a> (Namensnennung des Pseudonyms; Fotos serverseitig EXIF-bereinigt &amp; als WebP skaliert; Details in den <a href="${escapeHtml(config.termsUrl)}">Nutzungsbedingungen</a>).</li>
+       </ul>
+       <p class="en-sub"><strong>English summary:</strong> Unseal API is licensed under AGPL-3.0-or-later (Corresponding Source available at <a href="${escapeHtml(config.sourceCodeUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(config.sourceCodeUrl)}</a>); the mobile/web client and shared schemas are licensed under MPL-2.0 (Copyright © 2026 Unseal Contributors). Complete third-party notices and license texts are available at <a href="${escapeHtml(noticesHref)}">THIRD_PARTY_NOTICES.txt</a>. ${usesOpenFreeMap ? 'Vector basemap via OpenFreeMap (MIT), © OpenMapTiles (CC BY 4.0 / BSD-3-Clause), and © OpenStreetMap contributors (ODbL).' : 'Basemap tiles are loaded from the configured style host.'} Geocoding © OpenStreetMap contributors (ODbL); German municipality boundaries © BKG ${currentYear} (dl-de/by-2-0, modified). ${orthoEnglishSummary}</p>
        ${buildLegalNavHtml(app)}`,
       { wide: true },
     );

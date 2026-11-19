@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Unseal Contributors
+
 import sharp from 'sharp';
 import { z } from 'zod';
 
@@ -14,7 +17,7 @@ const TILE_CACHE_MAX_ENTRIES = 256;
 const TILE_CACHE_TTL_MS = 15 * 60 * 1000;
 
 export const DEFAULT_DOP20_ATTRIBUTION =
-  '© GeoBasis-DE / Vermessungsverwaltungen der Bundesländer (DOP20, dl-de/by-2-0)';
+  '© GeoBasis-DE / Vermessungsverwaltungen der Bundesländer (DOP20/DOP10, dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; Daten verändert)';
 
 export const GERMANY_DOP20_BOUNDS: [number, number, number, number] = [
   5.86,
@@ -23,12 +26,21 @@ export const GERMANY_DOP20_BOUNDS: [number, number, number, number] = [
   55.06,
 ];
 
+export type Dop20LicenseId = 'dl-de/by-2-0' | 'CC BY 4.0' | 'dl-de/zero-2-0';
+
+const DL_DE_BY_2_0_URL = 'https://www.govdata.de/dl-de/by-2-0';
+const DL_DE_ZERO_2_0_URL = 'https://www.govdata.de/dl-de/zero-2-0';
+const CC_BY_4_0_URL = 'https://creativecommons.org/licenses/by/4.0/';
+
 export interface StateDop20Provider {
   readonly code: string;
   readonly name: string;
   readonly boundsWgs84: readonly [number, number, number, number];
   readonly baseUrl: string;
   readonly layers: string;
+  readonly licenseId: Dop20LicenseId;
+  readonly licenseUrl: string;
+  readonly attribution: string;
 }
 
 /**
@@ -42,6 +54,9 @@ export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
     boundsWgs84: [6.11, 48.96, 8.51, 50.95],
     baseUrl: 'https://geo4.service24.rlp.de/wms/rp_dop20.fcgi',
     layers: 'rp_dop20',
+    licenseId: 'dl-de/by-2-0',
+    licenseUrl: DL_DE_BY_2_0_URL,
+    attribution: '© GeoBasis-DE / LVermGeoRP',
   },
   {
     code: 'HE',
@@ -50,6 +65,9 @@ export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
     baseUrl:
       'https://www.gds-srv.hessen.de/cgi-bin/lika-services/ogc-free-images.ows',
     layers: 'he_dop_rgb',
+    licenseId: 'dl-de/zero-2-0',
+    licenseUrl: DL_DE_ZERO_2_0_URL,
+    attribution: '© Hessische Verwaltung für Bodenmanagement und Geoinformation (HVBG)',
   },
   {
     code: 'NW',
@@ -57,6 +75,9 @@ export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
     boundsWgs84: [5.86, 50.32, 9.47, 52.54],
     baseUrl: 'https://www.wms.nrw.de/geobasis/wms_nw_dop',
     layers: 'nw_dop_rgb',
+    licenseId: 'dl-de/zero-2-0',
+    licenseUrl: DL_DE_ZERO_2_0_URL,
+    attribution: '© Land NRW (Geobasis NRW)',
   },
   {
     code: 'BW',
@@ -65,6 +86,9 @@ export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
     baseUrl:
       'https://owsproxy.lgl-bw.de/owsproxy/ows/WMS_INSP_BW_Orthofoto_DOP20',
     layers: 'OI.OrthoimageCoverage',
+    licenseId: 'dl-de/by-2-0',
+    licenseUrl: DL_DE_BY_2_0_URL,
+    attribution: '© LGL, www.lgl-bw.de',
   },
   {
     code: 'BY',
@@ -72,6 +96,9 @@ export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
     boundsWgs84: [8.97, 47.27, 13.84, 50.57],
     baseUrl: 'https://geoservices.bayern.de/od/wms/dop/v1/dop20',
     layers: 'by_dop20c',
+    licenseId: 'CC BY 4.0',
+    licenseUrl: CC_BY_4_0_URL,
+    attribution: 'Datenquelle: Bayerische Vermessungsverwaltung – www.geodaten.bayern.de',
   },
   {
     code: 'SL',
@@ -79,6 +106,9 @@ export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
     boundsWgs84: [6.34, 49.08, 7.44, 49.66],
     baseUrl: 'https://geoportal.saarland.de/freewms/dop2023',
     layers: 'sl_dop20_rgb',
+    licenseId: 'dl-de/by-2-0',
+    licenseUrl: DL_DE_BY_2_0_URL,
+    attribution: '© GeoBasis-DE / LVGL-SL',
   },
   {
     code: 'BE_BB',
@@ -86,6 +116,9 @@ export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
     boundsWgs84: [11.26, 51.35, 14.77, 53.56],
     baseUrl: 'https://isk.geobasis-bb.de/mapproxy/dop20c/service/wms',
     layers: 'bebb_dop20c',
+    licenseId: 'dl-de/by-2-0',
+    licenseUrl: DL_DE_BY_2_0_URL,
+    attribution: '© GeoBasis-DE / LGB (Brandenburg) & Geoportal Berlin',
   },
   {
     code: 'HH',
@@ -93,6 +126,10 @@ export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
     boundsWgs84: [8.42, 53.39, 10.33, 53.97],
     baseUrl: 'https://geodienste.hamburg.de/wms_dop_zeitreihe_unbelaubt',
     layers: 'dop_zeitreihe_unbelaubt',
+    licenseId: 'dl-de/by-2-0',
+    licenseUrl: DL_DE_BY_2_0_URL,
+    attribution:
+      '© Freie und Hansestadt Hamburg, Landesbetrieb Geoinformation und Vermessung (LGV)',
   },
   {
     code: 'NI',
@@ -100,6 +137,9 @@ export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
     boundsWgs84: [6.65, 51.29, 11.6, 53.9],
     baseUrl: 'https://opendata.lgln.niedersachsen.de/doorman/noauth/dop_wms',
     layers: 'ni_dop20',
+    licenseId: 'CC BY 4.0',
+    licenseUrl: CC_BY_4_0_URL,
+    attribution: '© LGLN (Niedersachsen)',
   },
   {
     code: 'HB',
@@ -107,6 +147,9 @@ export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
     boundsWgs84: [8.48, 53.01, 8.99, 53.62],
     baseUrl: 'https://geodienste.bremen.de/wms_dop10_2023',
     layers: 'DOP10_2023_HB,DOP10_2023_BHV',
+    licenseId: 'CC BY 4.0',
+    licenseUrl: CC_BY_4_0_URL,
+    attribution: '© Landesamt GeoInformation Bremen',
   },
   {
     code: 'SH',
@@ -114,6 +157,9 @@ export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
     boundsWgs84: [7.86, 53.35, 11.32, 55.06],
     baseUrl: 'https://dienste.gdi-sh.de/WMS_SH_DOP20col_OpenGBD',
     layers: 'sh_dop20_rgb',
+    licenseId: 'CC BY 4.0',
+    licenseUrl: CC_BY_4_0_URL,
+    attribution: '© GeoBasis-DE / LVermGeo SH',
   },
   {
     code: 'MV',
@@ -121,6 +167,9 @@ export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
     boundsWgs84: [10.59, 53.11, 14.42, 54.69],
     baseUrl: 'https://www.geodaten-mv.de/dienste/adv_dop',
     layers: 'mv_dop',
+    licenseId: 'CC BY 4.0',
+    licenseUrl: CC_BY_4_0_URL,
+    attribution: '© GeoBasis-DE / M-V',
   },
   {
     code: 'SN',
@@ -128,6 +177,9 @@ export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
     boundsWgs84: [11.87, 50.17, 15.05, 51.69],
     baseUrl: 'https://geodienste.sachsen.de/wms_geosn_dop-rgb/guest',
     layers: 'sn_dop_020',
+    licenseId: 'dl-de/by-2-0',
+    licenseUrl: DL_DE_BY_2_0_URL,
+    attribution: '© GeoBasis-DE / GeoSN',
   },
   {
     code: 'ST',
@@ -136,6 +188,9 @@ export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
     baseUrl:
       'https://www.geodatenportal.sachsen-anhalt.de/wss/service/ST_LVermGeo_DOP_WMS_OpenData/guest',
     layers: 'lsa_lvermgeo_dop20_2',
+    licenseId: 'dl-de/by-2-0',
+    licenseUrl: DL_DE_BY_2_0_URL,
+    attribution: '© GeoBasis-DE / LVermGeo ST',
   },
   {
     code: 'TH',
@@ -143,6 +198,9 @@ export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
     boundsWgs84: [9.87, 50.2, 12.66, 51.65],
     baseUrl: 'https://www.geoproxy.geoportal-th.de/geoproxy/services/DOP',
     layers: 'th_dop',
+    licenseId: 'CC BY 4.0',
+    licenseUrl: CC_BY_4_0_URL,
+    attribution: '© GDI-Th',
   },
 ];
 
