@@ -586,6 +586,7 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     osmStyleUrl,
     osmDarkStyleUrl,
     orthophoto,
+    vg250AttributionEnabled: autoSeedVg250,
     initialView: {
       lng: initialLng,
       lat: initialLat,

@@ -26,7 +26,6 @@ COPY --from=build /app/packages/shared/package.json ./packages/shared/package.js
 COPY --from=build /app/packages/shared/LICENSE ./packages/shared/LICENSE
 COPY --from=build /app/packages/shared/dist ./packages/shared/dist
 COPY --from=build /app/apps/api/package.json ./apps/api/package.json
-COPY --from=build /app/apps/api/LICENSE ./apps/api/LICENSE
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY --from=build /app/apps/api/migrations ./apps/api/migrations
 

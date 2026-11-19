@@ -24,7 +24,14 @@ import {
 
 import { optionalAuth, requireAdmin, requireAuth } from '../auth/session.js';
 import { recordTelemetryBestEffort } from '../db/telemetry.js';
-import { extractImportDataset } from '../polygons/gpkgReader.js';
+import {
+  BKG_VG250_DATENQUELLEN_URL,
+  getMunicipalitiesStatus,
+} from '../municipalities/vg250.js';
+import {
+  assertCompatibleImportLicenseParam,
+  extractImportDataset,
+} from '../polygons/gpkgReader.js';
 import { PolygonRepository, type ExportCursor } from '../polygons/repository.js';
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -176,6 +183,11 @@ export function registerPolygonRoutes(
       };
 
       try {
+        const muniStatus = await getMunicipalitiesStatus(app.pool).catch(() => ({
+          seeded: false,
+          dataYear: null,
+        }));
+        const vg250Active = app.config.autoSeedVg250 || muniStatus.seeded;
         async function* generateGeoJsonStream(): AsyncGenerator<
           Buffer,
           void,
@@ -200,8 +212,32 @@ export function registerPolygonRoutes(
             }
 
             const exportYear = new Date().getUTCFullYear();
-            const collectionPrefix = `{"type":"FeatureCollection","license":"CC0-1.0","licenseUrl":"https://creativecommons.org/publicdomain/zero/1.0/","attribution":${JSON.stringify(
-              `Proposal geometries and notes: CC0 1.0 Universal (https://creativecommons.org/publicdomain/zero/1.0/). Municipality codes/names derived from VG250: © BKG ${exportYear} (https://www.bkg.bund.de), dl-de/by-2-0 (https://www.govdata.de/dl-de/by-2-0; Daten verändert).`,
+            const vg250Year = muniStatus.dataYear ?? exportYear;
+            const attributionClauses: string[] = [
+              'Compiled polygon dataset licensed under Open Data Commons Open Database License 1.0 (ODbL-1.0, https://opendatacommons.org/licenses/odbl/1-0/); contributors waive their own copyright and database rights in submitted geometries, surface classifications, and notes via CC0 1.0 Universal (https://creativecommons.org/publicdomain/zero/1.0/) to the extent not derived from attributed basemaps.',
+              'Basemap reference: © OpenStreetMap contributors (ODbL, https://www.openstreetmap.org/copyright).',
+            ];
+            if (app.config.orthophoto !== null) {
+              if (
+                app.config.orthophoto.urlTemplate.includes('/api/v1/tiles/dop20/')
+              ) {
+                attributionClauses.push(
+                  `Aerial orthophoto reference: © GeoBasis-DE / German State Survey Offices (${exportYear}; DOP20/DOP10 under dl-de/by-2-0 https://www.govdata.de/dl-de/by-2-0, CC BY 4.0 https://creativecommons.org/licenses/by/4.0/, dl-de/zero-2-0 https://www.govdata.de/dl-de/zero-2-0; Daten verändert).`,
+                );
+              } else if (app.config.orthophoto.attribution.trim().length > 0) {
+                attributionClauses.push(
+                  `Aerial orthophoto reference: ${app.config.orthophoto.attribution.trim()}.`,
+                );
+              }
+            }
+            if (vg250Active) {
+              attributionClauses.push(
+                `Municipality codes/names derived from VG250: © GeoBasis-DE / BKG (${vg250Year}) dl-de/by-2-0 (https://www.govdata.de/dl-de/by-2-0), Datenquellen: ${BKG_VG250_DATENQUELLEN_URL} (Daten verändert).`,
+              );
+            }
+            const exportAttribution = attributionClauses.join(' ');
+            const collectionPrefix = `{"type":"FeatureCollection","license":"ODbL-1.0","licenseUrl":"https://opendatacommons.org/licenses/odbl/1-0/","contributorRights":"CC0-1.0","contributorRightsUrl":"https://creativecommons.org/publicdomain/zero/1.0/","attribution":${JSON.stringify(
+              exportAttribution,
             )},"features":[`;
 
             if (firstBatch.features.length === 0) {
@@ -285,10 +321,10 @@ export function registerPolygonRoutes(
         timeoutHandle.unref();
 
         reply.header('Content-Type', 'application/geo+json');
-        reply.header('Content-License', 'CC0-1.0');
+        reply.header('Content-License', 'ODbL-1.0');
         reply.header(
           'Link',
-          `<https://creativecommons.org/publicdomain/zero/1.0/>; rel="license", <${app.config.termsUrl}>; rel="terms-of-service"`,
+          `<https://opendatacommons.org/licenses/odbl/1-0/>; rel="license", <${app.config.licensesUrl}>; rel="describedby", <${app.config.termsUrl}>; rel="terms-of-service"`,
         );
         reply.header(
           'Content-Disposition',
@@ -440,7 +476,7 @@ export function registerPolygonRoutes(
 
       const queryObj =
         typeof request.query === 'object' && request.query !== null
-          ? (request.query as { origin?: unknown })
+          ? (request.query as { origin?: unknown; license?: unknown })
           : {};
       let importOrigin: PolygonOrigin = 'initiative_import';
       if (queryObj.origin !== undefined) {
@@ -456,6 +492,16 @@ export function registerPolygonRoutes(
           );
         }
         importOrigin = rawOrigin as PolygonOrigin;
+      }
+      if (queryObj.license !== undefined) {
+        if (typeof queryObj.license !== 'string' || queryObj.license.trim().length === 0) {
+          throw new ApiError(
+            422,
+            'VALIDATION_ERROR',
+            'When specified, import license query parameter must be a non-empty ODbL-compatible license identifier.',
+          );
+        }
+        assertCompatibleImportLicenseParam(queryObj.license);
       }
 
       const dataset = await extractImportDataset(

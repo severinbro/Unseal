@@ -82,6 +82,7 @@ import {
 import { PolygonInspectorSheet } from './src/components/PolygonInspectorSheet';
 import { StatsModal, type StatsModalTab } from './src/components/StatsModal';
 import {
+  buildNativeAttributionText,
   getTranslations,
   localizeError,
   readPersistedLocale,
@@ -1436,7 +1437,57 @@ export function App(props: AppProps = {}): React.JSX.Element {
           >
             <Text style={styles.retryButtonLabel}>{tApp.retryButton}</Text>
           </Pressable>
+          <Pressable
+            testID="error-open-about-button"
+            accessibilityRole="button"
+            accessibilityLabel={tApp.offlineAboutA11y}
+            onPress={() => setAboutModalOpen(true)}
+            style={styles.errorSecondaryButton}
+          >
+            <Text style={styles.errorSecondaryButtonLabel}>
+              {tApp.offlineAboutButton}
+            </Text>
+          </Pressable>
         </View>
+        {aboutModalOpen ? (
+          <View
+            style={[
+              styles.modalBackdropOverlay,
+              layout.isCompact ? styles.modalBackdropCompact : null,
+            ]}
+          >
+            <Pressable
+              accessible={false}
+              onPress={() => setAboutModalOpen(false)}
+              style={styles.modalBackdropScrim}
+            />
+            <View
+              style={[
+                styles.modalDialogWrapper,
+                { maxWidth: Math.max(layout.modalMaxWidth, 520) },
+              ]}
+            >
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={styles.modalScrollContent}
+              >
+                <AboutModal
+                  visible={aboutModalOpen}
+                  locale={state.locale}
+                  compact={layout.isCompact}
+                  privacyPolicyUrl={apiClient.getPrivacyPolicyUrl()}
+                  impressumUrl={apiClient.getImpressumUrl()}
+                  termsUrl={apiClient.getTermsUrl()}
+                  licensesUrl={apiClient.getLicensesUrl()}
+                  sourceCodeUrl="https://github.com/severinbro/Unseal"
+                  apkDownloadUrl={null}
+                  abuseContact={null}
+                  onClose={() => setAboutModalOpen(false)}
+                />
+              </ScrollView>
+            </View>
+          </View>
+        ) : null}
       </SafeAreaView>
     );
   } else {
@@ -1866,12 +1917,15 @@ export function App(props: AppProps = {}): React.JSX.Element {
                 : null,
             ]}
           >
-            <Text numberOfLines={1} style={styles.nativeAttributionText}>
-              {mapControls.basemapMode === 'orthophoto'
-                ? state.config.orthophoto?.attribution?.trim()
-                  ? `${state.config.orthophoto.attribution.trim()} · ${tApp.nativeAttributionOsm}`
-                  : tApp.nativeAttributionOrtho
-                : tApp.nativeAttributionOsm}
+            <Text style={styles.nativeAttributionText}>
+              {buildNativeAttributionText({
+                locale: state.locale,
+                basemapMode: mapControls.basemapMode,
+                osmStyleUrl: state.config.osmStyleUrl,
+                orthophotoAttribution: state.config.orthophoto?.attribution,
+                vg250AttributionEnabled: state.config.vg250AttributionEnabled,
+                vg250DataYear: state.config.vg250DataYear,
+              })}
             </Text>
           </Pressable>
         ) : null}
@@ -2063,6 +2117,8 @@ export function App(props: AppProps = {}): React.JSX.Element {
                 compact={layout.isCompact}
                 osmStyleUrl={state.config.osmStyleUrl}
                 orthophoto={state.config.orthophoto}
+                vg250AttributionEnabled={state.config.vg250AttributionEnabled}
+                vg250DataYear={state.config.vg250DataYear}
                 privacyPolicyUrl={privacyPolicyUrl}
                 impressumUrl={impressumUrl}
                 termsUrl={termsUrl}
@@ -2308,6 +2364,24 @@ function createStyles(PALETTE: ThemePalette, isDark: boolean) {
     fontSize: 14,
     fontWeight: '700',
   },
+  errorSecondaryButton: {
+    marginTop: 10,
+    minHeight: 44,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: RADII.md,
+    borderWidth: 1,
+    borderColor: PALETTE.borderStrong,
+    backgroundColor: PALETTE.bgSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorSecondaryButtonLabel: {
+    color: PALETTE.inkPrimary,
+    fontSize: 12.5,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   mapStage: {
     flex: 1,
     position: 'relative',
@@ -2393,9 +2467,9 @@ function createStyles(PALETTE: ThemePalette, isDark: boolean) {
   },
   nativeAttributionPill: {
     position: 'absolute',
-    right: 8,
+    left: 12,
+    right: 44,
     bottom: 8,
-    maxWidth: '78%',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: RADII.sm,
@@ -2409,6 +2483,7 @@ function createStyles(PALETTE: ThemePalette, isDark: boolean) {
   },
   nativeAttributionText: {
     fontSize: 10,
+    lineHeight: 13.5,
     color: PALETTE.inkSecondary,
   },
   bottomSheetShell: {

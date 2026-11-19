@@ -39,6 +39,56 @@ export interface ExtractedImportDataset {
 
 const SQLITE_MAGIC = 'SQLite format 3\0';
 
+const COMPATIBLE_EXPLICIT_IMPORT_LICENSES = new Set([
+  'odbl-1.0',
+  'odbl',
+  'odc-odbl',
+  'cc0-1.0',
+  'cc0',
+  'cc0 1.0',
+  'public domain',
+  'pddl-1.0',
+  'pddl',
+  'dl-de/zero-2-0',
+  'dl-de/by-2-0',
+  'cc-by-4.0',
+  'cc by 4.0',
+]);
+
+const INCOMPATIBLE_EMBEDDED_LICENSE_RE =
+  /\b(?:cc[- ]?by[- ]?(?:nc|nd|sa)(?:[- ]?\d(?:\.\d)?)?|non[- ]?commercial|no[- ]?derivatives|kommerziell\S*\s+ausgeschlossen|keine\s+bearbeitung|all\s+rights\s+reserved|alle\s+rechte\s+vorbehalten|proprietary|other[- ]closed|closed[- ]source|internal[- ]only|confidential)\b/i;
+
+export function assertCompatibleImportLicenseParam(rawLicense: string): void {
+  const normalized = rawLicense.trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!COMPATIBLE_EXPLICIT_IMPORT_LICENSES.has(normalized)) {
+    throw new ApiError(
+      422,
+      'VALIDATION_ERROR',
+      `Incompatible or unrecognized import license "${rawLicense.trim()}". Imported datasets enter the public ODbL-1.0 export and must be licensed under ODbL-1.0, CC0-1.0, dl-de/zero-2-0, dl-de/by-2-0, or CC-BY-4.0.`,
+    );
+  }
+}
+
+function assertCompatibleEmbeddedLicenseMetadata(
+  rawValue: unknown,
+  fieldLabel: string,
+): void {
+  if (typeof rawValue !== 'string') {
+    return;
+  }
+  const trimmed = rawValue.trim();
+  if (trimmed.length === 0) {
+    return;
+  }
+  if (INCOMPATIBLE_EMBEDDED_LICENSE_RE.test(trimmed)) {
+    throw new ApiError(
+      422,
+      'VALIDATION_ERROR',
+      `Uploaded dataset declares an incompatible license/restriction in ${fieldLabel} ("${trimmed.slice(0, 120)}"). Imported datasets enter the public ODbL-1.0 export and cannot include non-commercial, no-derivatives, share-alike-incompatible, or proprietary restrictions.`,
+    );
+  }
+}
+
 function quoteSqliteIdent(ident: string): string {
   return `"${ident.replace(/"/g, '""')}"`;
 }
@@ -200,6 +250,16 @@ function extractFromGeoJsonBuffer(buffer: Buffer): ExtractedImportDataset {
   }
 
   const rootRecord = parsed as Record<string, unknown>;
+  assertCompatibleEmbeddedLicenseMetadata(rootRecord.license, 'GeoJSON license');
+  assertCompatibleEmbeddedLicenseMetadata(rootRecord.rights, 'GeoJSON rights');
+  assertCompatibleEmbeddedLicenseMetadata(
+    rootRecord.accessConstraints,
+    'GeoJSON accessConstraints',
+  );
+  assertCompatibleEmbeddedLicenseMetadata(
+    rootRecord.useLimitation,
+    'GeoJSON useLimitation',
+  );
   const rootSrid = parseEpsgCodeFromCrsObject(rootRecord.crs);
   const rootType = rootRecord.type;
 
@@ -311,6 +371,19 @@ async function extractFromGpkgBuffer(buffer: Buffer): Promise<ExtractedImportDat
 
     const srsMap = new Map<number, number>();
     const srsWktMap = new Map<number, string>();
+    try {
+      const metaRows = db
+        .prepare('SELECT metadata FROM gpkg_metadata LIMIT 20')
+        .all() as Array<{ metadata: string | null }>;
+      for (const metaRow of metaRows) {
+        assertCompatibleEmbeddedLicenseMetadata(
+          metaRow.metadata,
+          'GeoPackage gpkg_metadata',
+        );
+      }
+    } catch {
+      // Optional gpkg_metadata table is absent in most GeoPackages
+    }
     try {
       const srsRows = db
         .prepare(

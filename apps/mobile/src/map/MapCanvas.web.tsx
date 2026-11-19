@@ -217,12 +217,16 @@ export function MapCanvas({
     // In MapLibre GL JS, 'bottom-*' positions insert each newly added control
     // before firstChild. Register AttributionControl first so it stays pinned
     // to the bottom-right corner and NavigationControl stacks above it.
-    const bkgYear = new Date().getUTCFullYear();
+    const bkgYear = config.vg250DataYear ?? new Date().getUTCFullYear();
     map.addControl(
-      new AttributionControl({
-        compact: false,
-        customAttribution: `VG250: © <a href="https://www.bkg.bund.de" target="_blank" rel="noopener noreferrer">BKG</a> ${bkgYear} (<a href="https://www.govdata.de/dl-de/by-2-0" target="_blank" rel="noopener noreferrer">dl-de/by-2-0</a>, Daten verändert)`,
-      }),
+      new AttributionControl(
+        config.vg250AttributionEnabled === false
+          ? { compact: false }
+          : {
+              compact: false,
+              customAttribution: `VG250: © GeoBasis-DE / <a href="https://www.bkg.bund.de" target="_blank" rel="noopener noreferrer">BKG</a> (${bkgYear}) <a href="https://www.govdata.de/dl-de/by-2-0" target="_blank" rel="noopener noreferrer">dl-de/by-2-0</a>, <a href="https://sg.geodatenzentrum.de/web_public/gdz/datenquellen/datenquellen_vg_nuts.pdf" target="_blank" rel="noopener noreferrer">Datenquellen</a> (Daten verändert)`,
+            },
+      ),
       'bottom-right',
     );
     map.addControl(

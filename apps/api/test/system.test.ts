@@ -925,6 +925,14 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
       assert.equal(meta.height, 256);
       const callsAfterFirst = wmsFetchCalls;
       assert.ok(callsAfterFirst >= 1);
+      assert.ok(
+        wmsFetchUrls.some(
+          (u) =>
+            u.includes('geodienste.hamburg.de/wms_dop_zeitreihe_unbelaubt?TIME=2026&') &&
+            u.includes('LAYERS=dop_zeitreihe_unbelaubt'),
+        ),
+        `Expected Hamburg DOP20 URL to pin TIME=2026 OpenData vintage, got: ${wmsFetchUrls.join(', ')}`,
+      );
 
       const hhTileRes2 = await app.inject({
         method: 'GET',

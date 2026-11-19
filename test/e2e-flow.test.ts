@@ -261,6 +261,7 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     assert.equal(termsRes.status, 200);
     const termsHtml = await termsRes.text();
     assert.match(termsHtml, /CC0 1\.0/);
+    assert.match(termsHtml, /ODbL 1\.0/);
     assert.match(termsHtml, /CC BY 4\.0/);
 
     const licensesRes = await fetch(`${baseUrl}/auth/licenses`);

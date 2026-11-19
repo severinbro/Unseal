@@ -409,7 +409,7 @@ describe('Research Telemetry & Polygon Provenance Suite (009_research_telemetry)
         assert.equal(PolygonPhotoSchema.parse(pRes.json()).gpsVerified, expectedVerified);
       }
 
-      // 7) Verify CC0 GeoJSON export includes origin, wasAutoClipped, clippedAreaM2 and zero PII
+      // 7) Verify ODbL-1.0 GeoJSON export includes origin, wasAutoClipped, clippedAreaM2 and zero PII
       const exportRes = await app.inject({
         method: 'GET',
         url: '/api/v1/polygons/export.geojson',

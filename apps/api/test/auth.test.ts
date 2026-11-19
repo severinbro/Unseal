@@ -1347,7 +1347,7 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
     }
   });
 
-  it('serves /auth/impressum, /auth/terms, /auth/licenses, updated /auth/privacy, persists terms_accepted_at, guards unconfigured bug-reports, and sets CC0 headers on GeoJSON export', async () => {
+  it('serves /auth/impressum, /auth/terms, /auth/licenses, updated /auth/privacy, persists terms_accepted_at, guards unconfigured bug-reports, and sets ODbL-1.0 headers on GeoJSON export', async () => {
     // 1. Minimal config without OPERATOR_* or BUG_REPORT_TO -> Impressum notice + 503 on bug-reports
     const unconfiguredApp = await buildApp(loadEnvConfig({}), pool, {
       logger: createLogger({ enabled: false }),
@@ -1379,7 +1379,7 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
       await unconfiguredApp.close();
     }
 
-    // 2. Configured operator identity -> Impressum, Privacy, Terms, Licenses, terms_accepted_at, CC0 headers
+    // 2. Configured operator identity -> Impressum, Privacy, Terms, Licenses, terms_accepted_at, ODbL-1.0 headers
     const configuredApp = await buildApp(
       loadEnvConfig({
         PUBLIC_BASE_URL: 'https://unseal.example.org',
@@ -1388,6 +1388,7 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
         OPERATOR_EMAIL: 'impressum@unseal.example.org',
         OPERATOR_PHONE: '+49 6131 123456',
         ABUSE_CONTACT: 'abuse@unseal.example.org',
+        AUTO_SEED_VG250: 'true',
       }),
       pool,
       {
@@ -1397,13 +1398,25 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
     );
 
     try {
-      const [impRes, privRes, termsRes, licRes, exportRes] = await Promise.all([
-        configuredApp.inject({ method: 'GET', url: '/auth/impressum' }),
-        configuredApp.inject({ method: 'GET', url: '/auth/privacy' }),
-        configuredApp.inject({ method: 'GET', url: '/auth/terms' }),
-        configuredApp.inject({ method: 'GET', url: '/auth/licenses' }),
-        configuredApp.inject({ method: 'GET', url: '/api/v1/polygons/export.geojson' }),
-      ]);
+      const [impRes, privRes, termsRes, licRes, exportRes, configRes] =
+        await Promise.all([
+          configuredApp.inject({ method: 'GET', url: '/auth/impressum' }),
+          configuredApp.inject({ method: 'GET', url: '/auth/privacy' }),
+          configuredApp.inject({ method: 'GET', url: '/auth/terms' }),
+          configuredApp.inject({ method: 'GET', url: '/auth/licenses' }),
+          configuredApp.inject({
+            method: 'GET',
+            url: '/api/v1/polygons/export.geojson',
+          }),
+          configuredApp.inject({ method: 'GET', url: '/api/v1/config' }),
+        ]);
+
+      assert.equal(configRes.statusCode, 200);
+      assert.equal(
+        (configRes.json() as { vg250AttributionEnabled?: boolean })
+          .vg250AttributionEnabled,
+        true,
+      );
 
       assert.equal(impRes.statusCode, 200);
       assert.match(impRes.body, /Entsiegelung Musterverein e\.V\./);
@@ -1443,6 +1456,9 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
       assert.match(licRes.body, /PostGIS \(GPL-2\.0-or-later\)/);
       assert.match(licRes.body, /OpenMapTiles/);
       assert.match(licRes.body, /https:\/\/www\.bkg\.bund\.de/);
+      assert.match(licRes.body, /datenquellen_vg_nuts\.pdf/);
+      assert.match(licRes.body, /Natural Earth/);
+      assert.match(licRes.body, /SIL OFL 1\.1/);
       assert.match(licRes.body, /Daten verändert/);
       assert.match(licRes.body, /Bayerische Vermessungsverwaltung.*CC BY 4\.0/);
       assert.match(licRes.body, /Land NRW.*dl-de\/zero-2-0/);
@@ -1460,31 +1476,35 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
       assert.match(noticesRes.body, /THIRD-PARTY SOFTWARE & GEODATA NOTICES/);
 
       assert.equal(exportRes.statusCode, 200);
-      assert.equal(exportRes.headers['content-license'], 'CC0-1.0');
+      assert.equal(exportRes.headers['content-license'], 'ODbL-1.0');
       assert.equal(
         exportRes.headers.link,
-        '<https://creativecommons.org/publicdomain/zero/1.0/>; rel="license", <https://unseal.example.org/auth/terms>; rel="terms-of-service"',
+        '<https://opendatacommons.org/licenses/odbl/1-0/>; rel="license", <https://unseal.example.org/auth/licenses>; rel="describedby", <https://unseal.example.org/auth/terms>; rel="terms-of-service"',
       );
       const exportPayload = exportRes.json() as {
         type: string;
         license?: string;
         licenseUrl?: string;
+        contributorRights?: string;
         attribution?: string;
         features: unknown[];
       };
       assert.equal(exportPayload.type, 'FeatureCollection');
-      assert.equal(exportPayload.license, 'CC0-1.0');
+      assert.equal(exportPayload.license, 'ODbL-1.0');
       assert.equal(
         exportPayload.licenseUrl,
-        'https://creativecommons.org/publicdomain/zero/1.0/',
+        'https://opendatacommons.org/licenses/odbl/1-0/',
       );
-      assert.match(exportPayload.attribution ?? '', /BKG.*dl-de\/by-2-0/);
+      assert.equal(exportPayload.contributorRights, 'CC0-1.0');
+      assert.match(exportPayload.attribution ?? '', /ODbL-1\.0/);
+      assert.match(exportPayload.attribution ?? '', /BKG.*dl-de\/by-2-0.*datenquellen_vg_nuts\.pdf/);
 
-      // Dynamic /auth/licenses: disabled orthophoto & custom basemap must not claim OpenFreeMap/DOP20
+      // Dynamic /auth/licenses, /api/v1/config, & GeoJSON export: disabled orthophoto, custom basemap, & unseeded VG250
       const customApp = await buildApp(
         loadEnvConfig({
           OSM_STYLE_URL: 'https://tiles.custom.example/style.json',
           ORTHOPHOTO_URL_TEMPLATE: 'none',
+          AUTO_SEED_VG250: 'false',
         }),
         pool,
         {
@@ -1493,15 +1513,86 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
         },
       );
       try {
-        const customLicRes = await customApp.inject({
-          method: 'GET',
-          url: '/auth/licenses',
-        });
+        const [customConfigRes, customLicRes, customExportRes] =
+          await Promise.all([
+            customApp.inject({ method: 'GET', url: '/api/v1/config' }),
+            customApp.inject({ method: 'GET', url: '/auth/licenses' }),
+            customApp.inject({
+              method: 'GET',
+              url: '/api/v1/polygons/export.geojson',
+            }),
+          ]);
+        assert.equal(customConfigRes.statusCode, 200);
+        const customCfgJson = customConfigRes.json() as {
+          vg250AttributionEnabled?: boolean;
+          vg250DataYear?: number | null;
+        };
+        assert.equal(customCfgJson.vg250AttributionEnabled, false);
+        assert.equal(customCfgJson.vg250DataYear, null);
+
         assert.equal(customLicRes.statusCode, 200);
         assert.match(customLicRes.body, /tiles\.custom\.example/);
         assert.equal(customLicRes.body.includes('OpenFreeMap'), false);
-        assert.match(customLicRes.body, /Luftbilder:<\/strong> Auf dieser Instanz deaktiviert/);
-        assert.equal(customLicRes.body.includes('Bayerische Vermessungsverwaltung'), false);
+        assert.match(
+          customLicRes.body,
+          /Luftbilder:<\/strong> Auf dieser Instanz deaktiviert/,
+        );
+        assert.equal(
+          customLicRes.body.includes('Bayerische Vermessungsverwaltung'),
+          false,
+        );
+        assert.match(
+          customLicRes.body,
+          /Verwaltungsgrenzen \(VG250\):<\/strong> Auf dieser Instanz nicht geladen/,
+        );
+        assert.equal(customLicRes.body.includes('www.bkg.bund.de'), false);
+
+        assert.equal(customExportRes.statusCode, 200);
+        const customExportPayload = customExportRes.json() as {
+          attribution?: string;
+        };
+        assert.match(customExportPayload.attribution ?? '', /ODbL-1\.0/);
+        assert.match(customExportPayload.attribution ?? '', /CC0 1\.0 Universal/);
+        assert.equal(
+          (customExportPayload.attribution ?? '').includes('BKG'),
+          false,
+        );
+        assert.equal(
+          (customExportPayload.attribution ?? '').includes('DOP20'),
+          false,
+        );
+
+        // When municipalities ARE seeded in DB, VG250 attribution turns on and uses the actual DB seed year
+        await pool.query(
+          `INSERT INTO municipalities (ags, name, geom, updated_at)
+           VALUES ('07315000', 'Mainz', ST_Multi(ST_GeomFromText('POLYGON((8.26 49.99,8.28 49.99,8.28 50.01,8.26 50.01,8.26 49.99))', 4326)), '2024-06-15T00:00:00Z')`,
+        );
+        try {
+          const [seededConfigRes, seededLicRes, seededExportRes] =
+            await Promise.all([
+              customApp.inject({ method: 'GET', url: '/api/v1/config' }),
+              customApp.inject({ method: 'GET', url: '/auth/licenses' }),
+              customApp.inject({
+                method: 'GET',
+                url: '/api/v1/polygons/export.geojson',
+              }),
+            ]);
+          const seededCfgJson = seededConfigRes.json() as {
+            vg250AttributionEnabled?: boolean;
+            vg250DataYear?: number | null;
+          };
+          assert.equal(seededCfgJson.vg250AttributionEnabled, true);
+          assert.equal(seededCfgJson.vg250DataYear, 2024);
+          assert.match(seededLicRes.body, /https:\/\/www\.bkg\.bund\.de/);
+          assert.match(seededLicRes.body, /\(2024\)/);
+          assert.match(
+            (seededExportRes.json() as { attribution?: string }).attribution ??
+              '',
+            /BKG \(2024\) dl-de\/by-2-0.*datenquellen_vg_nuts\.pdf/,
+          );
+        } finally {
+          await pool.query(`DELETE FROM municipalities WHERE ags = '07315000'`);
+        }
       } finally {
         await customApp.close();
       }

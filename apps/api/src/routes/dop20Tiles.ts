@@ -16,8 +16,10 @@ const UPSTREAM_TIMEOUT_MS = 8_000;
 const TILE_CACHE_MAX_ENTRIES = 256;
 const TILE_CACHE_TTL_MS = 15 * 60 * 1000;
 
+const DOP20_ATTRIBUTION_YEAR = new Date().getUTCFullYear();
+
 export const DEFAULT_DOP20_ATTRIBUTION =
-  '© GeoBasis-DE / Vermessungsverwaltungen der Bundesländer (DOP20/DOP10, dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; Daten verändert)';
+  `© GeoBasis-DE / Vermessungsverwaltungen der Bundesländer (${DOP20_ATTRIBUTION_YEAR}; u. a. LGL-BW, Bayerische Vermessungsverwaltung, LGV Hamburg, LGLN, GeoInformation Bremen, GDI-Th, Geoportal Berlin; DOP20/DOP10, dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; Daten verändert)`;
 
 export const GERMANY_DOP20_BOUNDS: [number, number, number, number] = [
   5.86,
@@ -56,7 +58,7 @@ export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
     layers: 'rp_dop20',
     licenseId: 'dl-de/by-2-0',
     licenseUrl: DL_DE_BY_2_0_URL,
-    attribution: '© GeoBasis-DE / LVermGeoRP',
+    attribution: '© GeoBasis-DE / LVermGeoRP, http://www.lvermgeo.rlp.de',
   },
   {
     code: 'HE',
@@ -118,13 +120,15 @@ export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
     layers: 'bebb_dop20c',
     licenseId: 'dl-de/by-2-0',
     licenseUrl: DL_DE_BY_2_0_URL,
-    attribution: '© GeoBasis-DE / LGB (Brandenburg) & Geoportal Berlin',
+    attribution: '© GeoBasis-DE / LGB, dl-de/by-2-0; © Geoportal Berlin, dl-de/by-2-0',
   },
   {
     code: 'HH',
     name: 'Hamburg',
     boundsWgs84: [8.42, 53.39, 10.33, 53.97],
-    baseUrl: 'https://geodienste.hamburg.de/wms_dop_zeitreihe_unbelaubt',
+    // Pin TIME=2026 to LGV Hamburg's own dl-de/by-2-0 OpenData aerial flight,
+    // excluding the 2023 Maxar satellite vintage ("other-closed") in this WMS-Time service.
+    baseUrl: 'https://geodienste.hamburg.de/wms_dop_zeitreihe_unbelaubt?TIME=2026',
     layers: 'dop_zeitreihe_unbelaubt',
     licenseId: 'dl-de/by-2-0',
     licenseUrl: DL_DE_BY_2_0_URL,

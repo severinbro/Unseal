@@ -61,7 +61,7 @@ By participating in this project, you agree to abide by our [Code of Conduct](./
 
 * `npm run build && npm run typecheck && npm test` passes cleanly.
 * User-facing UI text includes both German (`de`) and English (`en`) strings in `apps/mobile/src/i18n`.
-* Privacy-by-design invariants are preserved (zero IP logging, 100% EXIF stripping before disk persistence, no contributor PII in `CC0-1.0` GeoJSON exports or aggregate telemetry).
+* Privacy-by-design invariants are preserved (zero IP logging, 100% EXIF stripping before disk persistence, no contributor PII in `ODbL-1.0` GeoJSON exports or aggregate telemetry).
 * Documentation (`README.md`, `docs/installation.md`, or `.env.example`) is updated if configuration or CLI flags changed.
 
 ---
@@ -70,7 +70,7 @@ By participating in this project, you agree to abide by our [Code of Conduct](./
 
 Unseal uses a split open-source license architecture (see [`LICENSING.md`](./LICENSING.md) for full details and [`THIRD_PARTY_NOTICES.txt`](./THIRD_PARTY_NOTICES.txt) for third-party dependency notices):
 
-* Contributions to `apps/api` and root server/deployment files are licensed under **`AGPL-3.0-or-later`** ([`LICENSE`](./LICENSE), [`apps/api/LICENSE`](./apps/api/LICENSE)).
+* Contributions to `apps/api` and root server/deployment files are licensed under **`AGPL-3.0-or-later`** ([`LICENSE`](./LICENSE)).
 * Contributions to `packages/shared` and `apps/mobile` are licensed under **`MPL-2.0`** ([`packages/shared/LICENSE`](./packages/shared/LICENSE), [`apps/mobile/LICENSE`](./apps/mobile/LICENSE)).
 
 By submitting a Pull Request, you confirm that you have the right to submit your contribution under the applicable workspace license(s) above.

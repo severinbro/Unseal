@@ -1061,7 +1061,7 @@ describe('PPGIS-4: PostGIS polygon CRUD, authoritative validation, span/sliver c
 
       const seenIds = new Set<string>();
       for (const rawFeat of exported.features) {
-        // Strict schema: the CC0 export carries no author pseudonym, author
+        // Strict schema: the ODbL-1.0 export carries no author pseudonym, author
         // trust/activity signal or viewer-specific fields (GDPR Art. 5(1)(c), 17(2)).
         const feat = ExportPolygonFeatureSchema.parse(rawFeat);
         assert.equal(feat.id, feat.properties.id);
@@ -1185,16 +1185,24 @@ describe('PPGIS-4: PostGIS polygon CRUD, authoritative validation, span/sliver c
         type: string;
         license?: string;
         licenseUrl?: string;
+        contributorRights?: string;
         attribution?: string;
         features: unknown[];
       };
       assert.equal(emptyExportPayload.type, 'FeatureCollection');
-      assert.equal(emptyExportPayload.license, 'CC0-1.0');
+      assert.equal(emptyExportPayload.license, 'ODbL-1.0');
       assert.equal(
         emptyExportPayload.licenseUrl,
-        'https://creativecommons.org/publicdomain/zero/1.0/',
+        'https://opendatacommons.org/licenses/odbl/1-0/',
       );
-      assert.match(emptyExportPayload.attribution ?? '', /BKG.*dl-de\/by-2-0/);
+      assert.equal(emptyExportPayload.contributorRights, 'CC0-1.0');
+      // AUTO_SEED_VG250 is false and municipalities table is empty -> ODbL + CC0 attribution without false BKG claim
+      assert.match(emptyExportPayload.attribution ?? '', /ODbL-1\.0/);
+      assert.match(emptyExportPayload.attribution ?? '', /CC0 1\.0 Universal/);
+      assert.equal(
+        (emptyExportPayload.attribution ?? '').includes('BKG'),
+        false,
+      );
       assert.deepEqual(emptyExportPayload.features, []);
       assert.equal(exportSemaphore.active, 0);
 

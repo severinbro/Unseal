@@ -14,6 +14,7 @@ import {
   resolveRuntimeApkAvailability,
 } from '../config.js';
 import { getMigrationFiles } from '../db/migrate.js';
+import { getMunicipalitiesStatus } from '../municipalities/vg250.js';
 
 import type { FastifyInstance } from 'fastify';
 
@@ -80,8 +81,19 @@ export function registerSystemRoutes(
 
   app.get('/api/v1/config', async () => {
     const apkAvailability = resolveRuntimeApkAvailability(app.config);
+    const muniStatus = await getMunicipalitiesStatus(app.pool).catch(() => ({
+      seeded: false,
+      dataYear: null,
+    }));
+    const vg250AttributionEnabled =
+      app.config.autoSeedVg250 || muniStatus.seeded;
+    const vg250DataYear = vg250AttributionEnabled
+      ? (muniStatus.dataYear ?? new Date().getUTCFullYear())
+      : null;
     return RuntimeConfigSchema.parse({
       ...app.config.runtimeConfig,
+      vg250AttributionEnabled,
+      vg250DataYear,
       apkDownloadUrl: apkAvailability.apkDownloadUrl,
       apkSha256: apkAvailability.apkSha256,
     });

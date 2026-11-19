@@ -322,6 +322,8 @@ export const RuntimeConfigSchema = z.object({
   osmStyleUrl: z.string().url(),
   osmDarkStyleUrl: z.string().url().optional(),
   orthophoto: OrthophotoConfigSchema.nullable(),
+  vg250AttributionEnabled: z.boolean().optional(),
+  vg250DataYear: z.number().int().min(2000).max(2100).nullable().optional(),
   initialView: z.object({
     lng: z.number().finite().min(-180).max(180),
     lat: z.number().finite().min(-GEOMETRY_LIMITS.MAX_ABS_LAT).max(GEOMETRY_LIMITS.MAX_ABS_LAT),
@@ -820,7 +822,7 @@ export const PolygonFeatureSchema = z.object({
 export type PolygonFeature = z.output<typeof PolygonFeatureSchema>;
 
 /**
- * Feature of the public CC0 bulk export (`GET /api/v1/polygons/export.geojson`).
+ * Feature of the public ODbL-1.0 bulk export (`GET /api/v1/polygons/export.geojson`).
  *
  * GDPR data minimisation (Art. 5(1)(c)) and erasure (Art. 17(2)): exported copies
  * leave the operator's control, so the export carries no author pseudonym, author

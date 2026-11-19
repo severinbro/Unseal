@@ -15,6 +15,10 @@ import {
 } from '@entsiegelung/shared';
 
 import {
+  BKG_VG250_DATENQUELLEN_URL,
+  getMunicipalitiesStatus,
+} from '../municipalities/vg250.js';
+import {
   consumePasswordResetToken,
   consumeVerifyEmailToken,
   inspectEmailActionToken,
@@ -459,7 +463,7 @@ function buildPrivacyPolicyHtml(app: FastifyInstance): string {
          <li>Ob du in den letzten ${recentDays} Tagen aktiv warst („Aktiv in den letzten ${recentDays} Tagen“). Gespeichert wird dafür nur das <em>Datum</em> deiner letzten Aktivität, keine Uhrzeit.</li>
          <li>Der Hinweis „Neue/r Beitragende/r“, bis dein Konto mindestens ${config.newUserMinAccountDays} Tage besteht und mindestens ${config.newUserMinCleanPolygons} positiv bewertete Vorschläge erreicht hat.</li>
          <li>Deine Beiträge: Flächen, Belagsart, Notizen, Fotos, Kommentare sowie die Summe der Abstimmungen.</li>
-         <li>Der öffentliche GeoJSON-Gesamtexport (CC0) enthält Geometrien, Belagsart, Notizen, Status, Gemeinde, Abstimmungszahlen und Zeitstempel, aber <strong>kein Pseudonym</strong> und keine sonstigen Kontodaten.</li>
+         <li>Der öffentliche GeoJSON-Gesamtexport (ODbL 1.0) enthält Geometrien, Belagsart, Notizen, Status, Gemeinde, Abstimmungszahlen und Zeitstempel, aber <strong>kein Pseudonym</strong> und keine sonstigen Kontodaten.</li>
        </ul>
 
        <h2>3. Verarbeitete Daten, Zwecke und Rechtsgrundlagen</h2>
@@ -495,13 +499,13 @@ function buildPrivacyPolicyHtml(app: FastifyInstance): string {
        <ul>
          <li><strong>Auskunft &amp; Datenübertragbarkeit (Art. 15, 20 DSGVO):</strong> In der App unter <em>Konto → Meine Daten herunterladen</em> erhältst du alle zu deinem Konto gespeicherten Daten als JSON-Datei. Alternativ über die Kontaktstelle.</li>
          <li><strong>Berichtigung (Art. 16 DSGVO):</strong> Änderungen von E-Mail-Adresse oder Pseudonym über die Kontaktstelle.</li>
-         <li><strong>Löschung (Art. 17 DSGVO):</strong> Unter <em>Konto → Konto löschen</em> werden E-Mail-Adresse, Zugangsdaten, Sitzungen und Stimmen sofort gelöscht. Deine Beiträge bleiben dann anonym als „gelöscht“ sichtbar, außer du wählst, sie mitzulöschen. Einzelne Fotos, Kommentare und Vorschläge kannst du jederzeit selbst löschen.</li>
+         <li><strong>Löschung (Art. 17 DSGVO):</strong> Unter <em>Konto → Konto löschen</em> werden E-Mail-Adresse, Zugangsdaten, Sitzungen und Stimmen sofort gelöscht. Deine Beiträge bleiben dann anonym als „gelöscht“ sichtbar, außer du wählst, sie mitzulöschen. Einzelne Fotos, Kommentare und Vorschläge kannst du jederzeit selbst von der Plattform löschen (bereits zuvor von Dritten unter offenen Datenlizenzen heruntergeladene Kopien bleiben gemäß den jeweiligen Lizenzbedingungen bestehen).</li>
          <li><strong>Einschränkung (Art. 18), Widerspruch gegen Verarbeitungen nach Art. 6 Abs. 1 lit. f (Art. 21) und Widerruf einer Einwilligung</strong> mit Wirkung für die Zukunft (Art. 7 Abs. 3 DSGVO) über die Kontaktstelle.</li>
          <li><strong>Beschwerde</strong> bei einer Datenschutz-Aufsichtsbehörde (Art. 77 DSGVO).</li>
        </ul>
        <p>Es finden keine automatisierten Einzelentscheidungen im Sinne von Art. 22 DSGVO statt.</p>
 
-       <p class="en-sub"><strong>English summary:</strong> Public: your pseudonym, your contributions, whether you were active in the last ${recentDays} days (only the date of your last activity is stored) and a "new contributor" hint; the CC0 GeoJSON export contains no pseudonym. Your email is used only for account links and never shown. Accounts and contributions are processed under Art. 6(1)(b) GDPR (signed-in accounts can view a personal summary derived solely from their existing contributions and polygon ratings; public statistics show anonymous totals only); abuse prevention and logs under Art. 6(1)(f). Server logs contain no IP addresses, user agents or referrers; rate limiting keeps IPs in memory only. Photo metadata is checked in memory and fully stripped before storage. Third parties are listed in section 4 according to this instance's configuration. Retention: unconfirmed accounts 48 h, sessions up to ${config.sessionTtlDays} days, email links 7 days after use, pseudonym reservation after deletion ${config.pseudonymReservationDays} days (keyed hash only). Rights: download your data in the app, delete your account with or without your contributions, and contact the operator for corrections, restriction, objection or a complaint to a supervisory authority.</p>
+       <p class="en-sub"><strong>English summary:</strong> Public: your pseudonym, your contributions, whether you were active in the last ${recentDays} days (only the date of your last activity is stored) and a "new contributor" hint; the ODbL 1.0 GeoJSON export contains no pseudonym. Your email is used only for account links and never shown. Accounts and contributions are processed under Art. 6(1)(b) GDPR (signed-in accounts can view a personal summary derived solely from their existing contributions and polygon ratings; public statistics show anonymous totals only); abuse prevention and logs under Art. 6(1)(f). Server logs contain no IP addresses, user agents or referrers; rate limiting keeps IPs in memory only. Photo metadata is checked in memory and fully stripped before storage. Third parties are listed in section 4 according to this instance's configuration. Retention: unconfirmed accounts 48 h, sessions up to ${config.sessionTtlDays} days, email links 7 days after use, pseudonym reservation after deletion ${config.pseudonymReservationDays} days (keyed hash only). Rights: download your data in the app, delete your account with or without your contributions (open-data licenses on copies legitimately downloaded prior to deletion remain irrevocable under their terms), and contact the operator for corrections, restriction, objection or a complaint to a supervisory authority.</p>
        ${buildLegalNavHtml(app)}`;
 }
 
@@ -548,12 +552,12 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
        <p>Mit der Registrierung eines Kontos und dem Einstellen von Beiträgen auf dieser Unseal-Instanz akzeptierst du folgende Regeln und Lizenzbedingungen:</p>
        <ul>
          <li><strong>Unverbindliche Bürgerbeteiligung:</strong> ${escapeHtml(app.config.disclaimerText)} Ein Eintrag begründet keinen Rechtsanspruch auf Entsiegelung und greift nicht in bestehende Eigentumsrechte ein.</li>
-         <li><strong>Lizenz für Flächenvorschläge &amp; Notizen (CC0 1.0):</strong> Alle von dir eingezeichneten Polygon-Geometrien, Belagsangaben und Beschreibungstexte stellst du unter der Verzichtserklärung <a href="https://creativecommons.org/publicdomain/zero/1.0/deed.de" target="_blank" rel="noopener noreferrer"><strong>Creative Commons Zero 1.0 (CC0 1.0 Universal)</strong></a> gemeinfrei zur Verfügung, sodass Kommunen, Forschung und Öffentlichkeit den GeoJSON-Export frei weiterverwenden können. Auch durch Admin-Konten importierte Bestandsdatensätze (<code>.geojson</code> / <code>.gpkg</code>) werden in diesem öffentlichen <code>CC0-1.0</code>-Export bereitgestellt und dürfen daher nur importiert werden, wenn entsprechende Rechte zur Freigabe unter CC0 1.0 bestehen.</li>
-         <li><strong>Lizenz für Vor-Ort-Fotos &amp; Kommentare (CC BY 4.0):</strong> Hochgeladene Fotos und Diskussionskommentare lizenzierst du unter <a href="https://creativecommons.org/licenses/by/4.0/deed.de" target="_blank" rel="noopener noreferrer"><strong>Creative Commons Namensnennung 4.0 International (CC BY 4.0)</strong></a> mit Namensnennung deines öffentlichen Pseudonyms (bzw. anonymisiert als <code>deleted</code> nach Kontolöschung, sofern du deine Beiträge dabei nicht mitlöschst). Hochgeladene Fotos werden serverseitig bearbeitet (vollständige Entfernung von EXIF-/XMP-/IPTC-Metadaten, Konvertierung nach WebP sowie Skalierung/Vorschaubild).</li>
+         <li><strong>Lizenz für Flächenvorschläge, Notizen &amp; GeoJSON-Export (CC0 1.0 / ODbL 1.0):</strong> Soweit an deinen selbst eingezeichneten Polygon-Geometrien, Belagsangaben und Beschreibungstexten eigene Urheber- oder Datenbankrechte entstehen (unabhängig von den zugrunde liegenden Karten- und Luftbildquellen), verzichtest du auf diese Rechte gemäß <a href="https://creativecommons.org/publicdomain/zero/1.0/deed.de" target="_blank" rel="noopener noreferrer"><strong>Creative Commons Zero 1.0 (CC0 1.0 Universal)</strong></a>. Da Vorschläge auf Grundlage von OpenStreetMap (<code>ODbL 1.0</code>), amtlichen Landes-Luftbildern (<code>dl-de/by-2-0</code>, <code>CC BY 4.0</code>, <code>dl-de/zero-2-0</code>) und BKG-Gemeindegrenzen (<code>dl-de/by-2-0</code>) erfasst und verknüpft werden, wird der zusammengestellte öffentliche Datensatz (<code>/api/v1/polygons/export.geojson</code>) unter der <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener noreferrer"><strong>Open Data Commons Open Database License 1.0 (ODbL 1.0)</strong></a> inklusive der erforderlichen Quellenvermerke bereitgestellt. Durch Admin-Konten importierte Bestandsdatensätze (<code>.geojson</code> / <code>.gpkg</code>) fließen in denselben <code>ODbL-1.0</code>-Export ein und dürfen ausschließlich aus <code>ODbL-1.0</code>-kompatiblen offenen Quellen (<code>ODbL-1.0</code>, <code>CC0-1.0</code>, <code>dl-de/zero-2-0</code>, <code>dl-de/by-2-0</code>, <code>CC BY 4.0</code>) stammen.</li>
+         <li><strong>Lizenz für Vor-Ort-Fotos &amp; Kommentare (CC BY 4.0):</strong> Hochgeladene Fotos und Diskussionskommentare lizenzierst du unter <a href="https://creativecommons.org/licenses/by/4.0/deed.de" target="_blank" rel="noopener noreferrer"><strong>Creative Commons Namensnennung 4.0 International (CC BY 4.0)</strong></a> mit Namensnennung deines öffentlichen Pseudonyms (bzw. anonymisiert als <code>deleted</code> nach Kontolöschung, sofern du deine Beiträge dabei nicht mitlöschst). Hochgeladene Fotos werden serverseitig bearbeitet (vollständige Entfernung von EXIF-/XMP-/IPTC-Metadaten, Konvertierung nach WebP sowie Skalierung/Vorschaubild). Du kannst deine Beiträge jederzeit von der Plattform löschen; für Kopien, die Dritte vor der Löschung rechtmäßig bezogen haben, gelten die offenen Lizenzen (<code>CC0 1.0</code> / <code>ODbL 1.0</code> / <code>CC BY 4.0</code>) gemäß ihren Lizenzbedingungen unwiderruflich fort.</li>
          <li><strong>Zulässige Inhalte &amp; Fotorechte (§ 59 UrhG / § 22 KUG / DSGVO):</strong> Du darfst nur eigene Fotos hochladen, die von öffentlich zugänglichen Wegen oder Plätzen aus aufgenommen wurden (Panoramafreiheit) oder für die eine ausdrückliche Erlaubnis der Berechtigten vorliegt. Lade <strong>keine</strong> Aufnahmen hoch, auf denen erkennbare Personen, Gesichter, Kfz-Kennzeichen oder nicht öffentlich einsehbare Privatbereiche (z. B. über Zäune hinweg oder per Drohne) abgebildet sind.</li>
          <li><strong>Moderation &amp; Meldeverfahren (DSA):</strong> Rechtswidrige, beleidigende, irreführende oder Spam-Beiträge können entfernt und Konten gesperrt werden. ${abuseNote}</li>
        </ul>
-       <p class="en-sub"><strong>English summary:</strong> Contributions are non-binding civic suggestions. By registering and contributing, you dedicate polygon geometries, surface classifications, and proposal notes under <strong>CC0 1.0 Universal</strong> (for public GeoJSON reuse; admin bulk imports enter the same CC0-1.0 export and must only contain CC0-eligible data), and license uploaded site photos and comments under <strong>CC BY 4.0</strong> attributed to your pseudonym (uploaded photos are modified server-side by stripping EXIF/XMP/IPTC metadata and re-encoding/resizing to WebP). Only upload photos you created yourself from public vantage points without identifiable faces, license plates, or private non-public areas.</p>
+       <p class="en-sub"><strong>English summary:</strong> Contributions are non-binding civic suggestions. By registering and contributing, you waive your own copyright and database rights in submitted polygon geometries, surface classifications, and proposal notes under <strong>CC0 1.0 Universal</strong> (to the extent not derived from attributed basemaps), while the compiled public GeoJSON dataset (<code>/api/v1/polygons/export.geojson</code>) is licensed under <strong>ODbL 1.0</strong> with upstream attributions (admin bulk imports enter the same ODbL-1.0 export and must use ODbL-compatible open licenses). Uploaded site photos and comments are licensed under <strong>CC BY 4.0</strong> attributed to your pseudonym (uploaded photos are modified server-side by stripping EXIF/XMP/IPTC metadata and re-encoding/resizing to WebP). You may delete your contributions from the platform at any time; open-data licenses on copies legitimately downloaded prior to deletion remain irrevocable under their terms. Only upload photos you created yourself from public vantage points without identifiable faces, license plates, or private non-public areas.</p>
        ${buildLegalNavHtml(app)}`,
       { wide: true },
     );
@@ -582,6 +586,18 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
     const config = app.config;
     const currentYear = new Date().getUTCFullYear();
     const noticesHref = `${config.publicBaseUrl}/auth/third-party-notices`;
+    const muniStatus = await getMunicipalitiesStatus(app.pool).catch(() => ({
+      seeded: false,
+      dataYear: null,
+    }));
+    const vg250Active = config.autoSeedVg250 || muniStatus.seeded;
+    const vg250Year = muniStatus.dataYear ?? currentYear;
+    const vg250LicenseHtml = vg250Active
+      ? `<li><strong>Verwaltungsgrenzen (VG250):</strong> © GeoBasis-DE / <a href="https://www.bkg.bund.de" target="_blank" rel="noopener noreferrer">BKG</a> (${vg250Year}), <a href="https://www.govdata.de/dl-de/by-2-0" target="_blank" rel="noopener noreferrer">Datenlizenz Deutschland – Namensnennung 2.0 (dl-de/by-2-0)</a>, <a href="${escapeHtml(BKG_VG250_DATENQUELLEN_URL)}" target="_blank" rel="noopener noreferrer">Datenquellen</a> (Daten verändert).</li>`
+      : '<li><strong>Verwaltungsgrenzen (VG250):</strong> Auf dieser Instanz nicht geladen.</li>';
+    const vg250EnglishSummary = vg250Active
+      ? ` German municipality boundaries © GeoBasis-DE / BKG (${vg250Year}) dl-de/by-2-0, Datenquellen: ${BKG_VG250_DATENQUELLEN_URL} (modified).`
+      : '';
     const styleHosts = Array.from(
       new Set(
         [hostOf(config.osmStyleUrl), hostOf(config.osmDarkStyleUrl)].filter(
@@ -591,7 +607,7 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
     );
     const usesOpenFreeMap = styleHosts.includes('tiles.openfreemap.org');
     const basemapLicenseHtml = usesOpenFreeMap
-      ? `<li><strong>Straßenkarte (Vektorkacheln):</strong> <a href="https://openfreemap.org" target="_blank" rel="noopener noreferrer">OpenFreeMap</a> (MIT), Kachelschema &amp; Stile © <a href="https://openmaptiles.org/" target="_blank" rel="noopener noreferrer">OpenMapTiles</a> (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a> / BSD-3-Clause), Kartendaten © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap-Mitwirkende (ODbL)</a>.</li>`
+      ? `<li><strong>Straßenkarte (Vektorkacheln):</strong> <a href="https://openfreemap.org" target="_blank" rel="noopener noreferrer">OpenFreeMap</a> (MIT), Kachelschema &amp; Stile © <a href="https://openmaptiles.org/" target="_blank" rel="noopener noreferrer">OpenMapTiles</a> (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a> / BSD-3-Clause), Kartendaten © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap-Mitwirkende (ODbL)</a>, Übersichts-Schummerung <a href="https://www.naturalearthdata.com/" target="_blank" rel="noopener noreferrer">Natural Earth</a> (Public Domain), Kartenschriften Noto Sans (<a href="https://openfontlicense.org/" target="_blank" rel="noopener noreferrer">SIL OFL 1.1</a>).</li>`
       : styleHosts.length > 0
         ? `<li><strong>Straßenkarte (konfigurierter Anbieter):</strong> Kartenstil und Kacheln von ${styleHosts.map((h) => `<code>${escapeHtml(h)}</code>`).join(' bzw. ')} (Lizenzangaben gemäß Kartenstil-Metadaten; bei OSM-basierten Stilen © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap-Mitwirkende (ODbL)</a>).</li>`
         : '<li><strong>Straßenkarte:</strong> Selbst gehosteter Kartenstil dieses Servers.</li>';
@@ -604,10 +620,13 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
         '<li><strong>Luftbilder:</strong> Auf dieser Instanz deaktiviert.</li>';
       orthoEnglishSummary = 'Aerial orthophotos are disabled on this instance.';
     } else if (ortho.urlTemplate.includes('/api/v1/tiles/dop20/')) {
-      const stateItemsHtml = GERMAN_STATE_DOP20_PROVIDERS.map(
-        (provider) =>
-          `<li><strong>${escapeHtml(provider.name)}:</strong> ${escapeHtml(provider.attribution)} (${currentYear}), <a href="${escapeHtml(provider.licenseUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(provider.licenseId)}</a></li>`,
-      ).join('\n             ');
+      const stateItemsHtml = GERMAN_STATE_DOP20_PROVIDERS.map((provider) => {
+        const vintageNote =
+          provider.code === 'HH'
+            ? ' [TIME=2026 LGV-OpenData-Befliegung]'
+            : '';
+        return `<li><strong>${escapeHtml(provider.name)}:</strong> ${escapeHtml(provider.attribution)} (${currentYear}), <a href="${escapeHtml(provider.licenseUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(provider.licenseId)}</a>${vintageNote}</li>`;
+      }).join('\n             ');
       orthoLicenseHtml = `<li><strong>Luftbilder (DOP20 / DOP10, Daten verändert – Kachel-Reprojektion/Komposition an Landesgrenzen):</strong> Amtliche Open-Data-WMS-Dienste der Vermessungsverwaltungen der deutschen Bundesländer unter <a href="https://www.govdata.de/dl-de/by-2-0" target="_blank" rel="noopener noreferrer">dl-de/by-2-0</a>, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a> sowie <a href="https://www.govdata.de/dl-de/zero-2-0" target="_blank" rel="noopener noreferrer">dl-de/zero-2-0</a>:
            <details style="margin-top:6px;">
              <summary style="cursor:pointer;font-weight:600;">Einzelne Quellenvermerke &amp; Lizenzen aller 16 Bundesländer anzeigen</summary>
@@ -647,15 +666,15 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
        <ul>
          ${basemapLicenseHtml}
          <li><strong>Adresssuche (Geocodierung):</strong> OpenStreetMap Nominatim, Daten © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap-Mitwirkende (ODbL)</a>.</li>
-         <li><strong>Verwaltungsgrenzen (VG250):</strong> © <a href="https://www.bkg.bund.de" target="_blank" rel="noopener noreferrer">BKG</a> ${currentYear}, <a href="https://www.govdata.de/dl-de/by-2-0" target="_blank" rel="noopener noreferrer">Datenlizenz Deutschland – Namensnennung 2.0 (dl-de/by-2-0)</a> (Daten verändert).</li>
+         ${vg250LicenseHtml}
          ${orthoLicenseHtml}
        </ul>
        <h2>3. Nutzerbeiträge &amp; Offene Daten</h2>
        <ul>
-         <li><strong>Flächenvorschläge &amp; Notizen:</strong> <a href="https://creativecommons.org/publicdomain/zero/1.0/deed.de" target="_blank" rel="noopener noreferrer">CC0 1.0 Universal</a> (GeoJSON-Export).</li>
+         <li><strong>Zusammengestellter GeoJSON-Datensatz (<code>/api/v1/polygons/export.geojson</code>):</strong> <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener noreferrer">Open Data Commons Open Database License 1.0 (ODbL 1.0)</a> (inklusive der oben genannten Karten-, Luftbild- und VG250-Quellenvermerke); Mitwirkende verzichten auf eigene Urheber- und Datenbankrechte an eingezeichneten Geometrien, Belagsangaben und Notizen gemäß <a href="https://creativecommons.org/publicdomain/zero/1.0/deed.de" target="_blank" rel="noopener noreferrer">CC0 1.0 Universal</a>.</li>
          <li><strong>Vor-Ort-Fotos &amp; Kommentare:</strong> <a href="https://creativecommons.org/licenses/by/4.0/deed.de" target="_blank" rel="noopener noreferrer">CC BY 4.0 International</a> (Namensnennung des Pseudonyms; Fotos serverseitig EXIF-bereinigt &amp; als WebP skaliert; Details in den <a href="${escapeHtml(config.termsUrl)}">Nutzungsbedingungen</a>).</li>
        </ul>
-       <p class="en-sub"><strong>English summary:</strong> Unseal API is licensed under AGPL-3.0-or-later (Corresponding Source available at <a href="${escapeHtml(config.sourceCodeUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(config.sourceCodeUrl)}</a>); the mobile/web client and shared schemas are licensed under MPL-2.0 (Copyright © 2026 Unseal Contributors). Complete third-party notices and license texts are available at <a href="${escapeHtml(noticesHref)}">THIRD_PARTY_NOTICES.txt</a>. ${usesOpenFreeMap ? 'Vector basemap via OpenFreeMap (MIT), © OpenMapTiles (CC BY 4.0 / BSD-3-Clause), and © OpenStreetMap contributors (ODbL).' : 'Basemap tiles are loaded from the configured style host.'} Geocoding © OpenStreetMap contributors (ODbL); German municipality boundaries © BKG ${currentYear} (dl-de/by-2-0, modified). ${orthoEnglishSummary}</p>
+       <p class="en-sub"><strong>English summary:</strong> Unseal API is licensed under AGPL-3.0-or-later (Corresponding Source available at <a href="${escapeHtml(config.sourceCodeUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(config.sourceCodeUrl)}</a>); the mobile/web client and shared schemas are licensed under MPL-2.0 (Copyright © 2026 Unseal Contributors). Complete third-party notices and license texts are available at <a href="${escapeHtml(noticesHref)}">THIRD_PARTY_NOTICES.txt</a>. ${usesOpenFreeMap ? 'Vector basemap via OpenFreeMap (MIT), © OpenMapTiles (CC BY 4.0 / BSD-3-Clause), © OpenStreetMap contributors (ODbL), Natural Earth (Public Domain), and Noto Sans (SIL OFL 1.1).' : 'Basemap tiles are loaded from the configured style host.'} Geocoding © OpenStreetMap contributors (ODbL).${vg250EnglishSummary} ${orthoEnglishSummary} Compiled polygon exports are licensed under ODbL 1.0 (with contributor CC0 1.0 rights waiver); site photos and comments under CC BY 4.0.</p>
        ${buildLegalNavHtml(app)}`,
       { wide: true },
     );

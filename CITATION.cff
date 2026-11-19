@@ -8,7 +8,9 @@ authors:
     orcid: "https://orcid.org/0009-0001-6402-8462"
     affiliation: "University of Applied Sciences Mainz, Mainz, Germany"
 repository-code: "https://github.com/severinbro/Unseal"
-license: AGPL-3.0-or-later
+license:
+  - AGPL-3.0-or-later
+  - MPL-2.0
 license-url: "https://github.com/severinbro/Unseal/blob/main/LICENSING.md"
 version: "0.1.0"
 date-released: "2026-11-16"

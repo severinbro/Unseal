@@ -84,10 +84,6 @@ const VALID_COURTYARD_VERTICES: [number, number][] = [
 describe('@entsiegelung/shared bootstrap, licensing, and compiled ESM contract', () => {
   it('ships verbatim AGPL-3.0-or-later and MPL-2.0 LICENSE files, split LICENSING.md notice, and THIRD_PARTY_NOTICES.txt', () => {
     const rootLicense = fs.readFileSync(path.join(repoRoot, 'LICENSE'), 'utf8');
-    const apiLicense = fs.readFileSync(
-      path.join(repoRoot, 'apps', 'api', 'LICENSE'),
-      'utf8',
-    );
     const mobileLicense = fs.readFileSync(
       path.join(repoRoot, 'apps', 'mobile', 'LICENSE'),
       'utf8',
@@ -108,10 +104,6 @@ describe('@entsiegelung/shared bootstrap, licensing, and compiled ESM contract',
       true,
     );
     assert.equal(
-      apiLicense.startsWith('GNU AFFERO GENERAL PUBLIC LICENSE'),
-      true,
-    );
-    assert.equal(
       sharedLicense.startsWith('Mozilla Public License Version 2.0'),
       true,
     );
@@ -120,17 +112,40 @@ describe('@entsiegelung/shared bootstrap, licensing, and compiled ESM contract',
       true,
     );
 
-    // Split license scope & AGPLv3 Section 13 clarification in LICENSING.md
+    // Split license scope & AGPLv3 Section 13 clarification in LICENSING.md & CITATION.cff
+    const citationCff = fs.readFileSync(path.join(repoRoot, 'CITATION.cff'), 'utf8');
+    assert.match(citationCff, /AGPL-3\.0-or-later/);
+    assert.match(citationCff, /MPL-2\.0/);
     assert.match(licensingNotice, /Copyright \(C\) 2026 Unseal Contributors/);
     assert.match(licensingNotice, /AGPL-3\.0-or-later/);
     assert.match(licensingNotice, /Section 13/i);
     assert.match(licensingNotice, /MPL-2\.0/);
+    assert.match(licensingNotice, /ODbL-1\.0/);
+    assert.match(licensingNotice, /datenquellen_vg_nuts\.pdf/);
 
-    // Complete third-party notices present and accurate
+    // Complete third-party notices present and accurate (direct & transitive runtime packages)
     assert.match(thirdPartyNotices, /@maplibre\/maplibre-react-native@.* : MIT/);
     assert.match(thirdPartyNotices, /@node-rs\/argon2@.* : MIT/);
     assert.match(thirdPartyNotices, /nodemailer@.* : MIT-0/);
     assert.match(thirdPartyNotices, /MapLibre Native Android SDK.*BSD-2-Clause/);
+    assert.match(thirdPartyNotices, /Copyright \(c\) 2018-2021 MapTiler\.com/);
+    assert.match(thirdPartyNotices, /Copyright \(c\) 2014-2020 Mapbox/);
+    assert.match(thirdPartyNotices, /FITNESS FOR A PARTICULAR PURPOSE ARE/);
+    assert.match(
+      thirdPartyNotices,
+      /REPRODUCED COPYRIGHT & LICENSE NOTICES FOR RUNTIME PACKAGES \(DIRECT & TRANSITIVE\)/,
+    );
+    assert.match(thirdPartyNotices, /@mapbox\/vector-tile@.*\(BSD-3-Clause\)/);
+    assert.match(thirdPartyNotices, /pbf@.*\(BSD-3-Clause\)/);
+    assert.match(thirdPartyNotices, /earcut@.*\(ISC\)/);
+    assert.match(thirdPartyNotices, /pg-pool@.*\(MIT\)/);
+    assert.match(thirdPartyNotices, /--- esprima@.*\(BSD-2-Clause\) ---/);
+    assert.match(thirdPartyNotices, /--- stream-buffers@.*\(Unlicense\) ---/);
+    assert.match(
+      thirdPartyNotices,
+      /@pkgjs\/parseargs@.*Apache-2\.0 \[LICENSE file; package\.json declares MIT\]/,
+    );
+    assert.match(thirdPartyNotices, /datenquellen_vg_nuts\.pdf/);
   });
 
   it('contains zero Node Buffer references across packages/shared/src for Hermes and browser compatibility', () => {

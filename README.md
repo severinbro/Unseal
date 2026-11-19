@@ -2,9 +2,9 @@
 
 **Unseal** is an open-source Public Participation Geographic Information System (PPGIS) for **Android, iOS, and Web** (German `de` default language with full English `en` switcher). Citizens map impervious ground surfaces ("ground sealing", such as asphalt parking corners, concrete courtyards, and paved street margins) proposed for unsealing, attach EXIF-sanitized site photos, and prioritize proposals through `+1` / `-1` community voting.
 
-Unauthenticated visitors can explore OpenStreetMap vector basemaps in light or dark mode (with automatic OS detection and a one-tap theme toggle), toggle built-in Germany-wide **DOP20 aerial orthophotos** (`EPSG:3857`) beneath proposal geometries, center on their position via the floating top-right **GNSS** button, inspect proposals and site photos, open the **`?` About** dialog, download the standalone Android `.apk` (when hosted on the server), and export all proposals as RFC 7946 GeoJSON (`GET /api/v1/polygons/export.geojson`, `CC0-1.0`) for direct analysis in QGIS or desktop GIS tools.
+Unauthenticated visitors can explore OpenStreetMap vector basemaps in light or dark mode (with automatic OS detection and a one-tap theme toggle), toggle built-in Germany-wide **DOP20 aerial orthophotos** (`EPSG:3857`) beneath proposal geometries, center on their position via the floating top-right **GNSS** button, inspect proposals and site photos, open the **`?` About** dialog, download the standalone Android `.apk` (when hosted on the server), and export all proposals as RFC 7946 GeoJSON (`GET /api/v1/polygons/export.geojson`, `ODbL-1.0`) for direct analysis in QGIS or desktop GIS tools.
 
-Contributors register pseudonymous accounts backed by **email link confirmation**, acceptance of the Privacy Policy and Terms of Use (`CC0 1.0` for polygon geometries/notes, `CC BY 4.0` for photos/comments), and **VPS-hosted legal & password recovery pages** (`/auth/verify-email`, `/auth/reset-password`, `/auth/impressum`, `/auth/privacy`, `/auth/terms`, `/auth/licenses`). Email addresses are never exposed publicly - only the user's chosen `pseudonym` appears.
+Contributors register pseudonymous accounts backed by **email link confirmation**, acceptance of the Privacy Policy and Terms of Use (`CC0 1.0` rights waiver on own polygon input/notes, `ODbL 1.0` on the compiled GeoJSON export, `CC BY 4.0` for photos/comments), and **VPS-hosted legal & password recovery pages** (`/auth/verify-email`, `/auth/reset-password`, `/auth/impressum`, `/auth/privacy`, `/auth/terms`, `/auth/licenses`). Email addresses are never exposed publicly - only the user's chosen `pseudonym` appears.
 
 ---
 
@@ -84,7 +84,7 @@ docker compose up -d --build
 2. **Map or import candidate depaving sites:**
    * *Interactive mapping:* Open the Web or mobile client, toggle `DOP20` aerial orthophotos beneath the map, trace an impervious surface (`2-20,000 m²`), select its material (`Asphalt`, `Beton`, `Pflaster`, `Sonstige Versiegelung`), and optionally attach an on-site camera photo (checked in memory against a `3 m` polygon buffer before 100% EXIF stripping).
    * *Field-survey bulk import (`admin`):* Upload existing `.gpkg` (e.g. `QField` surveys) or `.geojson` inventories directly via the Inspector's `Verwaltung` tab, automatically reprojecting to `EPSG:4326` and running PostGIS topology, compactness, overlap-clipping, and land-cover checks.
-3. **Prioritize & stream open `CC0-1.0` GeoJSON into QGIS:**
+3. **Prioritize & stream open `ODbL-1.0` GeoJSON into QGIS:**
    ```bash
    curl -fsS http://127.0.0.1:3000/api/v1/polygons/export.geojson -o unseal-proposals.geojson
    ```
@@ -109,6 +109,6 @@ docker compose up -d --build
 
 ## Split Open-Source Licensing (`AGPL-3.0-or-later` & `MPL-2.0`)
 
-* **Server & Repository Root (`AGPL-3.0-or-later`):** `apps/api` and root files (except workspaces providing their own `LICENSE`) are licensed under the **GNU Affero General Public License v3.0 or later** - see [`LICENSE`](./LICENSE) and [`apps/api/LICENSE`](./apps/api/LICENSE).
+* **Server & Repository Root (`AGPL-3.0-or-later`):** `apps/api` and root files (except workspaces providing their own `LICENSE`) are licensed under the **GNU Affero General Public License v3.0 or later** - see [`LICENSE`](./LICENSE).
 * **Mobile/Web Client & Shared Schemas (`MPL-2.0`):** `apps/mobile` and `packages/shared` are licensed under the **Mozilla Public License 2.0** - see [`apps/mobile/LICENSE`](./apps/mobile/LICENSE) and [`packages/shared/LICENSE`](./packages/shared/LICENSE).
 * **Split-License Scope, AGPLv3 §13 Clarification & Third-Party Notices:** See [`LICENSING.md`](./LICENSING.md) (including the AGPLv3 Section 13 network-interaction clarification that `MPL-2.0` HTTP/GeoJSON clients remain separate works under `MPL-2.0`) and [`THIRD_PARTY_NOTICES.txt`](./THIRD_PARTY_NOTICES.txt) for complete third-party software, native SDK, Docker stack, and geodata licenses.

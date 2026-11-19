@@ -14,6 +14,7 @@ import {
 
 import {
   DEFAULT_LOCALE,
+  formatVg250ShortAttribution,
   getTranslations,
   localizeError,
   type Locale,
@@ -23,12 +24,19 @@ import { useTheme } from '../theme/themeContext';
 import { RADII, type ThemePalette } from '../theme/tokens';
 import { AndroidGlyph, triggerApkDownload } from './MapControlsBar';
 
+const DEFAULT_CANONICAL_SOURCE_CODE_URL =
+  'https://github.com/severinbro/Unseal';
+const BKG_VG250_DATENQUELLEN_URL =
+  'https://sg.geodatenzentrum.de/web_public/gdz/datenquellen/datenquellen_vg_nuts.pdf';
+
 export interface AboutModalProps {
   visible: boolean;
   locale?: Locale;
   compact?: boolean;
   osmStyleUrl?: string | undefined;
   orthophoto?: RuntimeConfig['orthophoto'] | undefined;
+  vg250AttributionEnabled?: boolean | undefined;
+  vg250DataYear?: number | null | undefined;
   privacyPolicyUrl: string;
   impressumUrl?: string | undefined;
   termsUrl?: string | undefined;
@@ -71,6 +79,8 @@ export function AboutModal({
   compact = false,
   osmStyleUrl,
   orthophoto,
+  vg250AttributionEnabled,
+  vg250DataYear,
   privacyPolicyUrl,
   impressumUrl,
   termsUrl,
@@ -275,20 +285,22 @@ export function AboutModal({
                     </Text>
                   </Pressable>
                 ) : null}
-                <Pressable
-                  accessibilityRole="link"
-                  onPress={() =>
-                    openExternalUrl('https://www.govdata.de/dl-de/by-2-0')
-                  }
-                  style={({ pressed }) => [
-                    styles.attributionChip,
-                    pressed ? styles.buttonPressed : null,
-                  ]}
-                >
-                  <Text style={styles.attributionChipText}>
-                    {t.attributionVg250Short}
-                  </Text>
-                </Pressable>
+                {vg250AttributionEnabled !== false ? (
+                  <Pressable
+                    accessibilityRole="link"
+                    onPress={() =>
+                      openExternalUrl(BKG_VG250_DATENQUELLEN_URL)
+                    }
+                    style={({ pressed }) => [
+                      styles.attributionChip,
+                      pressed ? styles.buttonPressed : null,
+                    ]}
+                  >
+                    <Text style={styles.attributionChipText}>
+                      {formatVg250ShortAttribution(locale, vg250DataYear)}
+                    </Text>
+                  </Pressable>
+                ) : null}
               </>
             );
           })()}
@@ -359,21 +371,27 @@ export function AboutModal({
             </Pressable>
           ) : null}
 
-          {sourceCodeUrl ? (
-            <Pressable
-              accessibilityRole="link"
-              onPress={() => openExternalUrl(sourceCodeUrl)}
-              style={({ pressed }) => [
-                styles.touchButton,
-                styles.secondaryButton,
-                pressed ? styles.buttonPressed : null,
-              ]}
-            >
-              <Text style={styles.secondaryButtonLabel}>
-                {t.sourceCodeLinkLabel}
-              </Text>
-            </Pressable>
-          ) : null}
+          {(() => {
+            const effectiveSourceCodeUrl =
+              sourceCodeUrl && sourceCodeUrl.trim().length > 0
+                ? sourceCodeUrl.trim()
+                : DEFAULT_CANONICAL_SOURCE_CODE_URL;
+            return (
+              <Pressable
+                accessibilityRole="link"
+                onPress={() => openExternalUrl(effectiveSourceCodeUrl)}
+                style={({ pressed }) => [
+                  styles.touchButton,
+                  styles.secondaryButton,
+                  pressed ? styles.buttonPressed : null,
+                ]}
+              >
+                <Text style={styles.secondaryButtonLabel}>
+                  {t.sourceCodeLinkLabel}
+                </Text>
+              </Pressable>
+            );
+          })()}
 
           {showApkButton ? (
             <Pressable

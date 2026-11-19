@@ -9,6 +9,9 @@ import type pg from 'pg';
 export const DEFAULT_BKG_VG250_WFS_URL =
   'https://sgx.geodatenzentrum.de/wfs_vg250';
 
+export const BKG_VG250_DATENQUELLEN_URL =
+  'https://sg.geodatenzentrum.de/web_public/gdz/datenquellen/datenquellen_vg_nuts.pdf';
+
 export interface MunicipalitySeedInput {
   ags: string;
   name: string;
@@ -229,6 +232,35 @@ export async function loadVg250Municipalities(
   }
 
   return upsertMunicipalitiesAndBackfill(pool, allEntries);
+}
+
+export interface MunicipalitiesStatus {
+  seeded: boolean;
+  dataYear: number | null;
+}
+
+export async function getMunicipalitiesStatus(
+  pool: pg.Pool,
+): Promise<MunicipalitiesStatus> {
+  const res = await pool.query<{
+    seeded: boolean;
+    data_year: number | null;
+  }>(
+    `SELECT
+       EXISTS(SELECT 1 FROM municipalities) AS seeded,
+       EXTRACT(YEAR FROM MAX(updated_at) AT TIME ZONE 'UTC')::int AS data_year
+     FROM municipalities`,
+  );
+  const row = res.rows[0];
+  return {
+    seeded: Boolean(row?.seeded),
+    dataYear: typeof row?.data_year === 'number' ? row.data_year : null,
+  };
+}
+
+export async function hasSeededMunicipalities(pool: pg.Pool): Promise<boolean> {
+  const status = await getMunicipalitiesStatus(pool);
+  return status.seeded;
 }
 
 export async function ensureMunicipalitiesSeededIfEnabled(

@@ -563,6 +563,50 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
       assert.equal(geoJsonRes.skippedCount, 1);
       assert.equal(geoJsonRes.errors.length, 1);
 
+      // Incompatible embedded GeoJSON license ("CC-BY-NC-4.0") or query param (?license=proprietary) -> 422 VALIDATION_ERROR
+      const ncGeoJsonMultipart = buildMultipartPayload({
+        fieldName: 'file',
+        fileName: 'restricted.geojson',
+        contentType: 'application/geo+json',
+        fileBuffer: Buffer.from(
+          JSON.stringify({
+            type: 'FeatureCollection',
+            license: 'CC-BY-NC-4.0',
+            features: geoJsonCollection.features.slice(0, 1),
+          }),
+          'utf8',
+        ),
+      });
+      const rejectedNcImport = await app.inject({
+        method: 'POST',
+        url: '/api/v1/polygons/import',
+        headers: {
+          authorization: `Bearer ${adminUser.sessionToken}`,
+          'content-type': ncGeoJsonMultipart.contentTypeHeader,
+        },
+        payload: ncGeoJsonMultipart.body,
+      });
+      assert.equal(rejectedNcImport.statusCode, 422);
+      assert.equal(
+        ApiErrorEnvelopeSchema.parse(rejectedNcImport.json()).error.code,
+        'VALIDATION_ERROR',
+      );
+
+      const rejectedQueryLicenseImport = await app.inject({
+        method: 'POST',
+        url: '/api/v1/polygons/import?license=proprietary',
+        headers: {
+          authorization: `Bearer ${adminUser.sessionToken}`,
+          'content-type': geoJsonMultipart.contentTypeHeader,
+        },
+        payload: geoJsonMultipart.body,
+      });
+      assert.equal(rejectedQueryLicenseImport.statusCode, 422);
+      assert.equal(
+        ApiErrorEnvelopeSchema.parse(rejectedQueryLicenseImport.json()).error.code,
+        'VALIDATION_ERROR',
+      );
+
       // Build a real SQLite GeoPackage (.gpkg) in EPSG:25832 (ETRS89 / UTM zone 32N) + GeoJSON with versioned OGC URN
       const utmWkbRes = await pool.query<{ wkb: Buffer; utm_geojson: string }>(
         `SELECT

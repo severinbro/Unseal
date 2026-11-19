@@ -3,6 +3,8 @@
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
+import os from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +19,7 @@ import { PpgisApiClient, type FetchLike } from '../src/api/client';
 import {
   BUILTIN_DISCLAIMER_DE,
   DEFAULT_LOCALE,
+  buildNativeAttributionText,
   getTranslations,
   localizeDisclaimerText,
   localizeError,
@@ -1611,5 +1614,121 @@ describe('German default localization and DE <-> EN switching', () => {
       html,
       /<link\s+rel="apple-touch-icon"\s+sizes="180x180"\s+href="\/apple-touch-icon\.png"\s*\/>/,
     );
+  });
+});
+
+describe('Dynamic native attribution text & offline bundled license plugin', () => {
+  it('uses vg250DataYear or current UTC year, respects custom osmStyleUrl, omits VG250 when disabled, and includes orthophoto attribution', () => {
+    const currentYear = String(new Date().getUTCFullYear());
+
+    const defaultDe = buildNativeAttributionText({
+      locale: 'de',
+      basemapMode: 'osm',
+      osmStyleUrl: 'https://tiles.openfreemap.org/styles/liberty',
+      vg250AttributionEnabled: true,
+    });
+    assert.match(defaultDe, /OpenFreeMap/);
+    assert.match(
+      defaultDe,
+      new RegExp(`© GeoBasis-DE \\/ BKG \\(${currentYear}\\)`),
+    );
+    assert.match(defaultDe, /Datenquellen/);
+    assert.match(defaultDe, /Daten verändert/);
+
+    const customSeedYearDe = buildNativeAttributionText({
+      locale: 'de',
+      basemapMode: 'osm',
+      vg250AttributionEnabled: true,
+      vg250DataYear: 2024,
+    });
+    assert.match(customSeedYearDe, /© GeoBasis-DE \/ BKG \(2024\)/);
+
+    const customNoVg250 = buildNativeAttributionText({
+      locale: 'en',
+      basemapMode: 'osm',
+      osmStyleUrl: 'https://tiles.custom.example/style.json',
+      vg250AttributionEnabled: false,
+    });
+    assert.equal(customNoVg250.includes('OpenFreeMap'), false);
+    assert.match(customNoVg250, /Basemap: tiles\.custom\.example/);
+    assert.equal(customNoVg250.includes('BKG'), false);
+    assert.equal(customNoVg250.includes('VG250'), false);
+
+    const orthoCustom = buildNativeAttributionText({
+      locale: 'de',
+      basemapMode: 'orthophoto',
+      osmStyleUrl: 'https://tiles.custom.example/style.json',
+      orthophotoAttribution: '© Stadt Musterstadt DOP20',
+      vg250AttributionEnabled: false,
+    });
+    assert.match(orthoCustom, /© Stadt Musterstadt DOP20/);
+    assert.match(orthoCustom, /Basemap: tiles\.custom\.example/);
+    assert.equal(orthoCustom.includes('OpenFreeMap'), false);
+    assert.equal(orthoCustom.includes('BKG'), false);
+
+    const orthoDefault = buildNativeAttributionText({
+      locale: 'en',
+      basemapMode: 'orthophoto',
+      osmStyleUrl: 'https://tiles.openfreemap.org/styles/liberty',
+      orthophotoAttribution: null,
+      vg250AttributionEnabled: true,
+    });
+    assert.match(orthoDefault, /DOP20\/DOP10/);
+    assert.match(orthoDefault, /OpenFreeMap/);
+    assert.match(
+      orthoDefault,
+      new RegExp(`© GeoBasis-DE \\/ BKG \\(${currentYear}\\)`),
+    );
+  });
+
+  it('registers withBundledLicenses.cjs in app.json and copies MPL-2.0 LICENSE + THIRD_PARTY_NOTICES.txt into native prebuild assets', () => {
+    const mobileRoot = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      '..',
+    );
+    const appJson = JSON.parse(
+      fs.readFileSync(path.join(mobileRoot, 'app.json'), 'utf8'),
+    ) as { expo?: { plugins?: unknown[] } };
+    assert.equal(
+      Array.isArray(appJson.expo?.plugins) &&
+        appJson.expo.plugins.includes('./plugins/withBundledLicenses.cjs'),
+      true,
+    );
+
+    const req = createRequire(import.meta.url);
+    const withBundledLicenses = req(
+      path.join(mobileRoot, 'plugins', 'withBundledLicenses.cjs'),
+    ) as {
+      copyBundledLicensesToNativeDir: (
+        projectRoot: string,
+        targetDir: string,
+      ) => string[];
+    };
+    const tmpTarget = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'unseal-bundled-licenses-'),
+    );
+    try {
+      const copied = withBundledLicenses.copyBundledLicensesToNativeDir(
+        mobileRoot,
+        tmpTarget,
+      );
+      assert.equal(copied.length, 2);
+      const mplText = fs.readFileSync(
+        path.join(tmpTarget, 'LICENSE-MPL-2.0.txt'),
+        'utf8',
+      );
+      const noticesText = fs.readFileSync(
+        path.join(tmpTarget, 'THIRD_PARTY_NOTICES.txt'),
+        'utf8',
+      );
+      assert.equal(
+        mplText.startsWith('Mozilla Public License Version 2.0'),
+        true,
+      );
+      assert.match(noticesText, /MapLibre Native \(BSD-2-Clause\)/);
+      assert.match(noticesText, /Copyright \(c\) 2014-2020 Mapbox/);
+    } finally {
+      fs.rmSync(tmpTarget, { recursive: true, force: true });
+    }
   });
 });

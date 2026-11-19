@@ -16,4 +16,4 @@ Describe how the feature should work across client, API, or GIS import/export.
 
 ## Privacy & Spatial Quality Considerations
 
-Note any implications for GDPR data minimization, PostGIS validation rules, or open `CC0-1.0` GeoJSON exports.
+Note any implications for GDPR data minimization, PostGIS validation rules, or open `ODbL-1.0` GeoJSON exports.

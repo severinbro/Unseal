@@ -71,7 +71,7 @@ npm test
 
 ## 2. Production Web & Mobile Builds
 
-Because `@maplibre/maplibre-react-native`, `expo-location`, `expo-image-picker`, `expo-document-picker`, and `expo-secure-store` include native modules, Android and iOS native directories (`apps/mobile/android/` and `apps/mobile/ios/`, both gitignored) are generated per machine with **Expo Prebuild** (`npx expo prebuild`).
+Because `@maplibre/maplibre-react-native`, `expo-location`, `expo-image-picker`, `expo-document-picker`, and `expo-secure-store` include native modules, Android and iOS native directories (`apps/mobile/android/` and `apps/mobile/ios/`, both gitignored) are generated per machine with **Expo Prebuild** (`npx expo prebuild`). During prebuild, the configured `./plugins/withBundledLicenses.cjs` plugin automatically copies `apps/mobile/LICENSE` (`LICENSE-MPL-2.0.txt`) and `THIRD_PARTY_NOTICES.txt` into the native application assets so standalone `.apk` and `.ipa` binaries always ship complete offline license texts.
 
 ```bash
 # Export static production Web assets into ./dist-web (served by Caddy on the VPS)

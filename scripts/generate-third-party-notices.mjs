@@ -8,6 +8,19 @@ import { fileURLToPath } from 'node:url';
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '..');
 
+// Build-time CLI / bundler packages nested under `expo` dependencies that are not
+// shipped inside the runtime Web bundle or mobile app binaries.
+const BUILD_ONLY_SKIPS = new Set([
+  '@expo/cli',
+  '@expo/metro-config',
+  'metro',
+  'metro-config',
+  'babel-preset-expo',
+  '@react-native/community-cli-plugin',
+  '@react-native-community/cli',
+  'jsc-android',
+]);
+
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
@@ -17,53 +30,85 @@ function packageNameFromLockKey(lockKey) {
   return parts[parts.length - 1] ?? lockKey;
 }
 
-function detectLicenseFromText(text) {
-  if (/The MIT License|Permission is hereby granted, free of charge/i.test(text)) {
-    if (!/The above copyright notice and this permission notice shall be included/i.test(text)) {
-      return 'MIT-0';
+function detectLicensesInText(rawText) {
+  const norm = rawText.replace(/\s+/g, ' ').trim();
+  const found = new Set();
+  if (
+    /Zero-Clause BSD|Permission to use, copy, modify, and\/or distribute.{1,250}?without fee is hereby granted\.\s*THE SOFTWARE IS PROVIDED/i.test(
+      norm,
+    )
+  ) {
+    found.add('0BSD');
+  }
+  if (/The MIT License|Permission is hereby granted, free of charge/i.test(norm)) {
+    if (
+      /The above copyright notice and (?:this|the) permission notice(?:s)? shall be included/i.test(
+        norm,
+      )
+    ) {
+      found.add('MIT');
+    } else {
+      found.add('MIT-0');
     }
-    return 'MIT';
   }
-  if (/Apache License\s+Version 2\.0/i.test(text)) {
-    return 'Apache-2.0';
+  if (/Apache License.{0,60}?Version 2\.0/i.test(norm)) {
+    found.add('Apache-2.0');
   }
-  if (/Mozilla Public License Version 2\.0/i.test(text)) {
-    return 'MPL-2.0';
+  if (/Mozilla Public License.{0,30}?Version 2\.0/i.test(norm)) {
+    found.add('MPL-2.0');
   }
-  if (/ISC License/i.test(text)) {
-    return 'ISC';
+  if (/GNU LESSER GENERAL PUBLIC LICENSE.{0,80}?Version 3/i.test(norm)) {
+    found.add('LGPL-3.0-or-later');
   }
-  if (/BSD 3-Clause|Neither the name of .* nor the names of its contributors/i.test(text)) {
-    return 'BSD-3-Clause';
+  if (/Blue Oak Model License.{0,60}?Version 1\.0\.0/i.test(norm)) {
+    found.add('BlueOak-1.0.0');
   }
-  if (/BSD 2-Clause|Redistributions in binary form must reproduce/i.test(text)) {
-    return 'BSD-2-Clause';
+  if (/This is free and unencumbered software released into the public domain/i.test(norm)) {
+    found.add('Unlicense');
   }
-  return null;
+  if (
+    /ISC License|Permission to use, copy, modify, and\/or distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice/i.test(
+      norm,
+    )
+  ) {
+    found.add('ISC');
+  }
+  const hasBsd3 =
+    /BSD 3-Clause|Neither the name of .{1,160}? nor the names of (?:its|their|other) contributors/i.test(
+      norm,
+    );
+  if (hasBsd3) {
+    found.add('BSD-3-Clause');
+  }
+  if (!hasBsd3 && /BSD 2-Clause|Redistributions in binary form must reproduce/i.test(norm)) {
+    found.add('BSD-2-Clause');
+  }
+  return found;
 }
 
-function findLicenseFile(pkgDir) {
+const CODE_OR_META_EXT_RE = /\.(?:[cm]?[jt]sx?|json|map|wasm|node|sh|cmd|ps1|h|c|cc|cpp|py|rb|java|kt|swift|podspec|gradle)$/i;
+
+function findLicenseAndNoticeFiles(pkgDir) {
   if (!fs.existsSync(pkgDir)) {
-    return null;
+    return { licenseFiles: [], noticeFiles: [] };
   }
-  const candidates = fs
+  const files = fs
     .readdirSync(pkgDir)
-    .filter((f) => /^(?:licen[cs]e|copying|notice)(?:\.(?:txt|md))?$/i.test(f))
+    .filter((f) => !CODE_OR_META_EXT_RE.test(f) && fs.statSync(path.join(pkgDir, f)).isFile())
     .sort((a, b) => a.localeCompare(b));
-  for (const name of candidates) {
-    const full = path.join(pkgDir, name);
-    if (fs.statSync(full).isFile()) {
-      return full;
-    }
-  }
-  return null;
+  const licenseFiles = files
+    .filter((f) => /^(?:licen[cs]es?|copying|unlicense|copyright)(?:[-._].*)?$/i.test(f))
+    .map((f) => path.join(pkgDir, f));
+  const noticeFiles = files
+    .filter((f) => /^notice(?:[-._].*)?$/i.test(f))
+    .map((f) => path.join(pkgDir, f));
+  return { licenseFiles, noticeFiles };
 }
 
-function resolvePackageLicense(lockKey, entry) {
+function readDeclaredPackageLicense(pkgDir, entry) {
   if (typeof entry.license === 'string' && entry.license.trim().length > 0) {
     return entry.license.trim();
   }
-  const pkgDir = path.join(REPO_ROOT, lockKey);
   const pkgJsonPath = path.join(pkgDir, 'package.json');
   if (fs.existsSync(pkgJsonPath)) {
     const pkgJson = readJson(pkgJsonPath);
@@ -86,12 +131,45 @@ function resolvePackageLicense(lockKey, entry) {
       }
     }
   }
-  const licFile = findLicenseFile(pkgDir);
-  if (licFile) {
-    const detected = detectLicenseFromText(fs.readFileSync(licFile, 'utf8'));
-    if (detected) {
-      return detected;
+  return null;
+}
+
+function resolvePackageLicense(lockKey, entry) {
+  const pkgDir = path.join(REPO_ROOT, lockKey);
+  const declared = readDeclaredPackageLicense(pkgDir, entry);
+  const { licenseFiles } = findLicenseAndNoticeFiles(pkgDir);
+
+  const detectedSet = new Set();
+  for (const lf of licenseFiles) {
+    for (const detected of detectLicensesInText(fs.readFileSync(lf, 'utf8'))) {
+      detectedSet.add(detected);
     }
+  }
+
+  if (
+    declared &&
+    licenseFiles.length === 1 &&
+    detectedSet.size === 1 &&
+    !/\b(?:OR|AND)\b/i.test(declared)
+  ) {
+    const [soleDetected] = [...detectedSet];
+    const normDeclared = declared.replace(/^BSD$/, 'BSD-2-Clause');
+    if (
+      soleDetected &&
+      !detectedSet.has(normDeclared) &&
+      !(declared === 'BSD-3-Clause' && soleDetected === 'BSD-2-Clause') &&
+      !(declared === 'ISC' && soleDetected === 'MIT') &&
+      !(declared === 'MIT' && soleDetected === 'ISC')
+    ) {
+      return `${soleDetected} [LICENSE file; package.json declares ${declared}]`;
+    }
+  }
+
+  if (declared) {
+    return declared;
+  }
+  if (detectedSet.size > 0) {
+    return [...detectedSet].join(' OR ');
   }
   return 'UNKNOWN';
 }
@@ -109,14 +187,78 @@ function resolveDirectDepDir(workspaceDir, depName) {
   return null;
 }
 
+function resolveLockKey(pkgs, fromPath, depName) {
+  let parts = fromPath ? fromPath.split('/') : [];
+  while (true) {
+    const candidate = `${parts.length ? `${parts.join('/')}/` : ''}node_modules/${depName}`;
+    if (pkgs[candidate]) {
+      return candidate;
+    }
+    if (parts.length === 0) {
+      return null;
+    }
+    const idx = parts.lastIndexOf('node_modules');
+    parts = idx === -1 ? [] : parts.slice(0, idx);
+  }
+}
+
+function collectRuntimeLockKeys(pkgs, workspaceDir, depNames, skipNames = new Set()) {
+  const visited = new Set();
+  const queue = [];
+  for (const dep of depNames) {
+    if (dep.startsWith('@entsiegelung/') || skipNames.has(dep)) {
+      continue;
+    }
+    const key = resolveLockKey(pkgs, workspaceDir, dep);
+    if (key) {
+      queue.push(key);
+    }
+  }
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (visited.has(current)) {
+      continue;
+    }
+    visited.add(current);
+    const entry = pkgs[current];
+    if (!entry) {
+      continue;
+    }
+    for (const group of ['dependencies', 'optionalDependencies']) {
+      for (const dep of Object.keys(entry[group] ?? {})) {
+        if (dep.startsWith('@entsiegelung/') || skipNames.has(dep)) {
+          continue;
+        }
+        const nextKey = resolveLockKey(pkgs, current, dep);
+        if (nextKey && !visited.has(nextKey)) {
+          queue.push(nextKey);
+        }
+      }
+    }
+  }
+  return visited;
+}
+
 function main() {
   const lock = readJson(path.join(REPO_ROOT, 'package-lock.json'));
   const pkgs = lock.packages ?? {};
 
   const workspaces = [
-    { dir: 'packages/shared', label: 'packages/shared (@entsiegelung/shared, MPL-2.0)' },
-    { dir: 'apps/api', label: 'apps/api (@entsiegelung/api, AGPL-3.0-or-later)' },
-    { dir: 'apps/mobile', label: 'apps/mobile (@entsiegelung/mobile, MPL-2.0)' },
+    {
+      dir: 'packages/shared',
+      label: 'packages/shared (@entsiegelung/shared, MPL-2.0)',
+      skipNames: new Set(),
+    },
+    {
+      dir: 'apps/api',
+      label: 'apps/api (@entsiegelung/api, AGPL-3.0-or-later)',
+      skipNames: new Set(),
+    },
+    {
+      dir: 'apps/mobile',
+      label: 'apps/mobile (@entsiegelung/mobile, MPL-2.0)',
+      skipNames: BUILD_ONLY_SKIPS,
+    },
   ];
 
   const lines = [];
@@ -126,13 +268,14 @@ function main() {
   lines.push('UNSEAL (ENTSIEGELUNGSKARTIERUNG) - THIRD-PARTY SOFTWARE & GEODATA NOTICES');
   lines.push(hr);
   lines.push('');
-  lines.push('This document records the third-party software packages, native mobile SDKs,');
+  lines.push('This document records the third-party software packages, reproduced runtime');
+  lines.push('copyright/license notices (direct and transitive), native mobile SDKs,');
   lines.push('runtime container components, and default geodata sources used by Unseal.');
   lines.push('Regenerate from package-lock.json and node_modules via:');
   lines.push('  npm run licenses:generate');
   lines.push('');
-  lines.push('Project licenses: see LICENSE (AGPL-3.0-or-later), apps/api/LICENSE,');
-  lines.push('apps/mobile/LICENSE (MPL-2.0), packages/shared/LICENSE (MPL-2.0), and LICENSING.md.');
+  lines.push('Project licenses: see LICENSE (AGPL-3.0-or-later), apps/mobile/LICENSE (MPL-2.0),');
+  lines.push('packages/shared/LICENSE (MPL-2.0), and LICENSING.md.');
   lines.push('');
 
   // Section 1: Direct production dependencies per workspace
@@ -141,13 +284,16 @@ function main() {
   lines.push(hr);
   lines.push('');
 
-  const directNoticeTargets = new Map();
+  const allRuntimeLockKeys = new Set();
 
   for (const ws of workspaces) {
     const manifest = readJson(path.join(REPO_ROOT, ws.dir, 'package.json'));
     lines.push(ws.label);
     lines.push(subHr);
     const deps = Object.keys(manifest.dependencies ?? {}).sort((a, b) => a.localeCompare(b));
+    for (const key of collectRuntimeLockKeys(pkgs, ws.dir, deps, ws.skipNames)) {
+      allRuntimeLockKeys.add(key);
+    }
     for (const dep of deps) {
       if (dep.startsWith('@entsiegelung/')) {
         lines.push(`  - ${dep} (workspace package; MPL-2.0)`);
@@ -162,45 +308,100 @@ function main() {
       const relKey = path.relative(REPO_ROOT, depDir).replace(/\\/g, '/');
       const lic = resolvePackageLicense(relKey, depPkg);
       lines.push(`  - ${dep}@${depPkg.version} : ${lic}`);
-      if (!directNoticeTargets.has(`${dep}@${depPkg.version}`)) {
-        directNoticeTargets.set(`${dep}@${depPkg.version}`, {
-          name: dep,
-          version: depPkg.version,
-          license: lic,
-          dir: depDir,
-          homepage: depPkg.homepage ?? depPkg.repository?.url ?? '',
-        });
+    }
+    lines.push('');
+  }
+
+  // Section 2: Reproduced copyright & license texts for ALL runtime packages
+  // (direct + transitive across shared, api, and mobile bundled runtime libs).
+  // Byte-identical license texts are grouped so every package copyright notice
+  // and NOTICE file is preserved verbatim without duplicating identical text blocks.
+  const runtimePackagesById = new Map();
+  for (const lockKey of allRuntimeLockKeys) {
+    const entry = pkgs[lockKey];
+    if (!entry || entry.link) {
+      continue;
+    }
+    const name = packageNameFromLockKey(lockKey);
+    const version = entry.version ?? 'unknown';
+    const id = `${name}@${version}`;
+    if (runtimePackagesById.has(id)) {
+      continue;
+    }
+    const dir = path.join(REPO_ROOT, lockKey);
+    const license = resolvePackageLicense(lockKey, entry);
+    runtimePackagesById.set(id, { id, name, version, license, dir });
+  }
+
+  const groupedByNoticeText = new Map();
+  const packagesWithoutStandaloneLicenseFile = [];
+
+  for (const info of [...runtimePackagesById.values()].sort((a, b) => a.id.localeCompare(b.id))) {
+    const { licenseFiles, noticeFiles } = findLicenseAndNoticeFiles(info.dir);
+    const parts = [];
+    for (const lf of licenseFiles) {
+      const content = fs.readFileSync(lf, 'utf8').replace(/\r\n/g, '\n').trim();
+      if (!content) {
+        continue;
+      }
+      if (licenseFiles.length > 1) {
+        parts.push(`[${path.basename(lf)}]\n${content}`);
+      } else {
+        parts.push(content);
       }
     }
-    lines.push('');
+    for (const nf of noticeFiles) {
+      const content = fs.readFileSync(nf, 'utf8').replace(/\r\n/g, '\n').trim();
+      if (!content) {
+        continue;
+      }
+      const header = noticeFiles.length > 1 ? `[NOTICE: ${path.basename(nf)}]` : '[NOTICE]';
+      parts.push(`${header}\n${content}`);
+    }
+    if (parts.length === 0) {
+      packagesWithoutStandaloneLicenseFile.push(info);
+      continue;
+    }
+    const combinedText = parts.join('\n\n');
+    if (!groupedByNoticeText.has(combinedText)) {
+      groupedByNoticeText.set(combinedText, []);
+    }
+    groupedByNoticeText.get(combinedText).push(`${info.id} (${info.license})`);
   }
 
-  // Section 2: Reproduced license & copyright texts for direct runtime dependencies
+  const sortedNoticeGroups = [...groupedByNoticeText.entries()].sort((a, b) =>
+    a[1][0].localeCompare(b[1][0]),
+  );
+
   lines.push(hr);
-  lines.push('2. REPRODUCED COPYRIGHT & LICENSE NOTICES FOR DIRECT RUNTIME PACKAGES');
+  lines.push('2. REPRODUCED COPYRIGHT & LICENSE NOTICES FOR RUNTIME PACKAGES (DIRECT & TRANSITIVE)');
   lines.push(hr);
   lines.push('');
+  lines.push(
+    `Covering ${runtimePackagesById.size} unique runtime packages across packages/shared, apps/api, and apps/mobile`,
+  );
+  lines.push(
+    `(${sortedNoticeGroups.length} distinct verbatim license/NOTICE texts; ${packagesWithoutStandaloneLicenseFile.length} packages declare a license in package.json without a standalone LICENSE file in their npm tarball).`,
+  );
+  lines.push('');
 
-  for (const [, info] of [...directNoticeTargets.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-    lines.push(`--- ${info.name}@${info.version} (${info.license}) ---`);
-    if (info.homepage) {
-      lines.push(`Source: ${info.homepage}`);
-    }
-    const licFile = findLicenseFile(info.dir);
-    if (licFile) {
-      const content = fs.readFileSync(licFile, 'utf8').trim();
-      lines.push('');
-      lines.push(content);
-    } else {
-      lines.push('');
-      lines.push(
-        `License declared in package.json: ${info.license} (upstream package does not bundle a standalone LICENSE file in its npm tarball).`,
-      );
+  for (const [text, pkgLabels] of sortedNoticeGroups) {
+    lines.push(`--- ${pkgLabels.join(', ')} ---`);
+    lines.push('');
+    lines.push(text);
+    lines.push('');
+  }
+
+  if (packagesWithoutStandaloneLicenseFile.length > 0) {
+    lines.push('--- Runtime packages without a standalone LICENSE file in their npm tarball ---');
+    lines.push('');
+    for (const info of packagesWithoutStandaloneLicenseFile) {
+      lines.push(`  - ${info.id} : ${info.license} (declared in package.json)`);
     }
     lines.push('');
   }
 
-  // Section 2b: Bundled native C libraries inside @img/sharp-libvips-*
+  // Section 3: Bundled native C libraries inside @img/sharp-libvips-*
   const sharpLibvipsReadme = path.join(
     REPO_ROOT,
     'node_modules/@img/sharp-libvips-linux-x64/README.md',
@@ -258,16 +459,32 @@ function main() {
   lines.push('  - AndroidX & OkHttp libraries : Apache-2.0');
   lines.push('');
   lines.push('--- MapLibre Native (BSD-2-Clause) ---');
-  lines.push('Copyright (c) MapLibre contributors. All rights reserved.');
-  lines.push('Redistribution and use in source and binary forms, with or without modification,');
-  lines.push('are permitted provided that the following conditions are met:');
+  lines.push('BSD 2-Clause License');
+  lines.push('');
+  lines.push('Copyright (c) 2021 MapLibre contributors');
+  lines.push('Copyright (c) 2018-2021 MapTiler.com');
+  lines.push('Copyright (c) 2014-2020 Mapbox');
+  lines.push('');
+  lines.push('Redistribution and use in source and binary forms, with or without');
+  lines.push('modification, are permitted provided that the following conditions are met:');
+  lines.push('');
   lines.push('1. Redistributions of source code must retain the above copyright notice, this');
   lines.push('   list of conditions and the following disclaimer.');
+  lines.push('');
   lines.push('2. Redistributions in binary form must reproduce the above copyright notice,');
   lines.push('   this list of conditions and the following disclaimer in the documentation');
   lines.push('   and/or other materials provided with the distribution.');
-  lines.push('THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND');
-  lines.push('ANY EXPRESS OR IMPLIED WARRANTIES ARE DISCLAIMED.');
+  lines.push('');
+  lines.push('THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"');
+  lines.push('AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE');
+  lines.push('IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE');
+  lines.push('DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE');
+  lines.push('FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL');
+  lines.push('DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR');
+  lines.push('SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER');
+  lines.push('CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,');
+  lines.push('OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE');
+  lines.push('OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.');
   lines.push('');
 
   // Section 5: Docker & Runtime Stack Components
@@ -287,20 +504,24 @@ function main() {
   lines.push('6. DEFAULT GEODATA & EXTERNAL MAP SOURCES');
   lines.push(hr);
   lines.push('');
-  lines.push('  - OpenStreetMap Map Data & Nominatim Geocoding : ODbL (https://www.openstreetmap.org/copyright)');
+  lines.push('  - OpenStreetMap Map Data & Nominatim Geocoding : ODbL-1.0 (https://www.openstreetmap.org/copyright)');
   lines.push('  - OpenMapTiles Vector Tile Schema & Styles : CC BY 4.0 / BSD-3-Clause (https://openmaptiles.org/)');
+  lines.push('  - Natural Earth Low-Zoom Shaded Relief (via OpenFreeMap styles) : Public Domain (https://www.naturalearthdata.com/)');
+  lines.push('  - Noto Sans Map Label Font Glyphs (via OpenFreeMap styles) : SIL OFL 1.1 (https://openfontlicense.org/)');
   lines.push('  - OpenFreeMap Hosting & Tooling : MIT (https://openfreemap.org/)');
   lines.push('  - German Municipality Boundaries (BKG VG250) : dl-de/by-2-0');
-  lines.push('      Attribution: © BKG (https://www.bkg.bund.de), dl-de/by-2-0 (https://www.govdata.de/dl-de/by-2-0), Daten verändert');
+  lines.push('      Attribution: © GeoBasis-DE / BKG (<year of data retrieval>) dl-de/by-2-0 (https://www.govdata.de/dl-de/by-2-0),');
+  lines.push('      Datenquellen: https://sg.geodatenzentrum.de/web_public/gdz/datenquellen/datenquellen_vg_nuts.pdf (Daten verändert)');
   lines.push('  - Built-in German State Aerial Orthophotos (DOP20 / DOP10, Daten verändert at state-border tile composites):');
-  lines.push('      * RP  (Rheinland-Pfalz)        : dl-de/by-2-0   | © GeoBasis-DE / LVermGeoRP');
+  lines.push('      * RP  (Rheinland-Pfalz)        : dl-de/by-2-0   | © GeoBasis-DE / LVermGeoRP, http://www.lvermgeo.rlp.de');
   lines.push('      * HE  (Hessen)                 : dl-de/zero-2-0 | © Hessische Verwaltung für Bodenmanagement und Geoinformation (HVBG)');
   lines.push('      * NW  (Nordrhein-Westfalen)    : dl-de/zero-2-0 | © Land NRW (Geobasis NRW)');
   lines.push('      * BW  (Baden-Württemberg)      : dl-de/by-2-0   | © LGL, www.lgl-bw.de');
   lines.push('      * BY  (Bayern)                 : CC BY 4.0      | Datenquelle: Bayerische Vermessungsverwaltung – www.geodaten.bayern.de');
   lines.push('      * SL  (Saarland)               : dl-de/by-2-0   | © GeoBasis-DE / LVGL-SL');
-  lines.push('      * BE/BB (Berlin / Brandenburg) : dl-de/by-2-0   | © GeoBasis-DE / LGB (Brandenburg) & Geoportal Berlin');
-  lines.push('      * HH  (Hamburg)                : dl-de/by-2-0   | © Freie und Hansestadt Hamburg, Landesbetrieb Geoinformation und Vermessung (LGV)');
+  lines.push('      * BE/BB (Berlin / Brandenburg) : dl-de/by-2-0   | © GeoBasis-DE / LGB, dl-de/by-2-0; © Geoportal Berlin, dl-de/by-2-0');
+  lines.push('      * HH  (Hamburg, TIME=2026)     : dl-de/by-2-0   | © Freie und Hansestadt Hamburg, Landesbetrieb Geoinformation und Vermessung (LGV)');
+  lines.push('                                       (pinned to LGV OpenData aerial vintage TIME=2026; excludes 2023 Maxar satellite vintage)');
   lines.push('      * NI  (Niedersachsen)          : CC BY 4.0      | © LGLN (Niedersachsen)');
   lines.push('      * HB  (Bremen / Bremerhaven)   : CC BY 4.0      | © Landesamt GeoInformation Bremen');
   lines.push('      * SH  (Schleswig-Holstein)     : CC BY 4.0      | © GeoBasis-DE / LVermGeo SH');
@@ -312,6 +533,11 @@ function main() {
   lines.push('        - dl-de/by-2-0   : https://www.govdata.de/dl-de/by-2-0');
   lines.push('        - dl-de/zero-2-0 : https://www.govdata.de/dl-de/zero-2-0');
   lines.push('        - CC BY 4.0      : https://creativecommons.org/licenses/by/4.0/');
+  lines.push('  - User-Contributed & Exported Platform Content:');
+  lines.push('      * Compiled Polygon Dataset Export (/api/v1/polygons/export.geojson) : ODbL-1.0 (https://opendatacommons.org/licenses/odbl/1-0/)');
+  lines.push('        with upstream OpenStreetMap (ODbL), BKG VG250 (dl-de/by-2-0), and German State DOP20/DOP10 attributions.');
+  lines.push('      * Contributor Rights Waiver on Own Polygon Input & Notes            : CC0-1.0 (https://creativecommons.org/publicdomain/zero/1.0/)');
+  lines.push('      * Uploaded Ground-Truth Photos & Discussion Comments                : CC BY 4.0 (attributed to contributor pseudonym)');
   lines.push('');
 
   // Section 7: Complete inventory of all npm lockfile packages
@@ -356,15 +582,10 @@ function main() {
   lines.push('');
 
   const outputText = `${lines.join('\n')}`;
-  const targets = [
-    path.join(REPO_ROOT, 'THIRD_PARTY_NOTICES.txt'),
-    path.join(REPO_ROOT, 'apps/mobile/public/THIRD_PARTY_NOTICES.txt'),
-  ];
-  for (const targetPath of targets) {
-    fs.writeFileSync(targetPath, outputText, 'utf8');
-  }
+  const targetPath = path.join(REPO_ROOT, 'THIRD_PARTY_NOTICES.txt');
+  fs.writeFileSync(targetPath, outputText, 'utf8');
   console.log(
-    `Generated ${targets.map((p) => path.relative(REPO_ROOT, p)).join(', ')} (${uniquePackages.size} unique npm packages, ${licenseSummary.size} distinct license expressions).`,
+    `Generated ${path.relative(REPO_ROOT, targetPath)} (${runtimePackagesById.size} runtime packages / ${sortedNoticeGroups.length} verbatim license texts; ${uniquePackages.size} total npm packages).`,
   );
 }
 

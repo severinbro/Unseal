@@ -12,6 +12,7 @@ export type Locale = 'de' | 'en';
 
 export const DEFAULT_LOCALE: Locale = 'de';
 export const LOCALE_STORAGE_KEY = 'entsiegelung.locale';
+const ATTRIBUTION_YEAR = new Date().getUTCFullYear();
 
 export const BUILTIN_SERVER_DISCLAIMER_EN =
   'Community unsealing suggestions - non-binding public input, regardless of property ownership.';
@@ -77,6 +78,8 @@ export interface TranslationDictionary {
     readonly requestFailedFallback: string;
     readonly retryButton: string;
     readonly retryA11y: string;
+    readonly offlineAboutButton: string;
+    readonly offlineAboutA11y: string;
     readonly legendBacked: string;
     readonly legendNew: string;
     readonly legendContested: string;
@@ -622,15 +625,15 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       requestFailedFallback: 'Anfrage konnte nicht abgeschlossen werden.',
       retryButton: 'Erneut verbinden',
       retryA11y: 'Kartenkonfiguration erneut laden',
+      offlineAboutButton: 'Über Unseal & OSS-Lizenzen (MPL-2.0)',
+      offlineAboutA11y: 'Informationen über Unseal, Quellcode und Open-Source-Lizenzen öffnen',
       legendBacked: '+ Unterstützt',
       legendNew: '0 Neu',
       legendContested: '− Umstritten',
       legendInProgress: '⟳ Wird entsiegelt',
       legendFinished: '✓ Entsiegelt',
-      nativeAttributionOsm:
-        '© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap · VG250: © BKG 2026 (dl-de/by-2-0, verändert)',
-      nativeAttributionOrtho:
-        'DOP20/DOP10: © Länder (dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; verändert) · VG250: © BKG 2026',
+      nativeAttributionOsm: `© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap · VG250: © GeoBasis-DE / BKG (${ATTRIBUTION_YEAR}) dl-de/by-2-0, Datenquellen (verändert)`,
+      nativeAttributionOrtho: `DOP20/DOP10: © Länder (${ATTRIBUTION_YEAR}; dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; verändert) · VG250: © GeoBasis-DE / BKG (${ATTRIBUTION_YEAR})`,
     },
     controls: {
       signInShort: 'Anmelden',
@@ -638,8 +641,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       subtitleOrthophoto: 'Luftbild (DOP20)',
       subtitleOsm: 'OpenStreetMap-Straßenkarte',
       subtitleRegistry: 'Offenes Entsiegelungsregister',
-      osmAttributionShort:
-        '© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap · VG250 © BKG 2026',
+      osmAttributionShort: `© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap · VG250 © GeoBasis-DE / BKG (${ATTRIBUTION_YEAR})`,
       imageryPrefix: 'Bilddaten:',
       switchLocaleA11y: 'Sprache auf Englisch (EN) umstellen',
       switchToDarkModeA11y: 'Dunkelmodus mit dunkler Hintergrundkarte aktivieren',
@@ -688,7 +690,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       exportFull: 'GeoJSON-Export',
       exportErrorFallback: 'GeoJSON-Export konnte nicht geöffnet werden.',
       importA11y:
-        'Polygone aus GeoJSON oder GeoPackage importieren (Admin; Veröffentlichung erfolgt unter CC0 1.0)',
+        'Polygone aus GeoJSON oder GeoPackage importieren (Admin; Veröffentlichung im ODbL-1.0-Export – nur kompatible offene Lizenzen)',
       importCompact: 'Import',
       importFull: 'Import (.geojson/.gpkg)',
       importingBusy: 'Import…',
@@ -783,7 +785,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       notePlaceholder:
         'Ungenutzte Parkecke, Hitzeinsel oder Versickerungspotenzial (keine Klarnamen oder Kontaktdaten)',
       notePublicHint:
-        'Wird öffentlich als gemeinfreie Daten (CC0) veröffentlicht – bitte keine personenbezogenen Daten eintragen.',
+        'Wird öffentlich veröffentlicht (eigener Rechtsverzicht CC0 1.0 · Gesamtexport ODbL 1.0) – bitte keine personenbezogenen Daten eintragen.',
       discardConfirmTitle:
         'Noch nicht eingereichten Flächenentwurf verwerfen?',
       keepEditingA11y: 'Flächenentwurf weiter bearbeiten',
@@ -1029,7 +1031,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       privacyConsentPrefix: 'Ich habe die ',
       privacyPolicyLinkText: 'Datenschutzerklärung',
       termsConsentConnector: ' gelesen und akzeptiere die ',
-      termsLinkText: 'Nutzungsbedingungen (inkl. CC0 / CC BY 4.0)',
+      termsLinkText: 'Nutzungsbedingungen (inkl. CC0 / ODbL 1.0 / CC BY 4.0)',
       verifyPendingBody: (email) =>
         `Wir haben einen Bestätigungslink an ${email} gesendet. Bitte klicke auf den Link in deiner E-Mail und melde dich anschließend hier an.`,
       resendVerificationButton: 'Bestätigungslink erneut senden',
@@ -1064,7 +1066,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       resettingPassword: 'Sendet Link…',
       resetPassword: 'Link zum Zurücksetzen senden',
       accountSignedInHint: (pseudonym) =>
-        `Angemeldet als @${pseudonym}. Auf der Karte erscheint ausschließlich dein Pseudonym; der öffentliche CC0-GeoJSON-Export enthält kein Pseudonym.`,
+        `Angemeldet als @${pseudonym}. Auf der Karte erscheint ausschließlich dein Pseudonym; der öffentliche ODbL-1.0-GeoJSON-Export enthält kein Pseudonym.`,
       adminRoleBadge: 'Admin',
       accountEmailLabel: 'Bestätigte E-Mail:',
       exportDataButton: 'Meine Daten herunterladen',
@@ -1165,12 +1167,12 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         '⟳ Wird entsiegelt / ✓ Entsiegelt: Im Rückbau (blau) bzw. umgesetzt (türkis)',
       footerTitle: 'Datenschutz, Rechtliches & App',
       privacyAndLicenseBody:
-        'Öffentlich erscheint nur dein Pseudonym; E-Mails dienen nur Bestätigung & Recovery (jederzeit nach Art. 17 DSGVO löschbar). Beiträge: CC0 1.0 (Geometrien/Notizen) & CC BY 4.0 (Fotos/Kommentare). Software: AGPL-3.0 (API) & MPL-2.0 (App).',
+        'Öffentlich erscheint nur dein Pseudonym; E-Mails dienen nur Bestätigung & Recovery (jederzeit nach Art. 17 DSGVO löschbar). Beiträge: CC0 1.0 (eigene Geometrien/Notizen), ODbL 1.0 (GeoJSON-Gesamtexport) & CC BY 4.0 (Fotos/Kommentare). Software: AGPL-3.0-or-later (API) & MPL-2.0 (Client-App, Quellcode frei verfügbar).',
       attributionOsmShort:
         '© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap (MIT)',
       attributionDop20Short:
-        'DOP20/DOP10 © Länder (dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; verändert)',
-      attributionVg250Short: 'VG250 © BKG 2026 (dl-de/by-2-0, Daten verändert)',
+        `DOP20/DOP10 © Länder (${ATTRIBUTION_YEAR}; dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; verändert)`,
+      attributionVg250Short: `VG250: © GeoBasis-DE / BKG (${ATTRIBUTION_YEAR}) dl-de/by-2-0, Datenquellen (Daten verändert)`,
       impressumLinkLabel: 'Impressum',
       privacyLinkLabel: 'Datenschutz',
       termsLinkLabel: 'Nutzungsbedingungen',
@@ -1312,15 +1314,15 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       requestFailedFallback: 'Request could not be completed.',
       retryButton: 'Retry Connection',
       retryA11y: 'Retry loading map configuration',
+      offlineAboutButton: 'About & OSS Licenses (MPL-2.0)',
+      offlineAboutA11y: 'Open information about Unseal, source code, and open-source licenses',
       legendBacked: '+ Backed',
       legendNew: '0 New',
       legendContested: '− Contested',
       legendInProgress: '⟳ In progress',
       legendFinished: '✓ Finished',
-      nativeAttributionOsm:
-        '© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap · VG250: © BKG 2026 (dl-de/by-2-0, modified)',
-      nativeAttributionOrtho:
-        'DOP20/DOP10: © State Surveys (dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; modified) · VG250: © BKG 2026',
+      nativeAttributionOsm: `© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap · VG250: © GeoBasis-DE / BKG (${ATTRIBUTION_YEAR}) dl-de/by-2-0, Datenquellen (modified)`,
+      nativeAttributionOrtho: `DOP20/DOP10: © State Surveys (${ATTRIBUTION_YEAR}; dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; modified) · VG250: © GeoBasis-DE / BKG (${ATTRIBUTION_YEAR})`,
     },
     controls: {
       signInShort: 'Sign in',
@@ -1328,8 +1330,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       subtitleOrthophoto: 'Aerial Orthophoto (DOP20)',
       subtitleOsm: 'OpenStreetMap Street Layer',
       subtitleRegistry: 'Open civic unsealing registry',
-      osmAttributionShort:
-        '© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap · VG250 © BKG 2026',
+      osmAttributionShort: `© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap · VG250 © GeoBasis-DE / BKG (${ATTRIBUTION_YEAR})`,
       imageryPrefix: 'Imagery:',
       switchLocaleA11y: 'Switch language to German (DE)',
       switchToDarkModeA11y: 'Switch to dark mode with dark background map',
@@ -1377,7 +1378,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       exportFull: 'Export GeoJSON',
       exportErrorFallback: 'Unable to open GeoJSON export URL.',
       importA11y:
-        'Import polygons from GeoJSON or GeoPackage (Admin; published under CC0 1.0)',
+        'Import polygons from GeoJSON or GeoPackage (Admin; published in ODbL-1.0 export — compatible open licenses only)',
       importCompact: 'Import',
       importFull: 'Import (.geojson/.gpkg)',
       importingBusy: 'Importing…',
@@ -1468,7 +1469,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       notePlaceholder:
         'Unused paved corner, heat island, or drainage potential (no personal names or contact data)',
       notePublicHint:
-        'Published openly as public-domain data (CC0) – please do not enter any personal data.',
+        'Published openly (CC0 1.0 waiver on own input · ODbL 1.0 dataset export) – please do not enter any personal data.',
       discardConfirmTitle: 'Discard your unsubmitted polygon draft?',
       keepEditingA11y: 'Keep editing polygon draft',
       keepEditing: 'Keep Editing',
@@ -1696,7 +1697,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       privacyConsentPrefix: 'I have read the ',
       privacyPolicyLinkText: 'Privacy Policy',
       termsConsentConnector: ' and accept the ',
-      termsLinkText: 'Terms of Use (incl. CC0 / CC BY 4.0)',
+      termsLinkText: 'Terms of Use (incl. CC0 / ODbL 1.0 / CC BY 4.0)',
       verifyPendingBody: (email) =>
         `We sent a confirmation link to ${email}. Click the link in your email, then return here to sign in.`,
       resendVerificationButton: 'Resend Confirmation Link',
@@ -1731,7 +1732,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       resettingPassword: 'Sending…',
       resetPassword: 'Send Recovery Link',
       accountSignedInHint: (pseudonym) =>
-        `Signed in as @${pseudonym}. Only your pseudonym appears publicly on the map; the public CC0 GeoJSON export omits pseudonyms.`,
+        `Signed in as @${pseudonym}. Only your pseudonym appears publicly on the map; the public ODbL 1.0 GeoJSON export omits pseudonyms.`,
       adminRoleBadge: 'Administrator',
       accountEmailLabel: 'Verified email:',
       exportDataButton: 'Download my data',
@@ -1830,12 +1831,12 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         '⟳ In progress / ✓ Finished: Active depaving (blue) or completed (mint)',
       footerTitle: 'Privacy, Legal & App',
       privacyAndLicenseBody:
-        'Only your pseudonym is public; emails are used strictly for confirmation & recovery (erasable anytime under GDPR Art. 17). Contributions: CC0 1.0 (geometries/notes) & CC BY 4.0 (photos/comments). Code: AGPL-3.0 (API) & MPL-2.0 (App).',
+        'Only your pseudonym is public; emails are used strictly for confirmation & recovery (erasable anytime under GDPR Art. 17). Contributions: CC0 1.0 (own geometries/notes), ODbL 1.0 (compiled GeoJSON export) & CC BY 4.0 (photos/comments). Software: AGPL-3.0-or-later (API) & MPL-2.0 (Client App, Source Code Form freely available).',
       attributionOsmShort:
         '© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap (MIT)',
       attributionDop20Short:
-        'DOP20/DOP10 © State Surveys (dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; modified)',
-      attributionVg250Short: 'VG250 © BKG 2026 (dl-de/by-2-0, modified)',
+        `DOP20/DOP10 © State Surveys (${ATTRIBUTION_YEAR}; dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; modified)`,
+      attributionVg250Short: `VG250: © GeoBasis-DE / BKG (${ATTRIBUTION_YEAR}) dl-de/by-2-0, Datenquellen (modified)`,
       impressumLinkLabel: 'Impressum',
       privacyLinkLabel: 'Privacy Policy',
       termsLinkLabel: 'Terms of Use',
@@ -1969,6 +1970,63 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
 
 export function getTranslations(locale: Locale): TranslationDictionary {
   return TRANSLATIONS[locale];
+}
+
+export function formatVg250ShortAttribution(
+  locale: Locale,
+  vg250DataYear?: number | null | undefined,
+): string {
+  const year = vg250DataYear ?? ATTRIBUTION_YEAR;
+  return locale === 'de'
+    ? `VG250: © GeoBasis-DE / BKG (${year}) dl-de/by-2-0, Datenquellen (Daten verändert)`
+    : `VG250: © GeoBasis-DE / BKG (${year}) dl-de/by-2-0, Datenquellen (modified)`;
+}
+
+export function buildNativeAttributionText(options: {
+  locale: Locale;
+  basemapMode: 'osm' | 'orthophoto';
+  osmStyleUrl?: string | undefined;
+  orthophotoAttribution?: string | null | undefined;
+  vg250AttributionEnabled?: boolean | undefined;
+  vg250DataYear?: number | null | undefined;
+}): string {
+  const dict = getTranslations(options.locale);
+  const parts: string[] = [];
+
+  if (options.basemapMode === 'orthophoto') {
+    const orthoAttr = options.orthophotoAttribution?.trim();
+    parts.push(
+      orthoAttr && orthoAttr.length > 0
+        ? orthoAttr
+        : dict.about.attributionDop20Short,
+    );
+  }
+
+  let styleHost: string | null = null;
+  if (options.osmStyleUrl) {
+    try {
+      styleHost = new URL(options.osmStyleUrl).host;
+    } catch {
+      styleHost = null;
+    }
+  }
+  const usesOpenFreeMap =
+    options.osmStyleUrl === undefined || styleHost === 'tiles.openfreemap.org';
+  parts.push(
+    usesOpenFreeMap
+      ? dict.about.attributionOsmShort
+      : styleHost
+        ? `Basemap: ${styleHost}`
+        : dict.about.attributionOsmShort,
+  );
+
+  if (options.vg250AttributionEnabled !== false) {
+    parts.push(
+      formatVg250ShortAttribution(options.locale, options.vg250DataYear),
+    );
+  }
+
+  return parts.join(' · ');
 }
 
 export function localizeDisclaimerText(
