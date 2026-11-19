@@ -145,6 +145,16 @@ describe('@entsiegelung/shared bootstrap, licensing, and compiled ESM contract',
       thirdPartyNotices,
       /@pkgjs\/parseargs@.*Apache-2\.0 \[LICENSE file; package\.json declares MIT\]/,
     );
+    assert.match(
+      thirdPartyNotices,
+      /@maplibre\/maplibre-gl-style-spec@.*BSD-3-Clause \[LICENSE file; package\.json declares ISC\]/,
+    );
+    assert.equal(
+      thirdPartyNotices.includes(
+        '@img/sharp-darwin-arm64@0.35.5 : Apache-2.0 (declared in package.json)',
+      ),
+      false,
+    );
     assert.match(thirdPartyNotices, /datenquellen_vg_nuts\.pdf/);
   });
 

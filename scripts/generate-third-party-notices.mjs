@@ -74,7 +74,7 @@ function detectLicensesInText(rawText) {
     found.add('ISC');
   }
   const hasBsd3 =
-    /BSD 3-Clause|Neither the name of .{1,160}? nor the names of (?:its|their|other) contributors/i.test(
+    /BSD 3-Clause|endorse or promote products derived from this software without specific prior written permission/i.test(
       norm,
     );
   if (hasBsd3) {
@@ -140,28 +140,37 @@ function resolvePackageLicense(lockKey, entry) {
   const { licenseFiles } = findLicenseAndNoticeFiles(pkgDir);
 
   const detectedSet = new Set();
+  let primaryDetectedSet = new Set();
   for (const lf of licenseFiles) {
-    for (const detected of detectLicensesInText(fs.readFileSync(lf, 'utf8'))) {
+    const rawText = fs.readFileSync(lf, 'utf8');
+    for (const detected of detectLicensesInText(rawText)) {
       detectedSet.add(detected);
+    }
+    if (licenseFiles.length === 1) {
+      const primaryBlock = rawText.split(/\n\s*[-=]{10,}\s*\n/)[0] ?? rawText;
+      primaryDetectedSet = detectLicensesInText(primaryBlock);
     }
   }
 
   if (
     declared &&
     licenseFiles.length === 1 &&
-    detectedSet.size === 1 &&
     !/\b(?:OR|AND)\b/i.test(declared)
   ) {
-    const [soleDetected] = [...detectedSet];
     const normDeclared = declared.replace(/^BSD$/, 'BSD-2-Clause');
-    if (
-      soleDetected &&
-      !detectedSet.has(normDeclared) &&
-      !(declared === 'BSD-3-Clause' && soleDetected === 'BSD-2-Clause') &&
-      !(declared === 'ISC' && soleDetected === 'MIT') &&
-      !(declared === 'MIT' && soleDetected === 'ISC')
-    ) {
-      return `${soleDetected} [LICENSE file; package.json declares ${declared}]`;
+    if (!detectedSet.has(normDeclared)) {
+      const candidateSet =
+        detectedSet.size === 1 ? detectedSet : primaryDetectedSet;
+      if (candidateSet.size === 1) {
+        const [soleDetected] = [...candidateSet];
+        if (
+          soleDetected &&
+          !(declared === 'ISC' && soleDetected === 'MIT') &&
+          !(declared === 'MIT' && soleDetected === 'ISC')
+        ) {
+          return `${soleDetected} [LICENSE file; package.json declares ${declared}]`;
+        }
+      }
     }
   }
 
@@ -334,9 +343,14 @@ function main() {
   }
 
   const groupedByNoticeText = new Map();
-  const packagesWithoutStandaloneLicenseFile = [];
+  const packagesWithoutRootLicenseFile = [];
+  const optionalPlatformPackagesNotInstalled = [];
 
   for (const info of [...runtimePackagesById.values()].sort((a, b) => a.id.localeCompare(b.id))) {
+    if (!fs.existsSync(info.dir)) {
+      optionalPlatformPackagesNotInstalled.push(info);
+      continue;
+    }
     const { licenseFiles, noticeFiles } = findLicenseAndNoticeFiles(info.dir);
     const parts = [];
     for (const lf of licenseFiles) {
@@ -359,7 +373,7 @@ function main() {
       parts.push(`${header}\n${content}`);
     }
     if (parts.length === 0) {
-      packagesWithoutStandaloneLicenseFile.push(info);
+      packagesWithoutRootLicenseFile.push(info);
       continue;
     }
     const combinedText = parts.join('\n\n');
@@ -381,7 +395,7 @@ function main() {
     `Covering ${runtimePackagesById.size} unique runtime packages across packages/shared, apps/api, and apps/mobile`,
   );
   lines.push(
-    `(${sortedNoticeGroups.length} distinct verbatim license/NOTICE texts; ${packagesWithoutStandaloneLicenseFile.length} packages declare a license in package.json without a standalone LICENSE file in their npm tarball).`,
+    `(${sortedNoticeGroups.length} distinct verbatim license/NOTICE texts; ${packagesWithoutRootLicenseFile.length} installed packages declare a license in package.json without a root LICENSE file; ${optionalPlatformPackagesNotInstalled.length} platform-specific optional packages for other OS/CPU targets are recorded from package-lock.json).`,
   );
   lines.push('');
 
@@ -392,11 +406,20 @@ function main() {
     lines.push('');
   }
 
-  if (packagesWithoutStandaloneLicenseFile.length > 0) {
-    lines.push('--- Runtime packages without a standalone LICENSE file in their npm tarball ---');
+  if (packagesWithoutRootLicenseFile.length > 0) {
+    lines.push('--- Installed runtime packages without a root LICENSE file in their npm tarball ---');
     lines.push('');
-    for (const info of packagesWithoutStandaloneLicenseFile) {
+    for (const info of packagesWithoutRootLicenseFile) {
       lines.push(`  - ${info.id} : ${info.license} (declared in package.json)`);
+    }
+    lines.push('');
+  }
+
+  if (optionalPlatformPackagesNotInstalled.length > 0) {
+    lines.push('--- Platform-specific optional runtime packages for other OS/CPU targets (from package-lock.json) ---');
+    lines.push('');
+    for (const info of optionalPlatformPackagesNotInstalled) {
+      lines.push(`  - ${info.id} : ${info.license} (declared in package-lock.json)`);
     }
     lines.push('');
   }
@@ -505,7 +528,7 @@ function main() {
   lines.push(hr);
   lines.push('');
   lines.push('  - OpenStreetMap Map Data & Nominatim Geocoding : ODbL-1.0 (https://www.openstreetmap.org/copyright)');
-  lines.push('  - OpenMapTiles Vector Tile Schema & Styles : CC BY 4.0 / BSD-3-Clause (https://openmaptiles.org/)');
+  lines.push('  - OpenMapTiles Vector Tile Schema & Styles (incl. OSM Liberty / CARTO Dark Matter lineage) : CC BY 4.0 / BSD-3-Clause / MIT (https://openmaptiles.org/, https://carto.com/attributions)');
   lines.push('  - Natural Earth Low-Zoom Shaded Relief (via OpenFreeMap styles) : Public Domain (https://www.naturalearthdata.com/)');
   lines.push('  - Noto Sans Map Label Font Glyphs (via OpenFreeMap styles) : SIL OFL 1.1 (https://openfontlicense.org/)');
   lines.push('  - OpenFreeMap Hosting & Tooling : MIT (https://openfreemap.org/)');

@@ -57,7 +57,7 @@ apps/mobile (@entsiegelung/mobile, MPL-2.0)
 ================================================================================
 
 Covering 603 unique runtime packages across packages/shared, apps/api, and apps/mobile
-(264 distinct verbatim license/NOTICE texts; 83 packages declare a license in package.json without a standalone LICENSE file in their npm tarball).
+(264 distinct verbatim license/NOTICE texts; 45 installed packages declare a license in package.json without a root LICENSE file; 38 platform-specific optional packages for other OS/CPU targets are recorded from package-lock.json).
 
 --- @babel/code-frame@7.10.4 (MIT), @babel/code-frame@7.29.7 (MIT), @babel/compat-data@7.29.7 (MIT), @babel/core@7.29.13 (MIT), @babel/generator@7.29.14 (MIT), @babel/helper-annotate-as-pure@7.29.7 (MIT), @babel/helper-compilation-targets@7.29.13 (MIT), @babel/helper-create-class-features-plugin@7.29.13 (MIT), @babel/helper-globals@7.29.7 (MIT), @babel/helper-member-expression-to-functions@7.29.14 (MIT), @babel/helper-module-imports@7.29.7 (MIT), @babel/helper-module-transforms@7.29.14 (MIT), @babel/helper-optimise-call-expression@7.29.7 (MIT), @babel/helper-plugin-utils@7.29.7 (MIT), @babel/helper-replace-supers@7.29.7 (MIT), @babel/helper-skip-transparent-expression-wrappers@7.29.13 (MIT), @babel/helper-string-parser@7.29.14 (MIT), @babel/helper-validator-identifier@7.29.7 (MIT), @babel/helper-validator-option@7.29.7 (MIT), @babel/highlight@7.25.9 (MIT), @babel/plugin-proposal-class-properties@7.18.6 (MIT), @babel/plugin-proposal-nullish-coalescing-operator@7.18.6 (MIT), @babel/plugin-proposal-optional-chaining@7.21.0 (MIT), @babel/plugin-syntax-async-generators@7.8.4 (MIT), @babel/plugin-syntax-bigint@7.8.3 (MIT), @babel/plugin-syntax-class-properties@7.12.13 (MIT), @babel/plugin-syntax-class-static-block@7.14.5 (MIT), @babel/plugin-syntax-flow@7.29.7 (MIT), @babel/plugin-syntax-import-attributes@7.29.7 (MIT), @babel/plugin-syntax-import-meta@7.10.4 (MIT), @babel/plugin-syntax-json-strings@7.8.3 (MIT), @babel/plugin-syntax-jsx@7.29.7 (MIT), @babel/plugin-syntax-logical-assignment-operators@7.10.4 (MIT), @babel/plugin-syntax-nullish-coalescing-operator@7.8.3 (MIT), @babel/plugin-syntax-numeric-separator@7.10.4 (MIT), @babel/plugin-syntax-object-rest-spread@7.8.3 (MIT), @babel/plugin-syntax-optional-catch-binding@7.8.3 (MIT), @babel/plugin-syntax-optional-chaining@7.8.3 (MIT), @babel/plugin-syntax-private-property-in-object@7.14.5 (MIT), @babel/plugin-syntax-top-level-await@7.14.5 (MIT), @babel/plugin-syntax-typescript@7.29.7 (MIT), @babel/plugin-transform-flow-strip-types@7.29.7 (MIT), @babel/plugin-transform-modules-commonjs@7.29.14 (MIT), @babel/plugin-transform-typescript@7.29.9 (MIT), @babel/preset-flow@7.29.7 (MIT), @babel/preset-typescript@7.29.7 (MIT), @babel/register@7.29.13 (MIT), @babel/runtime@7.29.14 (MIT), @babel/template@7.29.7 (MIT), @babel/traverse--for-generate-function-map@7.29.14 (MIT), @babel/traverse@7.29.14 (MIT), @babel/types@7.29.14 (MIT) ---
 
@@ -1041,7 +1041,7 @@ OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
---- @maplibre/maplibre-gl-style-spec@20.4.0 (ISC) ---
+--- @maplibre/maplibre-gl-style-spec@20.4.0 (BSD-3-Clause [LICENSE file; package.json declares ISC]) ---
 
 Copyright (c) 2020, MapLibre contributors
 
@@ -7493,49 +7493,12 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
---- Runtime packages without a standalone LICENSE file in their npm tarball ---
+--- Installed runtime packages without a root LICENSE file in their npm tarball ---
 
-  - @emnapi/runtime@1.11.3 : MIT (declared in package.json)
   - @expo/metro-runtime@4.0.1 : MIT (declared in package.json)
   - @expo/plist@0.2.2 : MIT (declared in package.json)
-  - @img/sharp-darwin-arm64@0.35.5 : Apache-2.0 (declared in package.json)
-  - @img/sharp-darwin-x64@0.35.5 : Apache-2.0 (declared in package.json)
-  - @img/sharp-freebsd-wasm32@0.35.5 : Apache-2.0 (declared in package.json)
-  - @img/sharp-libvips-darwin-arm64@1.3.4 : LGPL-3.0-or-later (declared in package.json)
-  - @img/sharp-libvips-darwin-x64@1.3.4 : LGPL-3.0-or-later (declared in package.json)
-  - @img/sharp-libvips-linux-arm@1.3.4 : LGPL-3.0-or-later (declared in package.json)
-  - @img/sharp-libvips-linux-arm64@1.3.4 : LGPL-3.0-or-later (declared in package.json)
-  - @img/sharp-libvips-linux-ppc64@1.3.4 : LGPL-3.0-or-later (declared in package.json)
-  - @img/sharp-libvips-linux-riscv64@1.3.4 : LGPL-3.0-or-later (declared in package.json)
-  - @img/sharp-libvips-linux-s390x@1.3.4 : LGPL-3.0-or-later (declared in package.json)
   - @img/sharp-libvips-linux-x64@1.3.4 : LGPL-3.0-or-later (declared in package.json)
-  - @img/sharp-libvips-linuxmusl-arm64@1.3.4 : LGPL-3.0-or-later (declared in package.json)
-  - @img/sharp-libvips-linuxmusl-x64@1.3.4 : LGPL-3.0-or-later (declared in package.json)
-  - @img/sharp-linux-arm@0.35.5 : Apache-2.0 (declared in package.json)
-  - @img/sharp-linux-arm64@0.35.5 : Apache-2.0 (declared in package.json)
-  - @img/sharp-linux-ppc64@0.35.5 : Apache-2.0 (declared in package.json)
-  - @img/sharp-linux-riscv64@0.35.5 : Apache-2.0 (declared in package.json)
-  - @img/sharp-linux-s390x@0.35.5 : Apache-2.0 (declared in package.json)
-  - @img/sharp-linuxmusl-arm64@0.35.5 : Apache-2.0 (declared in package.json)
-  - @img/sharp-linuxmusl-x64@0.35.5 : Apache-2.0 (declared in package.json)
-  - @img/sharp-wasm32@0.35.5 : Apache-2.0 AND LGPL-3.0-or-later AND MIT (declared in package.json)
-  - @img/sharp-webcontainers-wasm32@0.35.5 : Apache-2.0 (declared in package.json)
-  - @img/sharp-win32-arm64@0.35.5 : Apache-2.0 AND LGPL-3.0-or-later (declared in package.json)
-  - @img/sharp-win32-ia32@0.35.5 : Apache-2.0 AND LGPL-3.0-or-later (declared in package.json)
-  - @img/sharp-win32-x64@0.35.5 : Apache-2.0 AND LGPL-3.0-or-later (declared in package.json)
-  - @node-rs/argon2-android-arm-eabi@2.2.2 : MIT (declared in package.json)
-  - @node-rs/argon2-android-arm64@2.2.2 : MIT (declared in package.json)
-  - @node-rs/argon2-darwin-arm64@2.2.2 : MIT (declared in package.json)
-  - @node-rs/argon2-darwin-x64@2.2.2 : MIT (declared in package.json)
-  - @node-rs/argon2-freebsd-x64@2.2.2 : MIT (declared in package.json)
-  - @node-rs/argon2-linux-arm-gnueabihf@2.2.2 : MIT (declared in package.json)
-  - @node-rs/argon2-linux-arm64-gnu@2.2.2 : MIT (declared in package.json)
-  - @node-rs/argon2-linux-arm64-musl@2.2.2 : MIT (declared in package.json)
   - @node-rs/argon2-linux-x64-gnu@2.2.2 : MIT (declared in package.json)
-  - @node-rs/argon2-linux-x64-musl@2.2.2 : MIT (declared in package.json)
-  - @node-rs/argon2-win32-arm64-msvc@2.2.2 : MIT (declared in package.json)
-  - @node-rs/argon2-win32-ia32-msvc@2.2.2 : MIT (declared in package.json)
-  - @node-rs/argon2-win32-x64-msvc@2.2.2 : MIT (declared in package.json)
   - @react-native/assets-registry@0.76.6 : MIT (declared in package.json)
   - @react-native/codegen@0.76.6 : MIT (declared in package.json)
   - @react-native/gradle-plugin@0.76.6 : MIT (declared in package.json)
@@ -7565,7 +7528,6 @@ SOFTWARE.
   - expo@52.0.49 : MIT (declared in package.json)
   - flow-estree@0.340.0 : MIT (declared in package.json)
   - flow-parser@0.340.0 : MIT (declared in package.json)
-  - fsevents@2.3.3 : MIT (declared in package.json)
   - imurmurhash@0.1.4 : MIT (declared in package.json)
   - isarray@1.0.0 : MIT (declared in package.json)
   - jimp-compact@0.16.1 : MIT (declared in package.json)
@@ -7578,6 +7540,47 @@ SOFTWARE.
   - pgpass@1.0.5 : MIT (declared in package.json)
   - react-devtools-core@5.3.2 : MIT (declared in package.json)
   - tr46@0.0.3 : MIT (declared in package.json)
+
+--- Platform-specific optional runtime packages for other OS/CPU targets (from package-lock.json) ---
+
+  - @emnapi/runtime@1.11.3 : MIT (declared in package-lock.json)
+  - @img/sharp-darwin-arm64@0.35.5 : Apache-2.0 (declared in package-lock.json)
+  - @img/sharp-darwin-x64@0.35.5 : Apache-2.0 (declared in package-lock.json)
+  - @img/sharp-freebsd-wasm32@0.35.5 : Apache-2.0 (declared in package-lock.json)
+  - @img/sharp-libvips-darwin-arm64@1.3.4 : LGPL-3.0-or-later (declared in package-lock.json)
+  - @img/sharp-libvips-darwin-x64@1.3.4 : LGPL-3.0-or-later (declared in package-lock.json)
+  - @img/sharp-libvips-linux-arm@1.3.4 : LGPL-3.0-or-later (declared in package-lock.json)
+  - @img/sharp-libvips-linux-arm64@1.3.4 : LGPL-3.0-or-later (declared in package-lock.json)
+  - @img/sharp-libvips-linux-ppc64@1.3.4 : LGPL-3.0-or-later (declared in package-lock.json)
+  - @img/sharp-libvips-linux-riscv64@1.3.4 : LGPL-3.0-or-later (declared in package-lock.json)
+  - @img/sharp-libvips-linux-s390x@1.3.4 : LGPL-3.0-or-later (declared in package-lock.json)
+  - @img/sharp-libvips-linuxmusl-arm64@1.3.4 : LGPL-3.0-or-later (declared in package-lock.json)
+  - @img/sharp-libvips-linuxmusl-x64@1.3.4 : LGPL-3.0-or-later (declared in package-lock.json)
+  - @img/sharp-linux-arm@0.35.5 : Apache-2.0 (declared in package-lock.json)
+  - @img/sharp-linux-arm64@0.35.5 : Apache-2.0 (declared in package-lock.json)
+  - @img/sharp-linux-ppc64@0.35.5 : Apache-2.0 (declared in package-lock.json)
+  - @img/sharp-linux-riscv64@0.35.5 : Apache-2.0 (declared in package-lock.json)
+  - @img/sharp-linux-s390x@0.35.5 : Apache-2.0 (declared in package-lock.json)
+  - @img/sharp-linuxmusl-arm64@0.35.5 : Apache-2.0 (declared in package-lock.json)
+  - @img/sharp-linuxmusl-x64@0.35.5 : Apache-2.0 (declared in package-lock.json)
+  - @img/sharp-wasm32@0.35.5 : Apache-2.0 AND LGPL-3.0-or-later AND MIT (declared in package-lock.json)
+  - @img/sharp-webcontainers-wasm32@0.35.5 : Apache-2.0 (declared in package-lock.json)
+  - @img/sharp-win32-arm64@0.35.5 : Apache-2.0 AND LGPL-3.0-or-later (declared in package-lock.json)
+  - @img/sharp-win32-ia32@0.35.5 : Apache-2.0 AND LGPL-3.0-or-later (declared in package-lock.json)
+  - @img/sharp-win32-x64@0.35.5 : Apache-2.0 AND LGPL-3.0-or-later (declared in package-lock.json)
+  - @node-rs/argon2-android-arm-eabi@2.2.2 : MIT (declared in package-lock.json)
+  - @node-rs/argon2-android-arm64@2.2.2 : MIT (declared in package-lock.json)
+  - @node-rs/argon2-darwin-arm64@2.2.2 : MIT (declared in package-lock.json)
+  - @node-rs/argon2-darwin-x64@2.2.2 : MIT (declared in package-lock.json)
+  - @node-rs/argon2-freebsd-x64@2.2.2 : MIT (declared in package-lock.json)
+  - @node-rs/argon2-linux-arm-gnueabihf@2.2.2 : MIT (declared in package-lock.json)
+  - @node-rs/argon2-linux-arm64-gnu@2.2.2 : MIT (declared in package-lock.json)
+  - @node-rs/argon2-linux-arm64-musl@2.2.2 : MIT (declared in package-lock.json)
+  - @node-rs/argon2-linux-x64-musl@2.2.2 : MIT (declared in package-lock.json)
+  - @node-rs/argon2-win32-arm64-msvc@2.2.2 : MIT (declared in package-lock.json)
+  - @node-rs/argon2-win32-ia32-msvc@2.2.2 : MIT (declared in package-lock.json)
+  - @node-rs/argon2-win32-x64-msvc@2.2.2 : MIT (declared in package-lock.json)
+  - fsevents@2.3.3 : MIT (declared in package-lock.json)
 
 ================================================================================
 3. PREBUILT LIBVIPS & BUNDLED NATIVE LIBRARIES (@img/sharp-libvips-*)
@@ -7690,7 +7693,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ================================================================================
 
   - OpenStreetMap Map Data & Nominatim Geocoding : ODbL-1.0 (https://www.openstreetmap.org/copyright)
-  - OpenMapTiles Vector Tile Schema & Styles : CC BY 4.0 / BSD-3-Clause (https://openmaptiles.org/)
+  - OpenMapTiles Vector Tile Schema & Styles (incl. OSM Liberty / CARTO Dark Matter lineage) : CC BY 4.0 / BSD-3-Clause / MIT (https://openmaptiles.org/, https://carto.com/attributions)
   - Natural Earth Low-Zoom Shaded Relief (via OpenFreeMap styles) : Public Domain (https://www.naturalearthdata.com/)
   - Noto Sans Map Label Font Glyphs (via OpenFreeMap styles) : SIL OFL 1.1 (https://openfontlicense.org/)
   - OpenFreeMap Hosting & Tooling : MIT (https://openfreemap.org/)
@@ -7731,7 +7734,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 Total unique third-party npm packages: 1009
 License breakdown:
   - MIT: 820
-  - ISC: 75
+  - ISC: 74
   - Apache-2.0: 27
   - BSD-3-Clause: 27
   - BSD-2-Clause: 13
@@ -7747,6 +7750,7 @@ License breakdown:
   - Apache-2.0 [LICENSE file; package.json declares MIT]: 1
   - Apache-2.0 AND LGPL-3.0-or-later AND MIT: 1
   - BSD: 1
+  - BSD-3-Clause [LICENSE file; package.json declares ISC]: 1
   - CC-BY-4.0: 1
   - MIT-0: 1
   - Python-2.0: 1
@@ -8002,7 +8006,7 @@ Packages:
   @mapbox/unitbezier@0.0.1 | BSD-2-Clause
   @mapbox/vector-tile@1.3.1 | BSD-3-Clause
   @mapbox/whoots-js@3.1.0 | ISC
-  @maplibre/maplibre-gl-style-spec@20.4.0 | ISC
+  @maplibre/maplibre-gl-style-spec@20.4.0 | BSD-3-Clause [LICENSE file; package.json declares ISC]
   @maplibre/maplibre-react-native@10.4.2 | MIT
   @node-rs/argon2-android-arm-eabi@2.2.2 | MIT
   @node-rs/argon2-android-arm64@2.2.2 | MIT

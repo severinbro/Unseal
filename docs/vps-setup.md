@@ -10,7 +10,7 @@ All backend services run inside isolated Docker networks defined in [`docker-com
    - Stores both the spatial GIS tables (`polygons`, German BKG VG250 `municipalities`, `polygon_photos`) and the user/authentication tables (`users`, `sessions`, `email_tokens`, `votes`, `photo_votes`, `reserved_pseudonyms`, `reserved_emails`).
    - Air-gapped on an `internal: true` Docker network with **zero host ports exposed**.
 2. **`api` (`apps/api/Dockerfile` on `db_internal` + `edge_net`):**
-   - Runs numbered SQL migrations (`001_initial_schema.sql` through `008_privacy_hardening.sql`) automatically on boot and re-keys canonical email hashes with `TOMBSTONE_SECRET`.
+   - Runs numbered SQL migrations (`001_initial_schema.sql` through `010_security_and_retention_updates.sql`) automatically on boot and re-keys canonical email hashes with `TOMBSTONE_SECRET`.
    - Runs an hourly privacy retention job (unconfirmed sign-ups after 48 h, expired sessions, stale email links, expired pseudonym reservations).
    - Logs only request id, method, URL path, status and timing - no client IPs, headers or query strings. Container logs are rotated (3 × 10 MB per service).
    - Automatically downloads and seeds Germany's **BKG VG250 OpenData municipality boundaries** (`vg250_gem`, `~11,000` municipalities) on first startup when `AUTO_SEED_VG250=true`.
