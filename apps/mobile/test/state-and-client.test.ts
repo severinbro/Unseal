@@ -528,8 +528,22 @@ describe('PpgisApiClient v2 against live HTTP server', () => {
           return;
         }
 
-        if (method === 'POST' && url === '/api/v1/polygons/import') {
+        if (method === 'POST' && url.startsWith('/api/v1/polygons/import?')) {
           assert.ok(req.headers['content-type']?.includes('multipart/form-data'));
+          const parsedImportUrl = new URL(url, 'http://127.0.0.1');
+          assert.equal(parsedImportUrl.searchParams.get('license'), 'dl-de/by-2-0');
+          assert.equal(
+            parsedImportUrl.searchParams.get('origin'),
+            'initiative_import',
+          );
+          assert.equal(
+            parsedImportUrl.searchParams.get('attribution'),
+            '© Municipal Survey',
+          );
+          assert.equal(
+            parsedImportUrl.searchParams.get('waiverConfirmed'),
+            'true',
+          );
           const importRes: ImportPolygonsResponse = {
             format: 'gpkg',
             importedCount: 4,
@@ -760,12 +774,20 @@ describe('PpgisApiClient v2 against live HTTP server', () => {
       assert.equal(markedFinished.properties.status, 'finished');
       assert.equal(markedFinished.properties.municipalityNormalizedScore, 0);
 
-      const imported = await client.importPolygonsFile({
-        uri: 'blob:test-gpkg',
-        name: 'municipal.gpkg',
-        mimeType: 'application/geopackage+sqlite3',
-        webFile: new Blob([new Uint8Array([0x53, 0x51, 0x4c, 0x69])]),
-      });
+      const imported = await client.importPolygonsFile(
+        {
+          uri: 'blob:test-gpkg',
+          name: 'municipal.gpkg',
+          mimeType: 'application/geopackage+sqlite3',
+          webFile: new Blob([new Uint8Array([0x53, 0x51, 0x4c, 0x69])]),
+        },
+        {
+          origin: 'initiative_import',
+          license: 'dl-de/by-2-0',
+          attribution: '© Municipal Survey',
+          waiverConfirmed: true,
+        },
+      );
       assert.equal(imported.importedCount, 4);
 
       const uploadedPhoto = await client.uploadPolygonPhoto(SAMPLE_POLYGON_ID, {

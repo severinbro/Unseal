@@ -9,9 +9,11 @@ import {
   sortPolygonCommentsByRating,
   validateDraftPolygon,
   type AuthUser,
+  type ImportLicense,
   type PolygonComment,
   type PolygonFeature,
   type PolygonFilter,
+  type PolygonOrigin,
   type SurfaceType,
 } from '@openunseal/shared';
 
@@ -577,5 +579,73 @@ export function deriveNavbarLayoutMode(
     constrainAccountChipWidth: hasKnownWidth && viewportWidth < 1100,
     collapseThemeToMenu: false,
     collapseLocaleToMenu: false,
+  };
+}
+
+export function importLicenseRequiresWaiver(license: ImportLicense): boolean {
+  return license === 'CC-BY-4.0' || license === 'dl-de/by-2-0';
+}
+
+export function importLicenseRequiresAttribution(
+  license: ImportLicense,
+): boolean {
+  return (
+    license === 'ODbL-1.0' ||
+    license === 'CC-BY-4.0' ||
+    license === 'dl-de/by-2-0'
+  );
+}
+
+export interface ValidatedAdminImportOptions {
+  readonly origin: PolygonOrigin;
+  readonly license: ImportLicense;
+  readonly attribution: string | null;
+  readonly sourceUrl: string | null;
+  readonly waiverConfirmed: boolean;
+}
+
+export type AdminImportValidationResult =
+  | { readonly ok: true; readonly options: ValidatedAdminImportOptions }
+  | { readonly ok: false; readonly errorMessage: string };
+
+export function validateAdminImportForm(input: {
+  readonly origin: PolygonOrigin;
+  readonly license: ImportLicense;
+  readonly attribution: string;
+  readonly sourceUrl: string;
+  readonly waiverConfirmed: boolean;
+  readonly locale: Locale;
+}): AdminImportValidationResult {
+  const t = getTranslations(input.locale).adminImport;
+  const needsAttribution = importLicenseRequiresAttribution(input.license);
+  const needsWaiver = importLicenseRequiresWaiver(input.license);
+
+  const trimmedAttribution = input.attribution.trim();
+  if (needsAttribution && trimmedAttribution.length === 0) {
+    return { ok: false, errorMessage: t.attributionRequiredError };
+  }
+
+  const trimmedUrl = input.sourceUrl.trim();
+  if (
+    trimmedUrl.length > 0 &&
+    !trimmedUrl.startsWith('https://') &&
+    !trimmedUrl.startsWith('http://')
+  ) {
+    return { ok: false, errorMessage: t.sourceUrlInvalidError };
+  }
+
+  if (needsWaiver && !input.waiverConfirmed) {
+    return { ok: false, errorMessage: t.waiverRequiredError };
+  }
+
+  return {
+    ok: true,
+    options: {
+      origin: input.origin,
+      license: input.license,
+      attribution: trimmedAttribution.length > 0 ? trimmedAttribution : null,
+      sourceUrl: trimmedUrl.length > 0 ? trimmedUrl : null,
+      waiverConfirmed: needsWaiver ? input.waiverConfirmed : false,
+    },
   };
 }

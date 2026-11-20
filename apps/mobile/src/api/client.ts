@@ -43,6 +43,7 @@ import {
   type FlagPolygonRequest,
   type FlagPolygonResponse,
   type GeocodeResponse,
+  type ImportLicense,
   type ImportPolygonsResponse,
   type LoginRequest,
   type PatchPolygonRequest,
@@ -53,6 +54,7 @@ import {
   type PolygonCommentListResponse,
   type PolygonFeature,
   type PolygonFilter,
+  type PolygonOrigin,
   type PolygonPhoto,
   type PolygonPhotoListResponse,
   type PolygonStatus,
@@ -92,6 +94,14 @@ export interface UploadableFileInput {
   readonly name: string;
   readonly mimeType: string;
   readonly webFile?: Blob;
+}
+
+export interface ImportPolygonsOptions {
+  readonly origin?: PolygonOrigin | undefined;
+  readonly license: ImportLicense;
+  readonly attribution?: string | null | undefined;
+  readonly sourceUrl?: string | null | undefined;
+  readonly waiverConfirmed?: boolean | undefined;
 }
 
 interface RequestOptions {
@@ -385,11 +395,29 @@ export class PpgisApiClient {
 
   public async importPolygonsFile(
     file: UploadableFileInput,
+    options: ImportPolygonsOptions,
   ): Promise<ImportPolygonsResponse> {
+    const queryPairs: string[] = [
+      `license=${encodeURIComponent(options.license)}`,
+    ];
+    if (options.origin) {
+      queryPairs.push(`origin=${encodeURIComponent(options.origin)}`);
+    }
+    const trimmedAttribution = options.attribution?.trim() ?? '';
+    if (trimmedAttribution.length > 0) {
+      queryPairs.push(`attribution=${encodeURIComponent(trimmedAttribution)}`);
+    }
+    const trimmedSourceUrl = options.sourceUrl?.trim() ?? '';
+    if (trimmedSourceUrl.length > 0) {
+      queryPairs.push(`sourceUrl=${encodeURIComponent(trimmedSourceUrl)}`);
+    }
+    if (options.waiverConfirmed === true) {
+      queryPairs.push('waiverConfirmed=true');
+    }
     const formData = buildUploadFormData('file', file);
     const json = await this.requestJson({
       method: 'POST',
-      path: '/api/v1/polygons/import',
+      path: `/api/v1/polygons/import?${queryPairs.join('&')}`,
       formData,
       includeAuth: true,
     });

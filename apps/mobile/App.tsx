@@ -57,10 +57,16 @@ import {
   View,
 } from 'react-native';
 
-import { appendHostedPageTheme, PpgisApiClient } from './src/api/client';
+import {
+  appendHostedPageTheme,
+  PpgisApiClient,
+  type ImportPolygonsOptions,
+  type UploadableFileInput,
+} from './src/api/client';
 import { saveDataExport } from './src/media/saveDataExport';
 import { AboutModal } from './src/components/AboutModal';
 import { AddressSearchModal } from './src/components/AddressSearchModal';
+import { AdminImportModal } from './src/components/AdminImportModal';
 import { AnimatedIntroOverlay } from './src/components/AnimatedIntroOverlay';
 import { AuthAndAccountModal } from './src/components/AuthAndAccountModal';
 import { BugReportModal } from './src/components/BugReportModal';
@@ -261,6 +267,8 @@ export function App(props: AppProps = {}): React.JSX.Element {
   const [bugModalOpen, setBugModalOpen] = useState<boolean>(false);
   const [contentReportTarget, setContentReportTarget] =
     useState<ContentReportTarget | null>(null);
+  const [pendingImportFile, setPendingImportFile] =
+    useState<UploadableFileInput | null>(null);
   const [moreMenuOpen, setMoreMenuOpen] = useState<boolean>(false);
   const [layersPopoverOpen, setLayersPopoverOpen] = useState<boolean>(false);
   const [zoomDividerBottomPx, setZoomDividerBottomPx] = useState<number | null>(
@@ -939,10 +947,22 @@ export function App(props: AppProps = {}): React.JSX.Element {
         return;
       }
 
+      setLocationNotice(null);
+      setPendingImportFile(picked.value);
+    })();
+  }, [state.locale]);
+
+  const handleSubmitAdminImport = useCallback(
+    async (
+      file: UploadableFileInput,
+      options: ImportPolygonsOptions,
+    ): Promise<void> => {
+      const activeLocale = state.locale;
       setIsImporting(true);
       setLocationNotice(null);
       try {
-        const result = await apiClient.importPolygonsFile(picked.value);
+        const result = await apiClient.importPolygonsFile(file, options);
+        setPendingImportFile(null);
         dispatch({ type: 'REFRESH_VIEWPORT_FEATURES' });
         setLocationNotice(
           getTranslations(activeLocale).controls.importSuccess(
@@ -952,16 +972,16 @@ export function App(props: AppProps = {}): React.JSX.Element {
         );
       } catch (err: unknown) {
         if (await handleSessionExpiredError(err)) {
+          setPendingImportFile(null);
           return;
         }
-        const fallback =
-          getTranslations(activeLocale).controls.importErrorFallback;
-        setLocationNotice(localizeError(err, fallback, activeLocale));
+        throw err;
       } finally {
         setIsImporting(false);
       }
-    })();
-  }, [apiClient, handleSessionExpiredError, state.locale]);
+    },
+    [apiClient, handleSessionExpiredError, state.locale],
+  );
 
   const handleRegister = useCallback(
     async (input: RegisterRequest): Promise<void> => {
@@ -2260,6 +2280,56 @@ export function App(props: AppProps = {}): React.JSX.Element {
                 privacyPolicyUrl={privacyPolicyUrl}
                 onSubmit={handleSubmitContentReport}
                 onClose={() => setContentReportTarget(null)}
+              />
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      ) : null}
+
+      {pendingImportFile !== null ? (
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={[
+            styles.modalBackdropOverlay,
+            layout.isCompact ? styles.modalBackdropCompact : null,
+          ]}
+        >
+          <Pressable
+            accessible={false}
+            disabled={isImporting}
+            onPress={() => {
+              if (!isImporting) {
+                setPendingImportFile(null);
+              }
+            }}
+            style={styles.modalBackdropScrim}
+          />
+          <View
+            style={[
+              styles.modalDialogWrapper,
+              {
+                maxWidth: layout.isCompact
+                  ? layout.modalMaxWidth
+                  : Math.max(layout.modalMaxWidth, 520),
+              },
+            ]}
+          >
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.modalScrollContent}
+            >
+              <AdminImportModal
+                visible={pendingImportFile !== null}
+                file={pendingImportFile}
+                locale={state.locale}
+                compact={layout.isCompact}
+                onSubmit={handleSubmitAdminImport}
+                onClose={() => {
+                  if (!isImporting) {
+                    setPendingImportFile(null);
+                  }
+                }}
               />
             </ScrollView>
           </View>

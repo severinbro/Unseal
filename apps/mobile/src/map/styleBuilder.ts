@@ -631,7 +631,7 @@ export function buildWebCustomAttributions(options: {
   if (options.config.vg250AttributionEnabled !== false) {
     const bkgYear = options.config.vg250DataYear ?? year;
     entries.push(
-      `VG250: © GeoBasis-DE / <a href="https://www.bkg.bund.de" target="_blank" rel="noopener noreferrer">BKG</a> (${bkgYear}) <a href="https://www.govdata.de/dl-de/by-2-0" target="_blank" rel="noopener noreferrer">dl-de/by-2-0</a>, <a href="https://sg.geodatenzentrum.de/web_public/gdz/datenquellen/datenquellen_vg_nuts.pdf" target="_blank" rel="noopener noreferrer">Datenquellen</a> (Daten verändert)`,
+      `VG250: © <a href="https://www.bkg.bund.de" target="_blank" rel="noopener noreferrer">BKG</a> (${bkgYear}) <a href="https://www.govdata.de/dl-de/by-2-0" target="_blank" rel="noopener noreferrer">dl-de/by-2-0</a>, <a href="https://sg.geodatenzentrum.de/web_public/gdz/datenquellen/datenquellen_vg_nuts.pdf" target="_blank" rel="noopener noreferrer">Datenquellen</a> (Daten verändert)`,
     );
   }
 

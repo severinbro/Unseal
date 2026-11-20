@@ -798,12 +798,18 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
         },
       ],
     });
-    const importResult = await adminClient.importPolygonsFile({
-      uri: 'blob:import-geojson',
-      name: 'candidates.geojson',
-      mimeType: 'application/geo+json',
-      webFile: new Blob([importGeoJson], { type: 'application/geo+json' }),
-    });
+    const importResult = await adminClient.importPolygonsFile(
+      {
+        uri: 'blob:import-geojson',
+        name: 'candidates.geojson',
+        mimeType: 'application/geo+json',
+        webFile: new Blob([importGeoJson], { type: 'application/geo+json' }),
+      },
+      {
+        origin: 'initiative_import',
+        license: 'CC0-1.0',
+      },
+    );
     assert.equal(importResult.importedCount, 1);
 
     const mainzAfterImport = await anonClient.listPolygons(MAINZ_BBOX);

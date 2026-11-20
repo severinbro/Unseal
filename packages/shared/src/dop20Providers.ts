@@ -27,8 +27,9 @@ export interface StateDop20Provider {
   /** Concise agency attribution string (year-independent base form). */
   readonly attribution: string;
   /**
-   * Live-verified WMS GetCapabilities full attribution wording with `{year}`
-   * placeholder for retrieval/display year.
+   * Publisher-prescribed full attribution wording (from the WMS GetCapabilities
+   * or, where the service states none, the state's metadata catalogue / terms
+   * of use) with `{year}` placeholder for retrieval/display year.
    */
   readonly fullAttributionTemplate: string;
   /** Compact on-map agency credit with `{year}` placeholder. */
@@ -42,7 +43,10 @@ export interface StateDop20Provider {
 /**
  * Official OpenData DOP20 / DOP10 RGB WMS 1.3.0 services of the 16 German Bundesländer
  * (Berlin and Brandenburg share the joint ISK GeoBasis-BB `bebb_dop20c` service).
- * Attribution wordings verified against live WMS GetCapabilities.
+ * Licenses and attribution wordings follow each service's WMS GetCapabilities
+ * (RP, HE, NW, BW, BY, BE/BB, HH, NI, HB, SH, TH). Where the service itself
+ * carries no license text (SL, SN, ST) or names no license (MV), they follow
+ * the state's metadata catalogue / published terms of use instead.
  */
 export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
   {
@@ -128,10 +132,12 @@ export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
     layers: 'sl_dop20_rgb',
     licenseId: 'dl-de/by-2-0',
     licenseUrl: DOP20_LICENSE_URLS['dl-de/by-2-0'],
-    attribution: '© GeoBasis-DE / LVGL-SL',
+    // Wording per the Saarland geoportal metadata record "ATKIS - DOP 2023"
+    // (the freewms GetCapabilities itself states no license).
+    attribution: '© GeoBasis DE/LVGL-SL',
     fullAttributionTemplate:
-      '© GeoBasis-DE / LVGL-SL ({year}), dl-de/by-2-0 (Daten verändert)',
-    shortCreditTemplate: '© GeoBasis-DE / LVGL-SL ({year})',
+      '© GeoBasis DE/LVGL-SL ({year}), dl-de/by-2-0 (Daten verändert)',
+    shortCreditTemplate: '© GeoBasis DE/LVGL-SL ({year})',
     modifiedNote: 'Daten verändert',
   },
   {
@@ -142,10 +148,15 @@ export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
     layers: 'bebb_dop20c',
     licenseId: 'dl-de/by-2-0',
     licenseUrl: DOP20_LICENSE_URLS['dl-de/by-2-0'],
+    // Brandenburg (LGB) imagery is dl-de/by-2-0. Berlin publishes its own
+    // orthophotos under dl-de/zero-2-0 (Berlin data register / Geoportal Berlin);
+    // the joint service's GetCapabilities still shows the older by-2-0 wording
+    // for the Berlin part. The Berlin credit is kept and labelled with Berlin's
+    // actual license.
     attribution:
-      '© GeoBasis-DE / LGB, dl-de/by-2-0; © Geoportal Berlin, dl-de/by-2-0',
+      '© GeoBasis-DE / LGB, dl-de/by-2-0; © Geoportal Berlin, dl-de/zero-2-0',
     fullAttributionTemplate:
-      '© GeoBasis-DE / LGB ({year}), dl-de/by-2-0; © Geoportal Berlin ({year}), dl-de/by-2-0 (Daten verändert)',
+      '© GeoBasis-DE / LGB ({year}), dl-de/by-2-0; © Geoportal Berlin ({year}), dl-de/zero-2-0 (Daten verändert)',
     shortCreditTemplate: '© GeoBasis-DE / LGB & © Geoportal Berlin ({year})',
     modifiedNote: 'Daten verändert',
   },
@@ -232,10 +243,12 @@ export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
     layers: 'sn_dop_020',
     licenseId: 'dl-de/by-2-0',
     licenseUrl: DOP20_LICENSE_URLS['dl-de/by-2-0'],
-    attribution: '© GeoBasis-DE / GeoSN',
+    // Wording per GeoSN's general terms of use ("Quelle: GeoSN, dl-de/by-2-0");
+    // the WMS GetCapabilities only links to those terms.
+    attribution: 'Quelle: GeoSN, dl-de/by-2-0',
     fullAttributionTemplate:
-      '© GeoBasis-DE / GeoSN ({year}), dl-de/by-2-0 (Daten verändert)',
-    shortCreditTemplate: '© GeoBasis-DE / GeoSN ({year})',
+      'Quelle: GeoSN, dl-de/by-2-0 ({year}; Daten verändert)',
+    shortCreditTemplate: 'Quelle: GeoSN ({year})',
     modifiedNote: 'Daten verändert',
   },
   {

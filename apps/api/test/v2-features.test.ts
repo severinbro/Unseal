@@ -546,10 +546,26 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
         'FORBIDDEN_ADMIN_ONLY',
       );
 
+      // Admin import without ?license= and without embedded dataset license -> 422 VALIDATION_ERROR
+      const missingLicenseImport = await app.inject({
+        method: 'POST',
+        url: '/api/v1/polygons/import',
+        headers: {
+          authorization: `Bearer ${adminUser.sessionToken}`,
+          'content-type': geoJsonMultipart.contentTypeHeader,
+        },
+        payload: geoJsonMultipart.body,
+      });
+      assert.equal(missingLicenseImport.statusCode, 422);
+      assert.equal(
+        ApiErrorEnvelopeSchema.parse(missingLicenseImport.json()).error.code,
+        'VALIDATION_ERROR',
+      );
+
       // Admin GeoJSON import -> imports 3 valid polygons (1 Polygon + 2 from MultiPolygon) and skips 1 tiny polygon
       const okGeoJsonImport = await app.inject({
         method: 'POST',
-        url: '/api/v1/polygons/import',
+        url: '/api/v1/polygons/import?license=CC0-1.0',
         headers: {
           authorization: `Bearer ${adminUser.sessionToken}`,
           'content-type': geoJsonMultipart.contentTypeHeader,
@@ -665,7 +681,7 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
       });
       const okUtmGeoJson = await app.inject({
         method: 'POST',
-        url: '/api/v1/polygons/import',
+        url: '/api/v1/polygons/import?license=CC0-1.0',
         headers: {
           authorization: `Bearer ${adminUser.sessionToken}`,
           'content-type': utmGeoJsonMultipart.contentTypeHeader,
@@ -730,7 +746,7 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
 
       const okGpkgImport = await app.inject({
         method: 'POST',
-        url: '/api/v1/polygons/import',
+        url: '/api/v1/polygons/import?license=CC0-1.0',
         headers: {
           authorization: `Bearer ${adminUser.sessionToken}`,
           'content-type': gpkgMultipart.contentTypeHeader,
@@ -905,7 +921,16 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
         url: '/api/v1/polygons/export.geojson',
       });
       assert.equal(exportWithImportsRes.statusCode, 200);
-      const exportPayload = exportWithImportsRes.json() as { attribution?: string };
+      const exportPayload = exportWithImportsRes.json() as {
+        attribution?: string;
+        upstreamConditions?: string;
+        features?: Array<{
+          properties: {
+            municipalityAgs: string | null;
+            municipalityName: string | null;
+          };
+        }>;
+      };
       assert.match(
         exportPayload.attribution ?? '',
         /Imported open datasets:.*© Freie und Hansestadt Hamburg, LGV.*CC-BY-4\.0.*https:\/\/geoportal-hamburg\.de\/opendata.*ODbL-1\.0 waiver confirmed/,
@@ -914,6 +939,178 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
         exportPayload.attribution ?? '',
         /Full license and source notices:.*\/auth\/licenses/,
       );
+      assert.match(exportPayload.upstreamConditions ?? '', /CC BY 4\.0/);
+      assert.ok(
+        (exportPayload.features ?? []).some(
+          (f) => f.properties.municipalityName === 'Hamburg',
+        ),
+      );
+
+      // 6) Unrecognized/incompatible embedded licenses ("CC BY 3.0", "GPL-3.0") and query-vs-embedded license conflict -> 422
+      for (const badEmbeddedLic of ['CC BY 3.0', 'GPL-3.0', 'ODC-By-1.0']) {
+        const badEmbeddedMp = buildMultipartPayload({
+          fieldName: 'file',
+          fileName: 'bad-embedded.geojson',
+          contentType: 'application/geo+json',
+          fileBuffer: Buffer.from(
+            JSON.stringify({
+              type: 'FeatureCollection',
+              license: badEmbeddedLic,
+              attribution: '© Some Source',
+              features: geoJsonCollection.features.slice(0, 1),
+            }),
+            'utf8',
+          ),
+        });
+        const badRes = await app.inject({
+          method: 'POST',
+          url: '/api/v1/polygons/import',
+          headers: {
+            authorization: `Bearer ${adminUser.sessionToken}`,
+            'content-type': badEmbeddedMp.contentTypeHeader,
+          },
+          payload: badEmbeddedMp.body,
+        });
+        assert.equal(badRes.statusCode, 422);
+      }
+
+      const conflictingQueryMp = buildMultipartPayload({
+        fieldName: 'file',
+        fileName: 'odbl-embedded.geojson',
+        contentType: 'application/geo+json',
+        fileBuffer: Buffer.from(
+          JSON.stringify({
+            type: 'FeatureCollection',
+            license: 'ODbL-1.0',
+            attribution: '© OpenStreetMap contributors',
+            features: geoJsonCollection.features.slice(0, 1),
+          }),
+          'utf8',
+        ),
+      });
+      const conflictRes = await app.inject({
+        method: 'POST',
+        url: '/api/v1/polygons/import?license=CC0-1.0',
+        headers: {
+          authorization: `Bearer ${adminUser.sessionToken}`,
+          'content-type': conflictingQueryMp.contentTypeHeader,
+        },
+        payload: conflictingQueryMp.body,
+      });
+      assert.equal(conflictRes.statusCode, 422);
+
+      // 7) GeoPackage with embedded dl-de/by-2-0 in gpkg_metadata preserves dl-de/by-2-0 (never falsely claims CC0-1.0)
+      const gpkgDlDePath = path.join(uploadsDir, 'dldeby20-metadata.gpkg');
+      const gpkgDlDeWkbRes = await pool.query<{ wkb: Buffer }>(
+        `SELECT ST_AsBinary(ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326), 25832)) AS wkb`,
+        [
+          JSON.stringify({
+            type: 'Polygon',
+            coordinates: [makeCourtyardRing(9.993, 53.556)],
+          }),
+        ],
+      );
+      const gpkgDlDeBlob = buildGeoPackageBinaryHeader(
+        25832,
+        gpkgDlDeWkbRes.rows[0]!.wkb,
+      );
+      const dlDeSqlite = new DatabaseSync(gpkgDlDePath);
+      try {
+        dlDeSqlite.exec(`
+          CREATE TABLE gpkg_spatial_ref_sys (
+            srs_name TEXT NOT NULL,
+            srs_id INTEGER NOT NULL PRIMARY KEY,
+            organization TEXT NOT NULL,
+            organization_coordsys_id INTEGER NOT NULL,
+            definition TEXT NOT NULL
+          );
+          INSERT INTO gpkg_spatial_ref_sys VALUES ('ETRS89 / UTM 32N', 25832, 'EPSG', 25832, '');
+          CREATE TABLE gpkg_contents (
+            table_name TEXT NOT NULL PRIMARY KEY,
+            data_type TEXT NOT NULL,
+            identifier TEXT,
+            srs_id INTEGER
+          );
+          INSERT INTO gpkg_contents VALUES ('sealed_lots', 'features', 'sealed_lots', 25832);
+          CREATE TABLE gpkg_geometry_columns (
+            table_name TEXT NOT NULL,
+            column_name TEXT NOT NULL,
+            geometry_type_name TEXT NOT NULL,
+            srs_id INTEGER NOT NULL,
+            z TINYINT NOT NULL,
+            m TINYINT NOT NULL
+          );
+          INSERT INTO gpkg_geometry_columns VALUES ('sealed_lots', 'geom', 'POLYGON', 25832, 0, 0);
+          CREATE TABLE gpkg_metadata (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            md_scope TEXT NOT NULL,
+            md_standard_uri TEXT NOT NULL,
+            mime_type TEXT NOT NULL,
+            metadata TEXT NOT NULL
+          );
+          INSERT INTO gpkg_metadata (md_scope, md_standard_uri, mime_type, metadata)
+          VALUES ('dataset', 'http://www.isotc211.org/2005/gmd', 'text/xml', '<gmd:MD_Metadata><gmd:useLimitation>Datenlizenz Deutschland - Namensnennung - Version 2.0 (dl-de/by-2-0)</gmd:useLimitation></gmd:MD_Metadata>');
+          CREATE TABLE sealed_lots (
+            fid INTEGER PRIMARY KEY AUTOINCREMENT,
+            geom BLOB NOT NULL
+          );
+        `);
+        dlDeSqlite
+          .prepare('INSERT INTO sealed_lots (geom) VALUES (?)')
+          .run(gpkgDlDeBlob);
+      } finally {
+        dlDeSqlite.close();
+      }
+      const dlDeGpkgBuffer = await fs.readFile(gpkgDlDePath);
+      await fs.rm(gpkgDlDePath, { force: true });
+      const dlDeGpkgMp = buildMultipartPayload({
+        fieldName: 'file',
+        fileName: 'dldeby20-metadata.gpkg',
+        contentType: 'application/geopackage+sqlite3',
+        fileBuffer: dlDeGpkgBuffer,
+      });
+      const dlDeGpkgImportRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/polygons/import?waiverConfirmed=true&attribution=${encodeURIComponent('© GeoBasis-DE / GeoSN')}`,
+        headers: {
+          authorization: `Bearer ${adminUser.sessionToken}`,
+          'content-type': dlDeGpkgMp.contentTypeHeader,
+        },
+        payload: dlDeGpkgMp.body,
+      });
+      assert.equal(dlDeGpkgImportRes.statusCode, 200);
+
+      // 8) ?includeMunicipality=false omits VG250 columns & VG250 attribution while preserving embedded dl-de/by-2-0 import license
+      const exportNoMuniRes = await app.inject({
+        method: 'GET',
+        url: '/api/v1/polygons/export.geojson?includeMunicipality=false',
+      });
+      assert.equal(exportNoMuniRes.statusCode, 200);
+      const exportNoMuniPayload = exportNoMuniRes.json() as {
+        attribution?: string;
+        features?: Array<{
+          properties: {
+            municipalityAgs: string | null;
+            municipalityName: string | null;
+          };
+        }>;
+      };
+      assert.match(
+        exportNoMuniPayload.attribution ?? '',
+        /© GeoBasis-DE \/ GeoSN \(dl-de\/by-2-0; ODbL-1\.0 waiver confirmed\)/,
+      );
+      assert.equal(
+        (exportNoMuniPayload.attribution ?? '').includes('GeoSN (CC0-1.0'),
+        false,
+      );
+      assert.equal(
+        (exportNoMuniPayload.attribution ?? '').includes('BKG'),
+        false,
+      );
+      for (const feat of exportNoMuniPayload.features ?? []) {
+        assert.equal(feat.properties.municipalityAgs, null);
+        assert.equal(feat.properties.municipalityName, null);
+      }
     } finally {
       await app.close();
     }

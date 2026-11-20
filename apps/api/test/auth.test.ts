@@ -1466,7 +1466,10 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
       assert.match(licRes.body, /MPL-2\.0/);
       assert.match(licRes.body, /MapLibre React Native \(MIT\)/);
       assert.match(licRes.body, /MapLibre Native Android\/iOS \(BSD-2-Clause\)/);
-      assert.match(licRes.body, /MapLibre Android Plugins/);
+      assert.match(licRes.body, /MapLibre Android Plugins \(BSD-2-Clause\)/);
+      assert.match(licRes.body, /MapLibre Java Turf \(Apache-2\.0 \/ MIT\)/);
+      assert.match(licRes.body, /Glide \(BSD-2-Clause \/ MIT \/ Apache-2\.0\)/);
+      assert.match(licRes.body, /Bolts-Tasks \(BSD-3-Clause\)/);
       assert.match(licRes.body, /Android-Image-Cropper \(Apache-2\.0\)/);
       assert.match(licRes.body, /SmartLocation \(MIT\)/);
       assert.match(licRes.body, /Google Play Services Location SDK/);
@@ -1499,6 +1502,15 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
         /text\/plain/,
       );
       assert.match(noticesRes.body, /THIRD-PARTY SOFTWARE & GEODATA NOTICES/);
+      assert.match(
+        noticesRes.body,
+        /MapLibre Android Plugins & Gestures.*: BSD-2-Clause/,
+      );
+      assert.match(noticesRes.body, /Glide Image Loader.*BSD-2-Clause/);
+      assert.match(noticesRes.body, /Bolts-Tasks.*BSD-3-Clause/);
+      assert.match(noticesRes.body, /Apache Commons IO 2\.6/);
+      assert.match(noticesRes.body, /Apache Commons Codec 1\.10/);
+      assert.match(noticesRes.body, /The Public Suffix List/);
 
       assert.equal(exportRes.statusCode, 200);
       assert.equal(exportRes.headers['content-license'], 'ODbL-1.0');
@@ -1511,6 +1523,7 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
         license?: string;
         licenseUrl?: string;
         contributorRights?: string;
+        upstreamConditions?: string;
         attribution?: string;
         features: unknown[];
       };
@@ -1521,6 +1534,11 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
         'https://opendatacommons.org/licenses/odbl/1-0/',
       );
       assert.equal(exportPayload.contributorRights, 'CC0-1.0');
+      assert.match(
+        exportPayload.upstreamConditions ?? '',
+        /CC BY 4\.0.*no-DRM|prohibiting Effective Technological Measures/,
+      );
+      assert.match(exportPayload.upstreamConditions ?? '', /dl-de\/by-2-0/);
       assert.match(exportPayload.attribution ?? '', /ODbL-1\.0/);
       assert.match(exportPayload.attribution ?? '', /BKG.*dl-de\/by-2-0.*datenquellen_vg_nuts\.pdf/);
 

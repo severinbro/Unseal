@@ -61,26 +61,31 @@ const DIRECT_PUBLIC_DOMAIN_LICENSES: Readonly<Record<string, string>> = {
   'cc0-1.0': 'CC0-1.0',
   cc0: 'CC0-1.0',
   'cc0 1.0': 'CC0-1.0',
+  'cc0 1.0 universal': 'CC0-1.0',
   'public domain': 'Public Domain',
   'pddl-1.0': 'PDDL-1.0',
   pddl: 'PDDL-1.0',
+  'odc-pddl': 'PDDL-1.0',
   'dl-de/zero-2-0': 'dl-de/zero-2-0',
+  'dl-de-zero-2.0': 'dl-de/zero-2-0',
 };
 
 const DIRECT_ATTRIBUTED_ODBL_LICENSES: Readonly<Record<string, string>> = {
   'odbl-1.0': 'ODbL-1.0',
   odbl: 'ODbL-1.0',
+  'odbl 1.0': 'ODbL-1.0',
   'odc-odbl': 'ODbL-1.0',
 };
 
 const WAIVER_REQUIRED_IMPORT_LICENSES: Readonly<Record<string, string>> = {
   'dl-de/by-2-0': 'dl-de/by-2-0',
+  'dl-de-by-2.0': 'dl-de/by-2-0',
   'cc-by-4.0': 'CC-BY-4.0',
   'cc by 4.0': 'CC-BY-4.0',
 };
 
 const INCOMPATIBLE_EMBEDDED_LICENSE_RE =
-  /\b(?:cc[- ]?by[- ]?(?:nc|nd|sa)(?:[- ]?\d(?:\.\d)?)?|non[- ]?commercial|no[- ]?derivatives|kommerziell\S*\s+ausgeschlossen|keine\s+bearbeitung|all\s+rights\s+reserved|alle\s+rechte\s+vorbehalten|proprietary|other[- ]closed|closed[- ]source|internal[- ]only|confidential)\b/i;
+  /\b(?:cc[- ]?by[- ]?(?:nc|nd|sa)(?:[- ]?\d(?:\.\d)?)?|cc[- ]?by[- ]?[123](?:\.\d)?|dl[- ]?de\/by[- ]?1[- ]?0|odc[- ]?by(?:[- ]?1\.0)?|geonutzv|eupl(?:[- ]?\d(?:\.\d)?)?|(?:a|l)?gpl(?:[- ]?v?\d(?:\.\d)?)?|mpl[- ]?2\.0|non[- ]?commercial|no[- ]?derivatives|kommerziell\S*\s+ausgeschlossen|keine\s+bearbeitung|all\s+rights\s+reserved|alle\s+rechte\s+vorbehalten|proprietary|other[- ]closed|closed[- ]source|internal[- ]only|confidential)\b/i;
 
 const WAIVER_REQUIRED_EMBEDDED_LICENSE_RE =
   /\b(?:cc[- ]?by[- ]?4\.0|dl[- ]?de\/by[- ]?2[- ]?0|datenlizenz\s+deutschland[^\n]{0,60}namensnennung)\b/i;
@@ -364,7 +369,18 @@ function extractFromGeoJsonBuffer(
     rootRecord.attribution.trim().length > 0
       ? rootRecord.attribution.trim().slice(0, 500)
       : null;
-  const embeddedLicense =
+  if (
+    rootRecord.license !== undefined &&
+    rootRecord.license !== null &&
+    typeof rootRecord.license !== 'string'
+  ) {
+    throw new ApiError(
+      422,
+      'VALIDATION_ERROR',
+      'GeoJSON license field must be a string when present.',
+    );
+  }
+  const rawEmbeddedLicense =
     typeof rootRecord.license === 'string' && rootRecord.license.trim().length > 0
       ? rootRecord.license.trim().slice(0, 120)
       : null;
@@ -372,11 +388,19 @@ function extractFromGeoJsonBuffer(
     waiverConfirmed: options.waiverConfirmed,
     sourceAttribution: options.sourceAttribution?.trim() || embeddedAttribution,
   };
-  assertCompatibleEmbeddedLicenseMetadata(
-    rootRecord.license,
-    'GeoJSON license',
-    effectiveOptions,
-  );
+  let embeddedLicense: string | null = null;
+  if (rawEmbeddedLicense !== null) {
+    assertCompatibleEmbeddedLicenseMetadata(
+      rawEmbeddedLicense,
+      'GeoJSON license',
+      effectiveOptions,
+    );
+    const policy = assertCompatibleImportLicenseParam(rawEmbeddedLicense, {
+      sourceAttribution: effectiveOptions.sourceAttribution,
+      waiverConfirmed: effectiveOptions.waiverConfirmed,
+    });
+    embeddedLicense = policy.canonicalLicense;
+  }
   assertCompatibleEmbeddedLicenseMetadata(
     rootRecord.rights,
     'GeoJSON rights',
@@ -516,12 +540,102 @@ async function extractFromGpkgBuffer(
     } catch {
       // Optional gpkg_metadata table is absent in most GeoPackages
     }
-    for (const metaRow of metaRows) {
+    let contentDescRows: Array<{ description: string | null }> = [];
+    try {
+      contentDescRows = db
+        .prepare('SELECT description FROM gpkg_contents LIMIT 20')
+        .all() as Array<{ description: string | null }>;
+    } catch {
+      // Optional description column in gpkg_contents
+    }
+
+    let embeddedAttribution: string | null = null;
+    for (const row of metaRows) {
+      const raw = row.metadata?.trim() ?? '';
+      if (!raw) {
+        continue;
+      }
+      const creditXml = /<(?:[\w-]+:)?credit[^>]*>([\s\S]*?)<\/(?:[\w-]+:)?credit>/i.exec(raw);
+      const attrLine = /(?:^|\n)\s*(?:attribution|source|quelle)\s*:\s*([^\r\n<]+)/i.exec(raw);
+      const copyrightLine = /(©[^\r\n<]{3,240})/.exec(raw);
+      const extracted = (
+        creditXml?.[1]?.replace(/<[^>]+>/g, ' ') ??
+        attrLine?.[1] ??
+        copyrightLine?.[1] ??
+        ''
+      )
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (extracted.length > 0) {
+        embeddedAttribution = extracted.slice(0, 500);
+        break;
+      }
+    }
+
+    const effectiveGpkgOptions: ExtractImportDatasetOptions = {
+      waiverConfirmed: options.waiverConfirmed,
+      sourceAttribution: options.sourceAttribution?.trim() || embeddedAttribution,
+    };
+
+    let embeddedLicense: string | null = null;
+    const allMetaEntries: Array<{ text: string; label: string }> = [
+      ...metaRows
+        .filter((r): r is { metadata: string } => typeof r.metadata === 'string' && r.metadata.trim().length > 0)
+        .map((r) => ({ text: r.metadata, label: 'GeoPackage gpkg_metadata' })),
+      ...contentDescRows
+        .filter((r): r is { description: string } => typeof r.description === 'string' && r.description.trim().length > 0)
+        .map((r) => ({ text: r.description, label: 'GeoPackage gpkg_contents.description' })),
+    ];
+
+    for (const entry of allMetaEntries) {
       assertCompatibleEmbeddedLicenseMetadata(
-        metaRow.metadata,
-        'GeoPackage gpkg_metadata',
-        options,
+        entry.text,
+        entry.label,
+        effectiveGpkgOptions,
       );
+      if (embeddedLicense !== null) {
+        continue;
+      }
+      const plain = entry.text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      let candidateToken: string | null = null;
+      if (
+        /\b(?:dl[- ]?de\/by[- ]?2[- ]?0|datenlizenz\s+deutschland[^\n]{0,60}namensnennung)\b/i.test(
+          plain,
+        )
+      ) {
+        candidateToken = 'dl-de/by-2-0';
+      } else if (/\bcc[- ]?by[- ]?4\.0\b/i.test(plain)) {
+        candidateToken = 'CC-BY-4.0';
+      } else if (ODBL_EMBEDDED_LICENSE_RE.test(plain)) {
+        candidateToken = 'ODbL-1.0';
+      } else if (
+        /\b(?:dl[- ]?de\/zero[- ]?2[- ]?0|datenlizenz\s+deutschland[^\n]{0,60}zero)\b/i.test(
+          plain,
+        )
+      ) {
+        candidateToken = 'dl-de/zero-2-0';
+      } else if (/\b(?:pddl(?:[- ]?1\.0)?|odc[- ]?pddl)\b/i.test(plain)) {
+        candidateToken = 'PDDL-1.0';
+      } else if (/\bcc0(?:[- ]?1\.0)?\b/i.test(plain)) {
+        candidateToken = 'CC0-1.0';
+      } else if (/\bpublic\s+domain\b/i.test(plain)) {
+        candidateToken = 'Public Domain';
+      } else {
+        const explicitLicMatch = /(?:^|\n|\s)(?:licen[cs]e|lizenz)\s*:\s*([^\r\n<,;]+)/i.exec(
+          entry.text,
+        );
+        if (explicitLicMatch?.[1]?.trim()) {
+          candidateToken = explicitLicMatch[1].trim();
+        }
+      }
+
+      if (candidateToken !== null) {
+        const policy = assertCompatibleImportLicenseParam(candidateToken, {
+          sourceAttribution: effectiveGpkgOptions.sourceAttribution,
+          waiverConfirmed: effectiveGpkgOptions.waiverConfirmed,
+        });
+        embeddedLicense = policy.canonicalLicense;
+      }
     }
     try {
       const srsRows = db
@@ -694,6 +808,8 @@ async function extractFromGpkgBuffer(
       format: 'gpkg',
       candidates,
       preErrors,
+      embeddedLicense,
+      embeddedAttribution,
     };
   } finally {
     try {

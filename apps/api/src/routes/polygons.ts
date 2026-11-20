@@ -72,11 +72,24 @@ function applyOptionalAuthCacheHeaders(
 function serializeFeatureBatch(
   features: readonly ExportPolygonFeature[],
   isFirstFeature: boolean,
+  includeMunicipality: boolean = true,
 ): { chunk: string; nextIsFirstFeature: boolean } {
   let chunk = '';
   let first = isFirstFeature;
   for (const feature of features) {
-    chunk += (first ? '' : ',') + JSON.stringify(feature);
+    const outFeature: ExportPolygonFeature = includeMunicipality
+      ? feature
+      : {
+          ...feature,
+          properties: {
+            ...feature.properties,
+            municipalityAgs: null,
+            municipalityName: null,
+            municipalityMaxScore: 0,
+            municipalityNormalizedScore: 0,
+          },
+        };
+    chunk += (first ? '' : ',') + JSON.stringify(outFeature);
     first = false;
   }
   return { chunk, nextIsFirstFeature: first };
@@ -174,7 +187,34 @@ export function registerPolygonRoutes(
         rateLimit: exportGeoJsonLimit,
       },
     },
-    async (_request, reply) => {
+    async (request, reply) => {
+      const exportQuery =
+        typeof request.query === 'object' && request.query !== null
+          ? (request.query as { includeMunicipality?: unknown })
+          : {};
+      let includeMunicipality = true;
+      if (exportQuery.includeMunicipality !== undefined) {
+        const rawInc =
+          typeof exportQuery.includeMunicipality === 'string'
+            ? exportQuery.includeMunicipality.trim().toLowerCase()
+            : exportQuery.includeMunicipality === true
+              ? 'true'
+              : exportQuery.includeMunicipality === false
+                ? 'false'
+                : '';
+        if (rawInc === 'true' || rawInc === '1') {
+          includeMunicipality = true;
+        } else if (rawInc === 'false' || rawInc === '0') {
+          includeMunicipality = false;
+        } else {
+          throw new ApiError(
+            422,
+            'VALIDATION_ERROR',
+            'Query parameter "includeMunicipality" must be "true" or "false".',
+          );
+        }
+      }
+
       const releasePermit = await app.exportSemaphore.acquire();
       let released = false;
       let timedOut = false;
@@ -197,7 +237,8 @@ export function registerPolygonRoutes(
           seeded: false,
           dataYear: null,
         }));
-        const vg250Active = app.config.autoSeedVg250 || muniStatus.seeded;
+        const vg250Active =
+          includeMunicipality && (app.config.autoSeedVg250 || muniStatus.seeded);
         async function* generateGeoJsonStream(): AsyncGenerator<
           Buffer,
           void,
@@ -230,16 +271,36 @@ export function registerPolygonRoutes(
 
             const exportYear = new Date().getUTCFullYear();
             const vg250Year = muniStatus.dataYear ?? exportYear;
+            const usesBuiltinDop20 = Boolean(
+              app.config.orthophoto?.urlTemplate.includes('/api/v1/tiles/dop20/'),
+            );
+            const hasCcBy40Import = activeImportAttributions.some(
+              (item) => item.license === 'CC-BY-4.0',
+            );
+            const hasDlDeBy20Import = activeImportAttributions.some(
+              (item) => item.license === 'dl-de/by-2-0',
+            );
+
+            const upstreamConditionParts: string[] = [];
+            if (usesBuiltinDop20 || hasCcBy40Import) {
+              upstreamConditionParts.push(
+                'Upstream CC BY 4.0 conditions (https://creativecommons.org/licenses/by/4.0/, including §§ 2(a)(5)(B) & 3(b) prohibiting Effective Technological Measures / DRM; ODbL-1.0 § 4.7(b) parallel-distribution DRM does not override upstream CC BY 4.0) remain concurrently binding on Adapted Material derived from CC BY 4.0 aerial orthophotos or imports.',
+              );
+            }
+            if (usesBuiltinDop20 || vg250Active || hasDlDeBy20Import) {
+              upstreamConditionParts.push(
+                'Upstream Datenlizenz Deutschland – Namensnennung 2.0 (dl-de/by-2-0, https://www.govdata.de/dl-de/by-2-0) source-attribution obligations remain concurrently binding on municipality attributes and elements derived from dl-de/by-2-0 sources; OpenStreetMap-specific agency waivers/addenda apply solely when contributing directly to OpenStreetMap.',
+              );
+            }
+
             const attributionClauses: string[] = [
-              'Compiled polygon dataset licensed under Open Data Commons Open Database License 1.0 (ODbL-1.0, https://opendatacommons.org/licenses/odbl/1-0/); contributors waive their own copyright and database rights in submitted geometries, surface classifications, and notes via CC0 1.0 Universal (https://creativecommons.org/publicdomain/zero/1.0/) to the extent not derived from attributed basemaps.',
+              'Compiled polygon dataset licensed under Open Data Commons Open Database License 1.0 (ODbL-1.0, https://opendatacommons.org/licenses/odbl/1-0/), subject to concurrent upstream open-data conditions where applicable; contributors waive their own copyright and database rights in submitted geometries, surface classifications, and notes via CC0 1.0 Universal (https://creativecommons.org/publicdomain/zero/1.0/, incl. Section 3 Public License Fallback) to the extent not derived from attributed basemaps.',
               'Basemap reference: © OpenStreetMap contributors (ODbL, https://www.openstreetmap.org/copyright).',
             ];
             if (app.config.orthophoto !== null) {
-              if (
-                app.config.orthophoto.urlTemplate.includes('/api/v1/tiles/dop20/')
-              ) {
+              if (usesBuiltinDop20) {
                 attributionClauses.push(
-                  `Aerial orthophoto reference: © GeoBasis-DE / German State Survey Offices (${exportYear}; DOP20/DOP10 under dl-de/by-2-0 https://www.govdata.de/dl-de/by-2-0, CC BY 4.0 https://creativecommons.org/licenses/by/4.0/, dl-de/zero-2-0 https://www.govdata.de/dl-de/zero-2-0; Daten verändert).`,
+                  `Aerial orthophoto reference: © GeoBasis-DE / German State Survey Offices (${exportYear}; DOP20/DOP10 under dl-de/by-2-0 https://www.govdata.de/dl-de/by-2-0, CC BY 4.0 https://creativecommons.org/licenses/by/4.0/, dl-de/zero-2-0 https://www.govdata.de/dl-de/zero-2-0; Daten verändert; upstream CC BY 4.0 no-DRM and dl-de/by-2-0 attribution terms remain concurrently binding alongside ODbL-1.0).`,
                 );
               } else if (app.config.orthophoto.attribution.trim().length > 0) {
                 attributionClauses.push(
@@ -249,7 +310,7 @@ export function registerPolygonRoutes(
             }
             if (vg250Active) {
               attributionClauses.push(
-                `Municipality codes/names derived from VG250: © GeoBasis-DE / BKG (${vg250Year}) dl-de/by-2-0 (https://www.govdata.de/dl-de/by-2-0), Datenquellen: ${BKG_VG250_DATENQUELLEN_URL} (Daten verändert).`,
+                `Municipality codes/names derived from VG250: © BKG (${vg250Year}) dl-de/by-2-0 (https://www.govdata.de/dl-de/by-2-0), Datenquellen: ${BKG_VG250_DATENQUELLEN_URL} (Daten verändert; upstream dl-de/by-2-0 attribution remains concurrently binding alongside ODbL-1.0 — pass ?includeMunicipality=false to omit VG250 attributes).`,
               );
             }
             if (activeImportAttributions.length > 0) {
@@ -269,7 +330,11 @@ export function registerPolygonRoutes(
               `Full license and source notices: ${app.config.licensesUrl}.`,
             );
             const exportAttribution = attributionClauses.join(' ');
-            const collectionPrefix = `{"type":"FeatureCollection","license":"ODbL-1.0","licenseUrl":"https://opendatacommons.org/licenses/odbl/1-0/","contributorRights":"CC0-1.0","contributorRightsUrl":"https://creativecommons.org/publicdomain/zero/1.0/","attribution":${JSON.stringify(
+            const upstreamConditionsJsonField =
+              upstreamConditionParts.length > 0
+                ? `"upstreamConditions":${JSON.stringify(upstreamConditionParts.join(' '))},`
+                : '';
+            const collectionPrefix = `{"type":"FeatureCollection","license":"ODbL-1.0","licenseUrl":"https://opendatacommons.org/licenses/odbl/1-0/","contributorRights":"CC0-1.0","contributorRightsUrl":"https://creativecommons.org/publicdomain/zero/1.0/",${upstreamConditionsJsonField}"attribution":${JSON.stringify(
               exportAttribution,
             )},"features":[`;
 
@@ -281,6 +346,7 @@ export function registerPolygonRoutes(
             const firstSerialized = serializeFeatureBatch(
               firstBatch.features,
               isFirstFeature,
+              includeMunicipality,
             );
             isFirstFeature = firstSerialized.nextIsFirstFeature;
             cursor = firstBatch.nextCursor;
@@ -320,6 +386,7 @@ export function registerPolygonRoutes(
               const serialized = serializeFeatureBatch(
                 nextBatch.features,
                 isFirstFeature,
+                includeMunicipality,
               );
               isFirstFeature = serialized.nextIsFirstFeature;
               cursor = nextBatch.nextCursor;
@@ -607,9 +674,10 @@ export function registerPolygonRoutes(
 
       const effectiveAttribution =
         rawQueryAttribution ?? dataset.embeddedAttribution ?? null;
-      let resolvedLicensePolicy: ResolvedImportLicensePolicy | null = null;
+
+      let queryLicensePolicy: ResolvedImportLicensePolicy | null = null;
       if (typeof queryObj.license === 'string') {
-        resolvedLicensePolicy = assertCompatibleImportLicenseParam(
+        queryLicensePolicy = assertCompatibleImportLicenseParam(
           queryObj.license,
           {
             sourceAttribution: effectiveAttribution,
@@ -618,16 +686,48 @@ export function registerPolygonRoutes(
         );
       }
 
+      let embeddedLicensePolicy: ResolvedImportLicensePolicy | null = null;
+      if (dataset.embeddedLicense) {
+        embeddedLicensePolicy = assertCompatibleImportLicenseParam(
+          dataset.embeddedLicense,
+          {
+            sourceAttribution: effectiveAttribution,
+            waiverConfirmed,
+          },
+        );
+      }
+
+      if (
+        queryLicensePolicy &&
+        embeddedLicensePolicy &&
+        queryLicensePolicy.canonicalLicense !==
+          embeddedLicensePolicy.canonicalLicense
+      ) {
+        throw new ApiError(
+          422,
+          'VALIDATION_ERROR',
+          `Query license "${queryLicensePolicy.canonicalLicense}" conflicts with embedded dataset license "${embeddedLicensePolicy.canonicalLicense}".`,
+        );
+      }
+
+      const resolvedLicensePolicy = queryLicensePolicy ?? embeddedLicensePolicy;
+      if (!resolvedLicensePolicy) {
+        throw new ApiError(
+          422,
+          'VALIDATION_ERROR',
+          'Bulk import requires an explicit compatible "license" query parameter (CC0-1.0, dl-de/zero-2-0, PDDL-1.0, Public Domain, attributed ODbL-1.0, or waiver-confirmed CC-BY-4.0 / dl-de/by-2-0) when the uploaded file does not embed a recognized open license.',
+        );
+      }
+
       const importAttribution: ImportAttributionMetadata | null =
         effectiveAttribution !== null && effectiveAttribution.length > 0
           ? {
-              license:
-                resolvedLicensePolicy?.canonicalLicense ??
-                dataset.embeddedLicense ??
-                'CC0-1.0',
+              license: resolvedLicensePolicy.canonicalLicense,
               attributionText: effectiveAttribution,
               sourceUrl,
-              waiverConfirmed,
+              waiverConfirmed: resolvedLicensePolicy.requiresWaiver
+                ? waiverConfirmed
+                : false,
             }
           : null;
 

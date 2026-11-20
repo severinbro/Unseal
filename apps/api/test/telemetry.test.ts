@@ -268,7 +268,7 @@ describe('Research Telemetry & Polygon Provenance Suite (009_research_telemetry)
       });
       const importInitRes = await app.inject({
         method: 'POST',
-        url: '/api/v1/polygons/import',
+        url: '/api/v1/polygons/import?license=CC0-1.0',
         headers: {
           authorization: `Bearer ${admin.sessionToken}`,
           'content-type': initMp.contentTypeHeader,
@@ -304,7 +304,7 @@ describe('Research Telemetry & Polygon Provenance Suite (009_research_telemetry)
       });
       const importRsRes = await app.inject({
         method: 'POST',
-        url: '/api/v1/polygons/import?origin=remote_sensing',
+        url: '/api/v1/polygons/import?origin=remote_sensing&license=CC0-1.0',
         headers: {
           authorization: `Bearer ${admin.sessionToken}`,
           'content-type': rsMp.contentTypeHeader,

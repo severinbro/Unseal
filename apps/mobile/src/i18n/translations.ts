@@ -7,7 +7,9 @@ import {
   type ContentReportReason,
   type ContentReportTargetType,
   type ErrorCode,
+  type ImportLicense,
   type PolygonFlagReason,
+  type PolygonOrigin,
   type SurfaceType,
 } from '@openunseal/shared';
 
@@ -656,6 +658,31 @@ export interface TranslationDictionary {
     readonly skipButton: string;
     readonly skipA11y: string;
   };
+  readonly adminImport: {
+    readonly modalA11y: string;
+    readonly title: string;
+    readonly subtitle: string;
+    readonly closeA11y: string;
+    readonly close: string;
+    readonly cancel: string;
+    readonly fileLabel: string;
+    readonly originLabel: string;
+    readonly originLabels: Readonly<Record<PolygonOrigin, string>>;
+    readonly licenseLabel: string;
+    readonly licenseLabels: Readonly<Record<ImportLicense, string>>;
+    readonly licenseHint: string;
+    readonly attributionLabelRequired: string;
+    readonly attributionLabelOptional: string;
+    readonly attributionPlaceholder: string;
+    readonly attributionRequiredError: string;
+    readonly sourceUrlLabel: string;
+    readonly sourceUrlPlaceholder: string;
+    readonly sourceUrlInvalidError: string;
+    readonly waiverLabel: string;
+    readonly waiverRequiredError: string;
+    readonly submitButton: string;
+    readonly submittingBusy: string;
+  };
 }
 
 export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
@@ -677,8 +704,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       legendContested: '− Umstritten',
       legendInProgress: '⟳ Wird entsiegelt',
       legendFinished: '✓ Entsiegelt',
-      nativeAttributionOsm: `© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap · VG250: © GeoBasis-DE / BKG (${ATTRIBUTION_YEAR}) dl-de/by-2-0, Datenquellen (verändert)`,
-      nativeAttributionOrtho: `DOP20/DOP10: © Länder (${ATTRIBUTION_YEAR}; dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; verändert) · VG250: © GeoBasis-DE / BKG (${ATTRIBUTION_YEAR})`,
+      nativeAttributionOsm: `© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap · VG250: © BKG (${ATTRIBUTION_YEAR}) dl-de/by-2-0, Datenquellen (verändert)`,
+      nativeAttributionOrtho: `DOP20/DOP10: © Länder (${ATTRIBUTION_YEAR}; dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; verändert) · VG250: © BKG (${ATTRIBUTION_YEAR})`,
     },
     controls: {
       signInShort: 'Anmelden',
@@ -686,7 +713,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       subtitleOrthophoto: 'Luftbild (DOP20)',
       subtitleOsm: 'OpenStreetMap-Straßenkarte',
       subtitleRegistry: 'Offenes Entsiegelungsregister',
-      osmAttributionShort: `© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap · VG250 © GeoBasis-DE / BKG (${ATTRIBUTION_YEAR})`,
+      osmAttributionShort: `© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap · VG250 © BKG (${ATTRIBUTION_YEAR})`,
       imageryPrefix: 'Bilddaten:',
       switchLocaleA11y: 'Sprache auf Englisch (EN) umstellen',
       switchToDarkModeA11y: 'Dunkelmodus mit dunkler Hintergrundkarte aktivieren',
@@ -1229,7 +1256,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         '© OpenStreetMap (ODbL) · © OpenMapTiles / © CARTO (CC BY 4.0, Dunkelmodus angepasst) · OpenFreeMap (MIT)',
       attributionDop20Short:
         `DOP20/DOP10 © Länder (${ATTRIBUTION_YEAR}; dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; verändert)`,
-      attributionVg250Short: `VG250: © GeoBasis-DE / BKG (${ATTRIBUTION_YEAR}) dl-de/by-2-0, Datenquellen (Daten verändert)`,
+      attributionVg250Short: `VG250: © BKG (${ATTRIBUTION_YEAR}) dl-de/by-2-0, Datenquellen (Daten verändert)`,
       impressumLinkLabel: 'Impressum',
       privacyLinkLabel: 'Datenschutz',
       termsLinkLabel: 'Nutzungsbedingungen',
@@ -1418,6 +1445,49 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       skipButton: 'Überspringen',
       skipA11y: 'Intro-Animation überspringen',
     },
+    adminImport: {
+      modalA11y: 'Admin-Datenimport und Lizenzbestätigung',
+      title: 'Bestandsdaten importieren',
+      subtitle:
+        'Importierte Flächen fließen in den öffentlichen ODbL-1.0-Export ein. Bitte gib Herkunft und Datenlizenz ausdrücklich an.',
+      closeA11y: 'Importdialog schließen',
+      close: 'Schließen',
+      cancel: 'Abbrechen',
+      fileLabel: 'Ausgewählte Datei',
+      originLabel: 'Erfassungsherkunft',
+      originLabels: {
+        initiative_import: 'Initiativen-/Bestandsimport',
+        remote_sensing: 'Fernerkundung / KI-Detektion',
+        citizen: 'Bürgerkartierung',
+      },
+      licenseLabel: 'Quell-Datenlizenz',
+      licenseLabels: {
+        'CC0-1.0': 'CC0-1.0 (Eigene Erhebung / Gemeinfrei)',
+        'dl-de/zero-2-0': 'dl-de/zero-2-0 (Datenlizenz DE – Zero 2.0)',
+        'PDDL-1.0': 'PDDL-1.0 (Public Domain Dedication)',
+        'Public Domain': 'Public Domain (Amtliches Werk / gemeinfrei)',
+        'ODbL-1.0': 'ODbL-1.0 (mit Quellenangabe)',
+        'dl-de/by-2-0': 'dl-de/by-2-0 (nur mit ODbL-Freigabe)',
+        'CC-BY-4.0': 'CC BY 4.0 (nur mit ODbL-Freigabe)',
+      },
+      licenseHint:
+        'Unfreie, nicht-kommerzielle (NC), Bearbeitungsverbots- (ND) oder unkompatible Lizenzen dürfen nicht importiert werden.',
+      attributionLabelRequired: 'Quellenangabe / Urhebervermerk (Pflichtfeld)',
+      attributionLabelOptional: 'Quellenangabe im Export (optional)',
+      attributionPlaceholder: 'z. B. © Umweltinitiative Musterstadt (2026)',
+      attributionRequiredError:
+        'Für diese Lizenz ist eine nicht-leere Quellenangabe erforderlich.',
+      sourceUrlLabel: 'Quellen-URL (optional)',
+      sourceUrlPlaceholder: 'https://…',
+      sourceUrlInvalidError:
+        'Quellen-URL muss mit https:// oder http:// beginnen.',
+      waiverLabel:
+        'Es liegt eine dokumentierte ausdrückliche Freigabe (Waiver) der Rechteinhaber zur Aufnahme in einen ODbL-1.0-Datensatz vor (OSMF-LWG-Vorgabe; OpenStreetMap-spezifische Behörden-Freigaben allein genügen nicht).',
+      waiverRequiredError:
+        'Für CC BY 4.0 und dl-de/by-2-0 muss eine ausdrückliche ODbL-1.0-Freigabe bestätigt werden.',
+      submitButton: 'Jetzt importieren',
+      submittingBusy: 'Importiert…',
+    },
   },
   en: {
     app: {
@@ -1436,8 +1506,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       legendContested: '− Contested',
       legendInProgress: '⟳ In progress',
       legendFinished: '✓ Finished',
-      nativeAttributionOsm: `© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap · VG250: © GeoBasis-DE / BKG (${ATTRIBUTION_YEAR}) dl-de/by-2-0, Datenquellen (modified)`,
-      nativeAttributionOrtho: `DOP20/DOP10: © State Surveys (${ATTRIBUTION_YEAR}; dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; modified) · VG250: © GeoBasis-DE / BKG (${ATTRIBUTION_YEAR})`,
+      nativeAttributionOsm: `© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap · VG250: © BKG (${ATTRIBUTION_YEAR}) dl-de/by-2-0, Datenquellen (modified)`,
+      nativeAttributionOrtho: `DOP20/DOP10: © State Surveys (${ATTRIBUTION_YEAR}; dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; modified) · VG250: © BKG (${ATTRIBUTION_YEAR})`,
     },
     controls: {
       signInShort: 'Sign in',
@@ -1445,7 +1515,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       subtitleOrthophoto: 'Aerial Orthophoto (DOP20)',
       subtitleOsm: 'OpenStreetMap Street Layer',
       subtitleRegistry: 'Open civic unsealing registry',
-      osmAttributionShort: `© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap · VG250 © GeoBasis-DE / BKG (${ATTRIBUTION_YEAR})`,
+      osmAttributionShort: `© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap · VG250 © BKG (${ATTRIBUTION_YEAR})`,
       imageryPrefix: 'Imagery:',
       switchLocaleA11y: 'Switch language to German (DE)',
       switchToDarkModeA11y: 'Switch to dark mode with dark background map',
@@ -1963,7 +2033,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         '© OpenStreetMap (ODbL) · © OpenMapTiles / © CARTO (CC BY 4.0, dark mode modified) · OpenFreeMap (MIT)',
       attributionDop20Short:
         `DOP20/DOP10 © State Surveys (${ATTRIBUTION_YEAR}; dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; modified)`,
-      attributionVg250Short: `VG250: © GeoBasis-DE / BKG (${ATTRIBUTION_YEAR}) dl-de/by-2-0, Datenquellen (modified)`,
+      attributionVg250Short: `VG250: © BKG (${ATTRIBUTION_YEAR}) dl-de/by-2-0, Datenquellen (modified)`,
       impressumLinkLabel: 'Impressum',
       privacyLinkLabel: 'Privacy Policy',
       termsLinkLabel: 'Terms of Use',
@@ -2150,6 +2220,48 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       skipButton: 'Skip',
       skipA11y: 'Skip intro animation',
     },
+    adminImport: {
+      modalA11y: 'Admin dataset import and license confirmation',
+      title: 'Import Polygon Dataset',
+      subtitle:
+        'Imported polygons enter the public ODbL-1.0 export. Explicitly declare dataset provenance and open-data license.',
+      closeA11y: 'Close import dialog',
+      close: 'Close',
+      cancel: 'Cancel',
+      fileLabel: 'Selected file',
+      originLabel: 'Mapping origin',
+      originLabels: {
+        initiative_import: 'Initiative / inventory import',
+        remote_sensing: 'Remote sensing / AI detection',
+        citizen: 'Citizen mapping',
+      },
+      licenseLabel: 'Source data license',
+      licenseLabels: {
+        'CC0-1.0': 'CC0-1.0 (Own survey / public domain dedication)',
+        'dl-de/zero-2-0': 'dl-de/zero-2-0 (Data Licence Germany – Zero 2.0)',
+        'PDDL-1.0': 'PDDL-1.0 (Public Domain Dedication)',
+        'Public Domain': 'Public Domain',
+        'ODbL-1.0': 'ODbL-1.0 (with source attribution)',
+        'dl-de/by-2-0': 'dl-de/by-2-0 (requires explicit ODbL waiver)',
+        'CC-BY-4.0': 'CC BY 4.0 (requires explicit ODbL waiver)',
+      },
+      licenseHint:
+        'Proprietary, non-commercial (NC), no-derivatives (ND), or incompatible licenses cannot be imported.',
+      attributionLabelRequired: 'Source attribution / credit (required)',
+      attributionLabelOptional: 'Source attribution in export (optional)',
+      attributionPlaceholder: 'e.g. © Local Unsealing Initiative (2026)',
+      attributionRequiredError:
+        'A non-empty source attribution is required for this license.',
+      sourceUrlLabel: 'Source URL (optional)',
+      sourceUrlPlaceholder: 'https://…',
+      sourceUrlInvalidError: 'Source URL must start with https:// or http://.',
+      waiverLabel:
+        'A documented explicit ODbL-1.0 compatibility waiver from the rights holder is on file (per OSMF LWG guidance; OpenStreetMap-only agency waivers do not cover independent platforms).',
+      waiverRequiredError:
+        'Importing CC BY 4.0 or dl-de/by-2-0 data requires confirming an explicit ODbL-1.0 waiver.',
+      submitButton: 'Import Dataset',
+      submittingBusy: 'Importing…',
+    },
   },
 };
 
@@ -2163,8 +2275,8 @@ export function formatVg250ShortAttribution(
 ): string {
   const year = vg250DataYear ?? new Date().getUTCFullYear();
   return locale === 'de'
-    ? `VG250: © GeoBasis-DE / BKG (${year}) dl-de/by-2-0, Datenquellen (Daten verändert)`
-    : `VG250: © GeoBasis-DE / BKG (${year}) dl-de/by-2-0, Datenquellen (modified)`;
+    ? `VG250: © BKG (${year}) dl-de/by-2-0, Datenquellen (Daten verändert)`
+    : `VG250: © BKG (${year}) dl-de/by-2-0, Datenquellen (modified)`;
 }
 
 export function buildNativeAttributionText(options: {

@@ -42,6 +42,18 @@ export const IMPORT_LIMITS = {
   MAX_AREA_M2: 500_000,
 } as const;
 
+export const IMPORT_LICENSES = [
+  'CC0-1.0',
+  'dl-de/zero-2-0',
+  'PDDL-1.0',
+  'Public Domain',
+  'ODbL-1.0',
+  'dl-de/by-2-0',
+  'CC-BY-4.0',
+] as const;
+
+export type ImportLicense = (typeof IMPORT_LICENSES)[number];
+
 export const MUNICIPALITY_NORMS = {
   MIN_POSITIVE_SCORE_FLOOR: 3,
   UNBOUNDED_FALLBACK_FLOOR: 10,

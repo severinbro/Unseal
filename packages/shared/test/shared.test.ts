@@ -1202,7 +1202,7 @@ describe('Review Focus 3: BboxQuerySchema vs checkBboxSpan and remaining wire sc
     assert.equal(parsedPersonalStats.ratedPolygonsCount, 7);
   });
 
-  it('provides live-verified German state DOP20 attributions, dynamic viewport selection, and DSA Art. 16 content-report schemas', () => {
+  it('provides publisher-prescribed German state DOP20 attributions, dynamic viewport selection, and DSA Art. 16 content-report schemas', () => {
     assert.equal(GERMAN_STATE_DOP20_PROVIDERS.length, 15);
     const byCode = new Map(GERMAN_STATE_DOP20_PROVIDERS.map((p) => [p.code, p]));
 

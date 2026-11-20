@@ -67,7 +67,10 @@ import {
   formatAreaDisplay,
   formatInspectorDate,
   formatStatsInteger,
+  importLicenseRequiresAttribution,
+  importLicenseRequiresWaiver,
   MIN_TOUCH_TARGET_DP,
+  validateAdminImportForm,
 } from '../src/state/viewModels';
 import {
   deriveBrandedPalette,
@@ -1637,7 +1640,7 @@ describe('Dynamic native attribution text & offline bundled license plugin', () 
     assert.match(defaultDe, /OpenFreeMap/);
     assert.match(
       defaultDe,
-      new RegExp(`© GeoBasis-DE \\/ BKG \\(${currentYear}\\)`),
+      new RegExp(`© BKG \\(${currentYear}\\)`),
     );
     assert.match(defaultDe, /Datenquellen/);
     assert.match(defaultDe, /Daten verändert/);
@@ -1648,7 +1651,7 @@ describe('Dynamic native attribution text & offline bundled license plugin', () 
       vg250AttributionEnabled: true,
       vg250DataYear: 2024,
     });
-    assert.match(customSeedYearDe, /© GeoBasis-DE \/ BKG \(2024\)/);
+    assert.match(customSeedYearDe, /© BKG \(2024\)/);
 
     const customNoVg250 = buildNativeAttributionText({
       locale: 'en',
@@ -1684,7 +1687,7 @@ describe('Dynamic native attribution text & offline bundled license plugin', () 
     assert.match(orthoDefault, /OpenFreeMap/);
     assert.match(
       orthoDefault,
-      new RegExp(`© GeoBasis-DE \\/ BKG \\(${currentYear}\\)`),
+      new RegExp(`© BKG \\(${currentYear}\\)`),
     );
 
     // Dynamic viewport-scoped DOP20 + dark mode CARTO attribution on native
@@ -1702,7 +1705,7 @@ describe('Dynamic native attribution text & offline bundled license plugin', () 
     assert.match(orthoMainzDark, /LVermGeoRP/);
     assert.match(orthoMainzDark, /HVBG/);
     assert.match(orthoMainzDark, /© CARTO \(modified\)/);
-    assert.match(orthoMainzDark, /© GeoBasis-DE \/ BKG \(2025\)/);
+    assert.match(orthoMainzDark, /© BKG \(2025\)/);
 
     // TDDDG compliance: default Web viewport storage uses sessionStorage (not localStorage) and cleans legacy key
     const sessionBacking = new Map<string, string>();
@@ -1800,9 +1803,18 @@ describe('Dynamic native attribution text & offline bundled license plugin', () 
         true,
       );
       assert.match(noticesText, /MapLibre Native \(BSD-2-Clause\)/);
+      assert.match(
+        noticesText,
+        /MapLibre Android Plugins & Gestures.*: BSD-2-Clause/,
+      );
       assert.match(noticesText, /Copyright \(c\) 2014-2020 Mapbox/);
       assert.match(noticesText, /play-services-location/);
       assert.match(noticesText, /Android-Image-Cropper/);
+      assert.match(noticesText, /Glide Image Loader.*BSD-2-Clause/);
+      assert.match(noticesText, /Bolts-Tasks.*BSD-3-Clause/);
+      assert.match(noticesText, /Apache Commons IO 2\.6/);
+      assert.match(noticesText, /Apache Commons Codec 1\.10/);
+      assert.match(noticesText, /The Public Suffix List/);
       assert.match(noticesText, /SmartLocation/);
       assert.match(noticesText, /MapLibre Android Plugins/);
       assert.match(noticesText, /©GeoBasis-DE \/ LVermGeoRP/);
@@ -2050,5 +2062,79 @@ describe('Responsive layout edge cases (narrow phones & short landscape)', () =>
     const desktop = deriveNavbarLayoutMode('expanded', 1440);
     assert.equal(desktop.collapseThemeToMenu, false);
     assert.equal(desktop.collapseLocaleToMenu, false);
+  });
+
+  it('validates AdminImportModal license, attribution, URL, and explicit ODbL waiver rules in de & en', () => {
+    assert.equal(importLicenseRequiresWaiver('CC0-1.0'), false);
+    assert.equal(importLicenseRequiresWaiver('ODbL-1.0'), false);
+    assert.equal(importLicenseRequiresWaiver('CC-BY-4.0'), true);
+    assert.equal(importLicenseRequiresWaiver('dl-de/by-2-0'), true);
+
+    assert.equal(importLicenseRequiresAttribution('CC0-1.0'), false);
+    assert.equal(importLicenseRequiresAttribution('dl-de/zero-2-0'), false);
+    assert.equal(importLicenseRequiresAttribution('ODbL-1.0'), true);
+    assert.equal(importLicenseRequiresAttribution('CC-BY-4.0'), true);
+    assert.equal(importLicenseRequiresAttribution('dl-de/by-2-0'), true);
+
+    const ownSurveyOk = validateAdminImportForm({
+      origin: 'initiative_import',
+      license: 'CC0-1.0',
+      attribution: '',
+      sourceUrl: '',
+      waiverConfirmed: false,
+      locale: 'de',
+    });
+    assert.equal(ownSurveyOk.ok, true);
+    if (ownSurveyOk.ok) {
+      assert.equal(ownSurveyOk.options.license, 'CC0-1.0');
+      assert.equal(ownSurveyOk.options.attribution, null);
+      assert.equal(ownSurveyOk.options.waiverConfirmed, false);
+    }
+
+    const odblMissingAttr = validateAdminImportForm({
+      origin: 'initiative_import',
+      license: 'ODbL-1.0',
+      attribution: '   ',
+      sourceUrl: '',
+      waiverConfirmed: false,
+      locale: 'en',
+    });
+    assert.equal(odblMissingAttr.ok, false);
+
+    const ccByMissingWaiver = validateAdminImportForm({
+      origin: 'remote_sensing',
+      license: 'CC-BY-4.0',
+      attribution: '© State Survey',
+      sourceUrl: 'https://example.org/data',
+      waiverConfirmed: false,
+      locale: 'de',
+    });
+    assert.equal(ccByMissingWaiver.ok, false);
+
+    const badUrl = validateAdminImportForm({
+      origin: 'citizen',
+      license: 'CC0-1.0',
+      attribution: '',
+      sourceUrl: 'ftp://example.org/data',
+      waiverConfirmed: false,
+      locale: 'en',
+    });
+    assert.equal(badUrl.ok, false);
+
+    const waivedOk = validateAdminImportForm({
+      origin: 'remote_sensing',
+      license: 'dl-de/by-2-0',
+      attribution: '  © LGV Hamburg  ',
+      sourceUrl: '  https://geoportal-hamburg.de  ',
+      waiverConfirmed: true,
+      locale: 'en',
+    });
+    assert.equal(waivedOk.ok, true);
+    if (waivedOk.ok) {
+      assert.equal(waivedOk.options.license, 'dl-de/by-2-0');
+      assert.equal(waivedOk.options.attribution, '© LGV Hamburg');
+      assert.equal(waivedOk.options.sourceUrl, 'https://geoportal-hamburg.de');
+      assert.equal(waivedOk.options.waiverConfirmed, true);
+    }
   });
 });

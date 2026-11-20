@@ -316,7 +316,7 @@ describe('Carbon Anti-Spam & Civic Moderation Suite', () => {
       });
       const importRes = await app.inject({
         method: 'POST',
-        url: '/api/v1/polygons/import',
+        url: '/api/v1/polygons/import?license=CC0-1.0',
         remoteAddress: '198.51.100.22',
         headers: {
           authorization: `Bearer ${admin.sessionToken}`,
