@@ -433,9 +433,20 @@ export class PhotoRepository {
     photoId: string;
     actorUserId: string;
     actorIsAdmin: boolean;
-  }): Promise<void> {
+  }): Promise<{
+    deletedByAdmin: boolean;
+    authorEmail: string | null;
+    authorPseudonym: string | null;
+    polygonId: string;
+  }> {
     const client = await this.pool.connect();
     let filesToUnlink: { file_name: string; thumb_name: string } | null = null;
+    let moderationInfo = {
+      deletedByAdmin: false,
+      authorEmail: null as string | null,
+      authorPseudonym: null as string | null,
+      polygonId: '',
+    };
     try {
       await client.query('BEGIN');
       await lockUserForWrite(client, params.actorUserId);
@@ -466,6 +477,21 @@ export class PhotoRepository {
           'FORBIDDEN_NOT_AUTHOR',
           'Only the uploader or an administrator may delete this photo.',
         );
+      }
+
+      moderationInfo.polygonId = photo.polygon_id;
+      if (params.actorIsAdmin && !isUploader && photo.user_id !== null) {
+        const authorRes = await client.query<{
+          email: string | null;
+          pseudonym: string;
+        }>('SELECT email, pseudonym FROM users WHERE id = $1', [photo.user_id]);
+        const author = authorRes.rows[0];
+        moderationInfo = {
+          deletedByAdmin: true,
+          authorEmail: author?.email ?? null,
+          authorPseudonym: author?.pseudonym ?? null,
+          polygonId: photo.polygon_id,
+        };
       }
 
       await client.query('SELECT id FROM polygons WHERE id = $1 FOR UPDATE', [
@@ -505,5 +531,7 @@ export class PhotoRepository {
         .unlink(path.join(this.uploadsDir, filesToUnlink.thumb_name))
         .catch(() => undefined);
     }
+
+    return moderationInfo;
   }
 }

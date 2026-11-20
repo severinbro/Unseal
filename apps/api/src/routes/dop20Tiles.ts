@@ -4,7 +4,15 @@
 import sharp from 'sharp';
 import { z } from 'zod';
 
-import { ApiError } from '@entsiegelung/shared';
+import {
+  ApiError,
+  GERMAN_STATE_DOP20_PROVIDERS,
+  GERMANY_DOP20_BOUNDS as SHARED_GERMANY_DOP20_BOUNDS,
+  formatDefaultDop20Attribution,
+  selectDop20ProvidersForBounds,
+  type Dop20LicenseId,
+  type StateDop20Provider,
+} from '@entsiegelung/shared';
 
 import type { FastifyInstance } from 'fastify';
 
@@ -16,197 +24,43 @@ const UPSTREAM_TIMEOUT_MS = 8_000;
 const TILE_CACHE_MAX_ENTRIES = 256;
 const TILE_CACHE_TTL_MS = 15 * 60 * 1000;
 
-const DOP20_ATTRIBUTION_YEAR = new Date().getUTCFullYear();
+export {
+  GERMAN_STATE_DOP20_PROVIDERS,
+  formatDefaultDop20Attribution,
+  type Dop20LicenseId,
+  type StateDop20Provider,
+};
 
-export const DEFAULT_DOP20_ATTRIBUTION =
-  `© GeoBasis-DE / Vermessungsverwaltungen der Bundesländer (${DOP20_ATTRIBUTION_YEAR}; u. a. LGL-BW, Bayerische Vermessungsverwaltung, LGV Hamburg, LGLN, GeoInformation Bremen, GDI-Th, Geoportal Berlin; DOP20/DOP10, dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; Daten verändert)`;
-
-export const GERMANY_DOP20_BOUNDS: [number, number, number, number] = [
-  5.86,
-  47.27,
-  15.05,
-  55.06,
-];
-
-export type Dop20LicenseId = 'dl-de/by-2-0' | 'CC BY 4.0' | 'dl-de/zero-2-0';
-
-const DL_DE_BY_2_0_URL = 'https://www.govdata.de/dl-de/by-2-0';
-const DL_DE_ZERO_2_0_URL = 'https://www.govdata.de/dl-de/zero-2-0';
-const CC_BY_4_0_URL = 'https://creativecommons.org/licenses/by/4.0/';
-
-export interface StateDop20Provider {
-  readonly code: string;
-  readonly name: string;
-  readonly boundsWgs84: readonly [number, number, number, number];
-  readonly baseUrl: string;
-  readonly layers: string;
-  readonly licenseId: Dop20LicenseId;
-  readonly licenseUrl: string;
-  readonly attribution: string;
+export function getDefaultDop20Attribution(
+  year: number = new Date().getUTCFullYear(),
+): string {
+  return formatDefaultDop20Attribution(year);
 }
 
 /**
- * Official OpenData DOP20 / DOP10 RGB WMS 1.3.0 services of the 16 German Bundesländer
- * (Berlin and Brandenburg share the joint ISK GeoBasis-BB `bebb_dop20c` service).
+ * Convenience string for static defaults; prefer `getDefaultDop20Attribution()`
+ * for dynamic year resolution across calendar rollovers.
  */
-export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
-  {
-    code: 'RP',
-    name: 'Rheinland-Pfalz',
-    boundsWgs84: [6.11, 48.96, 8.51, 50.95],
-    baseUrl: 'https://geo4.service24.rlp.de/wms/rp_dop20.fcgi',
-    layers: 'rp_dop20',
-    licenseId: 'dl-de/by-2-0',
-    licenseUrl: DL_DE_BY_2_0_URL,
-    attribution: '© GeoBasis-DE / LVermGeoRP, http://www.lvermgeo.rlp.de',
-  },
-  {
-    code: 'HE',
-    name: 'Hessen',
-    boundsWgs84: [7.77, 49.39, 10.24, 51.66],
-    baseUrl:
-      'https://www.gds-srv.hessen.de/cgi-bin/lika-services/ogc-free-images.ows',
-    layers: 'he_dop_rgb',
-    licenseId: 'dl-de/zero-2-0',
-    licenseUrl: DL_DE_ZERO_2_0_URL,
-    attribution: '© Hessische Verwaltung für Bodenmanagement und Geoinformation (HVBG)',
-  },
-  {
-    code: 'NW',
-    name: 'Nordrhein-Westfalen',
-    boundsWgs84: [5.86, 50.32, 9.47, 52.54],
-    baseUrl: 'https://www.wms.nrw.de/geobasis/wms_nw_dop',
-    layers: 'nw_dop_rgb',
-    licenseId: 'dl-de/zero-2-0',
-    licenseUrl: DL_DE_ZERO_2_0_URL,
-    attribution: '© Land NRW (Geobasis NRW)',
-  },
-  {
-    code: 'BW',
-    name: 'Baden-Württemberg',
-    boundsWgs84: [7.51, 47.53, 10.5, 49.8],
-    baseUrl:
-      'https://owsproxy.lgl-bw.de/owsproxy/ows/WMS_INSP_BW_Orthofoto_DOP20',
-    layers: 'OI.OrthoimageCoverage',
-    licenseId: 'dl-de/by-2-0',
-    licenseUrl: DL_DE_BY_2_0_URL,
-    attribution: '© LGL, www.lgl-bw.de',
-  },
-  {
-    code: 'BY',
-    name: 'Bayern',
-    boundsWgs84: [8.97, 47.27, 13.84, 50.57],
-    baseUrl: 'https://geoservices.bayern.de/od/wms/dop/v1/dop20',
-    layers: 'by_dop20c',
-    licenseId: 'CC BY 4.0',
-    licenseUrl: CC_BY_4_0_URL,
-    attribution: 'Datenquelle: Bayerische Vermessungsverwaltung – www.geodaten.bayern.de',
-  },
-  {
-    code: 'SL',
-    name: 'Saarland',
-    boundsWgs84: [6.34, 49.08, 7.44, 49.66],
-    baseUrl: 'https://geoportal.saarland.de/freewms/dop2023',
-    layers: 'sl_dop20_rgb',
-    licenseId: 'dl-de/by-2-0',
-    licenseUrl: DL_DE_BY_2_0_URL,
-    attribution: '© GeoBasis-DE / LVGL-SL',
-  },
-  {
-    code: 'BE_BB',
-    name: 'Berlin / Brandenburg',
-    boundsWgs84: [11.26, 51.35, 14.77, 53.56],
-    baseUrl: 'https://isk.geobasis-bb.de/mapproxy/dop20c/service/wms',
-    layers: 'bebb_dop20c',
-    licenseId: 'dl-de/by-2-0',
-    licenseUrl: DL_DE_BY_2_0_URL,
-    attribution: '© GeoBasis-DE / LGB, dl-de/by-2-0; © Geoportal Berlin, dl-de/by-2-0',
-  },
-  {
-    code: 'HH',
-    name: 'Hamburg',
-    boundsWgs84: [8.42, 53.39, 10.33, 53.97],
-    // Pin TIME=2026 to LGV Hamburg's own dl-de/by-2-0 OpenData aerial flight,
-    // excluding the 2023 Maxar satellite vintage ("other-closed") in this WMS-Time service.
-    baseUrl: 'https://geodienste.hamburg.de/wms_dop_zeitreihe_unbelaubt?TIME=2026',
-    layers: 'dop_zeitreihe_unbelaubt',
-    licenseId: 'dl-de/by-2-0',
-    licenseUrl: DL_DE_BY_2_0_URL,
-    attribution:
-      '© Freie und Hansestadt Hamburg, Landesbetrieb Geoinformation und Vermessung (LGV)',
-  },
-  {
-    code: 'NI',
-    name: 'Niedersachsen',
-    boundsWgs84: [6.65, 51.29, 11.6, 53.9],
-    baseUrl: 'https://opendata.lgln.niedersachsen.de/doorman/noauth/dop_wms',
-    layers: 'ni_dop20',
-    licenseId: 'CC BY 4.0',
-    licenseUrl: CC_BY_4_0_URL,
-    attribution: '© LGLN (Niedersachsen)',
-  },
-  {
-    code: 'HB',
-    name: 'Bremen / Bremerhaven',
-    boundsWgs84: [8.48, 53.01, 8.99, 53.62],
-    baseUrl: 'https://geodienste.bremen.de/wms_dop10_2023',
-    layers: 'DOP10_2023_HB,DOP10_2023_BHV',
-    licenseId: 'CC BY 4.0',
-    licenseUrl: CC_BY_4_0_URL,
-    attribution: '© Landesamt GeoInformation Bremen',
-  },
-  {
-    code: 'SH',
-    name: 'Schleswig-Holstein',
-    boundsWgs84: [7.86, 53.35, 11.32, 55.06],
-    baseUrl: 'https://dienste.gdi-sh.de/WMS_SH_DOP20col_OpenGBD',
-    layers: 'sh_dop20_rgb',
-    licenseId: 'CC BY 4.0',
-    licenseUrl: CC_BY_4_0_URL,
-    attribution: '© GeoBasis-DE / LVermGeo SH',
-  },
-  {
-    code: 'MV',
-    name: 'Mecklenburg-Vorpommern',
-    boundsWgs84: [10.59, 53.11, 14.42, 54.69],
-    baseUrl: 'https://www.geodaten-mv.de/dienste/adv_dop',
-    layers: 'mv_dop',
-    licenseId: 'CC BY 4.0',
-    licenseUrl: CC_BY_4_0_URL,
-    attribution: '© GeoBasis-DE / M-V',
-  },
-  {
-    code: 'SN',
-    name: 'Sachsen',
-    boundsWgs84: [11.87, 50.17, 15.05, 51.69],
-    baseUrl: 'https://geodienste.sachsen.de/wms_geosn_dop-rgb/guest',
-    layers: 'sn_dop_020',
-    licenseId: 'dl-de/by-2-0',
-    licenseUrl: DL_DE_BY_2_0_URL,
-    attribution: '© GeoBasis-DE / GeoSN',
-  },
-  {
-    code: 'ST',
-    name: 'Sachsen-Anhalt',
-    boundsWgs84: [10.56, 50.93, 13.19, 53.05],
-    baseUrl:
-      'https://www.geodatenportal.sachsen-anhalt.de/wss/service/ST_LVermGeo_DOP_WMS_OpenData/guest',
-    layers: 'lsa_lvermgeo_dop20_2',
-    licenseId: 'dl-de/by-2-0',
-    licenseUrl: DL_DE_BY_2_0_URL,
-    attribution: '© GeoBasis-DE / LVermGeo ST',
-  },
-  {
-    code: 'TH',
-    name: 'Thüringen',
-    boundsWgs84: [9.87, 50.2, 12.66, 51.65],
-    baseUrl: 'https://www.geoproxy.geoportal-th.de/geoproxy/services/DOP',
-    layers: 'th_dop',
-    licenseId: 'CC BY 4.0',
-    licenseUrl: CC_BY_4_0_URL,
-    attribution: '© GDI-Th',
-  },
+export const DEFAULT_DOP20_ATTRIBUTION = getDefaultDop20Attribution();
+
+export const GERMANY_DOP20_BOUNDS: [number, number, number, number] = [
+  SHARED_GERMANY_DOP20_BOUNDS[0],
+  SHARED_GERMANY_DOP20_BOUNDS[1],
+  SHARED_GERMANY_DOP20_BOUNDS[2],
+  SHARED_GERMANY_DOP20_BOUNDS[3],
 ];
+
+function buildDop20UserAgent(
+  publicBaseUrl: string,
+  contactEmail: string | null,
+): string {
+  const details = [publicBaseUrl, contactEmail].filter(
+    (part): part is string => typeof part === 'string' && part.length > 0,
+  );
+  return details.length > 0
+    ? `Unseal-PPGIS/0.2 (${details.join('; ')})`
+    : 'Unseal-PPGIS/0.2';
+}
 
 let cachedTransparentTilePng: Buffer | null = null;
 
@@ -258,19 +112,10 @@ export function slippyTileToBounds(
   };
 }
 
-function boxesIntersect(
-  a: readonly [number, number, number, number],
-  b: readonly [number, number, number, number],
-): boolean {
-  return a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1];
-}
-
 export function selectStateProvidersForBounds(
   wgs84Bounds: readonly [number, number, number, number],
 ): StateDop20Provider[] {
-  return GERMAN_STATE_DOP20_PROVIDERS.filter((provider) =>
-    boxesIntersect(wgs84Bounds, provider.boundsWgs84),
-  );
+  return selectDop20ProvidersForBounds(wgs84Bounds);
 }
 
 export function buildStateWmsGetMapUrl(
@@ -345,6 +190,10 @@ export function registerDop20TileRoutes(
 ): void {
   const fetchFn = options.fetchImpl ?? ((input, init) => fetch(input, init));
   const tileCache = new BoundedTileCache();
+  const userAgent = buildDop20UserAgent(
+    app.config.publicBaseUrl,
+    app.config.operatorEmail ?? app.config.abuseContact,
+  );
 
   app.get(
     '/api/v1/tiles/dop20/:z/:x/:yFile',
@@ -412,6 +261,7 @@ export function registerDop20TileRoutes(
             signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
             headers: {
               Accept: 'image/png,image/*;q=0.9',
+              'User-Agent': userAgent,
             },
           });
           if (!response.ok) {

@@ -402,8 +402,19 @@ export class CommentRepository {
     }
   }
 
-  public async deleteComment(params: DeleteCommentParams): Promise<void> {
+  public async deleteComment(params: DeleteCommentParams): Promise<{
+    deletedByAdmin: boolean;
+    authorEmail: string | null;
+    authorPseudonym: string | null;
+    polygonId: string;
+  }> {
     const client = await this.pool.connect();
+    let moderationInfo = {
+      deletedByAdmin: false,
+      authorEmail: null as string | null,
+      authorPseudonym: null as string | null,
+      polygonId: '',
+    };
     try {
       await client.query('BEGIN');
 
@@ -446,6 +457,23 @@ export class CommentRepository {
         );
       }
 
+      moderationInfo.polygonId = lookup.polygon_id;
+      if (params.actorIsAdmin && !isAuthor && commentRow.user_id !== null) {
+        const authorRes = await client.query<{
+          email: string | null;
+          pseudonym: string;
+        }>('SELECT email, pseudonym FROM users WHERE id = $1', [
+          commentRow.user_id,
+        ]);
+        const author = authorRes.rows[0];
+        moderationInfo = {
+          deletedByAdmin: true,
+          authorEmail: author?.email ?? null,
+          authorPseudonym: author?.pseudonym ?? null,
+          polygonId: lookup.polygon_id,
+        };
+      }
+
       await client.query('DELETE FROM polygon_comments WHERE id = $1', [
         params.commentId,
       ]);
@@ -459,6 +487,7 @@ export class CommentRepository {
       );
 
       await client.query('COMMIT');
+      return moderationInfo;
     } catch (err: unknown) {
       await rollbackPreservingError(client, err);
       throw err;

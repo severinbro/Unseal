@@ -27,6 +27,11 @@ import {
   pseudonymTombstoneCandidates,
 } from '../auth/crypto.js';
 import {
+  createSmtpMailer,
+  type AuthMailer,
+  type ModerationActionKind,
+} from '../auth/mailer.js';
+import {
   assertEmailNotReserved,
   assertPseudonymNotReserved,
 } from '../auth/tombstones.js';
@@ -184,6 +189,52 @@ export interface AdminCommandOptions {
   publicBaseUrl?: string;
   /** HMAC key for tombstones; defaults to `TOMBSTONE_SECRET` from the environment. */
   tombstoneSecret?: string;
+  /** Optional mailer for DSA Art. 17 statements of reasons on moderation actions. */
+  mailer?: AuthMailer;
+  termsUrl?: string;
+  impressumUrl?: string;
+  abuseContact?: string | null;
+}
+
+const DEFAULT_ADMIN_MODERATION_REASON =
+  'Verstoß gegen die Nutzungsbedingungen oder Meldung nach Art. 16 DSA / Violation of Terms of Use or DSA Art. 16 notice.';
+
+async function sendAdminModerationNoticeBestEffort(
+  options: AdminCommandOptions,
+  params: {
+    to: string | null;
+    pseudonym: string | null;
+    action: ModerationActionKind;
+    targetId: string | null;
+    reason?: string | undefined;
+  },
+): Promise<void> {
+  if (!options.mailer || !params.to) {
+    return;
+  }
+  const baseUrl = (options.publicBaseUrl ?? 'http://127.0.0.1:3000').replace(
+    /\/+$/,
+    '',
+  );
+  try {
+    await options.mailer.sendModerationReasonEmail({
+      to: params.to,
+      pseudonym: params.pseudonym ?? 'Unseal-Nutzer/in',
+      action: params.action,
+      targetId: params.targetId,
+      reason: params.reason?.trim() || DEFAULT_ADMIN_MODERATION_REASON,
+      automatedMeansUsed: false,
+      contactEmail: options.abuseContact ?? null,
+      termsUrl: options.termsUrl ?? `${baseUrl}/auth/terms`,
+      impressumUrl: options.impressumUrl ?? `${baseUrl}/auth/impressum`,
+      actedAtIso: new Date().toISOString(),
+    });
+  } catch (err: unknown) {
+    options.logger?.warn(
+      { err, action: params.action, targetId: params.targetId },
+      'Failed to send DSA Art. 17 moderation notice email from admin CLI',
+    );
+  }
 }
 
 export async function runAdminCommand(
@@ -349,8 +400,12 @@ export async function runAdminCommand(
     try {
       await client.query('BEGIN');
 
-      const userRes = await client.query<{ id: string; pseudonym: string }>(
-        'SELECT id, pseudonym FROM users WHERE LOWER(pseudonym) = $1 FOR UPDATE',
+      const userRes = await client.query<{
+        id: string;
+        pseudonym: string;
+        email: string | null;
+      }>(
+        'SELECT id, pseudonym, email FROM users WHERE LOWER(pseudonym) = $1 FOR UPDATE',
         [pseudonymLower],
       );
       const userRow = userRes.rows[0];
@@ -369,6 +424,14 @@ export async function runAdminCommand(
         if (options.uploadsDir && deletedPhotoFiles.length > 0) {
           await unlinkUploadFiles(options.uploadsDir, deletedPhotoFiles);
         }
+
+        await sendAdminModerationNoticeBestEffort(options, {
+          to: userRow.email,
+          pseudonym: userRow.pseudonym,
+          action: 'account_banned',
+          targetId: userRow.id,
+          reason: resolvedReason,
+        });
 
         return {
           command: 'ban-user',
@@ -414,26 +477,41 @@ export async function runAdminCommand(
   }
 
   if (command === 'delete-polygon') {
-    if (argv.length !== 2) {
+    if (argv.length < 2) {
       throw new ApiError(
         422,
         'VALIDATION_ERROR',
-        'Usage: delete-polygon <polygonId>',
+        'Usage: delete-polygon <polygonId> [reason]',
       );
     }
     const polygonId = parseValidatedPolygonId(argv[1]);
+    const reason = argv.slice(2).join(' ').trim() || undefined;
 
     const client = await pool.connect();
     let photoFiles: Array<{ file_name: string; thumb_name: string }> = [];
+    let authorEmail: string | null = null;
+    let authorPseudonym: string | null = null;
     try {
       await client.query('BEGIN');
 
-      const lockRes = await client.query<{ id: string }>(
-        'SELECT id FROM polygons WHERE id = $1 FOR UPDATE',
-        [polygonId],
-      );
-      if (lockRes.rowCount === 0) {
+      const lockRes = await client.query<{
+        id: string;
+        user_id: string | null;
+      }>('SELECT id, user_id FROM polygons WHERE id = $1 FOR UPDATE', [
+        polygonId,
+      ]);
+      const locked = lockRes.rows[0];
+      if (!locked) {
         throw new ApiError(404, 'NOT_FOUND', 'Polygon not found.');
+      }
+
+      if (locked.user_id !== null) {
+        const authorRes = await client.query<{
+          email: string | null;
+          pseudonym: string;
+        }>('SELECT email, pseudonym FROM users WHERE id = $1', [locked.user_id]);
+        authorEmail = authorRes.rows[0]?.email ?? null;
+        authorPseudonym = authorRes.rows[0]?.pseudonym ?? null;
       }
 
       const photosRes = await client.query<{
@@ -465,33 +543,57 @@ export async function runAdminCommand(
       }
     }
 
+    await sendAdminModerationNoticeBestEffort(options, {
+      to: authorEmail,
+      pseudonym: authorPseudonym,
+      action: 'polygon_deleted',
+      targetId: polygonId,
+      reason,
+    });
+
     return {
       command: 'delete-polygon',
       polygonId,
+      ...(reason ? { reason } : {}),
       deletedPolygon: true,
     };
   }
 
   if (command === 'redact-note') {
-    if (argv.length !== 2) {
+    if (argv.length < 2) {
       throw new ApiError(
         422,
         'VALIDATION_ERROR',
-        'Usage: redact-note <polygonId>',
+        'Usage: redact-note <polygonId> [reason]',
       );
     }
     const polygonId = parseValidatedPolygonId(argv[1]);
+    const reason = argv.slice(2).join(' ').trim() || undefined;
 
     const client = await pool.connect();
+    let authorEmail: string | null = null;
+    let authorPseudonym: string | null = null;
     try {
       await client.query('BEGIN');
 
-      const lockRes = await client.query<{ id: string }>(
-        'SELECT id FROM polygons WHERE id = $1 FOR UPDATE',
-        [polygonId],
-      );
-      if (lockRes.rowCount === 0) {
+      const lockRes = await client.query<{
+        id: string;
+        user_id: string | null;
+      }>('SELECT id, user_id FROM polygons WHERE id = $1 FOR UPDATE', [
+        polygonId,
+      ]);
+      const locked = lockRes.rows[0];
+      if (!locked) {
         throw new ApiError(404, 'NOT_FOUND', 'Polygon not found.');
+      }
+
+      if (locked.user_id !== null) {
+        const authorRes = await client.query<{
+          email: string | null;
+          pseudonym: string;
+        }>('SELECT email, pseudonym FROM users WHERE id = $1', [locked.user_id]);
+        authorEmail = authorRes.rows[0]?.email ?? null;
+        authorPseudonym = authorRes.rows[0]?.pseudonym ?? null;
       }
 
       await client.query(
@@ -499,26 +601,35 @@ export async function runAdminCommand(
         [polygonId],
       );
       await client.query('COMMIT');
-
-      return {
-        command: 'redact-note',
-        polygonId,
-        redactedNote: true,
-      };
     } catch (err: unknown) {
       await rollbackPreservingError(client, err);
       throw err;
     } finally {
       client.release();
     }
+
+    await sendAdminModerationNoticeBestEffort(options, {
+      to: authorEmail,
+      pseudonym: authorPseudonym,
+      action: 'note_redacted',
+      targetId: polygonId,
+      reason,
+    });
+
+    return {
+      command: 'redact-note',
+      polygonId,
+      ...(reason ? { reason } : {}),
+      redactedNote: true,
+    };
   }
 
   if (command === 'delete-comment') {
-    if (argv.length !== 2) {
+    if (argv.length < 2) {
       throw new ApiError(
         422,
         'VALIDATION_ERROR',
-        'Usage: delete-comment <commentId>',
+        'Usage: delete-comment <commentId> [reason]',
       );
     }
     const parsedId = UuidParamSchema.safeParse(argv[1]);
@@ -530,23 +641,42 @@ export async function runAdminCommand(
       );
     }
     const commentId = parsedId.data.id;
+    const reason = argv.slice(2).join(' ').trim() || undefined;
 
     const client = await pool.connect();
+    let polygonId = '';
+    let authorEmail: string | null = null;
+    let authorPseudonym: string | null = null;
     try {
       await client.query('BEGIN');
 
-      const lookupRes = await client.query<{ polygon_id: string }>(
-        'SELECT polygon_id FROM polygon_comments WHERE id = $1',
-        [commentId],
-      );
+      const lookupRes = await client.query<{
+        polygon_id: string;
+        user_id: string | null;
+      }>('SELECT polygon_id, user_id FROM polygon_comments WHERE id = $1', [
+        commentId,
+      ]);
       const lookup = lookupRes.rows[0];
       if (!lookup) {
         throw new ApiError(404, 'NOT_FOUND', 'Comment not found.');
       }
+      polygonId = lookup.polygon_id;
 
       await client.query('SELECT id FROM polygons WHERE id = $1 FOR UPDATE', [
         lookup.polygon_id,
       ]);
+
+      if (lookup.user_id !== null) {
+        const authorRes = await client.query<{
+          email: string | null;
+          pseudonym: string;
+        }>('SELECT email, pseudonym FROM users WHERE id = $1', [
+          lookup.user_id,
+        ]);
+        authorEmail = authorRes.rows[0]?.email ?? null;
+        authorPseudonym = authorRes.rows[0]?.pseudonym ?? null;
+      }
+
       const delRes = await client.query(
         'DELETE FROM polygon_comments WHERE id = $1',
         [commentId],
@@ -563,19 +693,28 @@ export async function runAdminCommand(
         [lookup.polygon_id],
       );
       await client.query('COMMIT');
-
-      return {
-        command: 'delete-comment',
-        polygonId: lookup.polygon_id,
-        commentId,
-        deletedComment: true,
-      };
     } catch (err: unknown) {
       await rollbackPreservingError(client, err);
       throw err;
     } finally {
       client.release();
     }
+
+    await sendAdminModerationNoticeBestEffort(options, {
+      to: authorEmail,
+      pseudonym: authorPseudonym,
+      action: 'comment_deleted',
+      targetId: commentId,
+      reason,
+    });
+
+    return {
+      command: 'delete-comment',
+      polygonId,
+      commentId,
+      ...(reason ? { reason } : {}),
+      deletedComment: true,
+    };
   }
 
   // GDPR Art. 15/20: operator-side data export (e.g. for requests received by email)
@@ -891,12 +1030,17 @@ if (isDirectExecution) {
   const config = loadEnvConfig();
   const logger = createLogger();
   const pool = createDbPool(config.databaseUrl);
+  const mailer = createSmtpMailer(config, logger);
 
   runAdminCommand(pool, process.argv.slice(2), {
     uploadsDir: config.uploadsDir,
     logger,
     tombstoneSecret: config.tombstoneSecret,
     publicBaseUrl: config.publicBaseUrl,
+    mailer,
+    termsUrl: config.termsUrl,
+    impressumUrl: config.impressumUrl,
+    abuseContact: config.abuseContact ?? config.operatorEmail,
   })
     .then(async (result) => {
       if (result.userExport) {

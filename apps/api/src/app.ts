@@ -35,7 +35,11 @@ import {
   type AuthEmailPayload,
   type AuthMailer,
   type BugReportEmailPayload,
+  type ContentReportEmailPayload,
+  type ContentReportReceiptEmailPayload,
   type MemoryMailer,
+  type ModerationActionKind,
+  type ModerationReasonEmailPayload,
 } from './auth/mailer.js';
 import { createSession, optionalAuth, requireAdmin, requireAuth } from './auth/session.js';
 import { rekeyCanonicalEmailHashes } from './auth/tombstones.js';
@@ -82,6 +86,7 @@ import { registerAuthRoutes } from './routes/auth.js';
 import { registerAuthPageRoutes } from './routes/authPages.js';
 import { registerBugReportRoutes } from './routes/bugReports.js';
 import { registerCommentRoutes } from './routes/comments.js';
+import { registerContentReportRoutes } from './routes/contentReports.js';
 import {
   registerDop20TileRoutes,
   type Dop20TileRoutesOptions,
@@ -119,6 +124,7 @@ export interface RateLimitOverrides {
   exportGeoJson?: RateLimitWindowOverride;
   geocode?: RateLimitWindowOverride;
   bugReport?: RateLimitWindowOverride;
+  contentReport?: RateLimitWindowOverride;
 }
 
 export interface BuildAppOptions {
@@ -199,6 +205,10 @@ export async function buildApp(
       logger,
       tombstoneSecret: config.tombstoneSecret,
       publicBaseUrl: config.publicBaseUrl,
+      mailer,
+      termsUrl: config.termsUrl,
+      impressumUrl: config.impressumUrl,
+      abuseContact: config.abuseContact ?? config.operatorEmail,
     }),
   );
 
@@ -388,6 +398,7 @@ export async function buildApp(
       : {},
   );
   registerBugReportRoutes(app);
+  registerContentReportRoutes(app);
   registerAuthRoutes(app);
   registerAuthPageRoutes(app);
 
@@ -459,6 +470,7 @@ export {
   registerAuthRoutes,
   registerBugReportRoutes,
   registerCommentRoutes,
+  registerContentReportRoutes,
   registerGeocodeRoutes,
   registerPhotoRoutes,
   registerPolygonRoutes,
@@ -478,11 +490,15 @@ export {
   type AuthEmailPayload,
   type AuthMailer,
   type BugReportEmailPayload,
+  type ContentReportEmailPayload,
+  type ContentReportReceiptEmailPayload,
   type EnvConfig,
   type LandCoverSeedItem,
   type LoadLandCoverOptions,
   type LoadLandCoverResult,
   type MemoryMailer,
+  type ModerationActionKind,
+  type ModerationReasonEmailPayload,
   type MunicipalitySeedInput,
   type TelemetryExportReport,
 };

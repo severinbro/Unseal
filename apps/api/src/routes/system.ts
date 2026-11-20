@@ -15,6 +15,7 @@ import {
 } from '../config.js';
 import { getMigrationFiles } from '../db/migrate.js';
 import { getMunicipalitiesStatus } from '../municipalities/vg250.js';
+import { getDefaultDop20Attribution } from './dop20Tiles.js';
 
 import type { FastifyInstance } from 'fastify';
 
@@ -90,8 +91,21 @@ export function registerSystemRoutes(
     const vg250DataYear = vg250AttributionEnabled
       ? (muniStatus.dataYear ?? new Date().getUTCFullYear())
       : null;
+    const currentOrthophoto = app.config.runtimeConfig.orthophoto;
+    const orthophoto =
+      currentOrthophoto !== null &&
+      currentOrthophoto.urlTemplate.includes('/api/v1/tiles/dop20/') &&
+      currentOrthophoto.attribution.startsWith(
+        '© GeoBasis-DE / Vermessungsverwaltungen der Bundesländer (',
+      )
+        ? {
+            ...currentOrthophoto,
+            attribution: getDefaultDop20Attribution(),
+          }
+        : currentOrthophoto;
     return RuntimeConfigSchema.parse({
       ...app.config.runtimeConfig,
+      orthophoto,
       vg250AttributionEnabled,
       vg250DataYear,
       apkDownloadUrl: apkAvailability.apkDownloadUrl,

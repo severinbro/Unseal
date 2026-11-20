@@ -1421,8 +1421,12 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
       assert.equal(impRes.statusCode, 200);
       assert.match(impRes.body, /Entsiegelung Musterverein e\.V\./);
       assert.match(impRes.body, /Gartenweg 5/);
-      assert.match(impRes.body, /impressum@unseal\.example\.org/);
+      assert.match(impRes.body, /href="mailto:impressum@unseal\.example\.org"/);
+      assert.match(impRes.body, /href="mailto:abuse@unseal\.example\.org"/);
       assert.match(impRes.body, /\+49 6131 123456/);
+      assert.match(impRes.body, /Art\. 11 und Art\. 12 Digital Services Act \(DSA\)/);
+      assert.match(impRes.body, /Deutsch, Englisch/);
+      assert.match(impRes.body, /POST \/api\/v1\/content-reports/);
 
       assert.equal(privRes.statusCode, 200);
       assert.match(privRes.body, /Entsiegelung Musterverein e\.V\./);
@@ -1436,14 +1440,25 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
       assert.match(privRes.body, /<strong>kein Pseudonym<\/strong>/);
       assert.match(privRes.body, /Meine Daten herunterladen/);
       assert.match(privRes.body, /Aktiv in den letzten 30 Tagen/);
-      // Default config: OpenFreeMap loaded directly, DOP20 proxied, backup warning for operators
+      // Default config: OpenFreeMap (Hyperknot Software Kft. + Cloudflare CDN), sessionStorage, daily counters, DSA Art. 16/17
       assert.match(privRes.body, /OpenFreeMap/);
+      assert.match(privRes.body, /Hyperknot Software Kft\./);
+      assert.match(privRes.body, /Cloudflare CDN/);
+      assert.match(privRes.body, /sessionStorage/);
+      assert.match(privRes.body, /Anonyme Tageszähler/);
+      assert.match(privRes.body, /Art\. 16, 17 DSA/);
       assert.match(privRes.body, /Luftbilder \(DOP20\):<\/strong> Werden über diesen Server/);
       assert.match(privRes.body, /BACKUP_RETENTION_DAYS/);
       assert.equal(privRes.body.includes('last_login_at'), false);
 
       assert.equal(termsRes.statusCode, 200);
       assert.match(termsRes.body, /CC0 1\.0/);
+      assert.match(termsRes.body, /§ 29 UrhG/);
+      assert.match(termsRes.body, /Public License Fallback/);
+      assert.match(termsRes.body, /Mindestalter von 16 Jahren/);
+      assert.match(termsRes.body, /§ 107 BGB/);
+      assert.match(termsRes.body, /Art\. 14, 16, 17 DSA/);
+      assert.match(termsRes.body, /Art\. 17 DSA/);
       assert.match(termsRes.body, /CC BY 4\.0/);
 
       assert.equal(licRes.statusCode, 200);
@@ -1451,15 +1466,25 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
       assert.match(licRes.body, /MPL-2\.0/);
       assert.match(licRes.body, /MapLibre React Native \(MIT\)/);
       assert.match(licRes.body, /MapLibre Native Android\/iOS \(BSD-2-Clause\)/);
+      assert.match(licRes.body, /MapLibre Android Plugins/);
+      assert.match(licRes.body, /Android-Image-Cropper \(Apache-2\.0\)/);
+      assert.match(licRes.body, /SmartLocation \(MIT\)/);
+      assert.match(licRes.body, /Google Play Services Location SDK/);
       assert.match(licRes.body, /@node-rs\/argon2 \(MIT\)/);
       assert.match(licRes.body, /Nodemailer \(MIT-0\)/);
       assert.match(licRes.body, /PostGIS \(GPL-2\.0-or-later\)/);
       assert.match(licRes.body, /OpenMapTiles/);
+      assert.match(licRes.body, /CARTO<\/a> \(modified im Dunkelmodus\)/);
       assert.match(licRes.body, /https:\/\/www\.bkg\.bund\.de/);
       assert.match(licRes.body, /datenquellen_vg_nuts\.pdf/);
       assert.match(licRes.body, /Natural Earth/);
       assert.match(licRes.body, /SIL OFL 1\.1/);
       assert.match(licRes.body, /Daten verändert/);
+      assert.match(licRes.body, /©GeoBasis-DE \/ LVermGeoRP/);
+      assert.match(licRes.body, /LGL-BW/);
+      assert.match(licRes.body, /GeoBasis-DE\/LVermGeo SH\/CC BY 4\.0/);
+      assert.match(licRes.body, /© GeoBasis-DE\/M-V/);
+      assert.match(licRes.body, /LGLN.*CC BY 4\.0/);
       assert.match(licRes.body, /Bayerische Vermessungsverwaltung.*CC BY 4\.0/);
       assert.match(licRes.body, /Land NRW.*dl-de\/zero-2-0/);
       assert.match(licRes.body, /\/auth\/third-party-notices/);

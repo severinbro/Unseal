@@ -12,6 +12,7 @@ import {
   AUTH_LIMITS,
   ApiError,
   PHOTO_LIMITS,
+  formatStateDop20FullAttribution,
 } from '@entsiegelung/shared';
 
 import {
@@ -337,6 +338,15 @@ function buildLegalNavHtml(app: FastifyInstance): string {
   </nav>`;
 }
 
+function formatContactHtml(value: string): string {
+  const trimmed = value.trim();
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+    const safe = escapeHtml(trimmed);
+    return `<a href="mailto:${safe}">${safe}</a>`;
+  }
+  return escapeHtml(trimmed);
+}
+
 function buildOperatorIdentityHtml(app: FastifyInstance): string {
   const parts: string[] = [];
   if (app.config.operatorName) {
@@ -346,7 +356,7 @@ function buildOperatorIdentityHtml(app: FastifyInstance): string {
     parts.push(formatMultilineHtml(app.config.operatorAddress));
   }
   if (app.config.operatorEmail) {
-    parts.push(`E-Mail: ${escapeHtml(app.config.operatorEmail)}`);
+    parts.push(`E-Mail: ${formatContactHtml(app.config.operatorEmail)}`);
   }
   if (app.config.operatorPhone) {
     parts.push(`Telefon: ${escapeHtml(app.config.operatorPhone)}`);
@@ -406,12 +416,12 @@ function buildThirdPartyItemsHtml(app: FastifyInstance): string {
     const provider = styleHosts
       .map((host) =>
         host === 'tiles.openfreemap.org'
-          ? '<em>OpenFreeMap</em> (<a href="https://openfreemap.org" target="_blank" rel="noopener noreferrer">openfreemap.org</a>, Kartendaten © OpenStreetMap-Mitwirkende)'
+          ? '<em>OpenFreeMap</em> (Betreiber: <strong>Hyperknot Software Kft.</strong>, Ungarn; <a href="https://openfreemap.org/privacy" target="_blank" rel="noopener noreferrer">Datenschutzhinweise</a>; Auslieferung u. a. über <strong>Cloudflare CDN</strong>, wobei eine Übermittlung in Drittländer wie die USA auf Grundlage des EU-US Data Privacy Framework / von Standardvertragsklauseln erfolgen kann; Kartendaten © OpenStreetMap-Mitwirkende)'
           : `<code>${escapeHtml(host)}</code>`,
       )
       .join(' bzw. ');
     items.push(
-      `<li><strong>Basiskarte (Art. 6 Abs. 1 lit. f DSGVO):</strong> Dein Endgerät lädt Kartenstil, Schriften und Vektorkacheln <strong>direkt</strong> von ${provider} (bzw. den dort im Kartenstil angegebenen Servern). Dabei wird technisch bedingt deine IP-Adresse an diesen Anbieter übermittelt, der dafür selbst verantwortlich ist. Unser Interesse: eine funktionierende Kartendarstellung.</li>`,
+      `<li><strong>Basiskarte (Art. 6 Abs. 1 lit. f DSGVO; Art. 13 Abs. 1 lit. f DSGVO):</strong> Dein Endgerät lädt Kartenstil, Schriften und Vektorkacheln <strong>direkt</strong> von ${provider} (bzw. den dort im Kartenstil angegebenen Servern). Dabei wird technisch bedingt deine IP-Adresse an diesen Anbieter übermittelt, der dafür selbst verantwortlich ist. Unser Interesse: eine funktionierende Kartendarstellung.</li>`,
     );
   }
 
@@ -442,9 +452,16 @@ function buildPrivacyPolicyHtml(app: FastifyInstance): string {
   const config = app.config;
   const controllerBlock = buildOperatorIdentityHtml(app);
   const contactLine = config.abuseContact
-    ? `<p><strong>Kontakt für Datenschutzanfragen:</strong> ${escapeHtml(config.abuseContact)}</p>`
+    ? `<p><strong>Kontakt für Datenschutzanfragen:</strong> ${formatContactHtml(config.abuseContact)}</p>`
     : `<p><strong>Kontakt:</strong> Bitte wende dich bei Fragen zum Datenschutz an die oben bzw. im <a href="${escapeHtml(config.impressumUrl)}">Impressum</a> genannte verantwortliche Stelle.</p>`;
   const recentDays = AUTHOR_ACTIVITY.RECENT_DAYS;
+  const usesOpenFreeMap = [
+    hostOf(config.osmStyleUrl),
+    hostOf(config.osmDarkStyleUrl),
+  ].includes('tiles.openfreemap.org');
+  const enThirdPartyNote = usesOpenFreeMap
+    ? 'Third parties (including OpenFreeMap / Hyperknot Software Kft., Hungary, delivered via Cloudflare CDN) are listed in section 4 according to this instance\'s configuration.'
+    : 'Third parties are listed in section 4 according to this instance\'s configuration.';
   const backupLine =
     config.backupRetentionDays !== null
       ? `<li><strong>Datensicherungen:</strong> werden nach ${config.backupRetentionDays} Tagen gelöscht. Gelöschte Daten verschwinden daher spätestens nach dieser Frist auch aus den Sicherungen.</li>`
@@ -473,9 +490,11 @@ function buildPrivacyPolicyHtml(app: FastifyInstance): string {
          <li><strong>Fotos &amp; Metadaten:</strong> Das Foto wird mit seinen Metadaten hochgeladen. Der Server prüft im Arbeitsspeicher, ob die darin enthaltene GPS-Position in der kartierten Fläche (inkl. ${PHOTO_LIMITS.GPS_VERIFY_DISTANCE_M} m Puffer) liegt, speichert nur dieses Ergebnis (<em>GPS verified</em>) und entfernt <strong>alle</strong> EXIF-/XMP-/IPTC-Metadaten (Gerät, Koordinaten, Aufnahmezeit), bevor das Bild als WebP gespeichert wird. Bitte lade keine Aufnahmen hoch, auf denen Personen, Gesichter oder Kfz-Kennzeichen erkennbar sind.</li>
          <li><strong>Missbrauchsschutz (Art. 6 Abs. 1 lit. f DSGVO; Interesse: Schutz vor Spam, Mehrfachkonten und Identitätsmissbrauch):</strong> Anfragebegrenzungen anhand der IP-Adresse ausschließlich im Arbeitsspeicher (IPv6 auf /64 gekürzt, Zeitfenster höchstens 1 Stunde); Zähler fehlgeschlagener Anmeldeversuche je Konto (Sperrung der Anmeldung nach ${AUTH_LIMITS.MAX_FAILED_LOGIN_ATTEMPTS} Fehlversuchen bis zur erneuten E-Mail-Bestätigung); eine Rechenaufgabe (Proof-of-Work, ohne Drittanbieter) bei der Registrierung; ein mit einem geheimen Serverschlüssel gebildeter Hash (HMAC-SHA-256) deiner normalisierten E-Mail-Adresse, um Doppelkonten über Alias-Adressen zu verhindern.</li>
          <li><strong>Server-Protokolle (Art. 6 Abs. 1 lit. f DSGVO; Interesse: sicherer Betrieb, Fehleranalyse):</strong> Anfrage-ID, Methode, Pfad ohne Parameter, Statuscode, Antwortzeit und Fehlermeldungen. <strong>Keine</strong> IP-Adressen, Browserkennungen (User-Agent) oder Referrer. Der vorgeschaltete Webserver schreibt keine Zugriffsprotokolle.</li>
-         <li><strong>Fehlermeldungen (Art. 6 Abs. 1 lit. f DSGVO; optionale Kontakt-E-Mail: Art. 6 Abs. 1 lit. a DSGVO):</strong> Beschreibung, optionale Kontakt-E-Mail, Plattform, Seiten-URL, Zeitpunkt und, falls angemeldet, Pseudonym und Konto-ID gehen per E-Mail an die Betreiberstelle.</li>
-         <li><strong>Standort, Kamera &amp; Mediathek:</strong> nur nach deiner Freigabe auf dem Gerät. Deine Live-Position wird nicht an den Server übertragen (zu Fotos siehe oben).</li>
-         <li><strong>Speicher auf deinem Gerät (§ 25 Abs. 2 Nr. 2 TDDDG):</strong> Sitzungs-Token (Web: <code>localStorage</code>, App: geschützter Systemspeicher), zuletzt angezeigter Kartenausschnitt sowie gewählte Sprache und Darstellungsmodus (Hell/Dunkel). Diese Angaben bleiben auf deinem Gerät.</li>
+         <li><strong>Fehlermeldungen (Art. 6 Abs. 1 lit. b / lit. f DSGVO):</strong> Beschreibung, freiwillig angegebene Kontakt-E-Mail (ausschließlich für Rückfragen), Plattform, Seiten-URL, Zeitpunkt und, falls angemeldet, Pseudonym und Konto-ID gehen per E-Mail an die Betreiberstelle, um gemeldete Fehler zu beheben.</li>
+         <li><strong>Meldungen mutmaßlich rechtswidriger Inhalte &amp; Moderationshinweise (Art. 6 Abs. 1 lit. c DSGVO i.V.m. Art. 16, 17 DSA sowie Art. 6 Abs. 1 lit. f DSGVO):</strong> Meldungen über das In-App-Meldeformular (<code>POST /api/v1/content-reports</code>) oder per E-Mail (Ziel-ID, Meldegrund, Begründung, optional Name und E-Mail-Adresse) werden zur gesetzlich vorgeschriebenen Prüfung, Eingangsbestätigung (Art. 16 Abs. 4 DSA) und Entscheidung verarbeitet. Bei Moderationsmaßnahmen informiert der Server betroffene Konten per E-Mail über die Gründe (Art. 17 DSA).</li>
+         <li><strong>Anonyme Tageszähler (ohne Personenbezug):</strong> Für Betriebsstabilität und wissenschaftliche Auswertung zählt der Server täglich rein aggregierte Ereigniszahlen (z. B. Anzahl erstellter oder abgelehnter Flächenvorschläge nach Grund, ohne Benutzer-IDs, ohne IP-Adressen und ohne Koordinaten).</li>
+         <li><strong>Standort, Kamera &amp; Mediathek:</strong> nur nach deiner Freigabe auf dem Gerät. Deine genauen GNSS-Koordinaten verbleiben auf dem Gerät und werden nicht als Standortverlauf gespeichert; beim Zentrieren der Karte ruft die App jedoch technisch bedingt Kartenausschnitte (Bounding-Box) und Karten-/Luftbildkacheln rund um diesen Bereich ab (ohne Protokollierung). Zu Fotos siehe oben.</li>
+         <li><strong>Speicher auf deinem Gerät (§ 25 Abs. 2 Nr. 2 TDDDG):</strong> Sitzungs-Token (Web: <code>localStorage</code>, App: geschützter Systemspeicher) sowie gewählte Sprache und Darstellungsmodus (Hell/Dunkel) werden lokal gespeichert; der zuletzt angezeigte Kartenausschnitt wird im Web ausschließlich im kurzlebigen <code>sessionStorage</code> gehalten und beim Schließen des Tabs automatisch gelöscht. Diese Angaben bleiben auf deinem Gerät.</li>
        </ul>
 
        <h2>4. Empfänger &amp; Drittanbieter (Art. 13 Abs. 1 lit. e, f DSGVO)</h2>
@@ -491,7 +510,7 @@ function buildPrivacyPolicyHtml(app: FastifyInstance): string {
          <li><strong>E-Mail-Links:</strong> gültig ${AUTH_LIMITS.EMAIL_VERIFY_TTL_HOURS} Stunden (Bestätigung) bzw. ${AUTH_LIMITS.PASSWORD_RESET_TTL_MINUTES} Minuten (Passwort); die Datensätze werden 7 Tage nach Nutzung oder Ablauf gelöscht.</li>
          <li><strong>Pseudonym-Reservierung nach Kontolöschung:</strong> ${config.pseudonymReservationDays} Tage, gespeichert nur als HMAC-Wert, damit sich niemand als du ausgeben kann. Bei einer Sperrung wegen Missbrauchs werden HMAC-Werte von Pseudonym und E-Mail-Adresse gespeichert, bis die Sperre aufgehoben wird.</li>
          <li><strong>Server-Protokolle:</strong> werden fortlaufend überschrieben (höchstens 3 × 10 MB je Dienst).</li>
-         <li><strong>Fehlermeldungen:</strong> werden nach Abschluss der Bearbeitung aus dem Postfach der Betreiberstelle gelöscht.</li>
+         <li><strong>Fehlermeldungen &amp; DSA-Inhaltsmeldungen:</strong> werden nach Abschluss der Bearbeitung aus dem Postfach der Betreiberstelle gelöscht, sofern keine gesetzliche Aufbewahrungspflicht oder Rechtsverteidigung entgegensteht.</li>
          ${backupLine}
        </ul>
 
@@ -505,7 +524,7 @@ function buildPrivacyPolicyHtml(app: FastifyInstance): string {
        </ul>
        <p>Es finden keine automatisierten Einzelentscheidungen im Sinne von Art. 22 DSGVO statt.</p>
 
-       <p class="en-sub"><strong>English summary:</strong> Public: your pseudonym, your contributions, whether you were active in the last ${recentDays} days (only the date of your last activity is stored) and a "new contributor" hint; the ODbL 1.0 GeoJSON export contains no pseudonym. Your email is used only for account links and never shown. Accounts and contributions are processed under Art. 6(1)(b) GDPR (signed-in accounts can view a personal summary derived solely from their existing contributions and polygon ratings; public statistics show anonymous totals only); abuse prevention and logs under Art. 6(1)(f). Server logs contain no IP addresses, user agents or referrers; rate limiting keeps IPs in memory only. Photo metadata is checked in memory and fully stripped before storage. Third parties are listed in section 4 according to this instance's configuration. Retention: unconfirmed accounts 48 h, sessions up to ${config.sessionTtlDays} days, email links 7 days after use, pseudonym reservation after deletion ${config.pseudonymReservationDays} days (keyed hash only). Rights: download your data in the app, delete your account with or without your contributions (open-data licenses on copies legitimately downloaded prior to deletion remain irrevocable under their terms), and contact the operator for corrections, restriction, objection or a complaint to a supervisory authority.</p>
+       <p class="en-sub"><strong>English summary:</strong> Public: your pseudonym, your contributions, whether you were active in the last ${recentDays} days (only the date of your last activity is stored) and a "new contributor" hint; the ODbL 1.0 GeoJSON export contains no pseudonym. Your email is used only for account links and DSA Art. 17 moderation notices and is never shown publicly. Accounts and contributions are processed under Art. 6(1)(b) GDPR (signed-in accounts can view a personal summary derived solely from their existing contributions and polygon ratings; public statistics and daily aggregate counters contain zero personal data); abuse prevention and logs under Art. 6(1)(f); DSA Art. 16 illegal-content notices under Art. 6(1)(c) GDPR. Server logs contain no IP addresses, user agents or referrers; rate limiting keeps IPs in memory only. Photo metadata is checked in memory and fully stripped before storage. Device GNSS stays on-device (centering fetches map bbox/tiles without logging); on Web the last viewport is kept in sessionStorage only. ${enThirdPartyNote} Retention: unconfirmed accounts 48 h, sessions up to ${config.sessionTtlDays} days, email links 7 days after use, pseudonym reservation after deletion ${config.pseudonymReservationDays} days (keyed hash only). Rights: download your data in the app (Art. 15/20), delete your account with or without your contributions (open-data licenses on copies legitimately downloaded prior to deletion remain irrevocable under their terms), and contact the operator for corrections, restriction, objection or a complaint to a supervisory authority.</p>
        ${buildLegalNavHtml(app)}`;
 }
 
@@ -517,33 +536,37 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
 
   app.get('/auth/impressum', async (_request, reply) => {
     const operatorHtml = buildOperatorIdentityHtml(app);
-    const abuseHtml = app.config.abuseContact
-      ? `<p><strong>Melde- &amp; Moderationskontakt (Digital Services Act / Art. 16 DSA):</strong> ${escapeHtml(app.config.abuseContact)}</p>`
-      : '';
+    const dsaContactRaw = app.config.abuseContact ?? app.config.operatorEmail;
+    const dsaContactHtml = dsaContactRaw
+      ? `<p><strong>Zentrale Kontaktstelle gemäß Art. 11 und Art. 12 Digital Services Act (DSA) für Behörden der Mitgliedstaaten, die EU-Kommission, das Gremium für digitale Dienste sowie Nutzende (inkl. Melde- &amp; Moderationskontakt nach Art. 16 DSA):</strong> ${formatContactHtml(dsaContactRaw)}<br /><strong>Kommunikationssprachen:</strong> Deutsch, Englisch.</p>`
+      : `<p><strong>Zentrale Kontaktstelle gemäß Art. 11, 12 und 16 DSA:</strong> Über die oben angegebene Betreiberadresse (<strong>Kommunikationssprachen:</strong> Deutsch, Englisch).</p>`;
     return sendHostedHtml(
       reply,
       200,
       'Impressum',
       `<h1>Impressum</h1>
-       <p>Angaben gemäß § 5 Digitale-Dienste-Gesetz (DDG) und § 18 Abs. 2 Medienstaatsvertrag (MStV) für diese Unseal-Instanz:</p>
+       <p>Angaben gemäß § 5 Digitale-Dienste-Gesetz (DDG), § 18 Abs. 2 Medienstaatsvertrag (MStV) sowie Art. 11 und 12 Digital Services Act (DSA) für diese Unseal-Instanz:</p>
        <h2>Verantwortliche Stelle / Betreibende</h2>
        ${operatorHtml}
-       ${abuseHtml}
+       <h2>Kontaktstelle nach dem Digital Services Act (DSA)</h2>
+       ${dsaContactHtml}
+       <p>Mutmaßlich rechtswidrige Inhalte (Flächenvorschläge, Fotos oder Kommentare) können auch ohne Benutzerkonto direkt über den Melde-Button in der App (<code>POST /api/v1/content-reports</code>) oder per E-Mail an die oben genannte Kontaktstelle gemeldet werden (Art. 16 DSA).</p>
        <h2>Haftungs- &amp; Beteiligungshinweis</h2>
        <p>${escapeHtml(app.config.disclaimerText)}</p>
        <p>Nutzende sind für die von ihnen eingestellten Flächenvorschläge, Texte, Kommentare und Fotos selbst verantwortlich. Hinweise auf rechtswidrige Inhalte werden über die oben genannte Kontaktstelle bzw. die Meldefunktion geprüft und unverzüglich entfernt.</p>
        <h2>Quellcode &amp; Lizenzen</h2>
        <p>Diese Instanz nutzt die Open-Source-Software <strong>Unseal</strong> (Server: <code>AGPL-3.0-or-later</code>, Client &amp; Shared: <code>MPL-2.0</code>). Der vollständige Quellcode ist unter <a href="${escapeHtml(app.config.sourceCodeUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(app.config.sourceCodeUrl)}</a> verfügbar.</p>
-       <p class="en-sub"><strong>English summary:</strong> Legal notice / operator identification pursuant to German law (§ 5 DDG / § 18(2) MStV). Unseal is open-source software (API: AGPL-3.0-or-later, Client: MPL-2.0); source code is available at <a href="${escapeHtml(app.config.sourceCodeUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(app.config.sourceCodeUrl)}</a>.</p>
+       <p class="en-sub"><strong>English summary:</strong> Legal notice / operator identification pursuant to German law (§ 5 DDG / § 18(2) MStV) and single point of contact for authorities and users pursuant to Arts. 11, 12 and 16 EU Digital Services Act (accepted languages: German, English). Unseal is open-source software (API: AGPL-3.0-or-later, Client: MPL-2.0); source code is available at <a href="${escapeHtml(app.config.sourceCodeUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(app.config.sourceCodeUrl)}</a>.</p>
        ${buildLegalNavHtml(app)}`,
       { wide: true },
     );
   });
 
   app.get('/auth/terms', async (_request, reply) => {
-    const abuseNote = app.config.abuseContact
-      ? `Missbrauchs- und Rechtsverstoßmeldungen können jederzeit an <strong>${escapeHtml(app.config.abuseContact)}</strong> oder direkt an die Fläche gerichtet werden.`
-      : `Missbrauchs- und Rechtsverstoßmeldungen können an die im <a href="${escapeHtml(app.config.impressumUrl)}">Impressum</a> genannte Kontaktstelle gerichtet werden.`;
+    const config = app.config;
+    const abuseNote = config.abuseContact
+      ? `Missbrauchs- und Rechtsverstoßmeldungen (Art. 16 DSA) können jederzeit – auch ohne Benutzerkonto – über das In-App-Meldeformular (<code>POST /api/v1/content-reports</code>) an Flächen, Fotos und Kommentaren oder per E-Mail an ${formatContactHtml(config.abuseContact)} eingereicht werden.`
+      : `Missbrauchs- und Rechtsverstoßmeldungen (Art. 16 DSA) können jederzeit – auch ohne Benutzerkonto – über das In-App-Meldeformular an Flächen, Fotos und Kommentaren oder an die im <a href="${escapeHtml(config.impressumUrl)}">Impressum</a> genannte Kontaktstelle gerichtet werden.`;
     return sendHostedHtml(
       reply,
       200,
@@ -551,13 +574,14 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
       `<h1>Nutzungsbedingungen &amp; Offene Datenlizenzen</h1>
        <p>Mit der Registrierung eines Kontos und dem Einstellen von Beiträgen auf dieser Unseal-Instanz akzeptierst du folgende Regeln und Lizenzbedingungen:</p>
        <ul>
-         <li><strong>Unverbindliche Bürgerbeteiligung:</strong> ${escapeHtml(app.config.disclaimerText)} Ein Eintrag begründet keinen Rechtsanspruch auf Entsiegelung und greift nicht in bestehende Eigentumsrechte ein.</li>
-         <li><strong>Lizenz für Flächenvorschläge, Notizen &amp; GeoJSON-Export (CC0 1.0 / ODbL 1.0):</strong> Soweit an deinen selbst eingezeichneten Polygon-Geometrien, Belagsangaben und Beschreibungstexten eigene Urheber- oder Datenbankrechte entstehen (unabhängig von den zugrunde liegenden Karten- und Luftbildquellen), verzichtest du auf diese Rechte gemäß <a href="https://creativecommons.org/publicdomain/zero/1.0/deed.de" target="_blank" rel="noopener noreferrer"><strong>Creative Commons Zero 1.0 (CC0 1.0 Universal)</strong></a>. Da Vorschläge auf Grundlage von OpenStreetMap (<code>ODbL 1.0</code>), amtlichen Landes-Luftbildern (<code>dl-de/by-2-0</code>, <code>CC BY 4.0</code>, <code>dl-de/zero-2-0</code>) und BKG-Gemeindegrenzen (<code>dl-de/by-2-0</code>) erfasst und verknüpft werden, wird der zusammengestellte öffentliche Datensatz (<code>/api/v1/polygons/export.geojson</code>) unter der <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener noreferrer"><strong>Open Data Commons Open Database License 1.0 (ODbL 1.0)</strong></a> inklusive der erforderlichen Quellenvermerke bereitgestellt. Durch Admin-Konten importierte Bestandsdatensätze (<code>.geojson</code> / <code>.gpkg</code>) fließen in denselben <code>ODbL-1.0</code>-Export ein und dürfen ausschließlich aus <code>ODbL-1.0</code>-kompatiblen offenen Quellen (<code>ODbL-1.0</code>, <code>CC0-1.0</code>, <code>dl-de/zero-2-0</code>, <code>dl-de/by-2-0</code>, <code>CC BY 4.0</code>) stammen.</li>
+         <li><strong>Unverbindliche Bürgerbeteiligung:</strong> ${escapeHtml(config.disclaimerText)} Ein Eintrag begründet keinen Rechtsanspruch auf Entsiegelung und greift nicht in bestehende Eigentumsrechte ein.</li>
+         <li><strong>Mindestalter &amp; Einwilligung Erziehungsberechtigter (§ 107 BGB / Art. 8 DSGVO):</strong> Die Registrierung und das Einräumen unwiderruflicher offener Datenlizenzen (<code>CC0 1.0</code> / <code>CC BY 4.0</code>) erfordert ein Mindestalter von 16 Jahren (sowie bei Minderjährigen unter 18 Jahren die vorherige Zustimmung der gesetzlichen Vertretung, soweit rechtlich erforderlich).</li>
+         <li><strong>Lizenz für Flächenvorschläge, Notizen &amp; GeoJSON-Export (CC0 1.0 + Public License Fallback / ODbL 1.0):</strong> Soweit an deinen selbst eingezeichneten Polygon-Geometrien, Belagsangaben und Beschreibungstexten eigene Urheber- oder Datenbankrechte entstehen (unabhängig von den zugrunde liegenden Karten- und Luftbildquellen), verzichtest du – soweit gesetzlich zulässig – gemäß <a href="https://creativecommons.org/publicdomain/zero/1.0/deed.de" target="_blank" rel="noopener noreferrer"><strong>Creative Commons Zero 1.0 (CC0 1.0 Universal)</strong></a> auf diese Rechte bzw. räumst hilfsweise (insbesondere im Geltungsbereich des deutschen Urheberrechts, § 29 UrhG) jedermann ein räumlich, zeitlich und inhaltlich unbeschränktes, unentgeltliches und unwiderrufliches einfaches Nutzungsrecht gemäß Ziffer 3 (<em>Public License Fallback</em>) der CC0 1.0 ein. Da Vorschläge auf Grundlage von OpenStreetMap (<code>ODbL 1.0</code>), amtlichen Landes-Luftbildern (<code>dl-de/by-2-0</code>, <code>CC BY 4.0</code>, <code>dl-de/zero-2-0</code>) und BKG-Gemeindegrenzen (<code>dl-de/by-2-0</code>) erfasst und verknüpft werden, wird der zusammengestellte öffentliche Datensatz (<code>/api/v1/polygons/export.geojson</code>) unter der <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener noreferrer"><strong>Open Data Commons Open Database License 1.0 (ODbL 1.0)</strong></a> inklusive der erforderlichen Quellenvermerke bereitgestellt. Durch Admin-Konten importierte Bestandsdatensätze (<code>.geojson</code> / <code>.gpkg</code>) fließen in denselben <code>ODbL-1.0</code>-Export ein und dürfen ausschließlich aus direkt kompatiblen offenen Quellen (<code>CC0-1.0</code>, <code>PDDL-1.0</code>, <code>dl-de/zero-2-0</code>, <code>Public Domain</code>, <code>ODbL-1.0</code> mit Quellenangabe) oder aus <code>CC BY 4.0</code> / <code>dl-de/by-2-0</code>-Quellen mit dokumentierter ausdrücklicher ODbL-Freigabeerklärung (<em>Waiver</em>) und dauerhaft gespeicherter Quellenangabe stammen.</li>
          <li><strong>Lizenz für Vor-Ort-Fotos &amp; Kommentare (CC BY 4.0):</strong> Hochgeladene Fotos und Diskussionskommentare lizenzierst du unter <a href="https://creativecommons.org/licenses/by/4.0/deed.de" target="_blank" rel="noopener noreferrer"><strong>Creative Commons Namensnennung 4.0 International (CC BY 4.0)</strong></a> mit Namensnennung deines öffentlichen Pseudonyms (bzw. anonymisiert als <code>deleted</code> nach Kontolöschung, sofern du deine Beiträge dabei nicht mitlöschst). Hochgeladene Fotos werden serverseitig bearbeitet (vollständige Entfernung von EXIF-/XMP-/IPTC-Metadaten, Konvertierung nach WebP sowie Skalierung/Vorschaubild). Du kannst deine Beiträge jederzeit von der Plattform löschen; für Kopien, die Dritte vor der Löschung rechtmäßig bezogen haben, gelten die offenen Lizenzen (<code>CC0 1.0</code> / <code>ODbL 1.0</code> / <code>CC BY 4.0</code>) gemäß ihren Lizenzbedingungen unwiderruflich fort.</li>
          <li><strong>Zulässige Inhalte &amp; Fotorechte (§ 59 UrhG / § 22 KUG / DSGVO):</strong> Du darfst nur eigene Fotos hochladen, die von öffentlich zugänglichen Wegen oder Plätzen aus aufgenommen wurden (Panoramafreiheit) oder für die eine ausdrückliche Erlaubnis der Berechtigten vorliegt. Lade <strong>keine</strong> Aufnahmen hoch, auf denen erkennbare Personen, Gesichter, Kfz-Kennzeichen oder nicht öffentlich einsehbare Privatbereiche (z. B. über Zäune hinweg oder per Drohne) abgebildet sind.</li>
-         <li><strong>Moderation &amp; Meldeverfahren (DSA):</strong> Rechtswidrige, beleidigende, irreführende oder Spam-Beiträge können entfernt und Konten gesperrt werden. ${abuseNote}</li>
+         <li><strong>Inhaltsmoderation, automatisierte Schutzmaßnahmen &amp; Meldeverfahren (Art. 14, 16, 17 DSA):</strong> Rechtswidrige, beleidigende, personenbezogene, urheberrechtsverletzende, irreführende oder Spam-Beiträge können entfernt und Konten bei schwerwiegenden oder wiederholten Verstößen gesperrt werden. Zur Qualitätssicherung und Missbrauchsabwehr setzt die Plattform folgende dokumentierte automatische Verfahren ein: (1) automatische Geometrie-Bereinigung (<code>ST_Difference</code>-Zuschnitt an bestehenden Vorschlägen) sowie Ablehnung von Flächen auf ausgeschlossenen Landnutzungskategorien (z. B. Gewässer, Gleise, Gebäude, Grünflächen, soweit konfiguriert); (2) automatisches Weichzeichnen von Fotos ab einer Community-Glaubwürdigkeitsbewertung von <code>&lt;= ${PHOTO_LIMITS.FAKE_BLUR_SCORE_THRESHOLD}</code>; (3) automatische Entfernung unbewerteter Vorschläge ohne Stimmen, Fotos oder Kommentare nach ${config.staleUnratedPruneDays} Tagen; (4) Blockierung bekannter Wegwerf-E-Mail-Domains, Proof-of-Work-Registrierungsprüfung sowie vorübergehende Anmeldesperre nach ${AUTH_LIMITS.MAX_FAILED_LOGIN_ATTEMPTS} Fehlversuchen bis zur erneuten E-Mail-Bestätigung. Bei manuellen Moderationsmaßnahmen (Löschung von Beiträgen, Schwärzung von Notizen oder Kontosperrung) erhalten betroffene Konten eine schriftliche Begründung per E-Mail (Art. 17 DSA). ${abuseNote}</li>
        </ul>
-       <p class="en-sub"><strong>English summary:</strong> Contributions are non-binding civic suggestions. By registering and contributing, you waive your own copyright and database rights in submitted polygon geometries, surface classifications, and proposal notes under <strong>CC0 1.0 Universal</strong> (to the extent not derived from attributed basemaps), while the compiled public GeoJSON dataset (<code>/api/v1/polygons/export.geojson</code>) is licensed under <strong>ODbL 1.0</strong> with upstream attributions (admin bulk imports enter the same ODbL-1.0 export and must use ODbL-compatible open licenses). Uploaded site photos and comments are licensed under <strong>CC BY 4.0</strong> attributed to your pseudonym (uploaded photos are modified server-side by stripping EXIF/XMP/IPTC metadata and re-encoding/resizing to WebP). You may delete your contributions from the platform at any time; open-data licenses on copies legitimately downloaded prior to deletion remain irrevocable under their terms. Only upload photos you created yourself from public vantage points without identifiable faces, license plates, or private non-public areas.</p>
+       <p class="en-sub"><strong>English summary:</strong> Contributions are non-binding civic suggestions. Registration and irrevocable open-data licensing require users to be at least 16 years old (with parental/guardian consent under 18 where required by law). By registering and contributing, you waive your own copyright and database rights in submitted polygon geometries, surface classifications, and proposal notes under <strong>CC0 1.0 Universal</strong> (or, as a Section 3 Public License Fallback where statutory waiver is unavailable, e.g. under § 29 German UrhG, grant an unrestricted, irrevocable license), while the compiled public GeoJSON dataset (<code>/api/v1/polygons/export.geojson</code>) is licensed under <strong>ODbL 1.0</strong> with upstream attributions. Admin bulk imports enter the same ODbL-1.0 export and are restricted to directly compatible open licenses (<code>CC0-1.0</code>, <code>PDDL-1.0</code>, <code>dl-de/zero-2-0</code>, <code>Public Domain</code>, attributed <code>ODbL-1.0</code>) or <code>CC BY 4.0</code> / <code>dl-de/by-2-0</code> datasets with a confirmed explicit ODbL waiver and persisted attribution. Uploaded site photos and comments are licensed under <strong>CC BY 4.0</strong> attributed to your pseudonym (photos are stripped of EXIF/XMP/IPTC metadata and re-encoded/resized to WebP). Automated safeguards (Art. 14 DSA): auto-clipping against overlaps, land-cover checks, photo blurring at credibility score &lt;= ${PHOTO_LIMITS.FAKE_BLUR_SCORE_THRESHOLD}, pruning of unrated proposals after ${config.staleUnratedPruneDays} days, disposable-email blocking, and temporary login lockout after ${AUTH_LIMITS.MAX_FAILED_LOGIN_ATTEMPTS} failed attempts. Suspected illegal content can be reported without an account via the in-app report action (Art. 16 DSA); manual moderation removals or account bans trigger an emailed statement of reasons (Art. 17 DSA).</p>
        ${buildLegalNavHtml(app)}`,
       { wide: true },
     );
@@ -607,7 +631,7 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
     );
     const usesOpenFreeMap = styleHosts.includes('tiles.openfreemap.org');
     const basemapLicenseHtml = usesOpenFreeMap
-      ? `<li><strong>Straßenkarte (Vektorkacheln):</strong> <a href="https://openfreemap.org" target="_blank" rel="noopener noreferrer">OpenFreeMap</a> (MIT), Kachelschema &amp; Stile © <a href="https://openmaptiles.org/" target="_blank" rel="noopener noreferrer">OpenMapTiles</a> / © <a href="https://carto.com/attributions" target="_blank" rel="noopener noreferrer">CARTO</a> / OSM Liberty (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a> / BSD-3-Clause / MIT), Kartendaten © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap-Mitwirkende (ODbL)</a>, Übersichts-Schummerung <a href="https://www.naturalearthdata.com/" target="_blank" rel="noopener noreferrer">Natural Earth</a> (Public Domain), Kartenschriften Noto Sans (<a href="https://openfontlicense.org/" target="_blank" rel="noopener noreferrer">SIL OFL 1.1</a>).</li>`
+      ? `<li><strong>Straßenkarte (Vektorkacheln):</strong> <a href="https://openfreemap.org" target="_blank" rel="noopener noreferrer">OpenFreeMap</a> (MIT), Kachelschema &amp; Stile © <a href="https://openmaptiles.org/" target="_blank" rel="noopener noreferrer">OpenMapTiles</a> / © <a href="https://carto.com/attributions" target="_blank" rel="noopener noreferrer">CARTO</a> (modified im Dunkelmodus) / OSM Liberty (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a> / BSD-3-Clause / MIT), Kartendaten © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap-Mitwirkende (ODbL)</a>, Übersichts-Schummerung <a href="https://www.naturalearthdata.com/" target="_blank" rel="noopener noreferrer">Natural Earth</a> (Public Domain), Kartenschriften Noto Sans (<a href="https://openfontlicense.org/" target="_blank" rel="noopener noreferrer">SIL OFL 1.1</a>).</li>`
       : styleHosts.length > 0
         ? `<li><strong>Straßenkarte (konfigurierter Anbieter):</strong> Kartenstil und Kacheln von ${styleHosts.map((h) => `<code>${escapeHtml(h)}</code>`).join(' bzw. ')} (Lizenzangaben gemäß Kartenstil-Metadaten; bei OSM-basierten Stilen © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap-Mitwirkende (ODbL)</a>).</li>`
         : '<li><strong>Straßenkarte:</strong> Selbst gehosteter Kartenstil dieses Servers.</li>';
@@ -621,11 +645,10 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
       orthoEnglishSummary = 'Aerial orthophotos are disabled on this instance.';
     } else if (ortho.urlTemplate.includes('/api/v1/tiles/dop20/')) {
       const stateItemsHtml = GERMAN_STATE_DOP20_PROVIDERS.map((provider) => {
-        const vintageNote =
-          provider.code === 'HH'
-            ? ' [TIME=2026 LGV-OpenData-Befliegung]'
-            : '';
-        return `<li><strong>${escapeHtml(provider.name)}:</strong> ${escapeHtml(provider.attribution)} (${currentYear}), <a href="${escapeHtml(provider.licenseUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(provider.licenseId)}</a>${vintageNote}</li>`;
+        const vintageNote = provider.vintageNote
+          ? ` [${escapeHtml(provider.vintageNote)}]`
+          : '';
+        return `<li><strong>${escapeHtml(provider.name)}:</strong> ${escapeHtml(formatStateDop20FullAttribution(provider, currentYear))} – <a href="${escapeHtml(provider.licenseUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(provider.licenseId)}</a>${vintageNote}</li>`;
       }).join('\n             ');
       orthoLicenseHtml = `<li><strong>Luftbilder (DOP20 / DOP10, Daten verändert – Kachel-Reprojektion/Komposition an Landesgrenzen):</strong> Amtliche Open-Data-WMS-Dienste der Vermessungsverwaltungen der deutschen Bundesländer unter <a href="https://www.govdata.de/dl-de/by-2-0" target="_blank" rel="noopener noreferrer">dl-de/by-2-0</a>, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a> sowie <a href="https://www.govdata.de/dl-de/zero-2-0" target="_blank" rel="noopener noreferrer">dl-de/zero-2-0</a>:
            <details style="margin-top:6px;">
@@ -659,7 +682,7 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
        <ul>
          <li><strong>Backend-API &amp; Repository-Wurzel (<code>apps/api</code>):</strong> Lizenziert unter der <strong>GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later)</strong> (Copyright © 2026 Unseal Contributors). Gemäß § 13 AGPLv3 steht der vollständige korrespondierende Quellcode kostenlos unter <a href="${escapeHtml(config.sourceCodeUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(config.sourceCodeUrl)}</a> bereit (Details zur Split-Lizenzierung in <code>LICENSING.md</code>).</li>
          <li><strong>Client-App &amp; gemeinsame Schemas (<code>apps/mobile</code>, <code>packages/shared</code>):</strong> Lizenziert unter der <strong>Mozilla Public License 2.0 (MPL-2.0)</strong> (Copyright © 2026 Unseal Contributors).</li>
-         <li><strong>Wesentliche Drittanbieter-Bibliotheken &amp; Laufzeitkomponenten:</strong> Expo, React &amp; React Native (MIT), MapLibre GL JS (BSD-3-Clause), MapLibre React Native (MIT), MapLibre Native Android/iOS (BSD-2-Clause), Fastify &amp; Plugins (MIT), PostgreSQL (PostgreSQL License) &amp; PostGIS (GPL-2.0-or-later), sharp (Apache-2.0) / libvips (LGPL-3.0-or-later), Turf.js (MIT), @node-rs/argon2 (MIT), exifr (MIT), pg (MIT), Zod (MIT), Nodemailer (MIT-0), Pino (MIT), Node.js (MIT), Caddy (Apache-2.0).</li>
+         <li><strong>Wesentliche Drittanbieter-Bibliotheken &amp; Laufzeitkomponenten:</strong> Expo, React &amp; React Native (MIT), MapLibre GL JS (BSD-3-Clause), MapLibre React Native (MIT), MapLibre Native Android/iOS (BSD-2-Clause), MapLibre Android Plugins &amp; Turf (Apache-2.0), Android-Image-Cropper (Apache-2.0), SmartLocation (MIT), Google Play Services Location SDK (proprietäre Google APIs Terms of Service, kompatibel unter MPL-2.0 § 3.3), Fastify &amp; Plugins (MIT), PostgreSQL (PostgreSQL License) &amp; PostGIS (GPL-2.0-or-later), sharp (Apache-2.0) / libvips (LGPL-3.0-or-later), Turf.js (MIT), @node-rs/argon2 (MIT), exifr (MIT), pg (MIT), Zod (MIT), Nodemailer (MIT-0), Pino (MIT), Node.js (MIT), Caddy (Apache-2.0).</li>
          <li><strong>Vollständige Paketlizenzen &amp; Copyright-Hinweise:</strong> Alle npm-Abhängigkeiten, wiedergegebenen Lizenztexte, nativen Mobile-SDKs und Docker-Komponenten sind in <a href="${escapeHtml(noticesHref)}"><code>THIRD_PARTY_NOTICES.txt</code></a> (sowie im Quellcode-Repository) vollständig dokumentiert.</li>
        </ul>
        <h2>2. Geodaten- &amp; Kartenquellen</h2>
@@ -674,7 +697,7 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
          <li><strong>Zusammengestellter GeoJSON-Datensatz (<code>/api/v1/polygons/export.geojson</code>):</strong> <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener noreferrer">Open Data Commons Open Database License 1.0 (ODbL 1.0)</a> (inklusive der oben genannten Karten-, Luftbild- und VG250-Quellenvermerke); Mitwirkende verzichten auf eigene Urheber- und Datenbankrechte an eingezeichneten Geometrien, Belagsangaben und Notizen gemäß <a href="https://creativecommons.org/publicdomain/zero/1.0/deed.de" target="_blank" rel="noopener noreferrer">CC0 1.0 Universal</a>.</li>
          <li><strong>Vor-Ort-Fotos &amp; Kommentare:</strong> <a href="https://creativecommons.org/licenses/by/4.0/deed.de" target="_blank" rel="noopener noreferrer">CC BY 4.0 International</a> (Namensnennung des Pseudonyms; Fotos serverseitig EXIF-bereinigt &amp; als WebP skaliert; Details in den <a href="${escapeHtml(config.termsUrl)}">Nutzungsbedingungen</a>).</li>
        </ul>
-       <p class="en-sub"><strong>English summary:</strong> Unseal API is licensed under AGPL-3.0-or-later (Corresponding Source available at <a href="${escapeHtml(config.sourceCodeUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(config.sourceCodeUrl)}</a>); the mobile/web client and shared schemas are licensed under MPL-2.0 (Copyright © 2026 Unseal Contributors). Complete third-party notices and license texts are available at <a href="${escapeHtml(noticesHref)}">THIRD_PARTY_NOTICES.txt</a>. ${usesOpenFreeMap ? 'Vector basemap via OpenFreeMap (MIT), © OpenMapTiles (CC BY 4.0 / BSD-3-Clause), © OpenStreetMap contributors (ODbL), Natural Earth (Public Domain), and Noto Sans (SIL OFL 1.1).' : 'Basemap tiles are loaded from the configured style host.'} Geocoding © OpenStreetMap contributors (ODbL).${vg250EnglishSummary} ${orthoEnglishSummary} Compiled polygon exports are licensed under ODbL 1.0 (with contributor CC0 1.0 rights waiver); site photos and comments under CC BY 4.0.</p>
+       <p class="en-sub"><strong>English summary:</strong> Unseal API is licensed under AGPL-3.0-or-later (Corresponding Source available at <a href="${escapeHtml(config.sourceCodeUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(config.sourceCodeUrl)}</a>); the mobile/web client and shared schemas are licensed under MPL-2.0 (Copyright © 2026 Unseal Contributors). Complete third-party notices and license texts (including native Android SDKs) are available at <a href="${escapeHtml(noticesHref)}">THIRD_PARTY_NOTICES.txt</a>. ${usesOpenFreeMap ? 'Vector basemap via OpenFreeMap (MIT), © OpenMapTiles / © CARTO (modified in dark mode) (CC BY 4.0 / BSD-3-Clause), © OpenStreetMap contributors (ODbL), Natural Earth (Public Domain), and Noto Sans (SIL OFL 1.1).' : 'Basemap tiles are loaded from the configured style host.'} Geocoding © OpenStreetMap contributors (ODbL).${vg250EnglishSummary} ${orthoEnglishSummary} Compiled polygon exports are licensed under ODbL 1.0 (with contributor CC0 1.0 rights waiver / Section 3 Public License Fallback); site photos and comments under CC BY 4.0.</p>
        ${buildLegalNavHtml(app)}`,
       { wide: true },
     );

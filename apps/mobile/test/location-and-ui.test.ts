@@ -1618,7 +1618,7 @@ describe('German default localization and DE <-> EN switching', () => {
 });
 
 describe('Dynamic native attribution text & offline bundled license plugin', () => {
-  it('uses vg250DataYear or current UTC year, respects custom osmStyleUrl, omits VG250 when disabled, and includes orthophoto attribution', () => {
+  it('uses vg250DataYear or current UTC year, respects custom osmStyleUrl, omits VG250 when disabled, and includes orthophoto attribution', async () => {
     const currentYear = String(new Date().getUTCFullYear());
 
     const defaultDe = buildNativeAttributionText({
@@ -1679,6 +1679,73 @@ describe('Dynamic native attribution text & offline bundled license plugin', () 
       orthoDefault,
       new RegExp(`© GeoBasis-DE \\/ BKG \\(${currentYear}\\)`),
     );
+
+    // Dynamic viewport-scoped DOP20 + dark mode CARTO attribution on native
+    const orthoMainzDark = buildNativeAttributionText({
+      locale: 'de',
+      basemapMode: 'orthophoto',
+      colorScheme: 'dark',
+      osmStyleUrl: 'https://tiles.openfreemap.org/styles/liberty',
+      orthophotoAttribution: '© GeoBasis-DE / Bundesländer',
+      orthophotoUrlTemplate: 'https://unseal.example.org/api/v1/tiles/dop20/{z}/{x}/{y}.jpg',
+      viewportBbox: [8.22, 49.97, 8.32, 50.03],
+      vg250AttributionEnabled: true,
+      vg250DataYear: 2025,
+    });
+    assert.match(orthoMainzDark, /LVermGeoRP/);
+    assert.match(orthoMainzDark, /HVBG/);
+    assert.match(orthoMainzDark, /© CARTO \(modified\)/);
+    assert.match(orthoMainzDark, /© GeoBasis-DE \/ BKG \(2025\)/);
+
+    // TDDDG compliance: default Web viewport storage uses sessionStorage (not localStorage) and cleans legacy key
+    const sessionBacking = new Map<string, string>();
+    const localBacking = new Map<string, string>([
+      [LAST_VIEWPORT_KEY, JSON.stringify({ bbox: { minLng: 8, minLat: 49, maxLng: 8.1, maxLat: 49.1 }, zoom: 14 })],
+    ]);
+    const prevWindow = (globalThis as { window?: unknown }).window;
+    (globalThis as { window?: unknown }).window = {
+      sessionStorage: {
+        getItem: (k: string) => sessionBacking.get(k) ?? null,
+        setItem: (k: string, v: string) => {
+          sessionBacking.set(k, v);
+        },
+        removeItem: (k: string) => {
+          sessionBacking.delete(k);
+        },
+      },
+      localStorage: {
+        getItem: (k: string) => localBacking.get(k) ?? null,
+        setItem: (k: string, v: string) => {
+          localBacking.set(k, v);
+        },
+        removeItem: (k: string) => {
+          localBacking.delete(k);
+        },
+      },
+    };
+    try {
+      const defaultWebStore = createWebViewportStorage();
+      assert.equal(await defaultWebStore.getViewport(), null);
+      assert.equal(
+        localBacking.has(LAST_VIEWPORT_KEY),
+        false,
+        'Legacy localStorage viewport key must be purged on access',
+      );
+      const vp = {
+        bbox: { minLng: 8.22, minLat: 49.97, maxLng: 8.32, maxLat: 50.03 },
+        zoom: 15.5,
+      };
+      await defaultWebStore.setViewport(vp);
+      assert.equal(sessionBacking.has(LAST_VIEWPORT_KEY), true);
+      assert.equal(localBacking.has(LAST_VIEWPORT_KEY), false);
+      assert.deepEqual(await defaultWebStore.getViewport(), vp);
+    } finally {
+      if (prevWindow === undefined) {
+        delete (globalThis as { window?: unknown }).window;
+      } else {
+        (globalThis as { window?: unknown }).window = prevWindow;
+      }
+    }
   });
 
   it('registers withBundledLicenses.cjs in app.json and copies MPL-2.0 LICENSE + THIRD_PARTY_NOTICES.txt into native prebuild assets', () => {
@@ -1727,6 +1794,12 @@ describe('Dynamic native attribution text & offline bundled license plugin', () 
       );
       assert.match(noticesText, /MapLibre Native \(BSD-2-Clause\)/);
       assert.match(noticesText, /Copyright \(c\) 2014-2020 Mapbox/);
+      assert.match(noticesText, /play-services-location/);
+      assert.match(noticesText, /Android-Image-Cropper/);
+      assert.match(noticesText, /SmartLocation/);
+      assert.match(noticesText, /MapLibre Android Plugins/);
+      assert.match(noticesText, /©GeoBasis-DE \/ LVermGeoRP/);
+      assert.match(noticesText, /CARTO Dark Matter, modified in dark mode/);
     } finally {
       fs.rmSync(tmpTarget, { recursive: true, force: true });
     }

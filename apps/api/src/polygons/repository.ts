@@ -107,10 +107,31 @@ export interface SetPolygonStatusParams {
   status: PolygonStatus;
 }
 
+export interface ImportAttributionMetadata {
+  license: string;
+  attributionText: string;
+  sourceUrl?: string | null | undefined;
+  waiverConfirmed?: boolean | undefined;
+}
+
+export interface ActiveImportAttribution {
+  license: string;
+  attributionText: string;
+  sourceUrl: string | null;
+  waiverConfirmed: boolean;
+}
+
+export interface DeletedTargetAuthorInfo {
+  deletedByAdmin: boolean;
+  authorEmail: string | null;
+  authorPseudonym: string | null;
+}
+
 export interface ImportPolygonsParams {
   adminUserId: string;
   dataset: ExtractedImportDataset;
   origin?: PolygonOrigin | undefined;
+  importAttribution?: ImportAttributionMetadata | null | undefined;
   minAreaM2?: number | undefined;
   maxAreaM2?: number | undefined;
 }
@@ -1770,6 +1791,29 @@ export class PolygonRepository {
       await client.query('BEGIN');
       await lockUserForWrite(client, params.adminUserId);
 
+      let importAttributionId: string | null = null;
+      if (params.importAttribution && params.dataset.candidates.length > 0) {
+        const attrRes = await client.query<{ id: string }>(
+          `INSERT INTO import_attributions (
+             license,
+             attribution_text,
+             source_url,
+             waiver_confirmed,
+             created_by
+           )
+           VALUES ($1, $2, $3, $4, $5)
+           RETURNING id`,
+          [
+            params.importAttribution.license,
+            params.importAttribution.attributionText,
+            params.importAttribution.sourceUrl ?? null,
+            Boolean(params.importAttribution.waiverConfirmed),
+            params.adminUserId,
+          ],
+        );
+        importAttributionId = attrRes.rows[0]?.id ?? null;
+      }
+
       for (const candidate of params.dataset.candidates) {
         await client.query('SAVEPOINT import_item');
         try {
@@ -1903,7 +1947,8 @@ export class PolygonRepository {
                  note,
                  area_m2,
                  municipality_id,
-                 origin
+                 origin,
+                 import_attribution_id
                )
                SELECT
                  $1,
@@ -1917,7 +1962,8 @@ export class PolygonRepository {
                    WHERE ST_Covers(m.geom, ST_PointOnSurface(prepared.geom))
                    LIMIT 1
                  ),
-                 $6
+                 $6,
+                 $7
                FROM prepared`,
               [
                 params.adminUserId,
@@ -1926,6 +1972,7 @@ export class PolygonRepository {
                 candidate.note,
                 part.area_m2,
                 origin,
+                importAttributionId,
               ],
             );
             importedCount += 1;
@@ -1948,6 +1995,12 @@ export class PolygonRepository {
                 : 'Geometry import failed.',
           });
         }
+      }
+
+      if (importedCount === 0 && importAttributionId !== null) {
+        await client.query('DELETE FROM import_attributions WHERE id = $1', [
+          importAttributionId,
+        ]);
       }
 
       if (importedCount > 0) {
@@ -1982,13 +2035,56 @@ export class PolygonRepository {
     };
   }
 
+  public async listActiveImportAttributions(
+    statementTimeoutMs: number = DEFAULT_EXPORT_STATEMENT_TIMEOUT_MS,
+  ): Promise<ActiveImportAttribution[]> {
+    const safeTimeoutMs = Math.max(1, Math.trunc(statementTimeoutMs));
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN READ ONLY');
+      await client.query(`SET LOCAL statement_timeout = '${safeTimeoutMs}ms'`);
+      const res = await client.query<{
+        license: string;
+        attribution_text: string;
+        source_url: string | null;
+        waiver_confirmed: boolean;
+      }>(
+        `SELECT DISTINCT
+           ia.license,
+           ia.attribution_text,
+           ia.source_url,
+           ia.waiver_confirmed
+         FROM import_attributions ia
+         INNER JOIN polygons p ON p.import_attribution_id = ia.id
+         ORDER BY ia.license ASC, ia.attribution_text ASC`,
+      );
+      await client.query('COMMIT');
+      return res.rows.map((row) => ({
+        license: row.license,
+        attributionText: row.attribution_text,
+        sourceUrl: row.source_url,
+        waiverConfirmed: Boolean(row.waiver_confirmed),
+      }));
+    } catch (err: unknown) {
+      await rollbackPreservingError(client, err);
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
   public async delete(
     polygonId: string,
     userId: string,
     actorIsAdmin: boolean = false,
-  ): Promise<void> {
+  ): Promise<DeletedTargetAuthorInfo> {
     const client = await this.pool.connect();
     let photoFilesToDelete: Array<{ file_name: string; thumb_name: string }> = [];
+    let moderationInfo: DeletedTargetAuthorInfo = {
+      deletedByAdmin: false,
+      authorEmail: null,
+      authorPseudonym: null,
+    };
     try {
       await client.query('BEGIN');
 
@@ -2014,6 +2110,21 @@ export class PolygonRepository {
           'FORBIDDEN_NOT_AUTHOR',
           'Only the author or an administrator may delete this polygon.',
         );
+      }
+
+      if (actorIsAdmin && !isAuthor && existing.user_id !== null) {
+        const authorRes = await client.query<{
+          email: string | null;
+          pseudonym: string;
+        }>('SELECT email, pseudonym FROM users WHERE id = $1', [
+          existing.user_id,
+        ]);
+        const author = authorRes.rows[0];
+        moderationInfo = {
+          deletedByAdmin: true,
+          authorEmail: author?.email ?? null,
+          authorPseudonym: author?.pseudonym ?? null,
+        };
       }
 
       const photosRes = await client.query<{
@@ -2044,6 +2155,8 @@ export class PolygonRepository {
           .catch(() => undefined);
       }
     }
+
+    return moderationInfo;
   }
 
   public async fetchExportBatch(

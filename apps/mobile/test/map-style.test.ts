@@ -20,6 +20,7 @@ import {
   buildOrthophotoSourceSpec,
   buildPolygonLayerSpecs,
   buildProposalGeoJson,
+  buildWebCustomAttributions,
   clampPolygonOpacity,
   DEFAULT_DARK_OSM_STYLE_URL,
   DEFAULT_POLYGON_OPACITY,
@@ -27,6 +28,7 @@ import {
   DRAFT_SOURCE_ID,
   extractRenderedFeatureRawIds,
   INTERACTIVE_PROPOSAL_LAYER_IDS,
+  isBuiltinDop20Orthophoto,
   isOpenFreeMapDarkStyleUrl,
   ORTHOPHOTO_LAYER_ID,
   ORTHOPHOTO_SOURCE_ID,
@@ -949,5 +951,85 @@ describe('styleBuilder and MapCanvas contract', () => {
       assert.equal(otherRadius, 4);
       assert.equal(authoredRadius, 5);
     }
+  });
+
+  it('builds dynamic Web map attributions for viewport DOP20 states, dark-mode CARTO, and VG250', () => {
+    const builtinDop20: NonNullable<RuntimeConfig['orthophoto']> = {
+      urlTemplate: 'https://unseal.example.org/api/v1/tiles/dop20/{z}/{x}/{y}.jpg',
+      tileSize: 256,
+      attribution: '© GeoBasis-DE / Bundesländer (2026)',
+      bounds: [5.8, 47.2, 15.1, 55.1],
+      maxZoom: 20,
+    };
+    assert.equal(isBuiltinDop20Orthophoto(builtinDop20), true);
+
+    const customOrtho: NonNullable<RuntimeConfig['orthophoto']> = {
+      urlTemplate: 'https://tiles.example.org/ortho/{z}/{x}/{y}.jpg',
+      tileSize: 256,
+      attribution: '© Custom City Ortho',
+      bounds: null,
+      maxZoom: 19,
+    };
+    assert.equal(isBuiltinDop20Orthophoto(customOrtho), false);
+    assert.equal(buildOrthophotoSourceSpec(customOrtho)?.attribution, '© Custom City Ortho');
+
+    // Mainz viewport with built-in DOP20 in dark mode on OpenFreeMap + VG250 enabled
+    const mainzDarkAttrs = buildWebCustomAttributions({
+      config: {
+        orthophoto: builtinDop20,
+        vg250AttributionEnabled: true,
+        vg250DataYear: 2025,
+        licensesUrl: 'https://unseal.example.org/auth/licenses',
+      },
+      basemapMode: 'orthophoto',
+      colorScheme: 'dark',
+      activeStyleUrl: DEFAULT_DARK_OSM_STYLE_URL,
+      viewportBbox: [8.22, 49.97, 8.32, 50.03],
+      year: 2026,
+    });
+    const joinedMainzDark = mainzDarkAttrs.join(' | ');
+    assert.match(joinedMainzDark, /https:\/\/carto\.com\/attributions/);
+    assert.match(joinedMainzDark, /CARTO<\/a> \(modified\)/);
+    assert.match(joinedMainzDark, /LVermGeoRP/);
+    assert.match(joinedMainzDark, /HVBG/);
+    assert.match(joinedMainzDark, /https:\/\/www\.govdata\.de\/dl-de\/by-2-0/);
+    assert.match(joinedMainzDark, /BKG<\/a> \(2025\)/);
+    assert.match(joinedMainzDark, /Datenquellen/);
+
+    // Light mode on OSM without VG250 omits CARTO, DOP20, and BKG
+    const lightOsmAttrs = buildWebCustomAttributions({
+      config: {
+        orthophoto: builtinDop20,
+        vg250AttributionEnabled: false,
+        vg250DataYear: null,
+        licensesUrl: 'https://unseal.example.org/auth/licenses',
+      },
+      basemapMode: 'osm',
+      colorScheme: 'light',
+      activeStyleUrl: 'https://tiles.openfreemap.org/styles/liberty',
+      viewportBbox: [8.22, 49.97, 8.32, 50.03],
+      year: 2026,
+    });
+    assert.deepEqual(lightOsmAttrs, []);
+
+    // Wide Germany bbox falls back to /auth/licenses link for DOP20
+    const wideGermanyAttrs = buildWebCustomAttributions({
+      config: {
+        orthophoto: builtinDop20,
+        vg250AttributionEnabled: false,
+        vg250DataYear: null,
+        licensesUrl: 'https://unseal.example.org/auth/licenses',
+      },
+      basemapMode: 'orthophoto',
+      colorScheme: 'light',
+      activeStyleUrl: 'https://tiles.openfreemap.org/styles/liberty',
+      viewportBbox: [6.0, 47.5, 14.5, 54.8],
+      year: 2026,
+    });
+    assert.match(wideGermanyAttrs.join(' '), /DOP20\/DOP10/);
+    assert.match(
+      wideGermanyAttrs.join(' '),
+      /https:\/\/unseal\.example\.org\/auth\/licenses/,
+    );
   });
 });

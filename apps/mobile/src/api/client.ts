@@ -8,6 +8,7 @@ import {
   AuthUserSchema,
   CommentVoteResponseSchema,
   CreateBugReportResponseSchema,
+  CreateContentReportResponseSchema,
   EmailActionResponseSchema,
   FlagPolygonResponseSchema,
   GeocodeResponseSchema,
@@ -33,6 +34,8 @@ import {
   type CommentVoteResponse,
   type CreateBugReportRequest,
   type CreateBugReportResponse,
+  type CreateContentReportRequest,
+  type CreateContentReportResponse,
   type CreatePolygonCommentRequest,
   type CreatePolygonRequest,
   type EmailActionResponse,
@@ -605,6 +608,18 @@ export class PpgisApiClient {
       includeAuth: true,
     });
     return CreateBugReportResponseSchema.parse(json);
+  }
+
+  public async submitContentReport(
+    input: CreateContentReportRequest,
+  ): Promise<CreateContentReportResponse> {
+    const json = await this.requestJson({
+      method: 'POST',
+      path: '/api/v1/content-reports',
+      body: input,
+      includeAuth: true,
+    });
+    return CreateContentReportResponseSchema.parse(json);
   }
 
   public async fetchAltchaChallenge(): Promise<AltchaChallengeResponse> {

@@ -28,6 +28,9 @@ export interface UserDataExport {
     privacyPolicyAcknowledgedAt: string | null;
     termsAcceptedAt: string | null;
     lastActiveDate: string | null;
+    failedLoginAttempts: number;
+    loginBlockedAt: string | null;
+    trustedAt: string | null;
   };
   sessions: Array<{ createdAt: string; expiresAt: string }>;
   emailActionLinks: Array<{
@@ -137,9 +140,13 @@ export async function collectUserData(
     privacy_accepted_at: Date | null;
     terms_accepted_at: Date | null;
     last_login_at: Date | null;
+    failed_login_attempts: number;
+    login_blocked_at: Date | null;
+    trusted_at: Date | null;
   }>(
     `SELECT id, pseudonym, email, role, created_at, email_verified_at,
-            privacy_accepted_at, terms_accepted_at, last_login_at
+            privacy_accepted_at, terms_accepted_at, last_login_at,
+            failed_login_attempts, login_blocked_at, trusted_at
      FROM users WHERE id = $1`,
     [userId],
   );
@@ -270,6 +277,9 @@ export async function collectUserData(
       privacyPolicyAcknowledgedAt: isoOrNull(user.privacy_accepted_at),
       termsAcceptedAt: isoOrNull(user.terms_accepted_at),
       lastActiveDate: isoDateOrNull(user.last_login_at),
+      failedLoginAttempts: Number(user.failed_login_attempts ?? 0),
+      loginBlockedAt: isoOrNull(user.login_blocked_at),
+      trustedAt: isoOrNull(user.trusted_at),
     },
     sessions: sessionsRes.rows.map((r) => ({
       createdAt: iso(r.created_at),

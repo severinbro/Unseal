@@ -435,6 +435,10 @@ function main() {
   lines.push('');
   lines.push('sharp@0.35.5 (Apache-2.0) dynamically loads platform-specific @img/sharp-libvips-*');
   lines.push('prebuilt binaries distributed under LGPL-3.0-or-later.');
+  lines.push('Note: Source distribution on GitHub and self-hosted network operation of apps/api do not');
+  lines.push('distribute prebuilt libvips binaries. If prebuilt Docker images bundling @img/sharp-libvips-*');
+  lines.push('are ever distributed publicly, accompany them with verbatim LGPL-3.0 and GPL-3.0 license texts');
+  lines.push('and relinking / corresponding source information per LGPL-3.0 Section 4.');
   if (fs.existsSync(sharpLibvipsReadme)) {
     lines.push('');
     lines.push(fs.readFileSync(sharpLibvipsReadme, 'utf8').trim());
@@ -447,11 +451,26 @@ function main() {
     'node_modules/@maplibre/maplibre-react-native/android/gradle.properties',
   );
   let androidMapLibreVer = '11.12.1';
+  let androidMapLibrePluginVer = '3.0.2';
+  let androidMapLibreTurfVer = '6.0.1';
+  let androidOkHttpVer = '4.9.0';
   if (fs.existsSync(mlrnGradleProps)) {
     const propsText = fs.readFileSync(mlrnGradleProps, 'utf8');
-    const match = /org\.maplibre\.reactnative\.nativeVersion=([^\r\n]+)/.exec(propsText);
-    if (match?.[1]) {
-      androidMapLibreVer = match[1].trim();
+    const verMatch = /org\.maplibre\.reactnative\.nativeVersion=([^\r\n]+)/.exec(propsText);
+    if (verMatch?.[1]) {
+      androidMapLibreVer = verMatch[1].trim();
+    }
+    const pluginMatch = /org\.maplibre\.reactnative\.pluginVersion=([^\r\n]+)/.exec(propsText);
+    if (pluginMatch?.[1]) {
+      androidMapLibrePluginVer = pluginMatch[1].trim();
+    }
+    const turfMatch = /org\.maplibre\.reactnative\.turfVersion=([^\r\n]+)/.exec(propsText);
+    if (turfMatch?.[1]) {
+      androidMapLibreTurfVer = turfMatch[1].trim();
+    }
+    const okhttpMatch = /org\.maplibre\.reactnative\.okhttpVersion=([^\r\n]+)/.exec(propsText);
+    if (okhttpMatch?.[1]) {
+      androidOkHttpVer = okhttpMatch[1].trim();
     }
   }
   const mlrnPodspec = path.join(
@@ -475,11 +494,16 @@ function main() {
   lines.push('native SDKs are linked in addition to the npm packages listed above:');
   lines.push('');
   lines.push(`  - MapLibre Native Android SDK (org.maplibre.gl:android-sdk-opengl:${androidMapLibreVer}) : BSD-2-Clause`);
+  lines.push(`  - MapLibre Android Plugins (org.maplibre.gl:android-plugin-localization-v9, android-plugin-annotation-v9, android-plugin-markerview-v9:${androidMapLibrePluginVer}) : Apache-2.0`);
+  lines.push(`  - MapLibre Java Turf (org.maplibre.gl:android-sdk-turf:${androidMapLibreTurfVer}) : Apache-2.0`);
   lines.push(`  - MapLibre Native iOS Distribution (maplibre-gl-native-distribution ${iosMapLibreVer}) : BSD-2-Clause`);
+  lines.push('  - Android-Image-Cropper (com.github.CanHub:Android-Image-Cropper:4.3.1, via expo-image-picker) : Apache-2.0');
+  lines.push('  - SmartLocation (io.nlopez.smartlocation, via expo-location) : MIT');
+  lines.push('  - Google Play Services Location (com.google.android.gms:play-services-location:21.0.1, via expo-location) : Proprietary (Android Software Development Kit License / Google APIs Terms of Service; compatible with MPL-2.0 Section 3.3)');
   lines.push('  - React Native Android / Hermes Runtime (com.facebook.react:react-android, hermes-android) : MIT');
   lines.push('  - Fresco Image Pipeline (com.facebook.fresco) : MIT');
-  lines.push('  - Kotlin Standard Library (org.jetbrains.kotlin:kotlin-stdlib) : Apache-2.0');
-  lines.push('  - AndroidX & OkHttp libraries : Apache-2.0');
+  lines.push('  - Kotlin Standard Library & Coroutines (org.jetbrains.kotlin:kotlin-stdlib, org.jetbrains.kotlinx:kotlinx-coroutines-*) : Apache-2.0');
+  lines.push(`  - AndroidX & OkHttp (com.squareup.okhttp3:okhttp:${androidOkHttpVer}, okhttp-urlconnection:${androidOkHttpVer}) : Apache-2.0`);
   lines.push('');
   lines.push('--- MapLibre Native (BSD-2-Clause) ---');
   lines.push('BSD 2-Clause License');
@@ -509,6 +533,34 @@ function main() {
   lines.push('OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE');
   lines.push('OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.');
   lines.push('');
+  lines.push('--- Android-Image-Cropper & MapLibre Android Plugins / OkHttp / AndroidX (Apache-2.0) ---');
+  lines.push('Copyright (c) 2020-2024 CanHub / Arthur Teplitzki (Android-Image-Cropper)');
+  lines.push('Copyright (c) MapLibre contributors / Mapbox (MapLibre Android Plugins & Turf)');
+  lines.push('Copyright (c) Square, Inc. (OkHttp) / The Android Open Source Project (AndroidX)');
+  lines.push('');
+  lines.push('Licensed under the Apache License, Version 2.0 (the "License");');
+  lines.push('you may not use these files except in compliance with the License.');
+  lines.push('You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0');
+  lines.push('Unless required by applicable law or agreed to in writing, software distributed under the');
+  lines.push('License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND.');
+  lines.push('');
+  lines.push('--- SmartLocation (io.nlopez.smartlocation, MIT) ---');
+  lines.push('Copyright (c) 2013-2017 Nacho Lopez (mrmans0n)');
+  lines.push('');
+  lines.push('Permission is hereby granted, free of charge, to any person obtaining a copy of this');
+  lines.push('software and associated documentation files (the "Software"), to deal in the Software');
+  lines.push('without restriction, including without limitation the rights to use, copy, modify, merge,');
+  lines.push('publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons');
+  lines.push('to whom the Software is furnished to do so, subject to the following conditions:');
+  lines.push('The above copyright notice and this permission notice shall be included in all copies or');
+  lines.push('substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY');
+  lines.push('OF ANY KIND, EXPRESS OR IMPLIED.');
+  lines.push('');
+  lines.push('--- Google Play Services Location (com.google.android.gms:play-services-location) ---');
+  lines.push('Copyright (c) Google LLC. Distributed under the Android Software Development Kit License');
+  lines.push('Agreement / Google APIs Terms of Service (https://developers.google.com/terms).');
+  lines.push('Linked solely into the MPL-2.0 Android client package via expo-location (MPL-2.0 § 3.3).');
+  lines.push('');
 
   // Section 5: Docker & Runtime Stack Components
   lines.push(hr);
@@ -527,39 +579,41 @@ function main() {
   lines.push('6. DEFAULT GEODATA & EXTERNAL MAP SOURCES');
   lines.push(hr);
   lines.push('');
-  lines.push('  - OpenStreetMap Map Data & Nominatim Geocoding : ODbL-1.0 (https://www.openstreetmap.org/copyright)');
-  lines.push('  - OpenMapTiles Vector Tile Schema & Styles (incl. OSM Liberty / CARTO Dark Matter lineage) : CC BY 4.0 / BSD-3-Clause / MIT (https://openmaptiles.org/, https://carto.com/attributions)');
+  lines.push('  - OpenStreetMap Map Data & Nominatim Geocoding : ODbL-1.0 (© OpenStreetMap contributors, https://www.openstreetmap.org/copyright)');
+  lines.push('  - OpenMapTiles Vector Tile Schema & Styles (incl. OSM Liberty / CARTO Dark Matter, modified in dark mode) : CC BY 4.0 / BSD-3-Clause / MIT (https://openmaptiles.org/, https://carto.com/attributions)');
   lines.push('  - Natural Earth Low-Zoom Shaded Relief (via OpenFreeMap styles) : Public Domain (https://www.naturalearthdata.com/)');
   lines.push('  - Noto Sans Map Label Font Glyphs (via OpenFreeMap styles) : SIL OFL 1.1 (https://openfontlicense.org/)');
-  lines.push('  - OpenFreeMap Hosting & Tooling : MIT (https://openfreemap.org/)');
+  lines.push('  - OpenFreeMap Hosting & Tooling (Hyperknot Software Kft., Hungary) : MIT (https://openfreemap.org/)');
   lines.push('  - German Municipality Boundaries (BKG VG250) : dl-de/by-2-0');
   lines.push('      Attribution: © GeoBasis-DE / BKG (<year of data retrieval>) dl-de/by-2-0 (https://www.govdata.de/dl-de/by-2-0),');
   lines.push('      Datenquellen: https://sg.geodatenzentrum.de/web_public/gdz/datenquellen/datenquellen_vg_nuts.pdf (Daten verändert)');
-  lines.push('  - Built-in German State Aerial Orthophotos (DOP20 / DOP10, Daten verändert at state-border tile composites):');
-  lines.push('      * RP  (Rheinland-Pfalz)        : dl-de/by-2-0   | © GeoBasis-DE / LVermGeoRP, http://www.lvermgeo.rlp.de');
-  lines.push('      * HE  (Hessen)                 : dl-de/zero-2-0 | © Hessische Verwaltung für Bodenmanagement und Geoinformation (HVBG)');
-  lines.push('      * NW  (Nordrhein-Westfalen)    : dl-de/zero-2-0 | © Land NRW (Geobasis NRW)');
-  lines.push('      * BW  (Baden-Württemberg)      : dl-de/by-2-0   | © LGL, www.lgl-bw.de');
-  lines.push('      * BY  (Bayern)                 : CC BY 4.0      | Datenquelle: Bayerische Vermessungsverwaltung – www.geodaten.bayern.de');
-  lines.push('      * SL  (Saarland)               : dl-de/by-2-0   | © GeoBasis-DE / LVGL-SL');
-  lines.push('      * BE/BB (Berlin / Brandenburg) : dl-de/by-2-0   | © GeoBasis-DE / LGB, dl-de/by-2-0; © Geoportal Berlin, dl-de/by-2-0');
-  lines.push('      * HH  (Hamburg, TIME=2026)     : dl-de/by-2-0   | © Freie und Hansestadt Hamburg, Landesbetrieb Geoinformation und Vermessung (LGV)');
+  lines.push('  - Built-in German State Aerial Orthophotos (DOP20 / DOP10, live GetCapabilities wordings; Daten bearbeitet / Daten verändert):');
+  lines.push('      * RP  (Rheinland-Pfalz)        : dl-de/by-2-0   | ©GeoBasis-DE / LVermGeoRP (<Jahr>), dl-de/by-2-0, http://www.lvermgeo.rlp.de [Daten bearbeitet]');
+  lines.push('      * HE  (Hessen)                 : dl-de/zero-2-0 | © Hessische Verwaltung für Bodenmanagement und Geoinformation (HVBG) (<Jahr>)');
+  lines.push('      * NW  (Nordrhein-Westfalen)    : dl-de/zero-2-0 | © Land NRW (Geobasis NRW) (<Jahr>)');
+  lines.push('      * BW  (Baden-Württemberg)      : dl-de/by-2-0   | LGL-BW (<Jahr>) Datenlizenz Deutschland - Namensnennung - Version 2.0, www.lgl-bw.de');
+  lines.push('      * BY  (Bayern)                 : CC BY 4.0      | Datenquelle: Bayerische Vermessungsverwaltung – www.geodaten.bayern.de (<Jahr>)');
+  lines.push('      * SL  (Saarland)               : dl-de/by-2-0   | © GeoBasis-DE / LVGL-SL (<Jahr>)');
+  lines.push('      * BE/BB (Berlin / Brandenburg) : dl-de/by-2-0   | © GeoBasis-DE / LGB (<Jahr>), dl-de/by-2-0; © Geoportal Berlin (<Jahr>), dl-de/by-2-0');
+  lines.push('      * HH  (Hamburg, TIME=2026)     : dl-de/by-2-0   | © Freie und Hansestadt Hamburg, Landesbetrieb Geoinformation und Vermessung (LGV) (<Jahr>)');
   lines.push('                                       (pinned to LGV OpenData aerial vintage TIME=2026; excludes 2023 Maxar satellite vintage)');
-  lines.push('      * NI  (Niedersachsen)          : CC BY 4.0      | © LGLN (Niedersachsen)');
-  lines.push('      * HB  (Bremen / Bremerhaven)   : CC BY 4.0      | © Landesamt GeoInformation Bremen');
-  lines.push('      * SH  (Schleswig-Holstein)     : CC BY 4.0      | © GeoBasis-DE / LVermGeo SH');
-  lines.push('      * MV  (Mecklenburg-Vorpommern) : CC BY 4.0      | © GeoBasis-DE / M-V');
-  lines.push('      * SN  (Sachsen)                : dl-de/by-2-0   | © GeoBasis-DE / GeoSN');
-  lines.push('      * ST  (Sachsen-Anhalt)         : dl-de/by-2-0   | © GeoBasis-DE / LVermGeo ST');
-  lines.push('      * TH  (Thüringen)              : CC BY 4.0      | © GDI-Th');
+  lines.push('      * NI  (Niedersachsen)          : CC BY 4.0      | LGLN (<Jahr>) Creative Commons Namensnennung – 4.0 International (CC BY 4.0)');
+  lines.push('      * HB  (Bremen / Bremerhaven)   : CC BY 4.0      | © Landesamt GeoInformation Bremen (<Jahr>)');
+  lines.push('      * SH  (Schleswig-Holstein)     : CC BY 4.0      | © GeoBasis-DE/LVermGeo SH/CC BY 4.0 (<Jahr>)');
+  lines.push('      * MV  (Mecklenburg-Vorpommern) : CC BY 4.0      | © GeoBasis-DE/M-V <Jahr> (https://www.laiv-mv.de)');
+  lines.push('      * SN  (Sachsen)                : dl-de/by-2-0   | © GeoBasis-DE / GeoSN (<Jahr>)');
+  lines.push('      * ST  (Sachsen-Anhalt)         : dl-de/by-2-0   | © GeoBasis-DE / LVermGeo ST (<Jahr>)');
+  lines.push('      * TH  (Thüringen)              : CC BY 4.0      | © GDI-Th (<Jahr>)');
   lines.push('      License URLs:');
   lines.push('        - dl-de/by-2-0   : https://www.govdata.de/dl-de/by-2-0');
   lines.push('        - dl-de/zero-2-0 : https://www.govdata.de/dl-de/zero-2-0');
   lines.push('        - CC BY 4.0      : https://creativecommons.org/licenses/by/4.0/');
   lines.push('  - User-Contributed & Exported Platform Content:');
   lines.push('      * Compiled Polygon Dataset Export (/api/v1/polygons/export.geojson) : ODbL-1.0 (https://opendatacommons.org/licenses/odbl/1-0/)');
-  lines.push('        with upstream OpenStreetMap (ODbL), BKG VG250 (dl-de/by-2-0), and German State DOP20/DOP10 attributions.');
-  lines.push('      * Contributor Rights Waiver on Own Polygon Input & Notes            : CC0-1.0 (https://creativecommons.org/publicdomain/zero/1.0/)');
+  lines.push('        with upstream OpenStreetMap (ODbL), BKG VG250 (dl-de/by-2-0), German State DOP20/DOP10, and persisted admin-import attributions.');
+  lines.push('      * Contributor Rights Waiver on Own Polygon Input & Notes            : CC0-1.0 + Section 3 Public License Fallback (https://creativecommons.org/publicdomain/zero/1.0/)');
+  lines.push('      * Admin Bulk Imports (.geojson / .gpkg)                             : Direct CC0-1.0 / PDDL-1.0 / dl-de/zero-2-0 / Public Domain / attributed ODbL-1.0,');
+  lines.push('        or waiver-confirmed CC BY 4.0 / dl-de/by-2-0 with persisted attribution.');
   lines.push('      * Uploaded Ground-Truth Photos & Discussion Comments                : CC BY 4.0 (attributed to contributor pseudonym)');
   lines.push('');
 

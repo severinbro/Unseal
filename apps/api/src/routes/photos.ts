@@ -18,6 +18,10 @@ import {
 import { optionalAuth, requireAuth } from '../auth/session.js';
 import { processUploadedPhoto } from '../photos/processor.js';
 import { PhotoRepository } from '../photos/repository.js';
+import {
+  extractOptionalModerationReason,
+  notifyAuthorOfModerationActionBestEffort,
+} from '../util/moderationNotice.js';
 
 import type { FastifyInstance } from 'fastify';
 
@@ -69,7 +73,7 @@ export function registerPhotoRoutes(
     reply.header('Content-Type', 'image/webp');
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Cross-Origin-Resource-Policy', 'cross-origin');
-    reply.header('Cache-Control', 'public, max-age=31536000, immutable');
+    reply.header('Cache-Control', 'public, max-age=3600, must-revalidate');
     reply.header(
       'Link',
       '<https://creativecommons.org/licenses/by/4.0/>; rel="license"',
@@ -294,11 +298,21 @@ export function registerPhotoRoutes(
       const auth = request.auth!;
       const { id } = UuidParamSchema.parse(request.params);
 
-      await repository.deletePhoto({
+      const deletedInfo = await repository.deletePhoto({
         photoId: id,
         actorUserId: auth.user.id,
         actorIsAdmin: auth.user.role === 'admin',
       });
+      if (deletedInfo.deletedByAdmin) {
+        await notifyAuthorOfModerationActionBestEffort(app, request, {
+          action: 'photo_deleted',
+          targetId: id,
+          authorEmail: deletedInfo.authorEmail,
+          authorPseudonym: deletedInfo.authorPseudonym,
+          reason: extractOptionalModerationReason(request),
+          automatedMeansUsed: false,
+        });
+      }
       return reply.status(204).send();
     },
   );

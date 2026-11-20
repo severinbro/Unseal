@@ -5,12 +5,29 @@ import type { GeocodeResultItem } from '@entsiegelung/shared';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Linking,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+
+const OSM_COPYRIGHT_URL = 'https://www.openstreetmap.org/copyright';
+
+function openOsmCopyright(): void {
+  if (Platform.OS === 'web') {
+    const scope = globalThis as {
+      window?: { open?: (u: string, target?: string, features?: string) => void };
+    };
+    if (typeof scope.window?.open === 'function') {
+      scope.window.open(OSM_COPYRIGHT_URL, '_blank', 'noopener,noreferrer');
+      return;
+    }
+  }
+  void Linking.openURL(OSM_COPYRIGHT_URL);
+}
 
 import {
   DEFAULT_LOCALE,
@@ -181,7 +198,17 @@ export function AddressSearchModal({
         </View>
       ) : null}
 
-      <Text style={styles.attributionNote}>{t.attributionNote}</Text>
+      <Text style={styles.attributionNote}>
+        {t.attributionNote}
+        <Text
+          testID="nominatim-osm-copyright-link"
+          accessibilityRole="link"
+          onPress={openOsmCopyright}
+          style={styles.attributionLink}
+        >
+          {t.attributionLinkText}
+        </Text>
+      </Text>
     </View>
   );
 }
@@ -340,6 +367,10 @@ function createStyles(PALETTE: ThemePalette) {
   attributionNote: {
     fontSize: 11,
     color: PALETTE.inkMuted,
+  },
+  attributionLink: {
+    color: PALETTE.accentPrimary,
+    textDecorationLine: 'underline',
   },
   });
 }

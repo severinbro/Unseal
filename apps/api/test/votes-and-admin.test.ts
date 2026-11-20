@@ -11,6 +11,7 @@ import { after, before, beforeEach, describe, it } from 'node:test';
 import {
   ApiError,
   ApiErrorEnvelopeSchema,
+  CreateContentReportResponseSchema,
   PolygonCollectionResponseSchema,
   PolygonFeatureSchema,
   RegisterResponseSchema,
@@ -22,6 +23,7 @@ import {
 import {
   VoteRepository,
   buildApp,
+  createMemoryMailer,
   registerVoteRoutes,
   runAdminCommand,
   type AdminCommandResult,
@@ -1129,7 +1131,14 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
       );
       const data = exportRes.json() as {
         format: string;
-        account: { pseudonym: string; email: string; lastActiveDate: string };
+        account: {
+          pseudonym: string;
+          email: string;
+          lastActiveDate: string;
+          failedLoginAttempts: number;
+          loginBlockedAt: string | null;
+          trustedAt: string | null;
+        };
         sessions: unknown[];
         polygons: Array<{ id: string; note: string; geometry: { type: string } }>;
         comments: Array<{ body: string; polygonId: string }>;
@@ -1140,6 +1149,9 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
       assert.equal(data.account.pseudonym, 'ExportAlice');
       assert.equal(data.account.email, 'exportalice@example.org');
       assert.match(data.account.lastActiveDate, /^\d{4}-\d{2}-\d{2}$/);
+      assert.equal(data.account.failedLoginAttempts, 0);
+      assert.equal(data.account.loginBlockedAt, null);
+      assert.equal(data.account.trustedAt, null);
       assert.ok(data.sessions.length >= 1);
       assert.deepEqual(data.polygons.map((p) => p.id), [alicePoly.id]);
       assert.equal(data.polygons[0]!.note, 'Alice courtyard');
@@ -1284,6 +1296,327 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
       assert.equal(reRegistered.rowCount, 1, 'lifted ban must allow a real registration');
       const keepReservation = await app.runAdminCommand(['lift-ban', 'CarlaRealName']);
       assert.equal(keepReservation.liftedPseudonymBans, 0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('implements DSA Art. 16 illegal-content reporting (unauthenticated, receipt, 404, 503, 429) and DSA Art. 17 moderation statements of reasons on HTTP and CLI actions', async () => {
+    // 1. Without ABUSE_CONTACT / OPERATOR_EMAIL / BUG_REPORT_TO -> 503 SERVICE_UNAVAILABLE
+    const unconfiguredApp = await buildApp(loadEnvConfig({}), pool, {
+      logger: createLogger({ enabled: false }),
+      mailer: createMemoryMailer(),
+    });
+    try {
+      const noEmailRes = await unconfiguredApp.inject({
+        method: 'POST',
+        url: '/api/v1/content-reports',
+        remoteAddress: '198.51.100.90',
+        payload: {
+          targetType: 'polygon',
+          targetId: '550e8400-e29b-41d4-a716-446655440001',
+          reason: 'privacy_personal_data',
+          explanation: 'Contains personal address and phone number.',
+          goodFaithConfirmed: true,
+        },
+      });
+      assert.equal(noEmailRes.statusCode, 503);
+      assert.equal(
+        ApiErrorEnvelopeSchema.parse(noEmailRes.json()).error.code,
+        'SERVICE_UNAVAILABLE',
+      );
+    } finally {
+      await unconfiguredApp.close();
+    }
+
+    // 2. Configured instance with ABUSE_CONTACT + MemoryMailer
+    const mailer = createMemoryMailer();
+    const app = await buildApp(
+      loadEnvConfig({
+        PUBLIC_BASE_URL: 'https://unseal.example.org',
+        OPERATOR_EMAIL: 'impressum@unseal.example.org',
+        ABUSE_CONTACT: 'abuse@unseal.example.org',
+      }),
+      pool,
+      {
+        logger: createLogger({ enabled: false }),
+        mailer,
+        rateLimits: {
+          contentReport: { max: 3, timeWindow: '15 minutes' },
+        },
+      },
+    );
+
+    try {
+      const author = await registerUser(app, 'DsaAuthor', '198.51.100.91');
+      const admin = await registerUser(app, 'DsaModerator', '198.51.100.92');
+      await app.runAdminCommand(['grant-admin', 'DsaModerator']);
+
+      const poly1 = await createPolygonForUser(app, author.sessionToken, {
+        offsetIndex: 1,
+        note: 'First polygon for DSA testing',
+        remoteAddress: '198.51.100.91',
+      });
+      const poly2 = await createPolygonForUser(app, author.sessionToken, {
+        offsetIndex: 2,
+        note: 'Second polygon for self-delete and CLI tests',
+        remoteAddress: '198.51.100.91',
+      });
+      const poly3 = await createPolygonForUser(app, author.sessionToken, {
+        offsetIndex: 3,
+        note: 'Third polygon for CLI delete-polygon',
+        remoteAddress: '198.51.100.91',
+      });
+
+      const comment1Res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/polygons/${poly1.id}/comments`,
+        remoteAddress: '198.51.100.91',
+        headers: { authorization: `Bearer ${author.sessionToken}` },
+        payload: { body: 'Comment subject to report and admin moderation' },
+      });
+      assert.equal(comment1Res.statusCode, 201);
+      const comment1 = comment1Res.json() as { id: string };
+
+      const comment2Res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/polygons/${poly2.id}/comments`,
+        remoteAddress: '198.51.100.91',
+        headers: { authorization: `Bearer ${author.sessionToken}` },
+        payload: { body: 'Comment for CLI delete-comment' },
+      });
+      assert.equal(comment2Res.statusCode, 201);
+      const comment2 = comment2Res.json() as { id: string };
+
+      const photoRowRes = await pool.query<{ id: string }>(
+        `INSERT INTO polygon_photos (polygon_id, user_id, file_name, thumb_name, width, height, gps_verified)
+         VALUES ($1, $2, 'dsa-test.webp', 'dsa-test_thumb.webp', 800, 600, false)
+         RETURNING id`,
+        [poly1.id, author.userId],
+      );
+      const photoId = photoRowRes.rows[0]!.id;
+
+      // 2a. Unauthenticated report on nonexistent target -> 404 NOT_FOUND
+      const missingReportRes = await app.inject({
+        method: 'POST',
+        url: '/api/v1/content-reports',
+        remoteAddress: '198.51.100.93',
+        payload: {
+          targetType: 'polygon',
+          targetId: '00000000-0000-4000-8000-000000000099',
+          reason: 'other',
+          explanation: 'Target polygon does not exist in database.',
+          goodFaithConfirmed: true,
+        },
+      });
+      assert.equal(missingReportRes.statusCode, 404);
+
+      // 2b. Unauthenticated report with reporterEmail -> emails ABUSE_CONTACT + sends Art. 16(4) receipt
+      const photoReportRes = await app.inject({
+        method: 'POST',
+        url: '/api/v1/content-reports',
+        remoteAddress: '198.51.100.94',
+        payload: {
+          targetType: 'photo',
+          targetId: photoId,
+          reason: 'privacy_personal_data',
+          explanation: 'A car license plate and bystander face are clearly visible.',
+          reporterName: 'Erika Musterfrau',
+          reporterEmail: 'erika@example.org',
+          goodFaithConfirmed: true,
+          pageUrl: `https://unseal.example.org/#p=${poly1.id}`,
+        },
+      });
+      assert.equal(photoReportRes.statusCode, 201);
+      const photoReportBody = CreateContentReportResponseSchema.parse(
+        photoReportRes.json(),
+      );
+      assert.equal(photoReportBody.receiptSent, true);
+      assert.equal(mailer.contentReports.length, 1);
+      assert.equal(mailer.contentReports[0]!.to, 'abuse@unseal.example.org');
+      assert.equal(mailer.contentReports[0]!.targetType, 'photo');
+      assert.equal(mailer.contentReports[0]!.targetId, photoId);
+      assert.equal(mailer.contentReports[0]!.reporterUserId, null);
+      assert.equal(mailer.contentReportReceipts.length, 1);
+      assert.equal(mailer.contentReportReceipts[0]!.to, 'erika@example.org');
+      assert.equal(
+        mailer.contentReportReceipts[0]!.reportId,
+        photoReportBody.reportId,
+      );
+
+      // 2c. Unauthenticated report WITHOUT reporterEmail -> receiptSent: false, no receipt email
+      const commentReportRes = await app.inject({
+        method: 'POST',
+        url: '/api/v1/content-reports',
+        remoteAddress: '198.51.100.94',
+        payload: {
+          targetType: 'comment',
+          targetId: comment1.id,
+          reason: 'defamation_illegal',
+          explanation: 'Contains defamatory and abusive remarks targeting a neighbor.',
+          goodFaithConfirmed: true,
+        },
+      });
+      assert.equal(commentReportRes.statusCode, 201);
+      assert.equal(
+        CreateContentReportResponseSchema.parse(commentReportRes.json())
+          .receiptSent,
+        false,
+      );
+      assert.equal(mailer.contentReports.length, 2);
+      assert.equal(mailer.contentReportReceipts.length, 1);
+
+      // 2d. 3rd report from same IP succeeds, 4th hits rate limit (max: 3)
+      const polyReportRes = await app.inject({
+        method: 'POST',
+        url: '/api/v1/content-reports',
+        remoteAddress: '198.51.100.94',
+        payload: {
+          targetType: 'polygon',
+          targetId: poly1.id,
+          reason: 'copyright',
+          explanation: 'Note copies copyrighted text verbatim without permission.',
+          goodFaithConfirmed: true,
+        },
+      });
+      assert.equal(polyReportRes.statusCode, 201);
+
+      const rateLimitedReport = await app.inject({
+        method: 'POST',
+        url: '/api/v1/content-reports',
+        remoteAddress: '198.51.100.94',
+        payload: {
+          targetType: 'polygon',
+          targetId: poly1.id,
+          reason: 'other',
+          explanation: 'Fourth report should trigger the IP rate limit.',
+          goodFaithConfirmed: true,
+        },
+      });
+      assert.equal(rateLimitedReport.statusCode, 429);
+      assert.equal(
+        ApiErrorEnvelopeSchema.parse(rateLimitedReport.json()).error.code,
+        'RATE_LIMITED',
+      );
+
+      // 3. DSA Art. 17: Admin HTTP deletions send statement of reasons; self-deletion does NOT
+      mailer.clear();
+
+      // 3a. Admin deletes author's photo with explicit reason
+      const adminDelPhoto = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/photos/${photoId}?reason=${encodeURIComponent('Recognizable license plate (KUG / GDPR)')}`,
+        headers: { authorization: `Bearer ${admin.sessionToken}` },
+      });
+      assert.equal(adminDelPhoto.statusCode, 204);
+      assert.equal(mailer.moderationReasons.length, 1);
+      assert.equal(mailer.moderationReasons[0]!.to, 'dsaauthor@example.org');
+      assert.equal(mailer.moderationReasons[0]!.action, 'photo_deleted');
+      assert.equal(
+        mailer.moderationReasons[0]!.reason,
+        'Recognizable license plate (KUG / GDPR)',
+      );
+
+      // 3b. Admin deletes author's comment
+      const adminDelComment = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/comments/${comment1.id}?reason=${encodeURIComponent('Personal harassment')}`,
+        headers: { authorization: `Bearer ${admin.sessionToken}` },
+      });
+      assert.equal(adminDelComment.statusCode, 204);
+      assert.equal(mailer.moderationReasons.length, 2);
+      assert.equal(mailer.moderationReasons[1]!.action, 'comment_deleted');
+      assert.equal(mailer.moderationReasons[1]!.reason, 'Personal harassment');
+
+      // 3c. Admin deletes author's polygon
+      const adminDelPoly = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/polygons/${poly1.id}?reason=${encodeURIComponent('Duplicate vandalism entry')}`,
+        headers: { authorization: `Bearer ${admin.sessionToken}` },
+      });
+      assert.equal(adminDelPoly.statusCode, 204);
+      assert.equal(mailer.moderationReasons.length, 3);
+      assert.equal(mailer.moderationReasons[2]!.action, 'polygon_deleted');
+      assert.equal(mailer.moderationReasons[2]!.reason, 'Duplicate vandalism entry');
+
+      // 3d. Self-deletion by author sends ZERO Art. 17 moderation emails
+      const selfDelPoly = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/polygons/${poly2.id}`,
+        headers: { authorization: `Bearer ${author.sessionToken}` },
+      });
+      assert.equal(selfDelPoly.statusCode, 204);
+      assert.equal(mailer.moderationReasons.length, 3);
+
+      // 4. DSA Art. 17: CLI moderation actions send statement-of-reasons emails
+      const poly4 = await createPolygonForUser(app, author.sessionToken, {
+        offsetIndex: 4,
+        note: 'Phone number +49 170 0000000',
+        remoteAddress: '198.51.100.91',
+      });
+      const comment3Res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/polygons/${poly4.id}/comments`,
+        remoteAddress: '198.51.100.91',
+        headers: { authorization: `Bearer ${author.sessionToken}` },
+        payload: { body: 'Comment to remove via CLI' },
+      });
+      assert.equal(comment3Res.statusCode, 201);
+      const comment3 = comment3Res.json() as { id: string };
+
+      mailer.clear();
+      await app.runAdminCommand([
+        'redact-note',
+        poly4.id,
+        'Personal phone number removed',
+      ]);
+      await app.runAdminCommand([
+        'delete-comment',
+        comment3.id,
+        'Off-topic commercial spam',
+      ]);
+      await app.runAdminCommand([
+        'delete-polygon',
+        poly3.id,
+        'Invalid test drawing',
+      ]);
+      await app.runAdminCommand([
+        'ban-user',
+        'DsaAuthor',
+        'Repeated Terms violations',
+      ]);
+
+      assert.deepEqual(
+        mailer.moderationReasons.map((m) => ({
+          to: m.to,
+          action: m.action,
+          reason: m.reason,
+        })),
+        [
+          {
+            to: 'dsaauthor@example.org',
+            action: 'note_redacted',
+            reason: 'Personal phone number removed',
+          },
+          {
+            to: 'dsaauthor@example.org',
+            action: 'comment_deleted',
+            reason: 'Off-topic commercial spam',
+          },
+          {
+            to: 'dsaauthor@example.org',
+            action: 'polygon_deleted',
+            reason: 'Invalid test drawing',
+          },
+          {
+            to: 'dsaauthor@example.org',
+            action: 'account_banned',
+            reason: 'Repeated Terms violations',
+          },
+        ],
+      );
+      // Unused comment2 was already cascade-deleted with poly2
+      assert.ok(comment2.id);
     } finally {
       await app.close();
     }

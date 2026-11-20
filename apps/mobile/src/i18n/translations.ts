@@ -3,6 +3,9 @@
 
 import {
   ApiError,
+  formatDop20PlainAttribution,
+  type ContentReportReason,
+  type ContentReportTargetType,
   type ErrorCode,
   type PolygonFlagReason,
   type SurfaceType,
@@ -114,6 +117,11 @@ export interface TranslationDictionary {
     readonly menuSectionAppearance: string;
     readonly menuSectionData: string;
     readonly menuSectionHelp: string;
+    readonly menuSectionLegal: string;
+    readonly legalAboutItem: string;
+    readonly impressumItem: string;
+    readonly privacyItem: string;
+    readonly impressumButtonLabel: string;
     readonly layersButtonA11y: string;
     readonly layersButtonTooltip: string;
     readonly layersPopoverTitle: string;
@@ -351,6 +359,9 @@ export interface TranslationDictionary {
     readonly commentLicenseNotice: string;
     readonly photoLicenseNotice: string;
     readonly photoLightboxLicense: string;
+    readonly reportIllegalButton: string;
+    readonly reportIllegalShort: string;
+    readonly reportIllegalA11y: string;
   };
   readonly auth: {
     readonly modalA11y: string;
@@ -536,6 +547,7 @@ export interface TranslationDictionary {
     readonly minCharsError: string;
     readonly noResults: string;
     readonly attributionNote: string;
+    readonly attributionLinkText: string;
     readonly errorFallback: string;
   };
   readonly bugReport: {
@@ -550,12 +562,44 @@ export interface TranslationDictionary {
     readonly contactEmailLabel: string;
     readonly contactEmailPlaceholder: string;
     readonly contactEmailA11y: string;
+    readonly privacyNotePrefix: string;
+    readonly privacyLinkText: string;
     readonly submitButton: string;
     readonly submittingBusy: string;
     readonly successTitle: string;
     readonly successBody: string;
     readonly tooShortError: string;
     readonly invalidEmailError: string;
+    readonly errorFallback: string;
+  };
+  readonly contentReport: {
+    readonly modalA11y: string;
+    readonly title: string;
+    readonly subtitle: string;
+    readonly closeA11y: string;
+    readonly close: string;
+    readonly targetLabel: (
+      targetType: ContentReportTargetType,
+      targetId: string,
+    ) => string;
+    readonly reasonLabel: string;
+    readonly reasonLabels: Readonly<Record<ContentReportReason, string>>;
+    readonly explanationLabel: string;
+    readonly explanationPlaceholder: string;
+    readonly explanationTooShortError: string;
+    readonly reporterNameLabel: string;
+    readonly reporterNamePlaceholder: string;
+    readonly reporterEmailLabel: string;
+    readonly reporterEmailPlaceholder: string;
+    readonly invalidEmailError: string;
+    readonly goodFaithLabel: string;
+    readonly goodFaithRequiredError: string;
+    readonly privacyNotePrefix: string;
+    readonly privacyLinkText: string;
+    readonly submitButton: string;
+    readonly submittingBusy: string;
+    readonly successTitle: string;
+    readonly successBody: (reportId: string, receiptSent: boolean) => string;
     readonly errorFallback: string;
   };
   readonly stats: {
@@ -648,8 +692,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       switchToLightModeA11y: 'Hellmodus mit heller Hintergrundkarte aktivieren',
       darkModeTooltip: 'Dunkelmodus',
       lightModeTooltip: 'Hellmodus',
-      aboutButtonA11y: 'Über Unseal, Kartendaten und Datenschutz öffnen',
-      aboutButtonTooltip: 'Über Unseal & Datenschutz',
+      aboutButtonA11y: 'Über Unseal, Impressum, Kartendaten und Datenschutz öffnen',
+      aboutButtonTooltip: 'Info, Impressum & Datenschutz',
       statsButtonA11y: 'Statistiken öffnen',
       statsButtonTooltip: 'Statistiken',
       bugReportButtonA11y: 'Fehler melden',
@@ -661,6 +705,11 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       menuSectionAppearance: 'Darstellung',
       menuSectionData: 'Daten',
       menuSectionHelp: 'App & Hilfe',
+      menuSectionLegal: 'Rechtliches & Info',
+      legalAboutItem: 'Info, Impressum & Datenschutz',
+      impressumItem: 'Impressum (§ 5 DDG)',
+      privacyItem: 'Datenschutz (DSGVO)',
+      impressumButtonLabel: 'Impressum',
       layersButtonA11y: 'Kartenebenen und Deckkraft öffnen',
       layersButtonTooltip: 'Kartenebenen & Deckkraft',
       layersPopoverTitle: 'Kartenebenen',
@@ -809,7 +858,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       pickPhoto: 'Galerie',
       removeDraftPhotoA11y: 'Angehängtes Foto entfernen',
       photoPrivacyHint:
-        'Alle EXIF-Metadaten werden beim Upload entfernt; bei Aufnahme im Polygon (bis 3 m Toleranz) erscheint „GPS verified“.',
+        'Alle EXIF-Metadaten werden beim Upload entfernt; bei Aufnahme im Polygon (bis 3 m Toleranz) erscheint „GPS verified“. Bitte keine erkennbaren Personen, Kfz-Kennzeichen oder nicht-öffentlichen Privatbereiche fotografieren (§ 22 KUG / § 59 UrhG).',
     },
     inspector: {
       sheetA11y: 'Details des ausgewählten Entsiegelungsvorschlags',
@@ -972,6 +1021,10 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       photoLicenseNotice:
         'Fotos: CC BY 4.0 (Namensnennung: @Pseudonym · bearbeitet: EXIF entfernt, WebP)',
       photoLightboxLicense: 'CC BY 4.0 (EXIF entfernt, WebP)',
+      reportIllegalButton: 'Rechtsverstoß / Datenschutz melden',
+      reportIllegalShort: 'Melden',
+      reportIllegalA11y:
+        'Inhalt wegen Rechtsverstoß oder Datenschutz nach Art. 16 DSA melden',
     },
     auth: {
       modalA11y: 'Benutzerkonto',
@@ -1031,7 +1084,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       privacyConsentPrefix: 'Ich habe die ',
       privacyPolicyLinkText: 'Datenschutzerklärung',
       termsConsentConnector: ' gelesen und akzeptiere die ',
-      termsLinkText: 'Nutzungsbedingungen (inkl. CC0 / ODbL 1.0 / CC BY 4.0)',
+      termsLinkText:
+        'Nutzungsbedingungen (inkl. CC0 1.0 / ODbL 1.0 / CC BY 4.0; Mindestalter 16 J. bzw. Einwilligung Erziehungsberechtigter)',
       verifyPendingBody: (email) =>
         `Wir haben einen Bestätigungslink an ${email} gesendet. Bitte klicke auf den Link in deiner E-Mail und melde dich anschließend hier an.`,
       resendVerificationButton: 'Bestätigungslink erneut senden',
@@ -1169,7 +1223,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       privacyAndLicenseBody:
         'Öffentlich erscheint nur dein Pseudonym; E-Mails dienen nur Bestätigung & Recovery (jederzeit nach Art. 17 DSGVO löschbar). Beiträge: CC0 1.0 (eigene Geometrien/Notizen), ODbL 1.0 (GeoJSON-Gesamtexport) & CC BY 4.0 (Fotos/Kommentare). Software: AGPL-3.0-or-later (API) & MPL-2.0 (Client-App, Quellcode frei verfügbar).',
       attributionOsmShort:
-        '© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap (MIT)',
+        '© OpenStreetMap (ODbL) · © OpenMapTiles / © CARTO (CC BY 4.0, Dunkelmodus angepasst) · OpenFreeMap (MIT)',
       attributionDop20Short:
         `DOP20/DOP10 © Länder (${ATTRIBUTION_YEAR}; dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; verändert)`,
       attributionVg250Short: `VG250: © GeoBasis-DE / BKG (${ATTRIBUTION_YEAR}) dl-de/by-2-0, Datenquellen (Daten verändert)`,
@@ -1193,7 +1247,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       searchingBusy: 'Sucht…',
       minCharsError: 'Bitte mindestens 2 Zeichen eingeben.',
       noResults: 'Keine passenden Adressen gefunden.',
-      attributionNote: 'Geocodierung via OpenStreetMap Nominatim (ODbL)',
+      attributionNote: 'Geocodierung via OpenStreetMap Nominatim · Daten ',
+      attributionLinkText: '© OpenStreetMap contributors (ODbL)',
       errorFallback: 'Adresssuche momentan nicht verfügbar.',
     },
     bugReport: {
@@ -1210,6 +1265,9 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       contactEmailLabel: 'Deine E-Mail für Rückfragen (optional)',
       contactEmailPlaceholder: 'name@beispiel.de (optional)',
       contactEmailA11y: 'Optionale Kontakt-E-Mail',
+      privacyNotePrefix:
+        'Die freiwillig angegebene E-Mail-Adresse wird ausschließlich für Rückfragen zu deiner Meldung verwendet. ',
+      privacyLinkText: 'Datenschutzerklärung',
       submitButton: 'Fehlermeldung senden',
       submittingBusy: 'Sendet…',
       successTitle: 'Vielen Dank!',
@@ -1219,6 +1277,60 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         'Bitte beschreibe den Fehler mit mindestens 5 Zeichen.',
       invalidEmailError: 'Bitte gib eine gültige E-Mail-Adresse ein oder lasse das Feld leer.',
       errorFallback: 'Fehlermeldung konnte nicht gesendet werden.',
+    },
+    contentReport: {
+      modalA11y: 'Rechtsverstoß oder Datenschutzproblem melden (Art. 16 DSA)',
+      title: 'Rechtsverstoß / Datenschutz melden',
+      subtitle:
+        'Meldeverfahren nach Art. 16 Digital Services Act (DSA) — auch ohne Benutzerkonto nutzbar.',
+      closeA11y: 'Meldedialog schließen',
+      close: 'Schließen',
+      targetLabel: (targetType, targetId) => {
+        const typeText =
+          targetType === 'photo'
+            ? 'Foto'
+            : targetType === 'comment'
+              ? 'Kommentar'
+              : 'Flächenvorschlag';
+        return `Betroffener Inhalt: ${typeText} (${targetId.slice(0, 8)}…)`;
+      },
+      reasonLabel: 'Art des Verstoßes',
+      reasonLabels: {
+        privacy_personal_data: 'Personenbezogene Daten / Datenschutz',
+        photo_rights: 'Bildrechte / Gesicht / Kennzeichen / Privatbereich',
+        copyright: 'Urheber- oder Lizenzrechtsverletzung',
+        defamation_illegal: 'Beleidigung / rechtswidriger Inhalt',
+        property_dispute: 'Eigentums- oder Falschangabe',
+        other: 'Sonstiger Rechtsverstoß',
+      },
+      explanationLabel: 'Begründung (Art. 16 Abs. 2 lit. a DSA)',
+      explanationPlaceholder:
+        'Bitte beschreibe konkret, weshalb der Inhalt rechtswidrig ist oder Rechte verletzt…',
+      explanationTooShortError:
+        'Bitte gib eine Begründung mit mindestens 10 Zeichen ein.',
+      reporterNameLabel: 'Dein Name (optional)',
+      reporterNamePlaceholder: 'Optional',
+      reporterEmailLabel:
+        'Deine E-Mail für Eingangsbestätigung & Entscheidung (optional)',
+      reporterEmailPlaceholder: 'name@beispiel.de (optional)',
+      invalidEmailError:
+        'Bitte gib eine gültige E-Mail-Adresse ein oder lasse das Feld leer.',
+      goodFaithLabel:
+        'Ich erkläre nach bestem Wissen und Gewissen, dass die Angaben in dieser Meldung richtig und vollständig sind (Art. 16 Abs. 2 lit. d DSA).',
+      goodFaithRequiredError:
+        'Bitte bestätige die Erklärung zur Richtigkeit deiner Angaben.',
+      privacyNotePrefix:
+        'Deine Angaben werden zur gesetzlichen Prüfung nach Art. 16 DSA verarbeitet. ',
+      privacyLinkText: 'Datenschutzerklärung',
+      submitButton: 'Meldung absenden',
+      submittingBusy: 'Sendet…',
+      successTitle: 'Meldung eingegangen',
+      successBody: (reportId, receiptSent) =>
+        receiptSent
+          ? `Deine Meldung (Ref. ${reportId.slice(0, 8)}) wurde übermittelt. Eine Eingangsbestätigung (Art. 16 Abs. 4 DSA) wurde an deine E-Mail-Adresse gesendet.`
+          : `Deine Meldung (Ref. ${reportId.slice(0, 8)}) wurde an die Betreiberstelle übermittelt und wird zeitnah geprüft.`,
+      errorFallback:
+        'Meldung konnte nicht übermittelt werden. Bitte nutze alternativ die Kontaktadresse im Impressum.',
     },
     installApp: {
       modalA11y: 'Unseal als App installieren',
@@ -1337,8 +1449,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       switchToLightModeA11y: 'Switch to light mode with light background map',
       darkModeTooltip: 'Dark mode',
       lightModeTooltip: 'Light mode',
-      aboutButtonA11y: 'Open About Unseal, map attributions, and privacy',
-      aboutButtonTooltip: 'About Unseal & Privacy',
+      aboutButtonA11y: 'Open About Unseal, Impressum, map attributions, and privacy',
+      aboutButtonTooltip: 'About, Impressum & Privacy',
       statsButtonA11y: 'Open statistics',
       statsButtonTooltip: 'Statistics',
       bugReportButtonA11y: 'Report a bug',
@@ -1350,6 +1462,11 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       menuSectionAppearance: 'Appearance',
       menuSectionData: 'Data',
       menuSectionHelp: 'App & Help',
+      menuSectionLegal: 'Legal & Info',
+      legalAboutItem: 'About, Impressum & Privacy',
+      impressumItem: 'Impressum (§ 5 DDG)',
+      privacyItem: 'Privacy Policy (GDPR)',
+      impressumButtonLabel: 'Impressum',
       layersButtonA11y: 'Open map layers and opacity',
       layersButtonTooltip: 'Map layers & opacity',
       layersPopoverTitle: 'Map Layers',
@@ -1492,7 +1609,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       pickPhoto: 'Gallery',
       removeDraftPhotoA11y: 'Remove attached photo',
       photoPrivacyHint:
-        'All EXIF metadata is stripped on upload; captures inside the polygon (3 m tolerance) earn a “GPS verified” badge.',
+        'All EXIF metadata is stripped on upload; captures inside the polygon (3 m tolerance) earn a “GPS verified” badge. Please do not photograph identifiable people, license plates, or non-public private spaces.',
     },
     inspector: {
       sheetA11y: 'Selected unsealing proposal inspector',
@@ -1641,6 +1758,10 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       photoLicenseNotice:
         'Photos: CC BY 4.0 (attribution: @pseudonym · modified: EXIF stripped, WebP)',
       photoLightboxLicense: 'CC BY 4.0 (EXIF stripped, WebP)',
+      reportIllegalButton: 'Report illegal content / privacy',
+      reportIllegalShort: 'Report',
+      reportIllegalA11y:
+        'Report content for illegality or privacy under Art. 16 DSA',
     },
     auth: {
       modalA11y: 'Contributor account modal',
@@ -1697,7 +1818,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       privacyConsentPrefix: 'I have read the ',
       privacyPolicyLinkText: 'Privacy Policy',
       termsConsentConnector: ' and accept the ',
-      termsLinkText: 'Terms of Use (incl. CC0 / ODbL 1.0 / CC BY 4.0)',
+      termsLinkText:
+        'Terms of Use (incl. CC0 1.0 / ODbL 1.0 / CC BY 4.0; age 16+ or guardian consent)',
       verifyPendingBody: (email) =>
         `We sent a confirmation link to ${email}. Click the link in your email, then return here to sign in.`,
       resendVerificationButton: 'Resend Confirmation Link',
@@ -1833,7 +1955,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       privacyAndLicenseBody:
         'Only your pseudonym is public; emails are used strictly for confirmation & recovery (erasable anytime under GDPR Art. 17). Contributions: CC0 1.0 (own geometries/notes), ODbL 1.0 (compiled GeoJSON export) & CC BY 4.0 (photos/comments). Software: AGPL-3.0-or-later (API) & MPL-2.0 (Client App, Source Code Form freely available).',
       attributionOsmShort:
-        '© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap (MIT)',
+        '© OpenStreetMap (ODbL) · © OpenMapTiles / © CARTO (CC BY 4.0, dark mode modified) · OpenFreeMap (MIT)',
       attributionDop20Short:
         `DOP20/DOP10 © State Surveys (${ATTRIBUTION_YEAR}; dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; modified)`,
       attributionVg250Short: `VG250: © GeoBasis-DE / BKG (${ATTRIBUTION_YEAR}) dl-de/by-2-0, Datenquellen (modified)`,
@@ -1857,7 +1979,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       searchingBusy: 'Searching…',
       minCharsError: 'Please enter at least 2 characters.',
       noResults: 'No matching addresses found.',
-      attributionNote: 'Geocoding powered by OpenStreetMap Nominatim (ODbL)',
+      attributionNote: 'Geocoding via OpenStreetMap Nominatim · Data ',
+      attributionLinkText: '© OpenStreetMap contributors (ODbL)',
       errorFallback: 'Address search is temporarily unavailable.',
     },
     bugReport: {
@@ -1873,6 +1996,9 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       contactEmailLabel: 'Your email for follow-up (optional)',
       contactEmailPlaceholder: 'name@example.org (optional)',
       contactEmailA11y: 'Optional contact email',
+      privacyNotePrefix:
+        'Your optional email address is used solely for follow-up questions about your report. ',
+      privacyLinkText: 'Privacy Policy',
       submitButton: 'Send Bug Report',
       submittingBusy: 'Sending…',
       successTitle: 'Thank you!',
@@ -1881,6 +2007,60 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       tooShortError: 'Please describe the bug in at least 5 characters.',
       invalidEmailError: 'Please enter a valid email address or leave it blank.',
       errorFallback: 'Could not send bug report.',
+    },
+    contentReport: {
+      modalA11y: 'Report illegal content or privacy issue (Art. 16 DSA)',
+      title: 'Report Illegal Content / Privacy',
+      subtitle:
+        'Notice-and-action procedure pursuant to Art. 16 EU Digital Services Act (DSA) — available without an account.',
+      closeA11y: 'Close content report dialog',
+      close: 'Close',
+      targetLabel: (targetType, targetId) => {
+        const typeText =
+          targetType === 'photo'
+            ? 'Photo'
+            : targetType === 'comment'
+              ? 'Comment'
+              : 'Surface proposal';
+        return `Reported item: ${typeText} (${targetId.slice(0, 8)}…)`;
+      },
+      reasonLabel: 'Type of violation',
+      reasonLabels: {
+        privacy_personal_data: 'Personal data / GDPR privacy',
+        photo_rights: 'Portrait rights / faces / license plates / private area',
+        copyright: 'Copyright or license infringement',
+        defamation_illegal: 'Defamation / unlawful content',
+        property_dispute: 'Property or factual dispute',
+        other: 'Other unlawful content',
+      },
+      explanationLabel: 'Explanation (Art. 16(2)(a) DSA)',
+      explanationPlaceholder:
+        'Please explain specifically why this content is unlawful or infringes rights…',
+      explanationTooShortError:
+        'Please provide an explanation of at least 10 characters.',
+      reporterNameLabel: 'Your name (optional)',
+      reporterNamePlaceholder: 'Optional',
+      reporterEmailLabel:
+        'Your email for receipt confirmation & decision notice (optional)',
+      reporterEmailPlaceholder: 'name@example.org (optional)',
+      invalidEmailError:
+        'Please enter a valid email address or leave it blank.',
+      goodFaithLabel:
+        'I confirm in good faith that the information and allegations in this notice are accurate and complete (Art. 16(2)(d) DSA).',
+      goodFaithRequiredError:
+        'Please confirm the good-faith accuracy statement.',
+      privacyNotePrefix:
+        'Your details are processed to fulfill our legal review obligations under Art. 16 DSA. ',
+      privacyLinkText: 'Privacy Policy',
+      submitButton: 'Submit Notice',
+      submittingBusy: 'Submitting…',
+      successTitle: 'Notice received',
+      successBody: (reportId, receiptSent) =>
+        receiptSent
+          ? `Your notice (ref. ${reportId.slice(0, 8)}) has been received. An acknowledgement of receipt (Art. 16(4) DSA) was sent to your email address.`
+          : `Your notice (ref. ${reportId.slice(0, 8)}) has been forwarded to the operator for timely review.`,
+      errorFallback:
+        'Unable to submit notice right now. You can also contact the operator via the Impressum.',
     },
     installApp: {
       modalA11y: 'Install Unseal app',
@@ -1976,7 +2156,7 @@ export function formatVg250ShortAttribution(
   locale: Locale,
   vg250DataYear?: number | null | undefined,
 ): string {
-  const year = vg250DataYear ?? ATTRIBUTION_YEAR;
+  const year = vg250DataYear ?? new Date().getUTCFullYear();
   return locale === 'de'
     ? `VG250: © GeoBasis-DE / BKG (${year}) dl-de/by-2-0, Datenquellen (Daten verändert)`
     : `VG250: © GeoBasis-DE / BKG (${year}) dl-de/by-2-0, Datenquellen (modified)`;
@@ -1987,38 +2167,69 @@ export function buildNativeAttributionText(options: {
   basemapMode: 'osm' | 'orthophoto';
   osmStyleUrl?: string | undefined;
   orthophotoAttribution?: string | null | undefined;
+  orthophotoUrlTemplate?: string | null | undefined;
+  viewportBbox?: readonly [number, number, number, number] | null | undefined;
+  colorScheme?: 'light' | 'dark' | undefined;
+  activeStyleUrl?: string | undefined;
   vg250AttributionEnabled?: boolean | undefined;
   vg250DataYear?: number | null | undefined;
+  year?: number | undefined;
 }): string {
   const dict = getTranslations(options.locale);
+  const currentYear = options.year ?? new Date().getUTCFullYear();
   const parts: string[] = [];
 
   if (options.basemapMode === 'orthophoto') {
-    const orthoAttr = options.orthophotoAttribution?.trim();
-    parts.push(
-      orthoAttr && orthoAttr.length > 0
-        ? orthoAttr
-        : dict.about.attributionDop20Short,
-    );
+    const orthoAttr = options.orthophotoAttribution?.trim() ?? '';
+    const isBuiltinDop20 =
+      Boolean(options.orthophotoUrlTemplate?.includes('/api/v1/tiles/dop20/')) ||
+      orthoAttr.length === 0 ||
+      orthoAttr.startsWith(
+        '© GeoBasis-DE / Vermessungsverwaltungen der Bundesländer (',
+      );
+    if (isBuiltinDop20) {
+      const dynamicDop20 = formatDop20PlainAttribution(options.viewportBbox, {
+        year: currentYear,
+        locale: options.locale,
+      });
+      if (dynamicDop20.length > 0) {
+        parts.push(dynamicDop20);
+      }
+    } else {
+      parts.push(orthoAttr);
+    }
   }
 
+  const effectiveStyleUrl = options.activeStyleUrl ?? options.osmStyleUrl;
   let styleHost: string | null = null;
-  if (options.osmStyleUrl) {
+  let stylePath = '';
+  if (effectiveStyleUrl) {
     try {
-      styleHost = new URL(options.osmStyleUrl).host;
+      const parsed = new URL(effectiveStyleUrl);
+      styleHost = parsed.host;
+      stylePath = parsed.pathname.replace(/\/+$/, '');
     } catch {
       styleHost = null;
     }
   }
   const usesOpenFreeMap =
-    options.osmStyleUrl === undefined || styleHost === 'tiles.openfreemap.org';
-  parts.push(
-    usesOpenFreeMap
-      ? dict.about.attributionOsmShort
-      : styleHost
-        ? `Basemap: ${styleHost}`
-        : dict.about.attributionOsmShort,
-  );
+    effectiveStyleUrl === undefined || styleHost === 'tiles.openfreemap.org';
+  if (usesOpenFreeMap) {
+    const isDarkOpenFreeMap =
+      options.colorScheme === 'dark' &&
+      (options.activeStyleUrl === undefined ||
+        stylePath === '/styles/dark' ||
+        stylePath === '');
+    parts.push(
+      isDarkOpenFreeMap
+        ? '© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · © CARTO (modified) · OpenFreeMap (MIT)'
+        : '© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap (MIT)',
+    );
+  } else {
+    parts.push(
+      styleHost ? `Basemap: ${styleHost}` : dict.about.attributionOsmShort,
+    );
+  }
 
   if (options.vg250AttributionEnabled !== false) {
     parts.push(

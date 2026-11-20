@@ -4,6 +4,7 @@
 import {
   closeRingIfNeeded,
   dedupeConsecutivePoints,
+  formatDop20WebAttributionHtml,
   type PolygonFeature,
   type PolygonStatus,
   type RuntimeConfig,
@@ -575,6 +576,62 @@ export function buildOrthophotoSourceSpec(
         }
       : {}),
   };
+}
+
+export function isBuiltinDop20Orthophoto(
+  orthophoto: RuntimeConfig['orthophoto'],
+): boolean {
+  return (
+    orthophoto !== null &&
+    orthophoto.urlTemplate.includes('/api/v1/tiles/dop20/')
+  );
+}
+
+export const CARTO_DARK_ATTRIBUTION_HTML =
+  '© <a href="https://carto.com/attributions" target="_blank" rel="noopener noreferrer">CARTO</a> (modified)';
+
+export function buildWebCustomAttributions(options: {
+  config: Pick<
+    RuntimeConfig,
+    'orthophoto' | 'vg250AttributionEnabled' | 'vg250DataYear' | 'licensesUrl'
+  >;
+  basemapMode: 'osm' | 'orthophoto';
+  colorScheme: ColorScheme;
+  activeStyleUrl: string;
+  viewportBbox: readonly [number, number, number, number] | null;
+  year?: number | undefined;
+}): string[] {
+  const entries: string[] = [];
+  const year = options.year ?? new Date().getUTCFullYear();
+
+  if (
+    options.colorScheme === 'dark' &&
+    isOpenFreeMapDarkStyleUrl(options.activeStyleUrl)
+  ) {
+    entries.push(CARTO_DARK_ATTRIBUTION_HTML);
+  }
+
+  if (
+    options.basemapMode === 'orthophoto' &&
+    isBuiltinDop20Orthophoto(options.config.orthophoto)
+  ) {
+    const dop20Html = formatDop20WebAttributionHtml(options.viewportBbox, {
+      year,
+      licensesUrl: options.config.licensesUrl,
+    });
+    if (dop20Html.length > 0) {
+      entries.push(dop20Html);
+    }
+  }
+
+  if (options.config.vg250AttributionEnabled !== false) {
+    const bkgYear = options.config.vg250DataYear ?? year;
+    entries.push(
+      `VG250: © GeoBasis-DE / <a href="https://www.bkg.bund.de" target="_blank" rel="noopener noreferrer">BKG</a> (${bkgYear}) <a href="https://www.govdata.de/dl-de/by-2-0" target="_blank" rel="noopener noreferrer">dl-de/by-2-0</a>, <a href="https://sg.geodatenzentrum.de/web_public/gdz/datenquellen/datenquellen_vg_nuts.pdf" target="_blank" rel="noopener noreferrer">Datenquellen</a> (Daten verändert)`,
+    );
+  }
+
+  return entries;
 }
 
 export function buildOrthophotoLayerSpec(

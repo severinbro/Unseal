@@ -12,6 +12,10 @@ import {
 
 import { optionalAuth, requireAuth } from '../auth/session.js';
 import { CommentRepository } from '../comments/repository.js';
+import {
+  extractOptionalModerationReason,
+  notifyAuthorOfModerationActionBestEffort,
+} from '../util/moderationNotice.js';
 
 import type { FastifyInstance } from 'fastify';
 
@@ -124,11 +128,21 @@ export function registerCommentRoutes(
       const auth = request.auth!;
       const { id } = UuidParamSchema.parse(request.params);
 
-      await repository.deleteComment({
+      const deletedInfo = await repository.deleteComment({
         commentId: id,
         actorUserId: auth.user.id,
         actorIsAdmin: auth.user.role === 'admin',
       });
+      if (deletedInfo.deletedByAdmin) {
+        await notifyAuthorOfModerationActionBestEffort(app, request, {
+          action: 'comment_deleted',
+          targetId: id,
+          authorEmail: deletedInfo.authorEmail,
+          authorPseudonym: deletedInfo.authorPseudonym,
+          reason: extractOptionalModerationReason(request),
+          automatedMeansUsed: false,
+        });
+      }
 
       return reply.status(204).send();
     },

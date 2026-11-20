@@ -14,6 +14,8 @@ import {
   ApiError,
   PHOTO_LIMITS,
   type CommentVoteResponse,
+  type CreateContentReportRequest,
+  type CreateContentReportResponse,
   type CreatePolygonCommentRequest,
   type FlagPolygonResponse,
   type GeocodeResultItem,
@@ -62,6 +64,10 @@ import { AddressSearchModal } from './src/components/AddressSearchModal';
 import { AnimatedIntroOverlay } from './src/components/AnimatedIntroOverlay';
 import { AuthAndAccountModal } from './src/components/AuthAndAccountModal';
 import { BugReportModal } from './src/components/BugReportModal';
+import {
+  ContentReportModal,
+  type ContentReportTarget,
+} from './src/components/ContentReportModal';
 import { DisclaimerBanner } from './src/components/DisclaimerBanner';
 import { DrawingToolbar } from './src/components/DrawingToolbar';
 import {
@@ -252,6 +258,8 @@ export function App(props: AppProps = {}): React.JSX.Element {
   const [installModalOpen, setInstallModalOpen] = useState<boolean>(false);
   const [searchModalOpen, setSearchModalOpen] = useState<boolean>(false);
   const [bugModalOpen, setBugModalOpen] = useState<boolean>(false);
+  const [contentReportTarget, setContentReportTarget] =
+    useState<ContentReportTarget | null>(null);
   const [moreMenuOpen, setMoreMenuOpen] = useState<boolean>(false);
   const [layersPopoverOpen, setLayersPopoverOpen] = useState<boolean>(false);
   const [zoomDividerBottomPx, setZoomDividerBottomPx] = useState<number | null>(
@@ -856,6 +864,15 @@ export function App(props: AppProps = {}): React.JSX.Element {
         platform: Platform.OS,
         pageUrl,
       });
+    },
+    [apiClient],
+  );
+
+  const handleSubmitContentReport = useCallback(
+    async (
+      input: CreateContentReportRequest,
+    ): Promise<CreateContentReportResponse> => {
+      return apiClient.submitContentReport(input);
     },
     [apiClient],
   );
@@ -1634,6 +1651,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
             onFlagPolygon={handleFlagPolygon}
             onUnflagPolygon={handleUnflagPolygon}
             onClearPolygonFlags={handleClearPolygonFlags}
+            onReportContent={(target) => setContentReportTarget(target)}
           />
         </ScrollView>
       ) : null;
@@ -1922,7 +1940,21 @@ export function App(props: AppProps = {}): React.JSX.Element {
                 locale: state.locale,
                 basemapMode: mapControls.basemapMode,
                 osmStyleUrl: state.config.osmStyleUrl,
+                activeStyleUrl: resolveBasemapStyleUrl(
+                  state.config,
+                  activeColorScheme,
+                ),
+                colorScheme: activeColorScheme,
                 orthophotoAttribution: state.config.orthophoto?.attribution,
+                orthophotoUrlTemplate: state.config.orthophoto?.urlTemplate,
+                viewportBbox: state.viewport
+                  ? [
+                      state.viewport.bbox.minLng,
+                      state.viewport.bbox.minLat,
+                      state.viewport.bbox.maxLng,
+                      state.viewport.bbox.maxLat,
+                    ]
+                  : null,
                 vg250AttributionEnabled: state.config.vg250AttributionEnabled,
                 vg250DataYear: state.config.vg250DataYear,
               })}
@@ -2001,8 +2033,11 @@ export function App(props: AppProps = {}): React.JSX.Element {
               visible={moreMenuOpen}
               controls={mapControls}
               exportGeoJsonUrl={apiClient.getExportGeoJsonUrl()}
+              impressumUrl={impressumUrl}
+              privacyPolicyUrl={privacyPolicyUrl}
               isImporting={isImporting}
               onClose={() => setMoreMenuOpen(false)}
+              onOpenAbout={() => setAboutModalOpen(true)}
               onOpenStats={() => {
                 setLayersPopoverOpen(false);
                 setStatsModalTab('community');
@@ -2080,9 +2115,47 @@ export function App(props: AppProps = {}): React.JSX.Element {
                 visible={bugModalOpen}
                 locale={state.locale}
                 compact={layout.isCompact}
-                defaultEmail={state.currentUser?.email ?? null}
+                defaultEmail={null}
+                privacyPolicyUrl={privacyPolicyUrl}
                 onSubmit={handleSubmitBugReport}
                 onClose={() => setBugModalOpen(false)}
+              />
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      ) : null}
+
+      {contentReportTarget !== null ? (
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={[
+            styles.modalBackdropOverlay,
+            layout.isCompact ? styles.modalBackdropCompact : null,
+          ]}
+        >
+          <Pressable
+            accessible={false}
+            onPress={() => setContentReportTarget(null)}
+            style={styles.modalBackdropScrim}
+          />
+          <View
+            style={[
+              styles.modalDialogWrapper,
+              { maxWidth: Math.max(layout.modalMaxWidth, 500) },
+            ]}
+          >
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.modalScrollContent}
+            >
+              <ContentReportModal
+                visible={contentReportTarget !== null}
+                target={contentReportTarget}
+                locale={state.locale}
+                compact={layout.isCompact}
+                privacyPolicyUrl={privacyPolicyUrl}
+                onSubmit={handleSubmitContentReport}
+                onClose={() => setContentReportTarget(null)}
               />
             </ScrollView>
           </View>

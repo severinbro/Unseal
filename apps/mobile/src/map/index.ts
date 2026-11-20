@@ -11,6 +11,7 @@
 export { MapCanvas } from './MapCanvas';
 export { VIEWPORT_SETTLE_DEBOUNCE_MS, type MapCanvasProps } from './types';
 export {
+  CARTO_DARK_ATTRIBUTION_HTML,
   DARK_BASEMAP_PAINT_TUNING,
   DEFAULT_DARK_OSM_STYLE_URL,
   DRAFT_SOURCE_ID,
@@ -25,8 +26,10 @@ export {
   buildOrthophotoSourceSpec,
   buildPolygonLayerSpecs,
   buildProposalGeoJson,
+  buildWebCustomAttributions,
   dedupeFeatureIdsPreservingOrder,
   extractRenderedFeatureRawIds,
+  isBuiltinDop20Orthophoto,
   isOpenFreeMapDarkStyleUrl,
   resolveBasemapStyleUrl,
   shouldReportOrthophotoTileError,

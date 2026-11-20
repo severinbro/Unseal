@@ -35,43 +35,124 @@ export interface ExtractedImportDataset {
   format: 'geojson' | 'gpkg';
   candidates: RawImportedCandidate[];
   preErrors: Array<{ featureIndex: number; reason: string }>;
+  embeddedLicense?: string | null;
+  embeddedAttribution?: string | null;
+}
+
+export interface ExtractImportDatasetOptions {
+  waiverConfirmed?: boolean | undefined;
+  sourceAttribution?: string | null | undefined;
+}
+
+export interface ImportLicenseValidationOptions {
+  sourceAttribution?: string | null | undefined;
+  waiverConfirmed?: boolean | undefined;
+}
+
+export interface ResolvedImportLicensePolicy {
+  canonicalLicense: string;
+  requiresAttribution: boolean;
+  requiresWaiver: boolean;
 }
 
 const SQLITE_MAGIC = 'SQLite format 3\0';
 
-const COMPATIBLE_EXPLICIT_IMPORT_LICENSES = new Set([
-  'odbl-1.0',
-  'odbl',
-  'odc-odbl',
-  'cc0-1.0',
-  'cc0',
-  'cc0 1.0',
-  'public domain',
-  'pddl-1.0',
-  'pddl',
-  'dl-de/zero-2-0',
-  'dl-de/by-2-0',
-  'cc-by-4.0',
-  'cc by 4.0',
-]);
+const DIRECT_PUBLIC_DOMAIN_LICENSES: Readonly<Record<string, string>> = {
+  'cc0-1.0': 'CC0-1.0',
+  cc0: 'CC0-1.0',
+  'cc0 1.0': 'CC0-1.0',
+  'public domain': 'Public Domain',
+  'pddl-1.0': 'PDDL-1.0',
+  pddl: 'PDDL-1.0',
+  'dl-de/zero-2-0': 'dl-de/zero-2-0',
+};
+
+const DIRECT_ATTRIBUTED_ODBL_LICENSES: Readonly<Record<string, string>> = {
+  'odbl-1.0': 'ODbL-1.0',
+  odbl: 'ODbL-1.0',
+  'odc-odbl': 'ODbL-1.0',
+};
+
+const WAIVER_REQUIRED_IMPORT_LICENSES: Readonly<Record<string, string>> = {
+  'dl-de/by-2-0': 'dl-de/by-2-0',
+  'cc-by-4.0': 'CC-BY-4.0',
+  'cc by 4.0': 'CC-BY-4.0',
+};
 
 const INCOMPATIBLE_EMBEDDED_LICENSE_RE =
   /\b(?:cc[- ]?by[- ]?(?:nc|nd|sa)(?:[- ]?\d(?:\.\d)?)?|non[- ]?commercial|no[- ]?derivatives|kommerziell\S*\s+ausgeschlossen|keine\s+bearbeitung|all\s+rights\s+reserved|alle\s+rechte\s+vorbehalten|proprietary|other[- ]closed|closed[- ]source|internal[- ]only|confidential)\b/i;
 
-export function assertCompatibleImportLicenseParam(rawLicense: string): void {
+const WAIVER_REQUIRED_EMBEDDED_LICENSE_RE =
+  /\b(?:cc[- ]?by[- ]?4\.0|dl[- ]?de\/by[- ]?2[- ]?0|datenlizenz\s+deutschland[^\n]{0,60}namensnennung)\b/i;
+
+const ODBL_EMBEDDED_LICENSE_RE = /\b(?:odbl(?:[- ]?1\.0)?|odc[- ]?odbl)\b/i;
+
+export function assertCompatibleImportLicenseParam(
+  rawLicense: string,
+  options: ImportLicenseValidationOptions = {},
+): ResolvedImportLicensePolicy {
   const normalized = rawLicense.trim().toLowerCase().replace(/\s+/g, ' ');
-  if (!COMPATIBLE_EXPLICIT_IMPORT_LICENSES.has(normalized)) {
-    throw new ApiError(
-      422,
-      'VALIDATION_ERROR',
-      `Incompatible or unrecognized import license "${rawLicense.trim()}". Imported datasets enter the public ODbL-1.0 export and must be licensed under ODbL-1.0, CC0-1.0, dl-de/zero-2-0, dl-de/by-2-0, or CC-BY-4.0.`,
-    );
+  const attribution = options.sourceAttribution?.trim() ?? '';
+
+  const publicDomainCanonical = DIRECT_PUBLIC_DOMAIN_LICENSES[normalized];
+  if (publicDomainCanonical) {
+    return {
+      canonicalLicense: publicDomainCanonical,
+      requiresAttribution: false,
+      requiresWaiver: false,
+    };
   }
+
+  const odblCanonical = DIRECT_ATTRIBUTED_ODBL_LICENSES[normalized];
+  if (odblCanonical) {
+    if (attribution.length === 0) {
+      throw new ApiError(
+        422,
+        'VALIDATION_ERROR',
+        'Importing an ODbL-1.0 dataset requires a non-empty "attribution" (or "sourceAttribution") parameter or embedded GeoJSON attribution so upstream credits are preserved in export.geojson.',
+      );
+    }
+    return {
+      canonicalLicense: odblCanonical,
+      requiresAttribution: true,
+      requiresWaiver: false,
+    };
+  }
+
+  const waiverCanonical = WAIVER_REQUIRED_IMPORT_LICENSES[normalized];
+  if (waiverCanonical) {
+    if (options.waiverConfirmed !== true) {
+      throw new ApiError(
+        422,
+        'VALIDATION_ERROR',
+        `License "${waiverCanonical}" is not directly compatible with ODbL-1.0 without an explicit licensor waiver (per OSMF LWG guidance). Confirm a documented ODbL-1.0 waiver via waiverConfirmed=true together with attribution/sourceAttribution, or use CC0-1.0 / PDDL-1.0 / dl-de/zero-2-0 / ODbL-1.0 data.`,
+      );
+    }
+    if (attribution.length === 0) {
+      throw new ApiError(
+        422,
+        'VALIDATION_ERROR',
+        `Importing a waiver-confirmed "${waiverCanonical}" dataset requires a non-empty "attribution" (or "sourceAttribution") parameter or embedded GeoJSON attribution so upstream credits are preserved in export.geojson.`,
+      );
+    }
+    return {
+      canonicalLicense: waiverCanonical,
+      requiresAttribution: true,
+      requiresWaiver: true,
+    };
+  }
+
+  throw new ApiError(
+    422,
+    'VALIDATION_ERROR',
+    `Incompatible or unrecognized import license "${rawLicense.trim()}". Imported datasets enter the public ODbL-1.0 export and must be licensed under CC0-1.0, PDDL-1.0, dl-de/zero-2-0, Public Domain, attributed ODbL-1.0, or waiver-confirmed CC-BY-4.0 / dl-de/by-2-0.`,
+  );
 }
 
 function assertCompatibleEmbeddedLicenseMetadata(
   rawValue: unknown,
   fieldLabel: string,
+  options: ExtractImportDatasetOptions = {},
 ): void {
   if (typeof rawValue !== 'string') {
     return;
@@ -85,6 +166,31 @@ function assertCompatibleEmbeddedLicenseMetadata(
       422,
       'VALIDATION_ERROR',
       `Uploaded dataset declares an incompatible license/restriction in ${fieldLabel} ("${trimmed.slice(0, 120)}"). Imported datasets enter the public ODbL-1.0 export and cannot include non-commercial, no-derivatives, share-alike-incompatible, or proprietary restrictions.`,
+    );
+  }
+  if (WAIVER_REQUIRED_EMBEDDED_LICENSE_RE.test(trimmed)) {
+    if (options.waiverConfirmed !== true) {
+      throw new ApiError(
+        422,
+        'VALIDATION_ERROR',
+        `Uploaded dataset declares a waiver-gated license in ${fieldLabel} ("${trimmed.slice(0, 120)}"). Importing CC BY 4.0 or dl-de/by-2-0 data into the ODbL-1.0 export requires waiverConfirmed=true and a non-empty attribution.`,
+      );
+    }
+    if (!options.sourceAttribution || options.sourceAttribution.trim().length === 0) {
+      throw new ApiError(
+        422,
+        'VALIDATION_ERROR',
+        `Uploaded dataset declares an attributed license in ${fieldLabel} ("${trimmed.slice(0, 120)}") and requires a non-empty attribution so upstream credits are preserved in export.geojson.`,
+      );
+    }
+  } else if (
+    ODBL_EMBEDDED_LICENSE_RE.test(trimmed) &&
+    (!options.sourceAttribution || options.sourceAttribution.trim().length === 0)
+  ) {
+    throw new ApiError(
+      422,
+      'VALIDATION_ERROR',
+      `Uploaded dataset declares ODbL in ${fieldLabel} ("${trimmed.slice(0, 120)}") and requires a non-empty attribution so upstream credits are preserved in export.geojson.`,
     );
   }
 }
@@ -229,7 +335,10 @@ function parseEpsgCodeFromCrsObject(crs: unknown): number {
   return 4326;
 }
 
-function extractFromGeoJsonBuffer(buffer: Buffer): ExtractedImportDataset {
+function extractFromGeoJsonBuffer(
+  buffer: Buffer,
+  options: ExtractImportDatasetOptions = {},
+): ExtractedImportDataset {
   let parsed: unknown;
   try {
     parsed = JSON.parse(buffer.toString('utf8'));
@@ -250,15 +359,38 @@ function extractFromGeoJsonBuffer(buffer: Buffer): ExtractedImportDataset {
   }
 
   const rootRecord = parsed as Record<string, unknown>;
-  assertCompatibleEmbeddedLicenseMetadata(rootRecord.license, 'GeoJSON license');
-  assertCompatibleEmbeddedLicenseMetadata(rootRecord.rights, 'GeoJSON rights');
+  const embeddedAttribution =
+    typeof rootRecord.attribution === 'string' &&
+    rootRecord.attribution.trim().length > 0
+      ? rootRecord.attribution.trim().slice(0, 500)
+      : null;
+  const embeddedLicense =
+    typeof rootRecord.license === 'string' && rootRecord.license.trim().length > 0
+      ? rootRecord.license.trim().slice(0, 120)
+      : null;
+  const effectiveOptions: ExtractImportDatasetOptions = {
+    waiverConfirmed: options.waiverConfirmed,
+    sourceAttribution: options.sourceAttribution?.trim() || embeddedAttribution,
+  };
+  assertCompatibleEmbeddedLicenseMetadata(
+    rootRecord.license,
+    'GeoJSON license',
+    effectiveOptions,
+  );
+  assertCompatibleEmbeddedLicenseMetadata(
+    rootRecord.rights,
+    'GeoJSON rights',
+    effectiveOptions,
+  );
   assertCompatibleEmbeddedLicenseMetadata(
     rootRecord.accessConstraints,
     'GeoJSON accessConstraints',
+    effectiveOptions,
   );
   assertCompatibleEmbeddedLicenseMetadata(
     rootRecord.useLimitation,
     'GeoJSON useLimitation',
+    effectiveOptions,
   );
   const rootSrid = parseEpsgCodeFromCrsObject(rootRecord.crs);
   const rootType = rootRecord.type;
@@ -346,10 +478,15 @@ function extractFromGeoJsonBuffer(buffer: Buffer): ExtractedImportDataset {
     format: 'geojson',
     candidates,
     preErrors,
+    embeddedLicense,
+    embeddedAttribution,
   };
 }
 
-async function extractFromGpkgBuffer(buffer: Buffer): Promise<ExtractedImportDataset> {
+async function extractFromGpkgBuffer(
+  buffer: Buffer,
+  options: ExtractImportDatasetOptions = {},
+): Promise<ExtractedImportDataset> {
   const tempPath = path.join(
     os.tmpdir(),
     `ppgis-import-${crypto.randomUUID()}.gpkg`,
@@ -371,18 +508,20 @@ async function extractFromGpkgBuffer(buffer: Buffer): Promise<ExtractedImportDat
 
     const srsMap = new Map<number, number>();
     const srsWktMap = new Map<number, string>();
+    let metaRows: Array<{ metadata: string | null }> = [];
     try {
-      const metaRows = db
+      metaRows = db
         .prepare('SELECT metadata FROM gpkg_metadata LIMIT 20')
         .all() as Array<{ metadata: string | null }>;
-      for (const metaRow of metaRows) {
-        assertCompatibleEmbeddedLicenseMetadata(
-          metaRow.metadata,
-          'GeoPackage gpkg_metadata',
-        );
-      }
     } catch {
       // Optional gpkg_metadata table is absent in most GeoPackages
+    }
+    for (const metaRow of metaRows) {
+      assertCompatibleEmbeddedLicenseMetadata(
+        metaRow.metadata,
+        'GeoPackage gpkg_metadata',
+        options,
+      );
     }
     try {
       const srsRows = db
@@ -569,6 +708,7 @@ async function extractFromGpkgBuffer(buffer: Buffer): Promise<ExtractedImportDat
 export async function extractImportDataset(
   buffer: Buffer,
   fileName: string,
+  options: ExtractImportDatasetOptions = {},
 ): Promise<ExtractedImportDataset> {
   if (buffer.byteLength === 0) {
     throw new ApiError(422, 'VALIDATION_ERROR', 'Uploaded file is empty.');
@@ -594,7 +734,7 @@ export async function extractImportDataset(
         'File has .gpkg extension but is not a valid SQLite GeoPackage.',
       );
     }
-    return extractFromGpkgBuffer(buffer);
+    return extractFromGpkgBuffer(buffer, options);
   }
 
   if (
@@ -602,7 +742,7 @@ export async function extractImportDataset(
     lowerName.endsWith('.json') ||
     buffer.toString('utf8', 0, 64).trimStart().startsWith('{')
   ) {
-    return extractFromGeoJsonBuffer(buffer);
+    return extractFromGeoJsonBuffer(buffer, options);
   }
 
   throw new ApiError(

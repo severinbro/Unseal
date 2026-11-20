@@ -45,10 +45,10 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
     }
   });
 
-  it('applies 001..010 migrations idempotently and resetTestDb truncates all application tables', async () => {
+  it('applies 001..011 migrations idempotently and resetTestDb truncates all application tables', async () => {
     const secondRun = await runMigrations(pool);
     assert.equal(secondRun.applied.length, 0);
-    assert.equal(secondRun.totalApplied, 10);
+    assert.equal(secondRun.totalApplied, 11);
 
     const indexRes = await pool.query<{ indexname: string }>(
       `SELECT indexname FROM pg_indexes WHERE schemaname = 'public'`,
@@ -62,6 +62,7 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
       'idx_polygons_score_created',
       'idx_polygons_created_id',
       'idx_polygons_origin',
+      'idx_polygons_import_attribution_id',
       'idx_polygon_creations_user_created',
       'idx_votes_user_id',
     ]) {
@@ -107,6 +108,11 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
       `INSERT INTO daily_telemetry_counters (day, metric, dimension, event_count, area_sum_m2)
        VALUES (CURRENT_DATE, 'polygon_created', 'citizen', 1, 120.5)`,
     );
+    await pool.query(
+      `INSERT INTO import_attributions (license, attribution_text, source_url, waiver_confirmed, created_by)
+       VALUES ('CC0-1.0', 'Test Open Data', 'https://example.org/data', false, $1)`,
+      [userId],
+    );
 
     await resetTestDb(pool);
 
@@ -118,6 +124,7 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
       creations_cnt: number;
       votes_cnt: number;
       telemetry_cnt: number;
+      import_attr_cnt: number;
       migrations_cnt: number;
     }>(`
       SELECT
@@ -128,6 +135,7 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
         (SELECT COUNT(*)::int FROM polygon_creations) AS creations_cnt,
         (SELECT COUNT(*)::int FROM votes) AS votes_cnt,
         (SELECT COUNT(*)::int FROM daily_telemetry_counters) AS telemetry_cnt,
+        (SELECT COUNT(*)::int FROM import_attributions) AS import_attr_cnt,
         (SELECT COUNT(*)::int FROM schema_migrations) AS migrations_cnt
     `);
     const counts = countsRes.rows[0]!;
@@ -138,7 +146,8 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
     assert.equal(counts.creations_cnt, 0);
     assert.equal(counts.votes_cnt, 0);
     assert.equal(counts.telemetry_cnt, 0);
-    assert.equal(counts.migrations_cnt, 10);
+    assert.equal(counts.import_attr_cnt, 0);
+    assert.equal(counts.migrations_cnt, 11);
   });
 
   it('GET /api/v1/health returns 200 against live PostGIS and 503 SERVICE_UNAVAILABLE when DB fails or migrations are incomplete', async () => {
@@ -156,7 +165,7 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
       assert.ok(okRes.headers['x-request-id']);
       const health = HealthResponseSchema.parse(okRes.json());
       assert.equal(health.status, 'ok');
-      assert.equal(health.migrationsApplied, 10);
+      assert.equal(health.migrationsApplied, 11);
       assert.match(health.postgisVersion, /^3\./);
     } finally {
       await app.close();
@@ -221,6 +230,9 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
           import.meta.url,
         ),
       );
+      const mig11Path = fileURLToPath(
+        new URL('../migrations/011_import_attributions.sql', import.meta.url),
+      );
       await fs.copyFile(mig1Path, path.join(tmpDir, '001_initial_schema.sql'));
       await fs.copyFile(mig2Path, path.join(tmpDir, '002_v2_features.sql'));
       await fs.copyFile(mig3Path, path.join(tmpDir, '003_v3_adjustments.sql'));
@@ -234,7 +246,11 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
         mig10Path,
         path.join(tmpDir, '010_security_and_retention_updates.sql'),
       );
-      await fs.writeFile(path.join(tmpDir, '011_pending.sql'), 'SELECT 1;\n', 'utf8');
+      await fs.copyFile(
+        mig11Path,
+        path.join(tmpDir, '011_import_attributions.sql'),
+      );
+      await fs.writeFile(path.join(tmpDir, '012_pending.sql'), 'SELECT 1;\n', 'utf8');
 
       const unmigratedApp = await buildApp(config, pool, {
         logger: createLogger({ enabled: false }),

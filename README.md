@@ -18,7 +18,7 @@ Contributors register pseudonymous accounts backed by **email link confirmation*
 * **EXIF-Stripped Site Photos, `"GPS verified"` Badge & `"Real"` / `"Fake"` Rating:**
   * Server-side processing checks EXIF GPS containment inside the polygon (`<= 3 m` tolerance buffer -> **`"GPS verified"`** badge) in memory *before* stripping 100% of EXIF/XMP/IPTC metadata and re-encoding to WebP (`sharp`). Community ratings (`"Echt"` / `"Real"` `+1`, `"Fake"` `-1`) automatically blur flagged photos (`credibilityScore <= -3`).
 * **Admin Status Workflow & `.geojson` / `.gpkg` Bulk Import:**
-  * `admin` accounts can transition polygon statuses and bulk-import `.geojson` or OGC GeoPackage (`.gpkg`, with CRS reprojection to `EPSG:4326` and `MultiPolygon` splitting). Polygon deletion remains restricted strictly to the creating author (or CLI moderation).
+  * `admin` accounts can transition polygon statuses, remove violating content (sending a DSA Art. 17 statement of reasons by email), and bulk-import `.geojson` or OGC GeoPackage (`.gpkg`, with CRS reprojection to `EPSG:4326`, `MultiPolygon` splitting, ODbL-1.0 compatibility checks, and persisted dataset attributions). Editing polygon metadata remains restricted strictly to the creating author.
 
 ---
 

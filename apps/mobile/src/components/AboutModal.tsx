@@ -229,7 +229,18 @@ export function AboutModal({
         <Text style={styles.subtleNote}>{t.privacyAndLicenseBody}</Text>
         {abuseContact && abuseContact.trim().length > 0 ? (
           <Text style={styles.subtleNote}>
-            {dict.inspector.abuseContactPrefix} {abuseContact}
+            {dict.inspector.abuseContactPrefix}{' '}
+            {/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(abuseContact.trim()) ? (
+              <Text
+                accessibilityRole="link"
+                onPress={() => openExternalUrl(`mailto:${abuseContact.trim()}`)}
+                style={styles.attributionChipText}
+              >
+                {abuseContact.trim()}
+              </Text>
+            ) : (
+              abuseContact
+            )}
           </Text>
         ) : null}
 

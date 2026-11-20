@@ -9,6 +9,7 @@ import {
   POLYGON_STATUSES,
   SURFACE_TYPES,
   type CommentVoteResponse,
+  type ContentReportTargetType,
   type CreatePolygonCommentRequest,
   type FlagPolygonResponse,
   type PatchPolygonRequest,
@@ -53,6 +54,7 @@ function openLicenseUrl(url: string): void {
 import {
   DEFAULT_LOCALE,
   getTranslations,
+  localizeDisclaimerText,
   localizeError,
   type Locale,
 } from '../i18n/translations';
@@ -144,12 +146,17 @@ export interface PolygonInspectorSheetProps {
   ) => Promise<FlagPolygonResponse>;
   onUnflagPolygon?: (polygonId: string) => Promise<FlagPolygonResponse>;
   onClearPolygonFlags?: (polygonId: string) => Promise<FlagPolygonResponse>;
+  onReportContent?: (target: {
+    targetType: ContentReportTargetType;
+    targetId: string;
+  }) => void;
 }
 
 export function PolygonInspectorSheet({
   feature,
   overlapIndex,
   overlapCount,
+  disclaimerText,
   abuseContact,
   isAuthenticated,
   isAdmin = false,
@@ -180,6 +187,7 @@ export function PolygonInspectorSheet({
   onFlagPolygon,
   onUnflagPolygon,
   onClearPolygonFlags,
+  onReportContent,
 }: PolygonInspectorSheetProps): React.JSX.Element | null {
   const { palette, surfaceSwatches } = useTheme();
   const styles = useMemo(() => createStyles(palette), [palette]);
@@ -892,6 +900,25 @@ export function PolygonInspectorSheet({
                 <Text style={styles.photoDeleteLabel}>{t.deleteComment}</Text>
               </Pressable>
             ) : null}
+
+            {onReportContent ? (
+              <Pressable
+                testID={`report-comment-${comment.id}`}
+                accessibilityRole="button"
+                accessibilityLabel={t.reportIllegalA11y}
+                onPress={() =>
+                  onReportContent({
+                    targetType: 'comment',
+                    targetId: comment.id,
+                  })
+                }
+                style={styles.reportInlinePill}
+              >
+                <Text style={styles.reportInlineLabel}>
+                  {t.reportIllegalShort}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
 
           {isReplyingHere && !isFinished && isAuthenticated ? (
@@ -1403,6 +1430,43 @@ export function PolygonInspectorSheet({
               </Text>
             </View>
           ) : null}
+
+          {(() => {
+            const localizedDisclaimer = localizeDisclaimerText(
+              disclaimerText ?? null,
+              locale,
+            );
+            return localizedDisclaimer && localizedDisclaimer.trim().length > 0 ? (
+              <View
+                testID="inspector-disclaimer-card"
+                accessibilityLabel={t.permanentDisclaimerA11y}
+                style={styles.disclaimerCard}
+              >
+                <Text style={styles.disclaimerText}>
+                  {localizedDisclaimer}
+                </Text>
+              </View>
+            ) : null;
+          })()}
+
+          {onReportContent ? (
+            <Pressable
+              testID="report-polygon-illegal-button"
+              accessibilityRole="button"
+              accessibilityLabel={t.reportIllegalA11y}
+              onPress={() =>
+                onReportContent({
+                  targetType: 'polygon',
+                  targetId: feature.id,
+                })
+              }
+              style={styles.reportContentRowButton}
+            >
+              <Text style={styles.reportContentRowLabel}>
+                {t.reportIllegalButton}
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
 
@@ -1796,6 +1860,25 @@ export function PolygonInspectorSheet({
                             </Text>
                           </Pressable>
                         ) : null}
+
+                        {onReportContent ? (
+                          <Pressable
+                            testID={`report-photo-${photo.id}`}
+                            accessibilityRole="button"
+                            accessibilityLabel={t.reportIllegalA11y}
+                            onPress={() =>
+                              onReportContent({
+                                targetType: 'photo',
+                                targetId: photo.id,
+                              })
+                            }
+                            style={styles.reportInlinePill}
+                          >
+                            <Text style={styles.reportInlineLabel}>
+                              {t.reportIllegalShort}
+                            </Text>
+                          </Pressable>
+                        ) : null}
                       </View>
                     </View>
                   </View>
@@ -2105,9 +2188,41 @@ export function PolygonInspectorSheet({
             </View>
           ) : null}
 
+          {onReportContent ? (
+            <Pressable
+              testID="manage-report-polygon-button"
+              accessibilityRole="button"
+              accessibilityLabel={t.reportIllegalA11y}
+              onPress={() =>
+                onReportContent({
+                  targetType: 'polygon',
+                  targetId: feature.id,
+                })
+              }
+              style={styles.reportContentRowButton}
+            >
+              <Text style={styles.reportContentRowLabel}>
+                {t.reportIllegalButton}
+              </Text>
+            </Pressable>
+          ) : null}
+
           {abuseContact && abuseContact.trim().length > 0 ? (
             <Text style={styles.abuseContactText}>
-              {t.abuseContactPrefix} {abuseContact}
+              {t.abuseContactPrefix}{' '}
+              {/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(abuseContact.trim()) ? (
+                <Text
+                  accessibilityRole="link"
+                  onPress={() =>
+                    openLicenseUrl(`mailto:${abuseContact.trim()}`)
+                  }
+                  style={styles.abuseContactLink}
+                >
+                  {abuseContact.trim()}
+                </Text>
+              ) : (
+                abuseContact
+              )}
             </Text>
           ) : null}
         </View>
@@ -3057,6 +3172,50 @@ function createStyles(PALETTE: ThemePalette) {
   abuseContactText: {
     fontSize: 11.5,
     color: PALETTE.inkMuted,
+  },
+  abuseContactLink: {
+    color: PALETTE.accentPrimary,
+    textDecorationLine: 'underline',
+  },
+  disclaimerCard: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: RADII.sm,
+    backgroundColor: PALETTE.bgSubtle,
+    borderWidth: 1,
+    borderColor: PALETTE.borderSubtle,
+  },
+  disclaimerText: {
+    fontSize: 11.5,
+    lineHeight: 16,
+    color: PALETTE.inkMuted,
+  },
+  reportInlinePill: {
+    minHeight: 32,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: RADII.sm,
+    borderWidth: 1,
+    borderColor: PALETTE.borderStrong,
+    backgroundColor: PALETTE.bgSurface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reportInlineLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: PALETTE.inkSecondary,
+  },
+  reportContentRowButton: {
+    alignSelf: 'flex-start',
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+  },
+  reportContentRowLabel: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: PALETTE.inkSecondary,
+    textDecorationLine: 'underline',
   },
   lightboxBackdrop: {
     flex: 1,

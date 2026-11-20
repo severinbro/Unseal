@@ -7588,6 +7588,10 @@ SOFTWARE.
 
 sharp@0.35.5 (Apache-2.0) dynamically loads platform-specific @img/sharp-libvips-*
 prebuilt binaries distributed under LGPL-3.0-or-later.
+Note: Source distribution on GitHub and self-hosted network operation of apps/api do not
+distribute prebuilt libvips binaries. If prebuilt Docker images bundling @img/sharp-libvips-*
+are ever distributed publicly, accompany them with verbatim LGPL-3.0 and GPL-3.0 license texts
+and relinking / corresponding source information per LGPL-3.0 Section 4.
 
 # `@img/sharp-libvips-linux-x64`
 
@@ -7644,11 +7648,16 @@ When building native Android/iOS packages via `npx expo prebuild`, the following
 native SDKs are linked in addition to the npm packages listed above:
 
   - MapLibre Native Android SDK (org.maplibre.gl:android-sdk-opengl:11.12.1) : BSD-2-Clause
+  - MapLibre Android Plugins (org.maplibre.gl:android-plugin-localization-v9, android-plugin-annotation-v9, android-plugin-markerview-v9:3.0.2) : Apache-2.0
+  - MapLibre Java Turf (org.maplibre.gl:android-sdk-turf:6.0.1) : Apache-2.0
   - MapLibre Native iOS Distribution (maplibre-gl-native-distribution 6.17.1) : BSD-2-Clause
+  - Android-Image-Cropper (com.github.CanHub:Android-Image-Cropper:4.3.1, via expo-image-picker) : Apache-2.0
+  - SmartLocation (io.nlopez.smartlocation, via expo-location) : MIT
+  - Google Play Services Location (com.google.android.gms:play-services-location:21.0.1, via expo-location) : Proprietary (Android Software Development Kit License / Google APIs Terms of Service; compatible with MPL-2.0 Section 3.3)
   - React Native Android / Hermes Runtime (com.facebook.react:react-android, hermes-android) : MIT
   - Fresco Image Pipeline (com.facebook.fresco) : MIT
-  - Kotlin Standard Library (org.jetbrains.kotlin:kotlin-stdlib) : Apache-2.0
-  - AndroidX & OkHttp libraries : Apache-2.0
+  - Kotlin Standard Library & Coroutines (org.jetbrains.kotlin:kotlin-stdlib, org.jetbrains.kotlinx:kotlinx-coroutines-*) : Apache-2.0
+  - AndroidX & OkHttp (com.squareup.okhttp3:okhttp:4.9.0, okhttp-urlconnection:4.9.0) : Apache-2.0
 
 --- MapLibre Native (BSD-2-Clause) ---
 BSD 2-Clause License
@@ -7678,6 +7687,34 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+--- Android-Image-Cropper & MapLibre Android Plugins / OkHttp / AndroidX (Apache-2.0) ---
+Copyright (c) 2020-2024 CanHub / Arthur Teplitzki (Android-Image-Cropper)
+Copyright (c) MapLibre contributors / Mapbox (MapLibre Android Plugins & Turf)
+Copyright (c) Square, Inc. (OkHttp) / The Android Open Source Project (AndroidX)
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use these files except in compliance with the License.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software distributed under the
+License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND.
+
+--- SmartLocation (io.nlopez.smartlocation, MIT) ---
+Copyright (c) 2013-2017 Nacho Lopez (mrmans0n)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this
+software and associated documentation files (the "Software"), to deal in the Software
+without restriction, including without limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+to whom the Software is furnished to do so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all copies or
+substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY
+OF ANY KIND, EXPRESS OR IMPLIED.
+
+--- Google Play Services Location (com.google.android.gms:play-services-location) ---
+Copyright (c) Google LLC. Distributed under the Android Software Development Kit License
+Agreement / Google APIs Terms of Service (https://developers.google.com/terms).
+Linked solely into the MPL-2.0 Android client package via expo-location (MPL-2.0 § 3.3).
+
 ================================================================================
 5. DOCKER & RUNTIME INFRASTRUCTURE COMPONENTS
 ================================================================================
@@ -7692,39 +7729,41 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 6. DEFAULT GEODATA & EXTERNAL MAP SOURCES
 ================================================================================
 
-  - OpenStreetMap Map Data & Nominatim Geocoding : ODbL-1.0 (https://www.openstreetmap.org/copyright)
-  - OpenMapTiles Vector Tile Schema & Styles (incl. OSM Liberty / CARTO Dark Matter lineage) : CC BY 4.0 / BSD-3-Clause / MIT (https://openmaptiles.org/, https://carto.com/attributions)
+  - OpenStreetMap Map Data & Nominatim Geocoding : ODbL-1.0 (© OpenStreetMap contributors, https://www.openstreetmap.org/copyright)
+  - OpenMapTiles Vector Tile Schema & Styles (incl. OSM Liberty / CARTO Dark Matter, modified in dark mode) : CC BY 4.0 / BSD-3-Clause / MIT (https://openmaptiles.org/, https://carto.com/attributions)
   - Natural Earth Low-Zoom Shaded Relief (via OpenFreeMap styles) : Public Domain (https://www.naturalearthdata.com/)
   - Noto Sans Map Label Font Glyphs (via OpenFreeMap styles) : SIL OFL 1.1 (https://openfontlicense.org/)
-  - OpenFreeMap Hosting & Tooling : MIT (https://openfreemap.org/)
+  - OpenFreeMap Hosting & Tooling (Hyperknot Software Kft., Hungary) : MIT (https://openfreemap.org/)
   - German Municipality Boundaries (BKG VG250) : dl-de/by-2-0
       Attribution: © GeoBasis-DE / BKG (<year of data retrieval>) dl-de/by-2-0 (https://www.govdata.de/dl-de/by-2-0),
       Datenquellen: https://sg.geodatenzentrum.de/web_public/gdz/datenquellen/datenquellen_vg_nuts.pdf (Daten verändert)
-  - Built-in German State Aerial Orthophotos (DOP20 / DOP10, Daten verändert at state-border tile composites):
-      * RP  (Rheinland-Pfalz)        : dl-de/by-2-0   | © GeoBasis-DE / LVermGeoRP, http://www.lvermgeo.rlp.de
-      * HE  (Hessen)                 : dl-de/zero-2-0 | © Hessische Verwaltung für Bodenmanagement und Geoinformation (HVBG)
-      * NW  (Nordrhein-Westfalen)    : dl-de/zero-2-0 | © Land NRW (Geobasis NRW)
-      * BW  (Baden-Württemberg)      : dl-de/by-2-0   | © LGL, www.lgl-bw.de
-      * BY  (Bayern)                 : CC BY 4.0      | Datenquelle: Bayerische Vermessungsverwaltung – www.geodaten.bayern.de
-      * SL  (Saarland)               : dl-de/by-2-0   | © GeoBasis-DE / LVGL-SL
-      * BE/BB (Berlin / Brandenburg) : dl-de/by-2-0   | © GeoBasis-DE / LGB, dl-de/by-2-0; © Geoportal Berlin, dl-de/by-2-0
-      * HH  (Hamburg, TIME=2026)     : dl-de/by-2-0   | © Freie und Hansestadt Hamburg, Landesbetrieb Geoinformation und Vermessung (LGV)
+  - Built-in German State Aerial Orthophotos (DOP20 / DOP10, live GetCapabilities wordings; Daten bearbeitet / Daten verändert):
+      * RP  (Rheinland-Pfalz)        : dl-de/by-2-0   | ©GeoBasis-DE / LVermGeoRP (<Jahr>), dl-de/by-2-0, http://www.lvermgeo.rlp.de [Daten bearbeitet]
+      * HE  (Hessen)                 : dl-de/zero-2-0 | © Hessische Verwaltung für Bodenmanagement und Geoinformation (HVBG) (<Jahr>)
+      * NW  (Nordrhein-Westfalen)    : dl-de/zero-2-0 | © Land NRW (Geobasis NRW) (<Jahr>)
+      * BW  (Baden-Württemberg)      : dl-de/by-2-0   | LGL-BW (<Jahr>) Datenlizenz Deutschland - Namensnennung - Version 2.0, www.lgl-bw.de
+      * BY  (Bayern)                 : CC BY 4.0      | Datenquelle: Bayerische Vermessungsverwaltung – www.geodaten.bayern.de (<Jahr>)
+      * SL  (Saarland)               : dl-de/by-2-0   | © GeoBasis-DE / LVGL-SL (<Jahr>)
+      * BE/BB (Berlin / Brandenburg) : dl-de/by-2-0   | © GeoBasis-DE / LGB (<Jahr>), dl-de/by-2-0; © Geoportal Berlin (<Jahr>), dl-de/by-2-0
+      * HH  (Hamburg, TIME=2026)     : dl-de/by-2-0   | © Freie und Hansestadt Hamburg, Landesbetrieb Geoinformation und Vermessung (LGV) (<Jahr>)
                                        (pinned to LGV OpenData aerial vintage TIME=2026; excludes 2023 Maxar satellite vintage)
-      * NI  (Niedersachsen)          : CC BY 4.0      | © LGLN (Niedersachsen)
-      * HB  (Bremen / Bremerhaven)   : CC BY 4.0      | © Landesamt GeoInformation Bremen
-      * SH  (Schleswig-Holstein)     : CC BY 4.0      | © GeoBasis-DE / LVermGeo SH
-      * MV  (Mecklenburg-Vorpommern) : CC BY 4.0      | © GeoBasis-DE / M-V
-      * SN  (Sachsen)                : dl-de/by-2-0   | © GeoBasis-DE / GeoSN
-      * ST  (Sachsen-Anhalt)         : dl-de/by-2-0   | © GeoBasis-DE / LVermGeo ST
-      * TH  (Thüringen)              : CC BY 4.0      | © GDI-Th
+      * NI  (Niedersachsen)          : CC BY 4.0      | LGLN (<Jahr>) Creative Commons Namensnennung – 4.0 International (CC BY 4.0)
+      * HB  (Bremen / Bremerhaven)   : CC BY 4.0      | © Landesamt GeoInformation Bremen (<Jahr>)
+      * SH  (Schleswig-Holstein)     : CC BY 4.0      | © GeoBasis-DE/LVermGeo SH/CC BY 4.0 (<Jahr>)
+      * MV  (Mecklenburg-Vorpommern) : CC BY 4.0      | © GeoBasis-DE/M-V <Jahr> (https://www.laiv-mv.de)
+      * SN  (Sachsen)                : dl-de/by-2-0   | © GeoBasis-DE / GeoSN (<Jahr>)
+      * ST  (Sachsen-Anhalt)         : dl-de/by-2-0   | © GeoBasis-DE / LVermGeo ST (<Jahr>)
+      * TH  (Thüringen)              : CC BY 4.0      | © GDI-Th (<Jahr>)
       License URLs:
         - dl-de/by-2-0   : https://www.govdata.de/dl-de/by-2-0
         - dl-de/zero-2-0 : https://www.govdata.de/dl-de/zero-2-0
         - CC BY 4.0      : https://creativecommons.org/licenses/by/4.0/
   - User-Contributed & Exported Platform Content:
       * Compiled Polygon Dataset Export (/api/v1/polygons/export.geojson) : ODbL-1.0 (https://opendatacommons.org/licenses/odbl/1-0/)
-        with upstream OpenStreetMap (ODbL), BKG VG250 (dl-de/by-2-0), and German State DOP20/DOP10 attributions.
-      * Contributor Rights Waiver on Own Polygon Input & Notes            : CC0-1.0 (https://creativecommons.org/publicdomain/zero/1.0/)
+        with upstream OpenStreetMap (ODbL), BKG VG250 (dl-de/by-2-0), German State DOP20/DOP10, and persisted admin-import attributions.
+      * Contributor Rights Waiver on Own Polygon Input & Notes            : CC0-1.0 + Section 3 Public License Fallback (https://creativecommons.org/publicdomain/zero/1.0/)
+      * Admin Bulk Imports (.geojson / .gpkg)                             : Direct CC0-1.0 / PDDL-1.0 / dl-de/zero-2-0 / Public Domain / attributed ODbL-1.0,
+        or waiver-confirmed CC BY 4.0 / dl-de/by-2-0 with persisted attribution.
       * Uploaded Ground-Truth Photos & Discussion Comments                : CC BY 4.0 (attributed to contributor pseudonym)
 
 ================================================================================

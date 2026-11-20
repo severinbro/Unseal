@@ -14,8 +14,8 @@ import {
 } from '@entsiegelung/shared';
 
 import {
-  DEFAULT_DOP20_ATTRIBUTION,
   GERMANY_DOP20_BOUNDS,
+  getDefaultDop20Attribution,
 } from './routes/dop20Tiles.js';
 
 export interface SmtpConfig {
@@ -395,7 +395,7 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
         ? `${publicBaseUrl}${builtinDop20Path}`
         : builtinDop20Path,
       tileSize,
-      attribution: orthophotoAttribution || DEFAULT_DOP20_ATTRIBUTION,
+      attribution: orthophotoAttribution || getDefaultDop20Attribution(),
       bounds: orthophotoBounds ?? GERMANY_DOP20_BOUNDS,
       maxZoom: orthophotoMaxZoom,
     };

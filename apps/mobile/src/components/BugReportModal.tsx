@@ -3,6 +3,8 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Linking,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -22,11 +24,25 @@ import { RADII, type ThemePalette } from '../theme/tokens';
 
 const SIMPLE_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+function openExternalUrl(url: string): void {
+  if (Platform.OS === 'web') {
+    const scope = globalThis as {
+      window?: { open?: (u: string, target?: string, features?: string) => void };
+    };
+    if (typeof scope.window?.open === 'function') {
+      scope.window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+  }
+  void Linking.openURL(url);
+}
+
 export interface BugReportModalProps {
   visible: boolean;
   locale?: Locale | undefined;
   compact?: boolean | undefined;
   defaultEmail?: string | null | undefined;
+  privacyPolicyUrl?: string | undefined;
   onSubmit: (input: {
     description: string;
     contactEmail: string | null;
@@ -39,6 +55,7 @@ export function BugReportModal({
   locale = DEFAULT_LOCALE,
   compact = false,
   defaultEmail = null,
+  privacyPolicyUrl,
   onSubmit,
   onClose,
 }: BugReportModalProps): React.JSX.Element | null {
@@ -184,6 +201,19 @@ export function BugReportModal({
               style={styles.singleLineInput}
             />
           </View>
+
+          <Text style={styles.privacyNote}>
+            {t.privacyNotePrefix}
+            {privacyPolicyUrl ? (
+              <Text
+                accessibilityRole="link"
+                onPress={() => openExternalUrl(privacyPolicyUrl)}
+                style={styles.privacyLink}
+              >
+                {t.privacyLinkText}
+              </Text>
+            ) : null}
+          </Text>
 
           {errorMessage ? (
             <View style={styles.errorBox} accessibilityRole="alert">
@@ -363,6 +393,16 @@ function createStyles(PALETTE: ThemePalette) {
   },
   buttonPressed: {
     backgroundColor: PALETTE.bgRecessed,
+  },
+  privacyNote: {
+    fontSize: 11.5,
+    lineHeight: 15.5,
+    color: PALETTE.inkMuted,
+  },
+  privacyLink: {
+    color: PALETTE.accentPrimary,
+    textDecorationLine: 'underline',
+    fontWeight: '600',
   },
   });
 }

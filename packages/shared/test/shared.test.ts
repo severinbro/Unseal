@@ -16,8 +16,12 @@ import {
   AuthUserSchema,
   BboxQuerySchema,
   COMMENT_LIMITS,
+  CONTENT_REPORT_REASONS,
+  CONTENT_REPORT_TARGET_TYPES,
   CommentVoteRequestSchema,
   CommentVoteResponseSchema,
+  CreateContentReportRequestSchema,
+  CreateContentReportResponseSchema,
   CreatePolygonCommentRequestSchema,
   CreatePolygonRequestSchema,
   type DraftValidationResult,
@@ -25,6 +29,7 @@ import {
   FlagPolygonRequestSchema,
   FlagPolygonResponseSchema,
   GEOMETRY_LIMITS,
+  GERMAN_STATE_DOP20_PROVIDERS,
   HealthResponseSchema,
   IMPORT_LIMITS,
   ImportPolygonsResponseSchema,
@@ -58,6 +63,11 @@ import {
   checkBboxSpan,
   checkPolygonRingStructure,
   closeRingIfNeeded,
+  formatDefaultDop20Attribution,
+  formatDop20PlainAttribution,
+  formatDop20WebAttributionHtml,
+  formatStateDop20FullAttribution,
+  selectDop20ProvidersForBounds,
   computeMunicipalityNormalizedScore,
   dedupeConsecutivePoints,
   findTopRatedCommentId,
@@ -1186,5 +1196,130 @@ describe('Review Focus 3: BboxQuerySchema vs checkBboxSpan and remaining wire sc
     });
     assert.equal(parsedPersonalStats.finishedCount, 1);
     assert.equal(parsedPersonalStats.ratedPolygonsCount, 7);
+  });
+
+  it('provides live-verified German state DOP20 attributions, dynamic viewport selection, and DSA Art. 16 content-report schemas', () => {
+    assert.equal(GERMAN_STATE_DOP20_PROVIDERS.length, 15);
+    const byCode = new Map(GERMAN_STATE_DOP20_PROVIDERS.map((p) => [p.code, p]));
+
+    // Verify exact GetCapabilities wordings for updated states
+    assert.equal(
+      formatStateDop20FullAttribution(byCode.get('RP')!, 2026),
+      '©GeoBasis-DE / LVermGeoRP (2026), dl-de/by-2-0, http://www.lvermgeo.rlp.de [Daten bearbeitet]',
+    );
+    assert.match(
+      formatStateDop20FullAttribution(byCode.get('BW')!, 2026),
+      /LGL-BW.*www\.lgl-bw\.de/,
+    );
+    assert.match(
+      formatStateDop20FullAttribution(byCode.get('SH')!, 2026),
+      /GeoBasis-DE\/LVermGeo SH\/CC BY 4\.0/,
+    );
+    assert.match(
+      formatStateDop20FullAttribution(byCode.get('MV')!, 2026),
+      /© GeoBasis-DE\/M-V 2026/,
+    );
+    assert.match(
+      formatStateDop20FullAttribution(byCode.get('NI')!, 2026),
+      /LGLN.*CC BY 4\.0/,
+    );
+    assert.match(formatDefaultDop20Attribution(2026), /2026; DOP20\/DOP10/);
+
+    // Mainz viewport crosses RP and HE -> selects RP + HE with clickable dl-de/by-2-0 & dl-de/zero-2-0 links
+    const mainzBbox = [8.22, 49.97, 8.32, 50.03] as const;
+    const mainzProviders = selectDop20ProvidersForBounds(mainzBbox);
+    const mainzCodes = mainzProviders.map((p) => p.code);
+    assert.ok(mainzCodes.includes('RP'));
+    assert.ok(mainzCodes.includes('HE'));
+
+    const mainzHtml = formatDop20WebAttributionHtml(mainzBbox, {
+      year: 2026,
+      licensesUrl: 'https://unseal.example.org/auth/licenses',
+    });
+    assert.match(mainzHtml, /LVermGeoRP/);
+    assert.match(mainzHtml, /HVBG/);
+    assert.match(mainzHtml, /https:\/\/www\.govdata\.de\/dl-de\/by-2-0/);
+    assert.match(mainzHtml, /https:\/\/www\.govdata\.de\/dl-de\/zero-2-0/);
+    assert.match(mainzHtml, /Daten bearbeitet|Daten verändert/);
+
+    const mainzPlain = formatDop20PlainAttribution(mainzBbox, { year: 2026 });
+    assert.match(mainzPlain, /LVermGeoRP/);
+    assert.match(mainzPlain, /HVBG/);
+
+    // Wide Germany viewport (> 4 intersecting states) falls back cleanly with link to /auth/licenses
+    const germanyBbox = [6.0, 47.5, 14.5, 54.8] as const;
+    const germanyHtml = formatDop20WebAttributionHtml(germanyBbox, {
+      year: 2026,
+      licensesUrl: 'https://unseal.example.org/auth/licenses',
+    });
+    assert.match(germanyHtml, /DOP20\/DOP10/);
+    assert.match(germanyHtml, /https:\/\/unseal\.example\.org\/auth\/licenses/);
+
+    // Outside Germany -> empty attribution
+    const oceanBbox = [-40, 30, -39, 31] as const;
+    assert.deepEqual(selectDop20ProvidersForBounds(oceanBbox), []);
+    assert.equal(formatDop20WebAttributionHtml(oceanBbox, { year: 2026 }), '');
+    assert.equal(formatDop20PlainAttribution(oceanBbox, { year: 2026 }), '');
+
+    // DSA Art. 16 Content Report schemas
+    assert.deepEqual(CONTENT_REPORT_TARGET_TYPES, ['polygon', 'photo', 'comment']);
+    assert.ok(CONTENT_REPORT_REASONS.includes('privacy_personal_data'));
+    assert.ok(CONTENT_REPORT_REASONS.includes('copyright'));
+
+    const validReport = CreateContentReportRequestSchema.parse({
+      targetType: 'photo',
+      targetId: '550e8400-e29b-41d4-a716-446655440001',
+      reason: 'privacy_personal_data',
+      explanation: '  Photo clearly shows a visible car license plate and face.  ',
+      reporterName: '  Max Mustermann  ',
+      reporterEmail: '  max@example.org  ',
+      goodFaithConfirmed: true,
+      pageUrl: 'https://unseal.example.org/#p=550e8400-e29b-41d4-a716-446655440001',
+    });
+    assert.equal(
+      validReport.explanation,
+      'Photo clearly shows a visible car license plate and face.',
+    );
+    assert.equal(validReport.reporterName, 'Max Mustermann');
+    assert.equal(validReport.reporterEmail, 'max@example.org');
+
+    // Empty optional email/name coerce to null; missing goodFaithConfirmed or too-short explanation fails
+    const anonReport = CreateContentReportRequestSchema.parse({
+      targetType: 'comment',
+      targetId: '550e8400-e29b-41d4-a716-446655440002',
+      reason: 'defamation_illegal',
+      explanation: 'Insulting and defamatory personal attack in comment.',
+      reporterName: '   ',
+      reporterEmail: '',
+      goodFaithConfirmed: true,
+    });
+    assert.equal(anonReport.reporterName, null);
+    assert.equal(anonReport.reporterEmail, null);
+
+    assert.throws(() =>
+      CreateContentReportRequestSchema.parse({
+        targetType: 'polygon',
+        targetId: '550e8400-e29b-41d4-a716-446655440001',
+        reason: 'other',
+        explanation: 'too short',
+        goodFaithConfirmed: true,
+      }),
+    );
+
+    assert.throws(() =>
+      CreateContentReportRequestSchema.parse({
+        targetType: 'polygon',
+        targetId: '550e8400-e29b-41d4-a716-446655440001',
+        reason: 'other',
+        explanation: 'Missing good-faith confirmation under Art. 16(2)(d) DSA.',
+      }),
+    );
+
+    const parsedReportRes = CreateContentReportResponseSchema.parse({
+      status: 'received',
+      reportId: '550e8400-e29b-41d4-a716-446655440099',
+      receiptSent: true,
+    });
+    assert.equal(parsedReportRes.receiptSent, true);
   });
 });

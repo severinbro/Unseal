@@ -20,12 +20,14 @@ import {
   buildOrthophotoSourceSpec,
   buildPolygonLayerSpecs,
   buildProposalGeoJson,
+  buildWebCustomAttributions,
   DARK_BASEMAP_PAINT_TUNING,
   DEFAULT_POLYGON_OPACITY,
   dedupeFeatureIdsPreservingOrder,
   DRAFT_SOURCE_ID,
   extractRenderedFeatureRawIds,
   INTERACTIVE_PROPOSAL_LAYER_IDS,
+  isBuiltinDop20Orthophoto,
   isOpenFreeMapDarkStyleUrl,
   ORTHOPHOTO_LAYER_ID,
   ORTHOPHOTO_SOURCE_ID,
@@ -136,6 +138,12 @@ export function MapCanvas({
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
+  const attributionControlRef = useRef<AttributionControl | null>(null);
+  const navigationControlRef = useRef<NavigationControl | null>(null);
+  const lastAttributionKeyRef = useRef<string>('');
+  const lastViewportBboxRef = useRef<
+    readonly [number, number, number, number] | null
+  >(null);
   const styleReadyRef = useRef<boolean>(false);
   const appliedStyleUrlRef = useRef<string | null>(null);
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -178,6 +186,49 @@ export function MapCanvas({
   const onZoomDividerOffsetChangeRef = useRef(onZoomDividerOffsetChange);
   onZoomDividerOffsetChangeRef.current = onZoomDividerOffsetChange;
 
+  const syncAttributionControl = (
+    map: MapLibreMap,
+    viewportBbox: readonly [number, number, number, number] | null,
+  ): void => {
+    const customAttribution = buildWebCustomAttributions({
+      config: configRef.current,
+      basemapMode: basemapModeRef.current,
+      colorScheme: colorSchemeRef.current,
+      activeStyleUrl: activeStyleUrlRef.current,
+      viewportBbox,
+    });
+    const nextKey = customAttribution.join(' || ');
+    if (
+      attributionControlRef.current !== null &&
+      nextKey === lastAttributionKeyRef.current
+    ) {
+      return;
+    }
+    lastAttributionKeyRef.current = nextKey;
+
+    if (navigationControlRef.current !== null) {
+      map.removeControl(navigationControlRef.current);
+    }
+    if (attributionControlRef.current !== null) {
+      map.removeControl(attributionControlRef.current);
+    }
+
+    const nextAttr = new AttributionControl(
+      customAttribution.length > 0
+        ? { compact: false, customAttribution }
+        : { compact: false },
+    );
+    const nextNav =
+      navigationControlRef.current ??
+      new NavigationControl({ showCompass: false });
+    // Register AttributionControl first so it stays pinned at bottom-right
+    // and NavigationControl stacks above it.
+    map.addControl(nextAttr, 'bottom-right');
+    map.addControl(nextNav, 'bottom-right');
+    attributionControlRef.current = nextAttr;
+    navigationControlRef.current = nextNav;
+  };
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) {
@@ -214,25 +265,16 @@ export function MapCanvas({
     appliedStyleUrlRef.current = initialStyleUrl;
     styleReadyRef.current = false;
 
-    // In MapLibre GL JS, 'bottom-*' positions insert each newly added control
-    // before firstChild. Register AttributionControl first so it stays pinned
-    // to the bottom-right corner and NavigationControl stacks above it.
-    const bkgYear = config.vg250DataYear ?? new Date().getUTCFullYear();
-    map.addControl(
-      new AttributionControl(
-        config.vg250AttributionEnabled === false
-          ? { compact: false }
-          : {
-              compact: false,
-              customAttribution: `VG250: © GeoBasis-DE / <a href="https://www.bkg.bund.de" target="_blank" rel="noopener noreferrer">BKG</a> (${bkgYear}) <a href="https://www.govdata.de/dl-de/by-2-0" target="_blank" rel="noopener noreferrer">dl-de/by-2-0</a>, <a href="https://sg.geodatenzentrum.de/web_public/gdz/datenquellen/datenquellen_vg_nuts.pdf" target="_blank" rel="noopener noreferrer">Datenquellen</a> (Daten verändert)`,
-            },
-      ),
-      'bottom-right',
-    );
-    map.addControl(
-      new NavigationControl({ showCompass: false }),
-      'bottom-right',
-    );
+    const initialBbox: readonly [number, number, number, number] = initialBounds
+      ? [
+          initialBounds.minLng,
+          initialBounds.minLat,
+          initialBounds.maxLng,
+          initialBounds.maxLat,
+        ]
+      : [initialLng - 0.01, initialLat - 0.01, initialLng + 0.01, initialLat + 0.01];
+    lastViewportBboxRef.current = initialBbox;
+    syncAttributionControl(map, initialBbox);
 
     const emitZoomDividerOffset = (): void => {
       const cb = onZoomDividerOffsetChangeRef.current;
@@ -349,7 +391,14 @@ export function MapCanvas({
       );
       if (orthoSourceSpec !== null) {
         if (!map.getSource(ORTHOPHOTO_SOURCE_ID)) {
-          map.addSource(ORTHOPHOTO_SOURCE_ID, orthoSourceSpec);
+          // Built-in German DOP20 attributions are rendered dynamically per viewport
+          // with clickable license links in AttributionControl to avoid stale "u. a." text.
+          const webOrthoSpec = isBuiltinDop20Orthophoto(
+            configRef.current.orthophoto,
+          )
+            ? { ...orthoSourceSpec, attribution: '' }
+            : orthoSourceSpec;
+          map.addSource(ORTHOPHOTO_SOURCE_ID, webOrthoSpec);
         }
         const isOrthoVisible = basemapModeRef.current === 'orthophoto';
         if (!map.getLayer(ORTHOPHOTO_LAYER_ID)) {
@@ -401,6 +450,14 @@ export function MapCanvas({
       emitBearing();
       const initialViewport = extractMapViewport(map);
       if (initialViewport !== null) {
+        const bboxTuple: readonly [number, number, number, number] = [
+          initialViewport.bbox.minLng,
+          initialViewport.bbox.minLat,
+          initialViewport.bbox.maxLng,
+          initialViewport.bbox.maxLat,
+        ];
+        lastViewportBboxRef.current = bboxTuple;
+        syncAttributionControl(map, bboxTuple);
         onViewportChangeRef.current(initialViewport);
       }
     });
@@ -419,6 +476,14 @@ export function MapCanvas({
         settleTimerRef.current = null;
         const settled = extractMapViewport(map);
         if (settled !== null) {
+          const bboxTuple: readonly [number, number, number, number] = [
+            settled.bbox.minLng,
+            settled.bbox.minLat,
+            settled.bbox.maxLng,
+            settled.bbox.maxLat,
+          ];
+          lastViewportBboxRef.current = bboxTuple;
+          syncAttributionControl(map, bboxTuple);
           onViewportChangeRef.current(settled);
         }
       }, VIEWPORT_SETTLE_DEBOUNCE_MS);
@@ -492,6 +557,9 @@ export function MapCanvas({
     return () => {
       styleReadyRef.current = false;
       appliedStyleUrlRef.current = null;
+      attributionControlRef.current = null;
+      navigationControlRef.current = null;
+      lastAttributionKeyRef.current = '';
       resizeObserver?.disconnect();
       if (settleTimerRef.current !== null) {
         clearTimeout(settleTimerRef.current);
@@ -684,7 +752,10 @@ export function MapCanvas({
     }
 
     if (!map.getSource(ORTHOPHOTO_SOURCE_ID)) {
-      map.addSource(ORTHOPHOTO_SOURCE_ID, orthoSourceSpec);
+      const webOrthoSpec = isBuiltinDop20Orthophoto(config.orthophoto)
+        ? { ...orthoSourceSpec, attribution: '' }
+        : orthoSourceSpec;
+      map.addSource(ORTHOPHOTO_SOURCE_ID, webOrthoSpec);
     }
 
     const isVisible = basemapMode === 'orthophoto';
@@ -698,7 +769,16 @@ export function MapCanvas({
         isVisible ? 'visible' : 'none',
       );
     }
+    syncAttributionControl(map, lastViewportBboxRef.current);
   }, [basemapMode, config.orthophoto]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) {
+      return;
+    }
+    syncAttributionControl(map, lastViewportBboxRef.current);
+  }, [basemapMode, colorScheme, activeStyleUrl, config]);
 
   useEffect(() => {
     const map = mapRef.current;

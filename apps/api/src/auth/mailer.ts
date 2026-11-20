@@ -30,14 +30,68 @@ export interface BugReportEmailPayload {
   submittedAtIso: string;
 }
 
+export interface ContentReportEmailPayload {
+  to: string;
+  reportId: string;
+  targetType: 'polygon' | 'photo' | 'comment';
+  targetId: string;
+  reason: string;
+  explanation: string;
+  reporterName: string | null;
+  reporterEmail: string | null;
+  reporterPseudonym: string | null;
+  reporterUserId: string | null;
+  pageUrl: string | null;
+  submittedAtIso: string;
+}
+
+export interface ContentReportReceiptEmailPayload {
+  to: string;
+  reportId: string;
+  targetType: 'polygon' | 'photo' | 'comment';
+  targetId: string;
+  reason: string;
+  submittedAtIso: string;
+  contactEmail: string;
+  impressumUrl: string;
+}
+
+export type ModerationActionKind =
+  | 'polygon_deleted'
+  | 'photo_deleted'
+  | 'comment_deleted'
+  | 'note_redacted'
+  | 'account_banned';
+
+export interface ModerationReasonEmailPayload {
+  to: string;
+  pseudonym: string;
+  action: ModerationActionKind;
+  targetId: string | null;
+  reason: string;
+  automatedMeansUsed: boolean;
+  contactEmail: string | null;
+  termsUrl: string;
+  impressumUrl: string;
+  actedAtIso: string;
+}
+
 export interface AuthMailer {
   sendActionEmail(payload: AuthEmailPayload): Promise<void>;
   sendBugReportEmail(payload: BugReportEmailPayload): Promise<void>;
+  sendContentReportEmail(payload: ContentReportEmailPayload): Promise<void>;
+  sendContentReportReceiptEmail(
+    payload: ContentReportReceiptEmailPayload,
+  ): Promise<void>;
+  sendModerationReasonEmail(payload: ModerationReasonEmailPayload): Promise<void>;
 }
 
 export interface MemoryMailer extends AuthMailer {
   readonly outbox: AuthEmailPayload[];
   readonly bugReports: BugReportEmailPayload[];
+  readonly contentReports: ContentReportEmailPayload[];
+  readonly contentReportReceipts: ContentReportReceiptEmailPayload[];
+  readonly moderationReasons: ModerationReasonEmailPayload[];
   clear(): void;
 }
 
@@ -306,21 +360,276 @@ export function renderBugReportEmailMessage(payload: BugReportEmailPayload): {
   return { subject, text, html };
 }
 
+const MODERATION_ACTION_LABELS: Readonly<
+  Record<ModerationActionKind, { de: string; en: string }>
+> = {
+  polygon_deleted: {
+    de: 'Entfernung eines Flächenvorschlags',
+    en: 'Removal of a surface proposal',
+  },
+  photo_deleted: {
+    de: 'Entfernung eines hochgeladenen Fotos',
+    en: 'Removal of an uploaded site photo',
+  },
+  comment_deleted: {
+    de: 'Entfernung eines Kommentars',
+    en: 'Removal of a comment',
+  },
+  note_redacted: {
+    de: 'Entfernung/Schwärzung einer Flächennotiz',
+    en: 'Redaction of a proposal note',
+  },
+  account_banned: {
+    de: 'Sperrung und Löschung eines Benutzerkontos',
+    en: 'Account suspension and deletion',
+  },
+};
+
+export function renderContentReportEmailMessage(
+  payload: ContentReportEmailPayload,
+): {
+  subject: string;
+  text: string;
+  html: string;
+} {
+  const subject = `Unseal DSA-Meldung [${payload.targetType}] #${payload.reportId.slice(0, 8)} (${payload.reason})`;
+  const reporterAccount = payload.reporterPseudonym
+    ? `@${payload.reporterPseudonym}${payload.reporterUserId ? ` (${payload.reporterUserId})` : ''}`
+    : 'Nicht angemeldet / Guest';
+
+  const text = [
+    'Neue Meldung mutmaßlich rechtswidriger Inhalte (Art. 16 DSA) / New DSA Art. 16 Notice',
+    '',
+    `Meldungs-ID / Report ID: ${payload.reportId}`,
+    `Zeitpunkt / Submitted: ${payload.submittedAtIso}`,
+    `Betroffener Inhalt / Target: ${payload.targetType} (${payload.targetId})`,
+    `Meldegrund / Reason: ${payload.reason}`,
+    `Konto / Account: ${reporterAccount}`,
+    `Name / Reporter name: ${payload.reporterName ?? 'nicht angegeben'}`,
+    `Kontakt-E-Mail / Reporter email: ${payload.reporterEmail ?? 'nicht angegeben'}`,
+    ...(payload.pageUrl ? [`URL: ${payload.pageUrl}`] : []),
+    'Erklärung nach Treu und Glauben (Art. 16 Abs. 2 lit. d DSA): Bestätigt / Confirmed',
+    '',
+    'Begründung / Explanation:',
+    '-------------------------',
+    payload.explanation,
+  ].join('\n');
+
+  const safeId = escapeHtml(payload.reportId);
+  const safeTarget = escapeHtml(`${payload.targetType} (${payload.targetId})`);
+  const safeReason = escapeHtml(payload.reason);
+  const safeAccount = escapeHtml(reporterAccount);
+  const safeName = escapeHtml(payload.reporterName ?? 'nicht angegeben');
+  const safeEmail = escapeHtml(payload.reporterEmail ?? 'nicht angegeben');
+  const safeUrl = payload.pageUrl ? escapeHtml(payload.pageUrl) : null;
+  const safeSubmitted = escapeHtml(payload.submittedAtIso);
+  const safeExplanation = escapeHtml(payload.explanation);
+
+  const html = `<!doctype html>
+<html lang="de">
+<body style="font-family: system-ui, -apple-system, sans-serif; background:#f5f6f3; padding:24px; color:#18221d;">
+  <div style="max-width:600px; margin:0 auto; background:#ffffff; border:1px solid #d5ddd7; border-radius:14px; padding:28px;">
+    <h2 style="margin:0 0 12px; color:#962d20;">Unseal – Meldung nach Art. 16 DSA</h2>
+    <table style="width:100%; border-collapse:collapse; font-size:13px; color:#42524a; margin-bottom:18px;">
+      <tr><td style="padding:4px 8px 4px 0; font-weight:700;">Meldungs-ID:</td><td style="padding:4px 0;"><code>${safeId}</code></td></tr>
+      <tr><td style="padding:4px 8px 4px 0; font-weight:700;">Zeitpunkt:</td><td style="padding:4px 0;">${safeSubmitted}</td></tr>
+      <tr><td style="padding:4px 8px 4px 0; font-weight:700;">Inhalt:</td><td style="padding:4px 0;"><code>${safeTarget}</code></td></tr>
+      <tr><td style="padding:4px 8px 4px 0; font-weight:700;">Grund:</td><td style="padding:4px 0;">${safeReason}</td></tr>
+      <tr><td style="padding:4px 8px 4px 0; font-weight:700;">Konto:</td><td style="padding:4px 0;">${safeAccount}</td></tr>
+      <tr><td style="padding:4px 8px 4px 0; font-weight:700;">Name:</td><td style="padding:4px 0;">${safeName}</td></tr>
+      <tr><td style="padding:4px 8px 4px 0; font-weight:700;">E-Mail:</td><td style="padding:4px 0;">${safeEmail}</td></tr>
+      ${safeUrl ? `<tr><td style="padding:4px 8px 4px 0; font-weight:700;">URL:</td><td style="padding:4px 0; word-break:break-all;">${safeUrl}</td></tr>` : ''}
+      <tr><td style="padding:4px 8px 4px 0; font-weight:700;">Treu &amp; Glauben:</td><td style="padding:4px 0;">Bestätigt (Art. 16 Abs. 2 lit. d DSA)</td></tr>
+    </table>
+    <div style="background:#f5f6f3; border:1px solid #d5ddd7; border-radius:10px; padding:14px; white-space:pre-wrap; font-size:14px; line-height:1.5; color:#18221d;">${safeExplanation}</div>
+  </div>
+</body>
+</html>`;
+
+  return { subject, text, html };
+}
+
+export function renderContentReportReceiptEmailMessage(
+  payload: ContentReportReceiptEmailPayload,
+): {
+  subject: string;
+  text: string;
+  html: string;
+} {
+  const subject = `Unseal – Eingangsbestätigung deiner Meldung #${payload.reportId.slice(0, 8)} / Notice receipt`;
+  const text = [
+    'Eingangsbestätigung gemäß Art. 16 Abs. 4 Digital Services Act (DSA)',
+    '',
+    `Wir haben deine Meldung erhalten (Referenz: ${payload.reportId}).`,
+    `Betroffener Inhalt: ${payload.targetType} (${payload.targetId})`,
+    `Angegebener Grund: ${payload.reason}`,
+    `Eingegangen am: ${payload.submittedAtIso}`,
+    '',
+    'Wir prüfen den gemeldeten Inhalt zeitnah und informieren dich anschließend über unsere Entscheidung.',
+    `Rückfragen: ${payload.contactEmail}`,
+    `Impressum: ${payload.impressumUrl}`,
+    '',
+    '---',
+    'Acknowledgement of receipt pursuant to Art. 16(4) EU Digital Services Act (DSA)',
+    '',
+    `We have received your notice (Reference: ${payload.reportId}) regarding ${payload.targetType} (${payload.targetId}, reason: ${payload.reason}).`,
+    `We will review the reported content promptly and notify you of our decision. Contact: ${payload.contactEmail}`,
+  ].join('\n');
+
+  const safeId = escapeHtml(payload.reportId);
+  const safeTarget = escapeHtml(`${payload.targetType} (${payload.targetId})`);
+  const safeReason = escapeHtml(payload.reason);
+  const safeContact = escapeHtml(payload.contactEmail);
+  const safeImpressum = escapeHtml(payload.impressumUrl);
+
+  const html = `<!doctype html>
+<html lang="de">
+<body style="font-family: system-ui, -apple-system, sans-serif; background:#f5f6f3; padding:24px; color:#18221d;">
+  <div style="max-width:560px; margin:0 auto; background:#ffffff; border:1px solid #d5ddd7; border-radius:14px; padding:28px;">
+    <h2 style="margin:0 0 12px; color:#176642;">Unseal – Eingangsbestätigung (Art. 16 Abs. 4 DSA)</h2>
+    <p style="margin:0 0 14px; line-height:1.5;">Wir haben deine Meldung erhalten und prüfen den gemeldeten Inhalt zeitnah.</p>
+    <p style="margin:0 0 14px; font-size:13px; color:#42524a; line-height:1.5;">
+      <strong>Referenz:</strong> <code>${safeId}</code><br />
+      <strong>Inhalt:</strong> <code>${safeTarget}</code><br />
+      <strong>Grund:</strong> ${safeReason}
+    </p>
+    <p style="margin:0 0 16px; font-size:13px; color:#42524a; line-height:1.5;">
+      Nach Abschluss der Prüfung erhältst du eine Rückmeldung zu unserer Entscheidung. Bei Rückfragen erreichst du uns unter <strong>${safeContact}</strong> (<a href="${safeImpressum}" style="color:#176642;">Impressum</a>).
+    </p>
+    <hr style="border:none; border-top:1px solid #e3e8e4; margin:18px 0;" />
+    <p style="font-size:13px; color:#526159; margin:0; line-height:1.45;">
+      <strong>English:</strong> We have received your DSA Art. 16 notice (ref. <code>${safeId}</code>) for <code>${safeTarget}</code> and will review it promptly. Contact: ${safeContact}.
+    </p>
+  </div>
+</body>
+</html>`;
+
+  return { subject, text, html };
+}
+
+export function renderModerationReasonEmailMessage(
+  payload: ModerationReasonEmailPayload,
+): {
+  subject: string;
+  text: string;
+  html: string;
+} {
+  const actionLabel = MODERATION_ACTION_LABELS[payload.action];
+  const subject = `Unseal – Moderationshinweis & Begründung (Art. 17 DSA) / Moderation notice`;
+  const contactLineDe = payload.contactEmail
+    ? `Wenn du diese Entscheidung überprüfen lassen möchtest oder Rückfragen hast, wende dich bitte an ${payload.contactEmail}.`
+    : `Wenn du diese Entscheidung überprüfen lassen möchtest oder Rückfragen hast, nutze bitte die im Impressum (${payload.impressumUrl}) angegebene Kontaktstelle.`;
+  const contactLineEn = payload.contactEmail
+    ? `If you believe this action was taken in error or wish to request a review, please contact ${payload.contactEmail}.`
+    : `If you believe this action was taken in error or wish to request a review, please use the contact listed at ${payload.impressumUrl}.`;
+
+  const text = [
+    `Hallo ${payload.pseudonym},`,
+    '',
+    'hiermit informieren wir dich gemäß Art. 17 Digital Services Act (DSA) über eine Moderationsmaßnahme:',
+    '',
+    `Maßnahme: ${actionLabel.de}`,
+    ...(payload.targetId ? [`Betroffene ID: ${payload.targetId}`] : []),
+    `Zeitpunkt: ${payload.actedAtIso}`,
+    `Begründung / Verstoß: ${payload.reason}`,
+    `Einsatz automatisierter Verfahren: ${payload.automatedMeansUsed ? 'Ja' : 'Nein (manuelle Prüfung durch Moderation)'}`,
+    `Nutzungsbedingungen: ${payload.termsUrl}`,
+    '',
+    contactLineDe,
+    'Unabhängig davon stehen dir die gesetzlichen Rechtsbehelfe (einschließlich gerichtlicher Klärung) offen.',
+    '',
+    '---',
+    `Hello ${payload.pseudonym},`,
+    '',
+    'Statement of reasons pursuant to Art. 17 EU Digital Services Act (DSA):',
+    `Action taken: ${actionLabel.en}`,
+    ...(payload.targetId ? [`Affected ID: ${payload.targetId}`] : []),
+    `Timestamp: ${payload.actedAtIso}`,
+    `Reason: ${payload.reason}`,
+    `Automated decision-making used: ${payload.automatedMeansUsed ? 'Yes' : 'No (manual moderation review)'}`,
+    `Terms of use: ${payload.termsUrl}`,
+    '',
+    contactLineEn,
+    'You also remain entitled to pursue judicial redress under applicable law.',
+  ].join('\n');
+
+  const safeName = escapeHtml(payload.pseudonym);
+  const safeActionDe = escapeHtml(actionLabel.de);
+  const safeActionEn = escapeHtml(actionLabel.en);
+  const safeTargetId = payload.targetId ? escapeHtml(payload.targetId) : null;
+  const safeReason = escapeHtml(payload.reason);
+  const safeActedAt = escapeHtml(payload.actedAtIso);
+  const safeTerms = escapeHtml(payload.termsUrl);
+  const safeContactDe = escapeHtml(contactLineDe);
+  const safeContactEn = escapeHtml(contactLineEn);
+
+  const html = `<!doctype html>
+<html lang="de">
+<body style="font-family: system-ui, -apple-system, sans-serif; background:#f5f6f3; padding:24px; color:#18221d;">
+  <div style="max-width:580px; margin:0 auto; background:#ffffff; border:1px solid #d5ddd7; border-radius:14px; padding:28px;">
+    <h2 style="margin:0 0 12px; color:#176642;">Unseal – Begründung gemäß Art. 17 DSA</h2>
+    <p style="margin:0 0 14px;">Hallo <strong>${safeName}</strong>,</p>
+    <p style="margin:0 0 14px; line-height:1.5;">wir informieren dich über folgende Moderationsmaßnahme auf dieser Unseal-Instanz:</p>
+    <table style="width:100%; border-collapse:collapse; font-size:13px; color:#42524a; margin-bottom:16px;">
+      <tr><td style="padding:4px 8px 4px 0; font-weight:700;">Maßnahme:</td><td style="padding:4px 0;">${safeActionDe}</td></tr>
+      ${safeTargetId ? `<tr><td style="padding:4px 8px 4px 0; font-weight:700;">Betroffene ID:</td><td style="padding:4px 0;"><code>${safeTargetId}</code></td></tr>` : ''}
+      <tr><td style="padding:4px 8px 4px 0; font-weight:700;">Zeitpunkt:</td><td style="padding:4px 0;">${safeActedAt}</td></tr>
+      <tr><td style="padding:4px 8px 4px 0; font-weight:700;">Begründung:</td><td style="padding:4px 0;">${safeReason}</td></tr>
+      <tr><td style="padding:4px 8px 4px 0; font-weight:700;">Automatisierung:</td><td style="padding:4px 0;">${payload.automatedMeansUsed ? 'Ja' : 'Nein (manuelle Prüfung)'}</td></tr>
+    </table>
+    <p style="margin:0 0 14px; font-size:13px; line-height:1.5; color:#42524a;">
+      ${safeContactDe} Grundlage sind unsere <a href="${safeTerms}" style="color:#176642;">Nutzungsbedingungen</a>. Gesetzliche Rechtsbehelfe (einschließlich gerichtlicher Überprüfung) bleiben unberührt.
+    </p>
+    <hr style="border:none; border-top:1px solid #e3e8e4; margin:18px 0;" />
+    <p style="font-size:13px; color:#526159; margin:0; line-height:1.45;">
+      <strong>English (Art. 17 DSA):</strong> ${safeActionEn}${safeTargetId ? ` (<code>${safeTargetId}</code>)` : ''}. Reason: ${safeReason}. Automated means: ${payload.automatedMeansUsed ? 'Yes' : 'No'}. ${safeContactEn}
+    </p>
+  </div>
+</body>
+</html>`;
+
+  return { subject, text, html };
+}
+
 export function createMemoryMailer(): MemoryMailer {
   const outbox: AuthEmailPayload[] = [];
   const bugReports: BugReportEmailPayload[] = [];
+  const contentReports: ContentReportEmailPayload[] = [];
+  const contentReportReceipts: ContentReportReceiptEmailPayload[] = [];
+  const moderationReasons: ModerationReasonEmailPayload[] = [];
   return {
     outbox,
     bugReports,
+    contentReports,
+    contentReportReceipts,
+    moderationReasons,
     async sendActionEmail(payload: AuthEmailPayload): Promise<void> {
       outbox.push(payload);
     },
     async sendBugReportEmail(payload: BugReportEmailPayload): Promise<void> {
       bugReports.push(payload);
     },
+    async sendContentReportEmail(
+      payload: ContentReportEmailPayload,
+    ): Promise<void> {
+      contentReports.push(payload);
+    },
+    async sendContentReportReceiptEmail(
+      payload: ContentReportReceiptEmailPayload,
+    ): Promise<void> {
+      contentReportReceipts.push(payload);
+    },
+    async sendModerationReasonEmail(
+      payload: ModerationReasonEmailPayload,
+    ): Promise<void> {
+      moderationReasons.push(payload);
+    },
     clear(): void {
       outbox.length = 0;
       bugReports.length = 0;
+      contentReports.length = 0;
+      contentReportReceipts.length = 0;
+      moderationReasons.length = 0;
     },
   };
 }
@@ -364,6 +673,66 @@ export function createSmtpMailer(
           'SMTP_HOST not configured; logging bug report email for local development',
         );
       },
+      async sendContentReportEmail(
+        payload: ContentReportEmailPayload,
+      ): Promise<void> {
+        if (!config.smtp.logFallbackContent) {
+          logger.warn(
+            { reportId: payload.reportId },
+            'SMTP_HOST not configured; DSA content report email dropped',
+          );
+          return;
+        }
+        logger.info(
+          {
+            to: payload.to,
+            reportId: payload.reportId,
+            targetType: payload.targetType,
+            targetId: payload.targetId,
+            reason: payload.reason,
+          },
+          'SMTP_HOST not configured; logging DSA content report for local development',
+        );
+      },
+      async sendContentReportReceiptEmail(
+        payload: ContentReportReceiptEmailPayload,
+      ): Promise<void> {
+        if (!config.smtp.logFallbackContent) {
+          logger.warn(
+            { reportId: payload.reportId },
+            'SMTP_HOST not configured; DSA content report receipt dropped',
+          );
+          return;
+        }
+        logger.info(
+          {
+            reportId: payload.reportId,
+            targetType: payload.targetType,
+            targetId: payload.targetId,
+          },
+          'SMTP_HOST not configured; logging DSA receipt confirmation for local development',
+        );
+      },
+      async sendModerationReasonEmail(
+        payload: ModerationReasonEmailPayload,
+      ): Promise<void> {
+        if (!config.smtp.logFallbackContent) {
+          logger.warn(
+            { action: payload.action },
+            'SMTP_HOST not configured; DSA Art. 17 moderation notice dropped',
+          );
+          return;
+        }
+        logger.info(
+          {
+            pseudonym: payload.pseudonym,
+            action: payload.action,
+            targetId: payload.targetId,
+            reason: payload.reason,
+          },
+          'SMTP_HOST not configured; logging DSA Art. 17 moderation notice for local development',
+        );
+      },
     };
   }
 
@@ -399,6 +768,43 @@ export function createSmtpMailer(
         from: config.smtp.from,
         to: payload.to,
         ...(payload.contactEmail ? { replyTo: payload.contactEmail } : {}),
+        subject: rendered.subject,
+        text: rendered.text,
+        html: rendered.html,
+      });
+    },
+    async sendContentReportEmail(
+      payload: ContentReportEmailPayload,
+    ): Promise<void> {
+      const rendered = renderContentReportEmailMessage(payload);
+      await transporter.sendMail({
+        from: config.smtp.from,
+        to: payload.to,
+        ...(payload.reporterEmail ? { replyTo: payload.reporterEmail } : {}),
+        subject: rendered.subject,
+        text: rendered.text,
+        html: rendered.html,
+      });
+    },
+    async sendContentReportReceiptEmail(
+      payload: ContentReportReceiptEmailPayload,
+    ): Promise<void> {
+      const rendered = renderContentReportReceiptEmailMessage(payload);
+      await transporter.sendMail({
+        from: config.smtp.from,
+        to: payload.to,
+        subject: rendered.subject,
+        text: rendered.text,
+        html: rendered.html,
+      });
+    },
+    async sendModerationReasonEmail(
+      payload: ModerationReasonEmailPayload,
+    ): Promise<void> {
+      const rendered = renderModerationReasonEmailMessage(payload);
+      await transporter.sendMail({
+        from: config.smtp.from,
+        to: payload.to,
         subject: rendered.subject,
         text: rendered.text,
         html: rendered.html,

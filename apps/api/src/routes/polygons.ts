@@ -31,8 +31,17 @@ import {
 import {
   assertCompatibleImportLicenseParam,
   extractImportDataset,
+  type ResolvedImportLicensePolicy,
 } from '../polygons/gpkgReader.js';
-import { PolygonRepository, type ExportCursor } from '../polygons/repository.js';
+import {
+  PolygonRepository,
+  type ExportCursor,
+  type ImportAttributionMetadata,
+} from '../polygons/repository.js';
+import {
+  extractOptionalModerationReason,
+  notifyAuthorOfModerationActionBestEffort,
+} from '../util/moderationNotice.js';
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
@@ -211,6 +220,13 @@ export function registerPolygonRoutes(
               );
             }
 
+            const activeImportAttributions =
+              firstBatch.features.length > 0
+                ? await repository
+                    .listActiveImportAttributions(exportStatementTimeoutMs)
+                    .catch(() => [])
+                : [];
+
             const exportYear = new Date().getUTCFullYear();
             const vg250Year = muniStatus.dataYear ?? exportYear;
             const attributionClauses: string[] = [
@@ -235,6 +251,22 @@ export function registerPolygonRoutes(
                 `Municipality codes/names derived from VG250: © GeoBasis-DE / BKG (${vg250Year}) dl-de/by-2-0 (https://www.govdata.de/dl-de/by-2-0), Datenquellen: ${BKG_VG250_DATENQUELLEN_URL} (Daten verändert).`,
               );
             }
+            if (activeImportAttributions.length > 0) {
+              const formattedImports = activeImportAttributions.map((item) => {
+                const details = [
+                  item.license,
+                  ...(item.sourceUrl ? [item.sourceUrl] : []),
+                  ...(item.waiverConfirmed ? ['ODbL-1.0 waiver confirmed'] : []),
+                ].join('; ');
+                return `${item.attributionText} (${details})`;
+              });
+              attributionClauses.push(
+                `Imported open datasets: ${formattedImports.join(' | ')}.`,
+              );
+            }
+            attributionClauses.push(
+              `Full license and source notices: ${app.config.licensesUrl}.`,
+            );
             const exportAttribution = attributionClauses.join(' ');
             const collectionPrefix = `{"type":"FeatureCollection","license":"ODbL-1.0","licenseUrl":"https://opendatacommons.org/licenses/odbl/1-0/","contributorRights":"CC0-1.0","contributorRightsUrl":"https://creativecommons.org/publicdomain/zero/1.0/","attribution":${JSON.stringify(
               exportAttribution,
@@ -476,7 +508,14 @@ export function registerPolygonRoutes(
 
       const queryObj =
         typeof request.query === 'object' && request.query !== null
-          ? (request.query as { origin?: unknown; license?: unknown })
+          ? (request.query as {
+              origin?: unknown;
+              license?: unknown;
+              attribution?: unknown;
+              sourceAttribution?: unknown;
+              sourceUrl?: unknown;
+              waiverConfirmed?: unknown;
+            })
           : {};
       let importOrigin: PolygonOrigin = 'initiative_import';
       if (queryObj.origin !== undefined) {
@@ -493,25 +532,104 @@ export function registerPolygonRoutes(
         }
         importOrigin = rawOrigin as PolygonOrigin;
       }
+
+      const rawQueryAttribution =
+        typeof queryObj.sourceAttribution === 'string' &&
+        queryObj.sourceAttribution.trim().length > 0
+          ? queryObj.sourceAttribution.trim()
+          : typeof queryObj.attribution === 'string' &&
+              queryObj.attribution.trim().length > 0
+            ? queryObj.attribution.trim()
+            : null;
+      if (rawQueryAttribution && rawQueryAttribution.length > 500) {
+        throw new ApiError(
+          422,
+          'VALIDATION_ERROR',
+          'Import attribution must not exceed 500 characters.',
+        );
+      }
+
+      let sourceUrl: string | null = null;
+      if (
+        typeof queryObj.sourceUrl === 'string' &&
+        queryObj.sourceUrl.trim().length > 0
+      ) {
+        const trimmedUrl = queryObj.sourceUrl.trim();
+        if (
+          trimmedUrl.length > 500 ||
+          (!trimmedUrl.startsWith('https://') &&
+            !trimmedUrl.startsWith('http://'))
+        ) {
+          throw new ApiError(
+            422,
+            'VALIDATION_ERROR',
+            'Import sourceUrl must be a valid http(s) URL up to 500 characters.',
+          );
+        }
+        sourceUrl = trimmedUrl;
+      }
+
+      const rawWaiver =
+        typeof queryObj.waiverConfirmed === 'string'
+          ? queryObj.waiverConfirmed.trim().toLowerCase()
+          : queryObj.waiverConfirmed === true
+            ? 'true'
+            : '';
+      const waiverConfirmed = rawWaiver === 'true' || rawWaiver === '1';
+
       if (queryObj.license !== undefined) {
-        if (typeof queryObj.license !== 'string' || queryObj.license.trim().length === 0) {
+        if (
+          typeof queryObj.license !== 'string' ||
+          queryObj.license.trim().length === 0
+        ) {
           throw new ApiError(
             422,
             'VALIDATION_ERROR',
             'When specified, import license query parameter must be a non-empty ODbL-compatible license identifier.',
           );
         }
-        assertCompatibleImportLicenseParam(queryObj.license);
       }
 
       const dataset = await extractImportDataset(
         buffer,
         uploaded.filename || 'import.geojson',
+        {
+          waiverConfirmed,
+          sourceAttribution: rawQueryAttribution,
+        },
       );
+
+      const effectiveAttribution =
+        rawQueryAttribution ?? dataset.embeddedAttribution ?? null;
+      let resolvedLicensePolicy: ResolvedImportLicensePolicy | null = null;
+      if (typeof queryObj.license === 'string') {
+        resolvedLicensePolicy = assertCompatibleImportLicenseParam(
+          queryObj.license,
+          {
+            sourceAttribution: effectiveAttribution,
+            waiverConfirmed,
+          },
+        );
+      }
+
+      const importAttribution: ImportAttributionMetadata | null =
+        effectiveAttribution !== null && effectiveAttribution.length > 0
+          ? {
+              license:
+                resolvedLicensePolicy?.canonicalLicense ??
+                dataset.embeddedLicense ??
+                'CC0-1.0',
+              attributionText: effectiveAttribution,
+              sourceUrl,
+              waiverConfirmed,
+            }
+          : null;
+
       const imported = await repository.importBatch({
         adminUserId: auth.user.id,
         dataset,
         origin: importOrigin,
+        importAttribution,
         minAreaM2: app.config.runtimeConfig.limits.minAreaM2,
         maxAreaM2: Math.max(
           IMPORT_LIMITS.MAX_AREA_M2,
@@ -646,7 +764,21 @@ export function registerPolygonRoutes(
       }
 
       const { id } = UuidParamSchema.parse(request.params);
-      await repository.delete(id, auth.user.id, auth.user.role === 'admin');
+      const deletedInfo = await repository.delete(
+        id,
+        auth.user.id,
+        auth.user.role === 'admin',
+      );
+      if (deletedInfo.deletedByAdmin) {
+        await notifyAuthorOfModerationActionBestEffort(app, request, {
+          action: 'polygon_deleted',
+          targetId: id,
+          authorEmail: deletedInfo.authorEmail,
+          authorPseudonym: deletedInfo.authorPseudonym,
+          reason: extractOptionalModerationReason(request),
+          automatedMeansUsed: false,
+        });
+      }
       return reply.status(204).send();
     },
   );

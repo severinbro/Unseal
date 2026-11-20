@@ -14,11 +14,22 @@ import {
 function defaultWebStorageProvider(): WebStorageLike | null {
   try {
     const maybeWindow = (
-      globalThis as { window?: { localStorage?: WebStorageLike } }
+      globalThis as { window?: { sessionStorage?: WebStorageLike } }
     ).window;
-    return maybeWindow?.localStorage ?? null;
+    return maybeWindow?.sessionStorage ?? null;
   } catch {
     return null;
+  }
+}
+
+function clearLegacyLocalStorageViewport(): void {
+  try {
+    const maybeWindow = (
+      globalThis as { window?: { localStorage?: WebStorageLike } }
+    ).window;
+    maybeWindow?.localStorage?.removeItem(LAST_VIEWPORT_KEY);
+  } catch {
+    // Ignore restricted storage access
   }
 }
 
@@ -27,6 +38,7 @@ export function createWebViewportStorage(
 ): ViewportStorage {
   const memoryFallback = createMemoryViewportStorage();
   let operational = true;
+  let legacyCleared = false;
 
   const resolveStorage = (): WebStorageLike | null => {
     if (!operational) {
@@ -42,6 +54,10 @@ export function createWebViewportStorage(
 
   return {
     async getViewport(): Promise<SavedViewport | null> {
+      if (!legacyCleared && getStorage === defaultWebStorageProvider) {
+        legacyCleared = true;
+        clearLegacyLocalStorageViewport();
+      }
       const storage = resolveStorage();
       if (!storage) {
         return memoryFallback.getViewport();
@@ -71,6 +87,9 @@ export function createWebViewportStorage(
       }
     },
     async clearViewport(): Promise<void> {
+      if (getStorage === defaultWebStorageProvider) {
+        clearLegacyLocalStorageViewport();
+      }
       await memoryFallback.clearViewport();
       const storage = resolveStorage();
       if (!storage) {

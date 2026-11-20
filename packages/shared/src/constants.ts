@@ -79,6 +79,26 @@ export const POLYGON_FLAG_REASONS = [
 
 export type PolygonFlagReason = (typeof POLYGON_FLAG_REASONS)[number];
 
+export const CONTENT_REPORT_TARGET_TYPES = [
+  'polygon',
+  'photo',
+  'comment',
+] as const;
+
+export type ContentReportTargetType =
+  (typeof CONTENT_REPORT_TARGET_TYPES)[number];
+
+export const CONTENT_REPORT_REASONS = [
+  'privacy_personal_data',
+  'photo_rights',
+  'copyright',
+  'defamation_illegal',
+  'property_dispute',
+  'other',
+] as const;
+
+export type ContentReportReason = (typeof CONTENT_REPORT_REASONS)[number];
+
 export const POLYGON_FILTERS = [
   'all',
   'new',

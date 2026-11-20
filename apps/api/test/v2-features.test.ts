@@ -757,6 +757,163 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
       assert.ok(reprojectedFeature, 'Expected GPKG feature in Hamburg WGS84 bbox');
       assert.equal(reprojectedFeature.properties.surfaceType, 'concrete');
       assert.equal(reprojectedFeature.properties.municipalityName, 'Hamburg');
+
+      // 4) Regression test for gpkg_metadata license guard (must NOT swallow ApiError)
+      const restrictedGpkgPath = path.join(uploadsDir, 'restricted-metadata.gpkg');
+      const restrictedSqlite = new DatabaseSync(restrictedGpkgPath);
+      try {
+        restrictedSqlite.exec(`
+          CREATE TABLE gpkg_spatial_ref_sys (
+            srs_name TEXT NOT NULL,
+            srs_id INTEGER NOT NULL PRIMARY KEY,
+            organization TEXT NOT NULL,
+            organization_coordsys_id INTEGER NOT NULL,
+            definition TEXT NOT NULL
+          );
+          INSERT INTO gpkg_spatial_ref_sys VALUES ('ETRS89 / UTM 32N', 25832, 'EPSG', 25832, '');
+          CREATE TABLE gpkg_contents (
+            table_name TEXT NOT NULL PRIMARY KEY,
+            data_type TEXT NOT NULL,
+            identifier TEXT,
+            srs_id INTEGER
+          );
+          INSERT INTO gpkg_contents VALUES ('sealed_lots', 'features', 'sealed_lots', 25832);
+          CREATE TABLE gpkg_geometry_columns (
+            table_name TEXT NOT NULL,
+            column_name TEXT NOT NULL,
+            geometry_type_name TEXT NOT NULL,
+            srs_id INTEGER NOT NULL,
+            z TINYINT NOT NULL,
+            m TINYINT NOT NULL
+          );
+          INSERT INTO gpkg_geometry_columns VALUES ('sealed_lots', 'geom', 'POLYGON', 25832, 0, 0);
+          CREATE TABLE gpkg_metadata (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            md_scope TEXT NOT NULL,
+            md_standard_uri TEXT NOT NULL,
+            mime_type TEXT NOT NULL,
+            metadata TEXT NOT NULL
+          );
+          INSERT INTO gpkg_metadata (md_scope, md_standard_uri, mime_type, metadata)
+          VALUES ('dataset', 'http://example.org', 'text/plain', 'License: CC-BY-NC-4.0 non-commercial only');
+          CREATE TABLE sealed_lots (
+            fid INTEGER PRIMARY KEY AUTOINCREMENT,
+            geom BLOB NOT NULL
+          );
+        `);
+        restrictedSqlite
+          .prepare('INSERT INTO sealed_lots (geom) VALUES (?)')
+          .run(gpbBlob);
+      } finally {
+        restrictedSqlite.close();
+      }
+      const restrictedGpkgBuffer = await fs.readFile(restrictedGpkgPath);
+      await fs.rm(restrictedGpkgPath, { force: true });
+
+      const restrictedGpkgMultipart = buildMultipartPayload({
+        fieldName: 'file',
+        fileName: 'restricted-metadata.gpkg',
+        contentType: 'application/geopackage+sqlite3',
+        fileBuffer: restrictedGpkgBuffer,
+      });
+      const rejectedGpkgMetaRes = await app.inject({
+        method: 'POST',
+        url: '/api/v1/polygons/import',
+        headers: {
+          authorization: `Bearer ${adminUser.sessionToken}`,
+          'content-type': restrictedGpkgMultipart.contentTypeHeader,
+        },
+        payload: restrictedGpkgMultipart.body,
+      });
+      assert.equal(rejectedGpkgMetaRes.statusCode, 422);
+      assert.equal(
+        ApiErrorEnvelopeSchema.parse(rejectedGpkgMetaRes.json()).error.code,
+        'VALIDATION_ERROR',
+      );
+
+      // 5) ODbL-1.0 bulk-import waiver gating & attribution persistence -> emitted in export.geojson
+      const singleImportGeoJson = buildMultipartPayload({
+        fieldName: 'file',
+        fileName: 'waiver-gated.geojson',
+        contentType: 'application/geo+json',
+        fileBuffer: Buffer.from(
+          JSON.stringify({
+            type: 'FeatureCollection',
+            features: [
+              {
+                type: 'Feature',
+                properties: { surfaceType: 'asphalt', note: 'Municipal open-data lot' },
+                geometry: {
+                  type: 'Polygon',
+                  coordinates: [makeCourtyardRing(9.991, 53.556)],
+                },
+              },
+            ],
+          }),
+          'utf8',
+        ),
+      });
+
+      // CC-BY-4.0 / dl-de/by-2-0 without waiverConfirmed=true -> 422
+      for (const gatedLic of ['CC-BY-4.0', 'dl-de/by-2-0']) {
+        const unwaivedRes = await app.inject({
+          method: 'POST',
+          url: `/api/v1/polygons/import?license=${encodeURIComponent(gatedLic)}&attribution=${encodeURIComponent('Stadt Hamburg Open Data')}`,
+          headers: {
+            authorization: `Bearer ${adminUser.sessionToken}`,
+            'content-type': singleImportGeoJson.contentTypeHeader,
+          },
+          payload: singleImportGeoJson.body,
+        });
+        assert.equal(unwaivedRes.statusCode, 422);
+        assert.equal(
+          ApiErrorEnvelopeSchema.parse(unwaivedRes.json()).error.code,
+          'VALIDATION_ERROR',
+        );
+      }
+
+      // ODbL-1.0 without sourceAttribution -> 422
+      const odblNoAttrRes = await app.inject({
+        method: 'POST',
+        url: '/api/v1/polygons/import?license=ODbL-1.0',
+        headers: {
+          authorization: `Bearer ${adminUser.sessionToken}`,
+          'content-type': singleImportGeoJson.contentTypeHeader,
+        },
+        payload: singleImportGeoJson.body,
+      });
+      assert.equal(odblNoAttrRes.statusCode, 422);
+
+      // CC-BY-4.0 WITH waiverConfirmed=true + attribution + sourceUrl -> 200, persisted & exported
+      const waivedImportRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/polygons/import?license=CC-BY-4.0&waiverConfirmed=true&attribution=${encodeURIComponent('© Freie und Hansestadt Hamburg, LGV')}&sourceUrl=${encodeURIComponent('https://geoportal-hamburg.de/opendata')}`,
+        headers: {
+          authorization: `Bearer ${adminUser.sessionToken}`,
+          'content-type': singleImportGeoJson.contentTypeHeader,
+        },
+        payload: singleImportGeoJson.body,
+      });
+      assert.equal(waivedImportRes.statusCode, 200);
+      assert.equal(
+        ImportPolygonsResponseSchema.parse(waivedImportRes.json()).importedCount,
+        1,
+      );
+
+      const exportWithImportsRes = await app.inject({
+        method: 'GET',
+        url: '/api/v1/polygons/export.geojson',
+      });
+      assert.equal(exportWithImportsRes.statusCode, 200);
+      const exportPayload = exportWithImportsRes.json() as { attribution?: string };
+      assert.match(
+        exportPayload.attribution ?? '',
+        /Imported open datasets:.*© Freie und Hansestadt Hamburg, LGV.*CC-BY-4\.0.*https:\/\/geoportal-hamburg\.de\/opendata.*ODbL-1\.0 waiver confirmed/,
+      );
+      assert.match(
+        exportPayload.attribution ?? '',
+        /Full license and source notices:.*\/auth\/licenses/,
+      );
     } finally {
       await app.close();
     }
@@ -881,13 +1038,17 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
       );
       assert.equal(polyWithPhotos.properties.photoCount, 2);
 
-      // 3) Serve stored WebP image & prove 100% EXIF stripping + path-traversal rejection
+      // 3) Serve stored WebP image & prove 100% EXIF stripping, GDPR-safe Cache-Control, + path-traversal rejection
       const servedImgRes = await app.inject({
         method: 'GET',
         url: nearPhoto.url,
       });
       assert.equal(servedImgRes.statusCode, 200);
       assert.equal(servedImgRes.headers['content-type'], 'image/webp');
+      assert.equal(
+        servedImgRes.headers['cache-control'],
+        'public, max-age=3600, must-revalidate',
+      );
       assert.equal(
         servedImgRes.headers.link,
         '<https://creativecommons.org/licenses/by/4.0/>; rel="license"',

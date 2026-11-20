@@ -122,7 +122,6 @@ const UNSEAL_HEADER_LOGO = require('../../assets/header-logo.png') as number;
 
 export function AndroidGlyph({
   color,
-  eyeColor,
   size = 20,
 }: {
   color?: string;
@@ -130,9 +129,7 @@ export function AndroidGlyph({
   size?: number;
 }): React.JSX.Element {
   const { palette } = useTheme();
-  const styles = useMemo(() => createStyles(palette), [palette]);
   const resolvedColor = color ?? palette.accentPrimary;
-  const resolvedEyeColor = eyeColor ?? palette.bgSurface;
 
   if (Platform.OS === 'web') {
     return React.createElement(
@@ -148,67 +145,27 @@ export function AndroidGlyph({
           display: 'block',
         },
       },
-      React.createElement('path', {
-        d: 'M8.5 6.2L6.8 3.4M15.5 6.2L17.2 3.4',
+      React.createElement('rect', {
+        x: '6.5',
+        y: '2.5',
+        width: '11',
+        height: '19',
+        rx: '2.4',
         stroke: resolvedColor,
-        strokeWidth: '1.7',
-        strokeLinecap: 'round',
+        strokeWidth: '1.8',
       }),
       React.createElement('path', {
-        d: 'M6 11C6 7.686 8.686 5 12 5C15.314 5 18 7.686 18 11H6Z',
-        fill: resolvedColor,
+        d: 'M12 7.5V14.5M9.5 12L12 14.5L14.5 12',
+        stroke: resolvedColor,
+        strokeWidth: '1.8',
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
       }),
-      React.createElement('circle', {
-        cx: '9.6',
-        cy: '8.6',
-        r: '1',
-        fill: resolvedEyeColor,
-      }),
-      React.createElement('circle', {
-        cx: '14.4',
-        cy: '8.6',
-        r: '1',
-        fill: resolvedEyeColor,
-      }),
-      React.createElement('rect', {
-        x: '6',
-        y: '12',
-        width: '12',
-        height: '6.8',
-        rx: '1.5',
-        fill: resolvedColor,
-      }),
-      React.createElement('rect', {
-        x: '3.2',
-        y: '12',
-        width: '1.8',
-        height: '5.4',
-        rx: '0.9',
-        fill: resolvedColor,
-      }),
-      React.createElement('rect', {
-        x: '19',
-        y: '12',
-        width: '1.8',
-        height: '5.4',
-        rx: '0.9',
-        fill: resolvedColor,
-      }),
-      React.createElement('rect', {
-        x: '8.5',
-        y: '18.4',
-        width: '2',
-        height: '3.4',
-        rx: '1',
-        fill: resolvedColor,
-      }),
-      React.createElement('rect', {
-        x: '13.5',
-        y: '18.4',
-        width: '2',
-        height: '3.4',
-        rx: '1',
-        fill: resolvedColor,
+      React.createElement('path', {
+        d: 'M10.5 18.2H13.5',
+        stroke: resolvedColor,
+        strokeWidth: '1.8',
+        strokeLinecap: 'round',
       }),
     );
   }
@@ -216,36 +173,33 @@ export function AndroidGlyph({
   return (
     <View
       accessible={false}
-      style={[
-        styles.androidFallbackFrame,
-        { width: size, height: size },
-      ]}
+      style={{
+        width: size,
+        height: size,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
     >
       <View
-        style={[
-          styles.androidFallbackHead,
-          { backgroundColor: resolvedColor },
-        ]}
+        style={{
+          width: Math.round(size * 0.56),
+          height: Math.round(size * 0.84),
+          borderRadius: 3,
+          borderWidth: 1.8,
+          borderColor: resolvedColor,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
       >
         <View
-          style={[
-            styles.androidFallbackEye,
-            { backgroundColor: resolvedEyeColor },
-          ]}
-        />
-        <View
-          style={[
-            styles.androidFallbackEye,
-            { backgroundColor: resolvedEyeColor },
-          ]}
+          style={{
+            width: 2,
+            height: Math.round(size * 0.34),
+            borderRadius: 1,
+            backgroundColor: resolvedColor,
+          }}
         />
       </View>
-      <View
-        style={[
-          styles.androidFallbackBody,
-          { backgroundColor: resolvedColor },
-        ]}
-      />
     </View>
   );
 }
@@ -1213,12 +1167,20 @@ export function MapControlsBar({
                   accessibilityLabel={t.aboutButtonA11y}
                   onPress={onOpenAbout}
                   style={({ pressed }) => [
-                    styles.helpButton,
+                    isCompact ? styles.helpButton : styles.legalNavPill,
                     isCompact ? styles.helpButtonCompact : null,
                     pressed ? styles.buttonPressed : null,
                   ]}
                 >
-                  <Text style={styles.helpButtonLabel}>?</Text>
+                  <Text
+                    style={
+                      isCompact
+                        ? styles.helpButtonLabel
+                        : styles.legalNavPillLabel
+                    }
+                  >
+                    {isCompact ? '?' : t.impressumButtonLabel}
+                  </Text>
                 </Pressable>,
               )
             : null}
@@ -1304,8 +1266,11 @@ export interface NavbarOverflowMenuProps {
   visible: boolean;
   controls: MapControlsModel;
   exportGeoJsonUrl: string;
+  impressumUrl?: string | undefined;
+  privacyPolicyUrl?: string | undefined;
   isImporting?: boolean;
   onClose: () => void;
+  onOpenAbout?: () => void;
   onOpenStats?: () => void;
   onOpenInstallApp?: () => void;
   onOpenBugReport?: () => void;
@@ -1313,12 +1278,28 @@ export interface NavbarOverflowMenuProps {
   onExportError: (message: string) => void;
 }
 
+function openLegalExternalUrl(url: string): void {
+  if (Platform.OS === 'web') {
+    const scope = globalThis as {
+      window?: { open?: (u: string, target?: string, features?: string) => void };
+    };
+    if (typeof scope.window?.open === 'function') {
+      scope.window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+  }
+  void Linking.openURL(url);
+}
+
 export function NavbarOverflowMenu({
   visible,
   controls,
   exportGeoJsonUrl,
+  impressumUrl,
+  privacyPolicyUrl,
   isImporting = false,
   onClose,
+  onOpenAbout,
   onOpenStats,
   onOpenInstallApp,
   onOpenBugReport,
@@ -1491,6 +1472,63 @@ export function NavbarOverflowMenu({
             >
               <BugGlyph color={palette.inkSecondary} size={18} />
               <Text style={styles.menuItemLabel}>{t.bugReportButtonTooltip}</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+
+      {onOpenAbout || impressumUrl || privacyPolicyUrl ? (
+        <View style={styles.menuSection}>
+          <Text style={styles.menuSectionLabel}>{t.menuSectionLegal}</Text>
+          {onOpenAbout ? (
+            <Pressable
+              testID="overflow-about-legal-button"
+              accessibilityRole="menuitem"
+              accessibilityLabel={t.legalAboutItem}
+              onPress={() => {
+                onClose();
+                onOpenAbout();
+              }}
+              style={({ pressed }) => [
+                styles.menuItemRow,
+                pressed ? styles.menuItemPressed : null,
+              ]}
+            >
+              <Text style={styles.menuItemLabel}>{t.legalAboutItem}</Text>
+            </Pressable>
+          ) : null}
+          {impressumUrl ? (
+            <Pressable
+              testID="overflow-impressum-link"
+              accessibilityRole="link"
+              accessibilityLabel={t.impressumItem}
+              onPress={() => {
+                onClose();
+                openLegalExternalUrl(impressumUrl);
+              }}
+              style={({ pressed }) => [
+                styles.menuItemRow,
+                pressed ? styles.menuItemPressed : null,
+              ]}
+            >
+              <Text style={styles.menuItemLabel}>{t.impressumItem}</Text>
+            </Pressable>
+          ) : null}
+          {privacyPolicyUrl ? (
+            <Pressable
+              testID="overflow-privacy-link"
+              accessibilityRole="link"
+              accessibilityLabel={t.privacyItem}
+              onPress={() => {
+                onClose();
+                openLegalExternalUrl(privacyPolicyUrl);
+              }}
+              style={({ pressed }) => [
+                styles.menuItemRow,
+                pressed ? styles.menuItemPressed : null,
+              ]}
+            >
+              <Text style={styles.menuItemLabel}>{t.privacyItem}</Text>
             </Pressable>
           ) : null}
         </View>
@@ -2257,6 +2295,23 @@ function createStyles(PALETTE: ThemePalette) {
   helpButtonLabel: {
     fontSize: 14,
     fontWeight: '800',
+    color: PALETTE.inkPrimary,
+  },
+  legalNavPill: {
+    minHeight: MIN_TOUCH_TARGET_DP,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    borderRadius: RADII.pill,
+    borderWidth: 1,
+    borderColor: PALETTE.borderStrong,
+    backgroundColor: PALETTE.bgSurface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  legalNavPillLabel: {
+    fontSize: 12,
+    fontWeight: '700',
     color: PALETTE.inkPrimary,
   },
   localePill: {

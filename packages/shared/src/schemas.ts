@@ -6,6 +6,8 @@ import { z } from 'zod';
 import {
   AUTH_LIMITS,
   COMMENT_LIMITS,
+  CONTENT_REPORT_REASONS,
+  CONTENT_REPORT_TARGET_TYPES,
   GEOMETRY_LIMITS,
   MUNICIPALITY_NORMS,
   POLYGON_AUTHOR_FILTERS,
@@ -914,6 +916,48 @@ export const CreateBugReportResponseSchema = z.object({
 });
 
 export type CreateBugReportResponse = z.infer<typeof CreateBugReportResponseSchema>;
+
+export const CreateContentReportRequestSchema = z
+  .object({
+    targetType: z.enum(CONTENT_REPORT_TARGET_TYPES),
+    targetId: z.string().uuid('Target ID must be a valid UUID.'),
+    reason: z.enum(CONTENT_REPORT_REASONS),
+    explanation: z
+      .string()
+      .trim()
+      .min(10, 'Explanation must be at least 10 characters.')
+      .max(4000, 'Explanation must not exceed 4000 characters.'),
+    reporterName: z.preprocess(
+      (val) => (typeof val === 'string' && val.trim() === '' ? null : val),
+      z.string().trim().max(120).nullable().optional(),
+    ),
+    reporterEmail: z.preprocess(
+      (val) => (typeof val === 'string' && val.trim() === '' ? null : val),
+      EmailSchema.nullable().optional(),
+    ),
+    goodFaithConfirmed: z.literal(true, {
+      errorMap: () => ({
+        message:
+          'Good-faith accuracy confirmation (Art. 16(2)(d) DSA) is required.',
+      }),
+    }),
+    pageUrl: z.string().trim().max(500).nullable().optional(),
+  })
+  .strict();
+
+export type CreateContentReportRequest = z.input<
+  typeof CreateContentReportRequestSchema
+>;
+
+export const CreateContentReportResponseSchema = z.object({
+  status: z.literal('received'),
+  reportId: z.string().uuid(),
+  receiptSent: z.boolean(),
+});
+
+export type CreateContentReportResponse = z.infer<
+  typeof CreateContentReportResponseSchema
+>;
 
 export const SurfaceStatItemSchema = z.object({
   count: z.number().int().nonnegative(),
