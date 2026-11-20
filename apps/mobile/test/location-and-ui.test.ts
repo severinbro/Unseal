@@ -2020,25 +2020,35 @@ describe('Responsive layout edge cases (narrow phones & short landscape)', () =>
     assert.equal(standardPhone.modalMaxWidth, 370);
   });
 
-  it('collapses secondary navbar controls into the overflow menu on narrow compact viewports', () => {
+  it('keeps ? info and language switch in the navbar on standard phones while collapsing theme toggle below 520px and locale only below 360px', () => {
     const phone320 = deriveNavbarLayoutMode('compact', 320);
-    assert.equal(phone320.collapseSecondaryNavToMenu, true);
+    assert.equal(phone320.collapseThemeToMenu, true);
+    assert.equal(phone320.collapseLocaleToMenu, true);
     assert.equal(phone320.isSingleHeaderRow, true);
 
+    const phone360 = deriveNavbarLayoutMode('compact', 360);
+    assert.equal(phone360.collapseThemeToMenu, true);
+    assert.equal(phone360.collapseLocaleToMenu, false);
+
     const phone390 = deriveNavbarLayoutMode('compact', 390);
-    assert.equal(phone390.collapseSecondaryNavToMenu, true);
+    assert.equal(phone390.collapseThemeToMenu, true);
+    assert.equal(phone390.collapseLocaleToMenu, false);
 
     const compactUnknownWidth = deriveNavbarLayoutMode('compact');
-    assert.equal(compactUnknownWidth.collapseSecondaryNavToMenu, true);
+    assert.equal(compactUnknownWidth.collapseThemeToMenu, true);
+    assert.equal(compactUnknownWidth.collapseLocaleToMenu, false);
 
     const compactLandscape = deriveNavbarLayoutMode('compact', 640);
-    assert.equal(compactLandscape.collapseSecondaryNavToMenu, false);
+    assert.equal(compactLandscape.collapseThemeToMenu, false);
+    assert.equal(compactLandscape.collapseLocaleToMenu, false);
     assert.equal(compactLandscape.isSingleHeaderRow, true);
 
     const tablet = deriveNavbarLayoutMode('medium', 768);
-    assert.equal(tablet.collapseSecondaryNavToMenu, false);
+    assert.equal(tablet.collapseThemeToMenu, false);
+    assert.equal(tablet.collapseLocaleToMenu, false);
 
     const desktop = deriveNavbarLayoutMode('expanded', 1440);
-    assert.equal(desktop.collapseSecondaryNavToMenu, false);
+    assert.equal(desktop.collapseThemeToMenu, false);
+    assert.equal(desktop.collapseLocaleToMenu, false);
   });
 });

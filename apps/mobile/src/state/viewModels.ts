@@ -532,12 +532,18 @@ export interface NavbarLayoutMode {
   readonly showProposeFab: boolean;
   readonly useCompactCountBadge: boolean;
   readonly constrainAccountChipWidth: boolean;
-  readonly collapseSecondaryNavToMenu: boolean;
+  readonly collapseThemeToMenu: boolean;
+  readonly collapseLocaleToMenu: boolean;
 }
 
 /**
  * Derives responsive single-row navbar rules for `MapControlsBar` + floating
  * map overlays across phone (<768 px), tablet (768–1099 px), and wide (>=1100 px).
+ *
+ * The `?` info button stays in the top navbar on every viewport. The `DE | EN`
+ * language switch sits beside it on all standard phones (>=360 px) and larger
+ * screens, collapsing into the overflow menu only on ultra-narrow (<360 px)
+ * devices; the theme toggle collapses into the overflow menu below 520 px.
  */
 export function deriveNavbarLayoutMode(
   tier: ViewportTier,
@@ -557,7 +563,8 @@ export function deriveNavbarLayoutMode(
       showProposeFab: true,
       useCompactCountBadge: true,
       constrainAccountChipWidth: true,
-      collapseSecondaryNavToMenu: !hasKnownWidth || viewportWidth < 520,
+      collapseThemeToMenu: !hasKnownWidth || viewportWidth < 520,
+      collapseLocaleToMenu: hasKnownWidth && viewportWidth < 360,
     };
   }
 
@@ -568,6 +575,7 @@ export function deriveNavbarLayoutMode(
     showProposeFab: true,
     useCompactCountBadge: hasKnownWidth && viewportWidth < 920,
     constrainAccountChipWidth: hasKnownWidth && viewportWidth < 1100,
-    collapseSecondaryNavToMenu: false,
+    collapseThemeToMenu: false,
+    collapseLocaleToMenu: false,
   };
 }

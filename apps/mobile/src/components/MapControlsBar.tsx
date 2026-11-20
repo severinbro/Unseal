@@ -861,11 +861,13 @@ function ParcelUnsealMark({
 function LocaleTogglePill({
   locale,
   compact,
+  narrow = false,
   accessibilityLabel,
   onPress,
 }: {
   locale: Locale;
   compact: boolean;
+  narrow?: boolean;
   accessibilityLabel: string;
   onPress?: () => void;
 }): React.JSX.Element {
@@ -873,27 +875,39 @@ function LocaleTogglePill({
   const styles = useMemo(() => createStyles(palette), [palette]);
   return (
     <Pressable
+      testID="locale-toggle-button"
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
+      hitSlop={compact ? { top: 4, bottom: 4, left: 2, right: 2 } : undefined}
       onPress={onPress}
       style={({ pressed }) => [
         styles.localePill,
         compact ? styles.localePillCompact : null,
+        narrow ? styles.localePillNarrow : null,
         pressed ? styles.buttonPressed : null,
       ]}
     >
       <Text
         style={[
           styles.localeCodeLabel,
+          narrow ? styles.localeCodeLabelNarrow : null,
           locale === 'de' ? styles.localeCodeActive : styles.localeCodeInactive,
         ]}
       >
         DE
       </Text>
-      <Text style={styles.localeDivider}>|</Text>
+      <Text
+        style={[
+          styles.localeDivider,
+          narrow ? styles.localeCodeLabelNarrow : null,
+        ]}
+      >
+        |
+      </Text>
       <Text
         style={[
           styles.localeCodeLabel,
+          narrow ? styles.localeCodeLabelNarrow : null,
           locale === 'en' ? styles.localeCodeActive : styles.localeCodeInactive,
         ]}
       >
@@ -1066,7 +1080,10 @@ export function MapControlsBar({
   const styles = useMemo(() => createStyles(palette), [palette]);
   const navbarLayout = deriveNavbarLayoutMode(tier, viewportWidth);
   const isCompact = navbarLayout.isCompact;
-  const collapseSecondary = navbarLayout.collapseSecondaryNavToMenu;
+  const collapseTheme = navbarLayout.collapseThemeToMenu;
+  const collapseLocale = navbarLayout.collapseLocaleToMenu;
+  const isNarrowPhone =
+    viewportWidth !== undefined && Number.isFinite(viewportWidth) && viewportWidth < 390;
   const isVeryNarrow =
     viewportWidth !== undefined && Number.isFinite(viewportWidth) && viewportWidth < 360;
   const locale = controls.locale;
@@ -1083,12 +1100,14 @@ export function MapControlsBar({
       style={[
         styles.barShell,
         isCompact ? styles.barShellCompact : null,
+        isCompact && isNarrowPhone ? styles.barShellNarrowPhone : null,
       ]}
     >
       <View
         style={[
           styles.navbarSingleRow,
           isCompact ? styles.navbarSingleRowCompact : null,
+          isCompact && isNarrowPhone ? styles.navbarSingleRowNarrowPhone : null,
         ]}
       >
         <View
@@ -1111,10 +1130,10 @@ export function MapControlsBar({
                   style: {
                     margin: 0,
                     padding: 0,
-                    fontSize: isVeryNarrow
-                      ? '15px'
+                    fontSize: isNarrowPhone
+                      ? '14.5px'
                       : isCompact
-                        ? '16px'
+                        ? '15.5px'
                         : '18px',
                     fontWeight: 700,
                     letterSpacing: '-0.35px',
@@ -1138,10 +1157,10 @@ export function MapControlsBar({
                 numberOfLines={1}
                 ellipsizeMode="tail"
                 style={[
-                styles.title,
-                isCompact ? styles.titleCompact : null,
-                isVeryNarrow ? styles.titleVeryNarrow : null,
-              ]}
+                  styles.title,
+                  isCompact ? styles.titleCompact : null,
+                  isNarrowPhone ? styles.titleVeryNarrow : null,
+                ]}
               >
                 {appName}
               </Text>
@@ -1198,9 +1217,10 @@ export function MapControlsBar({
           style={[
             styles.rightHeaderCluster,
             isCompact ? styles.rightHeaderClusterCompact : null,
+            isCompact && isNarrowPhone ? styles.rightHeaderClusterNarrowPhone : null,
           ]}
         >
-          {!collapseSecondary && onToggleTheme
+          {!collapseTheme && onToggleTheme
             ? withWebTooltip(
                 isDark ? t.lightModeTooltip : t.darkModeTooltip,
                 <Pressable
@@ -1210,10 +1230,12 @@ export function MapControlsBar({
                     isDark ? t.switchToLightModeA11y : t.switchToDarkModeA11y
                   }
                   accessibilityState={{ selected: isDark }}
+                  hitSlop={isCompact ? { top: 4, bottom: 4, left: 3, right: 3 } : undefined}
                   onPress={onToggleTheme}
                   style={({ pressed }) => [
                     styles.helpButton,
                     isCompact ? styles.helpButtonCompact : null,
+                    isCompact && isNarrowPhone ? styles.helpButtonNarrowPhone : null,
                     pressed ? styles.buttonPressed : null,
                   ]}
                 >
@@ -1226,39 +1248,34 @@ export function MapControlsBar({
               )
             : null}
 
-          {!collapseSecondary && onOpenAbout
+          {onOpenAbout
             ? withWebTooltip(
                 t.aboutButtonTooltip,
                 <Pressable
                   testID="about-modal-button"
                   accessibilityRole="button"
                   accessibilityLabel={t.aboutButtonA11y}
+                  hitSlop={isCompact ? { top: 4, bottom: 4, left: 3, right: 3 } : undefined}
                   onPress={onOpenAbout}
                   style={({ pressed }) => [
-                    isCompact ? styles.helpButton : styles.legalNavPill,
+                    styles.helpButton,
                     isCompact ? styles.helpButtonCompact : null,
+                    isCompact && isNarrowPhone ? styles.helpButtonNarrowPhone : null,
                     pressed ? styles.buttonPressed : null,
                   ]}
                 >
-                  <Text
-                    style={
-                      isCompact
-                        ? styles.helpButtonLabel
-                        : styles.legalNavPillLabel
-                    }
-                  >
-                    {isCompact ? '?' : t.impressumButtonLabel}
-                  </Text>
+                  <Text style={styles.helpButtonLabel}>?</Text>
                 </Pressable>,
               )
             : null}
 
-          {!collapseSecondary
+          {!collapseLocale
             ? withWebTooltip(
                 t.switchLocaleA11y,
                 <LocaleTogglePill
                   locale={locale}
                   compact={isCompact}
+                  narrow={isCompact && isNarrowPhone}
                   accessibilityLabel={t.switchLocaleA11y}
                   {...(onToggleLocale ? { onPress: onToggleLocale } : {})}
                 />,
@@ -1268,14 +1285,13 @@ export function MapControlsBar({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={accountButtonA11y}
+            hitSlop={isCompact ? { top: 4, bottom: 4, left: 2, right: 2 } : undefined}
             onPress={onOpenAccount}
             style={({ pressed }) => [
               styles.accountChip,
               isCompact ? styles.accountChipCompact : null,
+              isCompact && isNarrowPhone ? styles.accountChipNarrowPhone : null,
               isCompact && isVeryNarrow ? styles.accountChipVeryNarrow : null,
-              isCompact && !isVeryNarrow && collapseSecondary
-                ? styles.accountChipPhoneSpacious
-                : null,
               navbarLayout.constrainAccountChipWidth && !isCompact
                 ? styles.accountChipMediumHeader
                 : null,
@@ -1297,6 +1313,7 @@ export function MapControlsBar({
               style={[
                 styles.accountChipLabel,
                 isCompact ? styles.accountChipLabelCompact : null,
+                isCompact && isNarrowPhone ? styles.accountChipLabelNarrowPhone : null,
                 controls.isAuthenticated ? styles.accountChipLabelActive : null,
               ]}
             >
@@ -1315,10 +1332,12 @@ export function MapControlsBar({
                     expanded: moreMenuOpen,
                     selected: moreMenuOpen,
                   }}
+                  hitSlop={isCompact ? { top: 4, bottom: 4, left: 3, right: 3 } : undefined}
                   onPress={onToggleMoreMenu}
                   style={({ pressed }) => [
                     styles.helpButton,
                     isCompact ? styles.helpButtonCompact : null,
+                    isCompact && isNarrowPhone ? styles.helpButtonNarrowPhone : null,
                     moreMenuOpen ? styles.helpButtonActive : null,
                     pressed ? styles.buttonPressed : null,
                   ]}
@@ -1343,12 +1362,12 @@ export interface NavbarOverflowMenuProps {
   impressumUrl?: string | undefined;
   privacyPolicyUrl?: string | undefined;
   isImporting?: boolean;
-  showAppearanceSection?: boolean;
+  showThemeToggle?: boolean;
+  showLocaleToggle?: boolean;
   maxHeight?: number | undefined;
   onClose: () => void;
   onToggleTheme?: () => void;
   onToggleLocale?: () => void;
-  onOpenAbout?: () => void;
   onOpenStats?: () => void;
   onOpenInstallApp?: () => void;
   onOpenBugReport?: () => void;
@@ -1376,12 +1395,12 @@ export function NavbarOverflowMenu({
   impressumUrl,
   privacyPolicyUrl,
   isImporting = false,
-  showAppearanceSection = false,
+  showThemeToggle = false,
+  showLocaleToggle = false,
   maxHeight,
   onClose,
   onToggleTheme,
   onToggleLocale,
-  onOpenAbout,
   onOpenStats,
   onOpenInstallApp,
   onOpenBugReport,
@@ -1455,10 +1474,11 @@ export function NavbarOverflowMenu({
         }
         contentContainerStyle={styles.overflowMenuScrollContent}
       >
-        {showAppearanceSection && (onToggleTheme || onToggleLocale) ? (
+        {(showThemeToggle && onToggleTheme) ||
+        (showLocaleToggle && onToggleLocale) ? (
           <View style={styles.menuSection}>
             <Text style={styles.menuSectionLabel}>{t.menuSectionAppearance}</Text>
-            {onToggleTheme ? (
+            {showThemeToggle && onToggleTheme ? (
               <Pressable
                 testID="overflow-theme-toggle-button"
                 accessibilityRole="menuitem"
@@ -1482,7 +1502,7 @@ export function NavbarOverflowMenu({
                 </Text>
               </Pressable>
             ) : null}
-            {onToggleLocale ? (
+            {showLocaleToggle && onToggleLocale ? (
               <Pressable
                 testID="overflow-locale-toggle-button"
                 accessibilityRole="menuitem"
@@ -1638,26 +1658,9 @@ export function NavbarOverflowMenu({
         </View>
       ) : null}
 
-      {onOpenAbout || impressumUrl || privacyPolicyUrl ? (
+      {impressumUrl || privacyPolicyUrl ? (
         <View style={styles.menuSection}>
           <Text style={styles.menuSectionLabel}>{t.menuSectionLegal}</Text>
-          {onOpenAbout ? (
-            <Pressable
-              testID="overflow-about-legal-button"
-              accessibilityRole="menuitem"
-              accessibilityLabel={t.legalAboutItem}
-              onPress={() => {
-                onClose();
-                onOpenAbout();
-              }}
-              style={({ pressed }) => [
-                styles.menuItemRow,
-                pressed ? styles.menuItemPressed : null,
-              ]}
-            >
-              <Text style={styles.menuItemLabel}>{t.legalAboutItem}</Text>
-            </Pressable>
-          ) : null}
           {impressumUrl ? (
             <Pressable
               testID="overflow-impressum-link"
@@ -2085,6 +2088,9 @@ function createStyles(PALETTE: ThemePalette) {
     paddingHorizontal: 8,
     paddingVertical: 5,
   },
+  barShellNarrowPhone: {
+    paddingHorizontal: 6,
+  },
   navbarSingleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2093,7 +2099,10 @@ function createStyles(PALETTE: ThemePalette) {
     minHeight: 44,
   },
   navbarSingleRowCompact: {
-    gap: 6,
+    gap: 5,
+  },
+  navbarSingleRowNarrowPhone: {
+    gap: 4,
   },
   searchSlotWrapper: {
     flex: 1,
@@ -2347,6 +2356,9 @@ function createStyles(PALETTE: ThemePalette) {
     gap: 4,
     flexShrink: 0,
   },
+  rightHeaderClusterNarrowPhone: {
+    gap: 3,
+  },
   brandGroup: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2355,7 +2367,7 @@ function createStyles(PALETTE: ThemePalette) {
     minWidth: 0,
   },
   brandGroupCompact: {
-    gap: 6,
+    gap: 5,
     flex: 1,
     flexShrink: 1,
     minWidth: 0,
@@ -2395,6 +2407,7 @@ function createStyles(PALETTE: ThemePalette) {
   },
   titleInlineRowCompact: {
     flex: 1,
+    gap: 4,
   },
   title: {
     fontSize: 18,
@@ -2405,11 +2418,11 @@ function createStyles(PALETTE: ThemePalette) {
     minWidth: 0,
   },
   titleCompact: {
-    fontSize: 16,
+    fontSize: 15.5,
     letterSpacing: -0.35,
   },
   titleVeryNarrow: {
-    fontSize: 15,
+    fontSize: 14.5,
   },
   countBadge: {
     flexDirection: 'row',
@@ -2462,8 +2475,16 @@ function createStyles(PALETTE: ThemePalette) {
     flexShrink: 0,
   },
   helpButtonCompact: {
-    minWidth: 38,
-    paddingHorizontal: 7,
+    minHeight: 36,
+    minWidth: 36,
+    paddingHorizontal: 6,
+    paddingVertical: 5,
+  },
+  helpButtonNarrowPhone: {
+    minHeight: 35,
+    minWidth: 35,
+    paddingHorizontal: 5,
+    paddingVertical: 5,
   },
   helpButtonActive: {
     backgroundColor: PALETTE.bgTinted,
@@ -2472,23 +2493,6 @@ function createStyles(PALETTE: ThemePalette) {
   helpButtonLabel: {
     fontSize: 14,
     fontWeight: '800',
-    color: PALETTE.inkPrimary,
-  },
-  legalNavPill: {
-    minHeight: MIN_TOUCH_TARGET_DP,
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-    borderRadius: RADII.pill,
-    borderWidth: 1,
-    borderColor: PALETTE.borderStrong,
-    backgroundColor: PALETTE.bgSurface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  legalNavPillLabel: {
-    fontSize: 12,
-    fontWeight: '700',
     color: PALETTE.inkPrimary,
   },
   localePill: {
@@ -2507,12 +2511,26 @@ function createStyles(PALETTE: ThemePalette) {
     flexShrink: 0,
   },
   localePillCompact: {
+    minHeight: 36,
+    minWidth: 42,
     paddingHorizontal: 6,
+    paddingVertical: 5,
     gap: 2,
+  },
+  localePillNarrow: {
+    minHeight: 35,
+    minWidth: 38,
+    paddingHorizontal: 4,
+    paddingVertical: 5,
+    gap: 1.5,
   },
   localeCodeLabel: {
     fontSize: 11,
     letterSpacing: 0.2,
+  },
+  localeCodeLabelNarrow: {
+    fontSize: 10.5,
+    letterSpacing: 0.1,
   },
   localeCodeActive: {
     fontWeight: '800',
@@ -2544,16 +2562,22 @@ function createStyles(PALETTE: ThemePalette) {
     flexShrink: 1,
   },
   accountChipCompact: {
+    minHeight: 36,
     paddingHorizontal: 8,
+    paddingVertical: 5,
     gap: 4,
     maxWidth: 104,
   },
-  accountChipVeryNarrow: {
-    paddingHorizontal: 7,
-    maxWidth: 88,
+  accountChipNarrowPhone: {
+    minHeight: 35,
+    paddingHorizontal: 6,
+    paddingVertical: 5,
+    gap: 3,
+    maxWidth: 94,
   },
-  accountChipPhoneSpacious: {
-    maxWidth: 132,
+  accountChipVeryNarrow: {
+    paddingHorizontal: 6,
+    maxWidth: 88,
   },
   accountChipMediumHeader: {
     paddingHorizontal: 10,
@@ -2585,6 +2609,9 @@ function createStyles(PALETTE: ThemePalette) {
   },
   accountChipLabelCompact: {
     fontSize: 11.5,
+  },
+  accountChipLabelNarrowPhone: {
+    fontSize: 11,
   },
   accountChipLabelActive: {
     color: PALETTE.positiveText,

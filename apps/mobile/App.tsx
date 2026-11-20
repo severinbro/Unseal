@@ -2118,7 +2118,8 @@ export function App(props: AppProps = {}): React.JSX.Element {
               impressumUrl={impressumUrl}
               privacyPolicyUrl={privacyPolicyUrl}
               isImporting={isImporting}
-              showAppearanceSection={navbarLayout.collapseSecondaryNavToMenu}
+              showThemeToggle={navbarLayout.collapseThemeToMenu}
+              showLocaleToggle={navbarLayout.collapseLocaleToMenu}
               maxHeight={Math.max(
                 160,
                 layout.height - (layout.isCompact ? 68 : 74),
@@ -2126,7 +2127,6 @@ export function App(props: AppProps = {}): React.JSX.Element {
               onClose={() => setMoreMenuOpen(false)}
               onToggleTheme={handleToggleTheme}
               onToggleLocale={handleToggleLocale}
-              onOpenAbout={() => setAboutModalOpen(true)}
               onOpenStats={() => {
                 setLayersPopoverOpen(false);
                 setStatsModalTab('community');

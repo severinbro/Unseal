@@ -118,10 +118,8 @@ export interface TranslationDictionary {
     readonly menuSectionData: string;
     readonly menuSectionHelp: string;
     readonly menuSectionLegal: string;
-    readonly legalAboutItem: string;
     readonly impressumItem: string;
     readonly privacyItem: string;
-    readonly impressumButtonLabel: string;
     readonly layersButtonA11y: string;
     readonly layersButtonTooltip: string;
     readonly layersPopoverTitle: string;
@@ -708,11 +706,9 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       menuSectionAppearance: 'Darstellung',
       menuSectionData: 'Daten',
       menuSectionHelp: 'App & Hilfe',
-      menuSectionLegal: 'Rechtliches & Info',
-      legalAboutItem: 'Info, Impressum & Datenschutz',
+      menuSectionLegal: 'Rechtliches',
       impressumItem: 'Impressum (§ 5 DDG)',
       privacyItem: 'Datenschutz (DSGVO)',
-      impressumButtonLabel: 'Impressum',
       layersButtonA11y: 'Kartenebenen und Deckkraft öffnen',
       layersButtonTooltip: 'Kartenebenen & Deckkraft',
       layersPopoverTitle: 'Kartenebenen',
@@ -1469,11 +1465,9 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       menuSectionAppearance: 'Appearance',
       menuSectionData: 'Data',
       menuSectionHelp: 'App & Help',
-      menuSectionLegal: 'Legal & Info',
-      legalAboutItem: 'About, Impressum & Privacy',
+      menuSectionLegal: 'Legal',
       impressumItem: 'Impressum (§ 5 DDG)',
       privacyItem: 'Privacy Policy (GDPR)',
-      impressumButtonLabel: 'Impressum',
       layersButtonA11y: 'Open map layers and opacity',
       layersButtonTooltip: 'Map layers & opacity',
       layersPopoverTitle: 'Map Layers',
