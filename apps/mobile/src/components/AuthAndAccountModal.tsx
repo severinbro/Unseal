@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import {
   ApiError,
   AUTH_LIMITS,
   type LoginRequest,
   type RegisterRequest,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Linking,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -834,6 +835,8 @@ export function AuthAndAccountModal({
 function createStyles(PALETTE: ThemePalette) {
   return StyleSheet.create({
   modalCard: {
+    width: '100%',
+    maxWidth: '100%',
     padding: 18,
     borderRadius: RADII.lg,
     backgroundColor: PALETTE.bgSurface,
@@ -842,7 +845,7 @@ function createStyles(PALETTE: ThemePalette) {
     gap: 12,
   },
   modalCardCompact: {
-    padding: 16,
+    padding: 14,
   },
   headerRow: {
     flexDirection: 'row',
@@ -867,6 +870,9 @@ function createStyles(PALETTE: ThemePalette) {
     letterSpacing: -0.25,
     color: PALETTE.inkPrimary,
     flexShrink: 1,
+    ...(Platform.OS === 'web'
+      ? ({ overflowWrap: 'anywhere' } as object)
+      : {}),
   },
   adminBadge: {
     paddingHorizontal: 8,
@@ -941,6 +947,8 @@ function createStyles(PALETTE: ThemePalette) {
   },
   inlineResendButton: {
     alignSelf: 'flex-start',
+    maxWidth: '100%',
+    flexShrink: 1,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: RADII.sm,
@@ -1006,6 +1014,9 @@ function createStyles(PALETTE: ThemePalette) {
     lineHeight: 19,
     color: PALETTE.positiveText,
     fontWeight: '600',
+    ...(Platform.OS === 'web'
+      ? ({ overflowWrap: 'anywhere' } as object)
+      : {}),
   },
   privacyHint: {
     fontSize: 12.5,
@@ -1017,6 +1028,7 @@ function createStyles(PALETTE: ThemePalette) {
   },
   passwordLabelRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
@@ -1104,10 +1116,15 @@ function createStyles(PALETTE: ThemePalette) {
     fontSize: 13,
     fontWeight: '700',
     color: PALETTE.inkPrimary,
+    ...(Platform.OS === 'web'
+      ? ({ overflowWrap: 'anywhere' } as object)
+      : {}),
   },
   touchButton: {
     minHeight: MIN_TOUCH_TARGET_DP,
     minWidth: MIN_TOUCH_TARGET_DP,
+    maxWidth: '100%',
+    flexShrink: 1,
     paddingHorizontal: 14,
     paddingVertical: 11,
     borderRadius: RADII.md,

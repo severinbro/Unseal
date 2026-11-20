@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 /**
- * Entsiegelungskartierung mobile and web root application shell.
+ * OpenUnseal mobile and web root application shell.
  *
  * Workspace configuration, licensing, container packaging, E2E verification,
  * and operator deployment are defined in `README.md`, `package.json`,
@@ -31,7 +31,7 @@ import {
   type PolygonStatus,
   type PublicStatsResponse,
   type RegisterRequest,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 import React, {
   useCallback,
   useEffect,
@@ -57,7 +57,7 @@ import {
   View,
 } from 'react-native';
 
-import { PpgisApiClient } from './src/api/client';
+import { appendHostedPageTheme, PpgisApiClient } from './src/api/client';
 import { saveDataExport } from './src/media/saveDataExport';
 import { AboutModal } from './src/components/AboutModal';
 import { AddressSearchModal } from './src/components/AddressSearchModal';
@@ -130,6 +130,7 @@ import {
   deriveAuthModalModel,
   deriveDrawingToolbarModel,
   deriveMapControlsModel,
+  deriveNavbarLayoutMode,
   MIN_TOUCH_TARGET_DP,
 } from './src/state/viewModels';
 import { platformSessionStorage } from './src/storage/secureStorage';
@@ -1488,21 +1489,42 @@ export function App(props: AppProps = {}): React.JSX.Element {
             <View
               style={[
                 styles.modalDialogWrapper,
-                { maxWidth: Math.max(layout.modalMaxWidth, 520) },
+                {
+                  maxWidth: layout.isCompact
+                    ? layout.modalMaxWidth
+                    : Math.max(layout.modalMaxWidth, 520),
+                },
               ]}
             >
               <ScrollView
                 keyboardShouldPersistTaps="handled"
+                showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.modalScrollContent}
               >
                 <AboutModal
                   visible={aboutModalOpen}
                   locale={state.locale}
                   compact={layout.isCompact}
-                  privacyPolicyUrl={apiClient.getPrivacyPolicyUrl()}
-                  impressumUrl={apiClient.getImpressumUrl()}
-                  termsUrl={apiClient.getTermsUrl()}
-                  licensesUrl={apiClient.getLicensesUrl()}
+                  privacyPolicyUrl={appendHostedPageTheme(
+                    apiClient.getPrivacyPolicyUrl(),
+                    activeColorScheme,
+                    apiClient.getBaseUrl(),
+                  )}
+                  impressumUrl={appendHostedPageTheme(
+                    apiClient.getImpressumUrl(),
+                    activeColorScheme,
+                    apiClient.getBaseUrl(),
+                  )}
+                  termsUrl={appendHostedPageTheme(
+                    apiClient.getTermsUrl(),
+                    activeColorScheme,
+                    apiClient.getBaseUrl(),
+                  )}
+                  licensesUrl={appendHostedPageTheme(
+                    apiClient.getLicensesUrl(),
+                    activeColorScheme,
+                    apiClient.getBaseUrl(),
+                  )}
                   sourceCodeUrl="https://github.com/severinbro/Unseal"
                   apkDownloadUrl={null}
                   abuseContact={null}
@@ -1525,18 +1547,34 @@ export function App(props: AppProps = {}): React.JSX.Element {
     const activeMaxHeight = drawingToolbar.visible
       ? layout.isDocked
         ? Math.max(
-            220,
+            160,
             layout.drawingSheetMaxHeightPx - (hasVisibleBanner ? 148 : 92),
           )
         : layout.drawingSheetMaxHeightPx
       : layout.sheetMaxHeightPx;
+    const navbarLayout = deriveNavbarLayoutMode(layout.tier, layout.width);
 
-    const privacyPolicyUrl =
-      state.config.privacyPolicyUrl ?? apiClient.getPrivacyPolicyUrl();
-    const impressumUrl =
-      state.config.impressumUrl ?? apiClient.getImpressumUrl();
-    const termsUrl = state.config.termsUrl ?? apiClient.getTermsUrl();
-    const licensesUrl = state.config.licensesUrl ?? apiClient.getLicensesUrl();
+    const apiBaseUrl = apiClient.getBaseUrl();
+    const privacyPolicyUrl = appendHostedPageTheme(
+      state.config.privacyPolicyUrl ?? apiClient.getPrivacyPolicyUrl(),
+      activeColorScheme,
+      apiBaseUrl,
+    );
+    const impressumUrl = appendHostedPageTheme(
+      state.config.impressumUrl ?? apiClient.getImpressumUrl(),
+      activeColorScheme,
+      apiBaseUrl,
+    );
+    const termsUrl = appendHostedPageTheme(
+      state.config.termsUrl ?? apiClient.getTermsUrl(),
+      activeColorScheme,
+      apiBaseUrl,
+    );
+    const licensesUrl = appendHostedPageTheme(
+      state.config.licensesUrl ?? apiClient.getLicensesUrl(),
+      activeColorScheme,
+      apiBaseUrl,
+    );
     const sourceCodeUrl = state.config.sourceCodeUrl ?? null;
 
     const latchA11yLabel = drawingToolbar.visible
@@ -1747,10 +1785,11 @@ export function App(props: AppProps = {}): React.JSX.Element {
           />
         </View>
 
-        <TopRightMapControls>
+        <TopRightMapControls horizontal={layout.useHorizontalMapControls}>
           {layout.isCompact ? (
             <SearchMapButton
               locale={state.locale}
+              compactSize={layout.isShortViewport}
               onPress={() => {
                 setMoreMenuOpen(false);
                 setLayersPopoverOpen(false);
@@ -1763,6 +1802,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
             locale={state.locale}
             active={mapControls.basemapMode === 'orthophoto'}
             expanded={layersPopoverOpen}
+            compactSize={layout.isShortViewport}
             onPress={() => {
               setMoreMenuOpen(false);
               setLayersPopoverOpen((prev) => !prev);
@@ -1772,12 +1812,14 @@ export function App(props: AppProps = {}): React.JSX.Element {
           <GnssMapButton
             locale={state.locale}
             isLocating={isLocating}
+            compactSize={layout.isShortViewport}
             onPress={handleLocateMe}
             positioned={false}
           />
           <NorthArrowButton
             locale={state.locale}
             bearingDeg={mapBearingDeg}
+            compactSize={layout.isShortViewport}
             onPress={handleNorthReset}
             positioned={false}
           />
@@ -1787,6 +1829,9 @@ export function App(props: AppProps = {}): React.JSX.Element {
           pointerEvents="box-none"
           style={[
             styles.floatingTopLeftStack,
+            layout.useHorizontalMapControls
+              ? { right: layout.isCompact ? 218 : 168 }
+              : null,
             layout.isDocked && selectedFeature !== null
               ? { left: layout.dockWidth + 26 }
               : null,
@@ -1825,7 +1870,13 @@ export function App(props: AppProps = {}): React.JSX.Element {
               />
             </View>
           ) : (
-            <View pointerEvents="none" style={styles.legendPill}>
+            <View
+              pointerEvents="none"
+              style={[
+                styles.legendPill,
+                layout.isCompact ? styles.legendPillCompact : null,
+              ]}
+            >
               <View style={styles.legendItem}>
                 <View
                   style={[
@@ -1914,12 +1965,28 @@ export function App(props: AppProps = {}): React.JSX.Element {
             <View
               style={[
                 styles.layersPopoverAnchor,
-                layout.isCompact ? { top: 68 } : null,
+                layout.useHorizontalMapControls
+                  ? {
+                      top: 56,
+                      right: 10,
+                      maxWidth: Math.min(280, layout.width - 20),
+                    }
+                  : layout.isCompact
+                    ? {
+                        top: 68,
+                        right: layout.width < 360 ? 64 : 68,
+                        maxWidth: Math.min(
+                          280,
+                          Math.max(216, layout.width - (layout.width < 360 ? 72 : 78)),
+                        ),
+                      }
+                    : { maxWidth: Math.min(280, layout.width - 80) },
               ]}
             >
               <MapLayersPopover
                 visible={layersPopoverOpen}
                 controls={mapControls}
+                compact={layout.isShortViewport}
                 onSetBasemapMode={(mode) =>
                   dispatch({ type: 'SET_BASEMAP_MODE', mode })
                 }
@@ -2035,6 +2102,13 @@ export function App(props: AppProps = {}): React.JSX.Element {
             style={[
               styles.overflowMenuAnchor,
               layout.isCompact ? styles.overflowMenuAnchorCompact : null,
+              {
+                maxHeight: Math.max(
+                  180,
+                  layout.height - (layout.isCompact ? 68 : 74),
+                ),
+                maxWidth: Math.min(300, layout.width - 16),
+              },
             ]}
           >
             <NavbarOverflowMenu
@@ -2044,7 +2118,14 @@ export function App(props: AppProps = {}): React.JSX.Element {
               impressumUrl={impressumUrl}
               privacyPolicyUrl={privacyPolicyUrl}
               isImporting={isImporting}
+              showAppearanceSection={navbarLayout.collapseSecondaryNavToMenu}
+              maxHeight={Math.max(
+                160,
+                layout.height - (layout.isCompact ? 68 : 74),
+              )}
               onClose={() => setMoreMenuOpen(false)}
+              onToggleTheme={handleToggleTheme}
+              onToggleLocale={handleToggleLocale}
               onOpenAbout={() => setAboutModalOpen(true)}
               onOpenStats={() => {
                 setLayersPopoverOpen(false);
@@ -2076,11 +2157,16 @@ export function App(props: AppProps = {}): React.JSX.Element {
           <View
             style={[
               styles.modalDialogWrapper,
-              { maxWidth: Math.max(layout.modalMaxWidth, 480) },
+              {
+                maxWidth: layout.isCompact
+                  ? layout.modalMaxWidth
+                  : Math.max(layout.modalMaxWidth, 480),
+              },
             ]}
           >
             <ScrollView
               keyboardShouldPersistTaps="handled"
+              showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.modalScrollContent}
             >
               <AddressSearchModal
@@ -2112,11 +2198,16 @@ export function App(props: AppProps = {}): React.JSX.Element {
           <View
             style={[
               styles.modalDialogWrapper,
-              { maxWidth: Math.max(layout.modalMaxWidth, 480) },
+              {
+                maxWidth: layout.isCompact
+                  ? layout.modalMaxWidth
+                  : Math.max(layout.modalMaxWidth, 480),
+              },
             ]}
           >
             <ScrollView
               keyboardShouldPersistTaps="handled"
+              showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.modalScrollContent}
             >
               <BugReportModal
@@ -2149,11 +2240,16 @@ export function App(props: AppProps = {}): React.JSX.Element {
           <View
             style={[
               styles.modalDialogWrapper,
-              { maxWidth: Math.max(layout.modalMaxWidth, 500) },
+              {
+                maxWidth: layout.isCompact
+                  ? layout.modalMaxWidth
+                  : Math.max(layout.modalMaxWidth, 500),
+              },
             ]}
           >
             <ScrollView
               keyboardShouldPersistTaps="handled"
+              showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.modalScrollContent}
             >
               <ContentReportModal
@@ -2185,11 +2281,16 @@ export function App(props: AppProps = {}): React.JSX.Element {
           <View
             style={[
               styles.modalDialogWrapper,
-              { maxWidth: Math.max(layout.modalMaxWidth, 520) },
+              {
+                maxWidth: layout.isCompact
+                  ? layout.modalMaxWidth
+                  : Math.max(layout.modalMaxWidth, 520),
+              },
             ]}
           >
             <ScrollView
               keyboardShouldPersistTaps="handled"
+              showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.modalScrollContent}
             >
               <AboutModal
@@ -2238,11 +2339,16 @@ export function App(props: AppProps = {}): React.JSX.Element {
           <View
             style={[
               styles.modalDialogWrapper,
-              { maxWidth: Math.max(layout.modalMaxWidth, 540) },
+              {
+                maxWidth: layout.isCompact
+                  ? layout.modalMaxWidth
+                  : Math.max(layout.modalMaxWidth, 540),
+              },
             ]}
           >
             <ScrollView
               keyboardShouldPersistTaps="handled"
+              showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.modalScrollContent}
             >
               <StatsModal
@@ -2279,11 +2385,16 @@ export function App(props: AppProps = {}): React.JSX.Element {
           <View
             style={[
               styles.modalDialogWrapper,
-              { maxWidth: Math.max(layout.modalMaxWidth, 520) },
+              {
+                maxWidth: layout.isCompact
+                  ? layout.modalMaxWidth
+                  : Math.max(layout.modalMaxWidth, 520),
+              },
             ]}
           >
             <ScrollView
               keyboardShouldPersistTaps="handled"
+              showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.modalScrollContent}
             >
               <InstallAppModal
@@ -2329,6 +2440,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
           >
             <ScrollView
               keyboardShouldPersistTaps="handled"
+              showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.modalScrollContent}
             >
               <AuthAndAccountModal
@@ -2504,6 +2616,12 @@ function createStyles(PALETTE: ThemePalette, isDark: boolean) {
     borderWidth: 1,
     borderColor: PALETTE.borderSubtle,
   },
+  legendPillCompact: {
+    borderRadius: RADII.lg,
+    gap: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
   proposeFabAnchor: {
     position: 'absolute',
     left: 12,
@@ -2632,6 +2750,7 @@ function createStyles(PALETTE: ThemePalette, isDark: boolean) {
   collapsedSummaryRow: {
     width: '100%',
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
@@ -2708,6 +2827,8 @@ function createStyles(PALETTE: ThemePalette, isDark: boolean) {
   modalDialogWrapper: {
     width: '100%',
     maxHeight: '90%',
+    borderRadius: RADII.sheet,
+    overflow: 'hidden',
     zIndex: 51,
   },
   modalScrollContent: {

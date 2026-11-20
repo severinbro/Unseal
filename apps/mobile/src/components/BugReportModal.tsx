@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -250,6 +250,7 @@ function createStyles(PALETTE: ThemePalette) {
   return StyleSheet.create({
   card: {
     width: '100%',
+    maxWidth: '100%',
     padding: 15,
     borderRadius: RADII.sheet,
     backgroundColor: PALETTE.bgSurface,
@@ -269,6 +270,7 @@ function createStyles(PALETTE: ThemePalette) {
   },
   headerTextGroup: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
   },
   title: {
@@ -285,6 +287,7 @@ function createStyles(PALETTE: ThemePalette) {
   closeButton: {
     minHeight: MIN_TOUCH_TARGET_DP,
     minWidth: MIN_TOUCH_TARGET_DP,
+    flexShrink: 0,
     paddingHorizontal: 11,
     paddingVertical: 7,
     borderRadius: RADII.md,
@@ -301,6 +304,7 @@ function createStyles(PALETTE: ThemePalette) {
   },
   fieldGroup: {
     gap: 5,
+    minWidth: 0,
   },
   fieldLabel: {
     fontSize: 12.5,
@@ -308,6 +312,8 @@ function createStyles(PALETTE: ThemePalette) {
     color: PALETTE.inkPrimary,
   },
   multilineInput: {
+    width: '100%',
+    minWidth: 0,
     minHeight: 104,
     paddingHorizontal: 12,
     paddingVertical: 9,
@@ -320,6 +326,8 @@ function createStyles(PALETTE: ThemePalette) {
     textAlignVertical: 'top',
   },
   singleLineInput: {
+    width: '100%',
+    minWidth: 0,
     minHeight: MIN_TOUCH_TARGET_DP,
     paddingHorizontal: 12,
     paddingVertical: 9,
@@ -362,6 +370,7 @@ function createStyles(PALETTE: ThemePalette) {
   },
   actionRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'flex-end',
     gap: 8,
     marginTop: 2,
@@ -369,6 +378,8 @@ function createStyles(PALETTE: ThemePalette) {
   touchButton: {
     minHeight: MIN_TOUCH_TARGET_DP,
     minWidth: MIN_TOUCH_TARGET_DP,
+    maxWidth: '100%',
+    flexShrink: 1,
     paddingHorizontal: 14,
     paddingVertical: 9,
     borderRadius: RADII.md,
@@ -387,6 +398,8 @@ function createStyles(PALETTE: ThemePalette) {
     fontSize: 13,
     fontWeight: '700',
     color: PALETTE.inkOnAccent,
+    flexShrink: 1,
+    textAlign: 'center',
   },
   disabledButton: {
     opacity: 0.65,

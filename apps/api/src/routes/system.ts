@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import { createReadStream } from 'node:fs';
 
@@ -7,7 +7,7 @@ import {
   ApiError,
   HealthResponseSchema,
   RuntimeConfigSchema,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import {
   findExistingApkInfo,
@@ -156,7 +156,7 @@ export function registerSystemRoutes(
   );
 
   app.get(
-    '/downloads/unseal.apk',
+    '/downloads/openunseal.apk',
     {
       config: {
         compress: false,
@@ -175,7 +175,7 @@ export function registerSystemRoutes(
             .header('Content-Type', 'application/vnd.android.package-archive')
             .header(
               'Content-Disposition',
-              'attachment; filename="unseal.apk"',
+              'attachment; filename="openunseal.apk"',
             )
             .header('Content-Length', String(existing.size))
             .header('ETag', `"sha256-${existing.sha256}"`)

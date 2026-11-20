@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import type { ModerationActionKind } from '../auth/mailer.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
@@ -45,7 +45,7 @@ export async function notifyAuthorOfModerationActionBestEffort(
   try {
     await app.mailer.sendModerationReasonEmail({
       to: params.authorEmail,
-      pseudonym: params.authorPseudonym ?? 'Unseal-Nutzer/in',
+      pseudonym: params.authorPseudonym ?? 'OpenUnseal-Nutzer/in',
       action: params.action,
       targetId: params.targetId,
       reason: params.reason?.trim() || DEFAULT_MODERATION_REASON,

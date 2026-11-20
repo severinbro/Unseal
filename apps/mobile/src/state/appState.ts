@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import {
   ApiError,
@@ -19,7 +19,7 @@ import {
   type RuntimeConfig,
   type SurfaceType,
   type VoteResponse,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import type { UploadableFileInput } from '../api/client';
 import {

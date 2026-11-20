@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
-import type { GeocodeResultItem } from '@entsiegelung/shared';
+import type { GeocodeResultItem } from '@openunseal/shared';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -217,6 +217,7 @@ function createStyles(PALETTE: ThemePalette) {
   return StyleSheet.create({
   card: {
     width: '100%',
+    maxWidth: '100%',
     padding: 15,
     borderRadius: RADII.sheet,
     backgroundColor: PALETTE.bgSurface,
@@ -236,6 +237,7 @@ function createStyles(PALETTE: ThemePalette) {
   },
   headerTextGroup: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
   },
   title: {
@@ -273,6 +275,7 @@ function createStyles(PALETTE: ThemePalette) {
   },
   searchInput: {
     flex: 1,
+    minWidth: 0,
     minHeight: MIN_TOUCH_TARGET_DP,
     paddingHorizontal: 12,
     paddingVertical: 9,
@@ -286,6 +289,7 @@ function createStyles(PALETTE: ThemePalette) {
   touchButton: {
     minHeight: MIN_TOUCH_TARGET_DP,
     minWidth: MIN_TOUCH_TARGET_DP,
+    flexShrink: 0,
     paddingHorizontal: 13,
     paddingVertical: 9,
     borderRadius: RADII.md,

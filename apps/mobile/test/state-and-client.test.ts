@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -19,7 +19,7 @@ import {
   type RuntimeConfig,
   type SessionResponse,
   type VoteResponse,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import {
   encodeUtf8Base64,
@@ -1056,10 +1056,10 @@ describe('appReducer and viewModels v2', () => {
 
   it('handles SESSION_EXPIRED 401 continuation, non-JSON proxy / network errors, and workspace subpath exports', async () => {
     const [clientPkg, statePkg, vmPkg, storagePkg] = await Promise.all([
-      import('@entsiegelung/mobile/client'),
-      import('@entsiegelung/mobile/appState'),
-      import('@entsiegelung/mobile/viewModels'),
-      import('@entsiegelung/mobile/tokenStorage'),
+      import('@openunseal/mobile/client'),
+      import('@openunseal/mobile/appState'),
+      import('@openunseal/mobile/viewModels'),
+      import('@openunseal/mobile/tokenStorage'),
     ]);
     assert.equal(clientPkg.PpgisApiClient, PpgisApiClient);
     assert.equal(statePkg.appReducer, appReducer);
@@ -1117,7 +1117,7 @@ describe('appReducer and viewModels v2', () => {
               bounds: [5.8, 47.2, 15.1, 55.1],
               maxZoom: 20,
             },
-            apkDownloadUrl: '/downloads/unseal.apk',
+            apkDownloadUrl: '/downloads/openunseal.apk',
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         ),
@@ -1129,7 +1129,7 @@ describe('appReducer and viewModels v2', () => {
     );
     assert.equal(
       resolvedCfg.apkDownloadUrl,
-      'https://maps.example.org/downloads/unseal.apk',
+      'https://maps.example.org/downloads/openunseal.apk',
     );
   });
 
@@ -1674,7 +1674,7 @@ describe('appReducer and viewModels v2', () => {
     const mem = createMemorySessionStorage();
     await mem.setToken('tok-export');
     const calls: { method: string; url: string; auth: string | null }[] = [];
-    const exportBody = JSON.stringify({ format: 'unseal-user-data-export', version: 1 });
+    const exportBody = JSON.stringify({ format: 'openunseal-user-data-export', version: 1 });
     const client = new PpgisApiClient('https://maps.example.org', mem, async (input, init) => {
       const headers = new Headers(init?.headers);
       calls.push({

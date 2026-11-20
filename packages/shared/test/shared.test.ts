@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -95,7 +95,7 @@ const VALID_COURTYARD_VERTICES: [number, number][] = [
   [9.9937, 53.551208],
 ];
 
-describe('@entsiegelung/shared bootstrap, licensing, and compiled ESM contract', () => {
+describe('@openunseal/shared bootstrap, licensing, and compiled ESM contract', () => {
   it('ships verbatim AGPL-3.0-or-later and MPL-2.0 LICENSE files, split LICENSING.md notice, and THIRD_PARTY_NOTICES.txt', () => {
     const rootLicense = fs.readFileSync(path.join(repoRoot, 'LICENSE'), 'utf8');
     const mobileLicense = fs.readFileSync(
@@ -130,7 +130,7 @@ describe('@entsiegelung/shared bootstrap, licensing, and compiled ESM contract',
     const citationCff = fs.readFileSync(path.join(repoRoot, 'CITATION.cff'), 'utf8');
     assert.match(citationCff, /AGPL-3\.0-or-later/);
     assert.match(citationCff, /MPL-2\.0/);
-    assert.match(licensingNotice, /Copyright \(C\) 2026 Unseal Contributors/);
+    assert.match(licensingNotice, /Copyright \(C\) 2026 OpenUnseal Contributors/);
     assert.match(licensingNotice, /AGPL-3\.0-or-later/);
     assert.match(licensingNotice, /Section 13/i);
     assert.match(licensingNotice, /MPL-2\.0/);
@@ -1238,7 +1238,7 @@ describe('Review Focus 3: BboxQuerySchema vs checkBboxSpan and remaining wire sc
 
     const mainzHtml = formatDop20WebAttributionHtml(mainzBbox, {
       year: 2026,
-      licensesUrl: 'https://unseal.example.org/auth/licenses',
+      licensesUrl: 'https://openunseal.example.org/auth/licenses',
     });
     assert.match(mainzHtml, /LVermGeoRP/);
     assert.match(mainzHtml, /HVBG/);
@@ -1254,10 +1254,10 @@ describe('Review Focus 3: BboxQuerySchema vs checkBboxSpan and remaining wire sc
     const germanyBbox = [6.0, 47.5, 14.5, 54.8] as const;
     const germanyHtml = formatDop20WebAttributionHtml(germanyBbox, {
       year: 2026,
-      licensesUrl: 'https://unseal.example.org/auth/licenses',
+      licensesUrl: 'https://openunseal.example.org/auth/licenses',
     });
     assert.match(germanyHtml, /DOP20\/DOP10/);
-    assert.match(germanyHtml, /https:\/\/unseal\.example\.org\/auth\/licenses/);
+    assert.match(germanyHtml, /https:\/\/openunseal\.example\.org\/auth\/licenses/);
 
     // Outside Germany -> empty attribution
     const oceanBbox = [-40, 30, -39, 31] as const;
@@ -1278,7 +1278,7 @@ describe('Review Focus 3: BboxQuerySchema vs checkBboxSpan and remaining wire sc
       reporterName: '  Max Mustermann  ',
       reporterEmail: '  max@example.org  ',
       goodFaithConfirmed: true,
-      pageUrl: 'https://unseal.example.org/#p=550e8400-e29b-41d4-a716-446655440001',
+      pageUrl: 'https://openunseal.example.org/#p=550e8400-e29b-41d4-a716-446655440001',
     });
     assert.equal(
       validReport.explanation,
@@ -1328,7 +1328,7 @@ describe('Review Focus 3: BboxQuerySchema vs checkBboxSpan and remaining wire sc
   });
 
   it('validates BrandingConfigSchema, rejects unsafe URLs & invalid hex colors, and preserves RuntimeConfigSchema backwards compatibility', () => {
-    assert.equal(DEFAULT_APP_NAME, 'Unseal');
+    assert.equal(DEFAULT_APP_NAME, 'OpenUnseal');
     assert.deepEqual(WEBHOOK_EVENT_TYPES, [
       'polygon.created',
       'polygon.status_changed',
@@ -1342,7 +1342,7 @@ describe('Review Focus 3: BboxQuerySchema vs checkBboxSpan and remaining wire sc
 
     const defaults = BrandingConfigSchema.parse({});
     assert.deepEqual(defaults, {
-      appName: 'Unseal',
+      appName: 'OpenUnseal',
       subtitleDe: null,
       subtitleEn: null,
       logoUrl: null,

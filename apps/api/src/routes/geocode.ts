@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import {
   ApiError,
@@ -7,7 +7,7 @@ import {
   GeocodeResponseSchema,
   type GeocodeResponse,
   type GeocodeResultItem,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import { normalizeRateLimitIp } from '../util/rateLimit.js';
 
@@ -32,8 +32,8 @@ function buildNominatimUserAgent(
     (part): part is string => typeof part === 'string' && part.length > 0,
   );
   return details.length > 0
-    ? `Unseal-PPGIS/0.2 (${details.join('; ')})`
-    : 'Unseal-PPGIS/0.2';
+    ? `OpenUnseal-PPGIS/0.2 (${details.join('; ')})`
+    : 'OpenUnseal-PPGIS/0.2';
 }
 
 interface NominatimRawItem {

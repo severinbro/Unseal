@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import React, { useMemo } from 'react';
 import {
@@ -168,6 +168,7 @@ function createStyles(PALETTE: ThemePalette) {
   return StyleSheet.create({
   card: {
     width: '100%',
+    maxWidth: '100%',
     padding: 15,
     borderRadius: RADII.sheet,
     backgroundColor: PALETTE.bgSurface,
@@ -187,6 +188,7 @@ function createStyles(PALETTE: ThemePalette) {
   },
   headerTextGroup: {
     flex: 1,
+    minWidth: 0,
     gap: 3,
   },
   title: {
@@ -224,6 +226,7 @@ function createStyles(PALETTE: ThemePalette) {
     backgroundColor: PALETTE.bgSubtle,
     borderWidth: 1,
     borderColor: PALETTE.borderSubtle,
+    minWidth: 0,
     gap: 6,
   },
   sectionTitle: {
@@ -238,6 +241,7 @@ function createStyles(PALETTE: ThemePalette) {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 6,
+    minWidth: 0,
   },
   stepNumber: {
     fontSize: 12,
@@ -248,6 +252,7 @@ function createStyles(PALETTE: ThemePalette) {
   },
   stepText: {
     flex: 1,
+    minWidth: 0,
     fontSize: 12,
     lineHeight: 16.5,
     color: PALETTE.inkSecondary,
@@ -262,6 +267,10 @@ function createStyles(PALETTE: ThemePalette) {
     lineHeight: 15,
     fontFamily: Platform.OS === 'web' ? 'monospace' : 'Courier',
     color: PALETTE.inkMuted,
+    flexShrink: 1,
+    ...(Platform.OS === 'web'
+      ? ({ wordBreak: 'break-all', overflowWrap: 'anywhere' } as object)
+      : {}),
   },
   actionRow: {
     flexDirection: 'row',
@@ -272,6 +281,8 @@ function createStyles(PALETTE: ThemePalette) {
   touchButton: {
     minHeight: MIN_TOUCH_TARGET_DP,
     minWidth: MIN_TOUCH_TARGET_DP,
+    maxWidth: '100%',
+    flexShrink: 1,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: RADII.md,
@@ -294,6 +305,8 @@ function createStyles(PALETTE: ThemePalette) {
     fontSize: 12.5,
     fontWeight: '700',
     color: PALETTE.inkOnAccent,
+    flexShrink: 1,
+    textAlign: 'center',
   },
   buttonPressed: {
     backgroundColor: PALETTE.bgRecessed,

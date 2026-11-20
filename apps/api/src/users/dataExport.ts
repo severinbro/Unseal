@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
-import { ApiError } from '@entsiegelung/shared';
+import { ApiError } from '@openunseal/shared';
 
 import type pg from 'pg';
 
@@ -15,7 +15,7 @@ import type pg from 'pg';
  * transparent about their existence.
  */
 export interface UserDataExport {
-  format: 'unseal-user-data-export';
+  format: 'openunseal-user-data-export';
   version: 1;
   exportedAt: string;
   account: {
@@ -264,7 +264,7 @@ export async function collectUserData(
   ]);
 
   return {
-    format: 'unseal-user-data-export',
+    format: 'openunseal-user-data-export',
     version: 1,
     exportedAt: new Date().toISOString(),
     account: {

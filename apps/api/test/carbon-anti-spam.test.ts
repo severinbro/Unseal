@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -20,7 +20,7 @@ import {
   RegisterResponseSchema,
   SessionResponseSchema,
   type PolygonFeature,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import {
   buildApp,

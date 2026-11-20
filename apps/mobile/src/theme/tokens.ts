@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import type { TextStyle } from 'react-native';
-import type { BrandingConfig, SurfaceType } from '@entsiegelung/shared';
+import type { BrandingConfig, SurfaceType } from '@openunseal/shared';
 
 export type ViewportTier = 'compact' | 'medium' | 'expanded';
 export type ColorScheme = 'light' | 'dark';
@@ -28,6 +28,8 @@ export interface ResponsiveLayout {
   readonly tier: ViewportTier;
   readonly isCompact: boolean;
   readonly isDocked: boolean;
+  readonly isShortViewport: boolean;
+  readonly useHorizontalMapControls: boolean;
   readonly dockWidth: number;
   readonly modalMaxWidth: number;
   readonly sheetMaxHeightPx: number;
@@ -55,15 +57,19 @@ export function deriveResponsiveLayout(
 
   const isCompact = tier === 'compact';
   const isDocked = !isCompact;
+  const isShortViewport = height < 500;
+  const useHorizontalMapControls = isShortViewport && width >= 520;
   const dockWidth = tier === 'expanded' ? 404 : 368;
-  const modalMaxWidth = isCompact ? Math.max(320, width - 20) : 448;
+  const modalMaxWidth = isCompact
+    ? Math.min(448, Math.max(280, width - 20))
+    : 448;
 
-  const usableStageHeight = Math.max(320, height - (isCompact ? 116 : 92));
+  const usableStageHeight = Math.max(200, height - (isCompact ? 116 : 92));
   const sheetMaxHeightPx = isCompact
-    ? Math.round(Math.min(480, Math.max(280, height * 0.55)))
+    ? Math.round(Math.min(480, Math.max(190, height * 0.55)))
     : Math.round(usableStageHeight - 28);
   const drawingSheetMaxHeightPx = isCompact
-    ? Math.round(Math.min(430, Math.max(260, height * 0.5)))
+    ? Math.round(Math.min(430, Math.max(175, height * 0.5)))
     : Math.round(usableStageHeight - 28);
 
   return {
@@ -72,6 +78,8 @@ export function deriveResponsiveLayout(
     tier,
     isCompact,
     isDocked,
+    isShortViewport,
+    useHorizontalMapControls,
     dockWidth,
     modalMaxWidth,
     sheetMaxHeightPx,

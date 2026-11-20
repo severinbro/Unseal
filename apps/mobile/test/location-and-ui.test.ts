@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -13,9 +13,13 @@ import {
   ApiError,
   type PolygonFeature,
   type RuntimeConfig,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
-import { PpgisApiClient, type FetchLike } from '../src/api/client';
+import {
+  appendHostedPageTheme,
+  PpgisApiClient,
+  type FetchLike,
+} from '../src/api/client';
 import {
   BUILTIN_DISCLAIMER_DE,
   DEFAULT_LOCALE,
@@ -120,7 +124,7 @@ const SAMPLE_CONFIG: RuntimeConfig = {
   licensesUrl: 'https://maps.example.org/auth/licenses',
   sourceCodeUrl: 'https://github.com/severinbro/Unseal',
   bugReportContact: 'bugs@example.org',
-  apkDownloadUrl: 'https://maps.example.org/downloads/unseal.apk',
+  apkDownloadUrl: 'https://maps.example.org/downloads/openunseal.apk',
   apkSha256: null,
   authCaptchaRequired: false,
 };
@@ -915,7 +919,7 @@ describe('German default localization and DE <-> EN switching', () => {
     const controlsDe = deriveMapControlsModel(state);
     assert.equal(controlsDe.locale, 'de');
     assert.equal(controlsDe.accountLabel, 'Anmelden');
-    assert.equal(controlsDe.apkDownloadUrl, 'https://maps.example.org/downloads/unseal.apk');
+    assert.equal(controlsDe.apkDownloadUrl, 'https://maps.example.org/downloads/openunseal.apk');
     assert.match(controlsDe.zoomInPromptText, /heranzoomen/);
     assert.equal(getTranslations('de').inspector.statusInProgressBadge, '⟳ Wird entsiegelt');
     assert.equal(getTranslations('en').inspector.statusInProgressBadge, '⟳ In progress');
@@ -938,7 +942,7 @@ describe('German default localization and DE <-> EN switching', () => {
     assert.equal(getTranslations('de').controls.filterNeedsReviewFull, 'Prüfen');
     assert.equal(getTranslations('en').controls.filterNeedsReviewCompact, 'Review');
     assert.equal(getTranslations('en').controls.filterNeedsReviewFull, 'Review');
-    assert.equal(getTranslations('de').about.title, 'Über Unseal');
+    assert.equal(getTranslations('de').about.title, 'Über OpenUnseal');
     assert.match(getTranslations('de').about.featureControlsBullet, /Deckkraft-Regler/);
     assert.match(getTranslations('en').about.featureControlsBullet, /opacity slider/);
     assert.match(getTranslations('de').about.featureDataBullet, /GeoJSON-Export/);
@@ -1495,8 +1499,8 @@ describe('German default localization and DE <-> EN switching', () => {
     assert.equal(de.stats.polygonsCountBadge(4), '4 Flächen');
     assert.equal(en.stats.polygonsCountBadge(1), '1 polygon');
     assert.equal(en.stats.polygonsCountBadge(4), '4 polygons');
-    assert.equal(de.intro.title, 'Unseal');
-    assert.equal(en.intro.title, 'Unseal');
+    assert.equal(de.intro.title, 'OpenUnseal');
+    assert.equal(en.intro.title, 'OpenUnseal');
     assert.ok(de.intro.subtitle.length > 0 && en.intro.subtitle.length > 0);
     assert.ok(de.intro.tagline.length > 0 && en.intro.tagline.length > 0);
     assert.ok(de.intro.skipButton.length > 0 && en.intro.skipButton.length > 0);
@@ -1559,8 +1563,8 @@ describe('German default localization and DE <-> EN switching', () => {
     };
 
     assert.equal(manifest.id, '/');
-    assert.equal(manifest.short_name, 'Unseal');
-    assert.match(manifest.name ?? '', /^Unseal\b/);
+    assert.equal(manifest.short_name, 'OpenUnseal');
+    assert.match(manifest.name ?? '', /^OpenUnseal\b/);
     assert.equal(manifest.lang, 'de');
     assert.equal(manifest.start_url, '/');
     assert.equal(manifest.scope, '/');
@@ -1690,7 +1694,7 @@ describe('Dynamic native attribution text & offline bundled license plugin', () 
       colorScheme: 'dark',
       osmStyleUrl: 'https://tiles.openfreemap.org/styles/liberty',
       orthophotoAttribution: '© GeoBasis-DE / Bundesländer',
-      orthophotoUrlTemplate: 'https://unseal.example.org/api/v1/tiles/dop20/{z}/{x}/{y}.jpg',
+      orthophotoUrlTemplate: 'https://openunseal.example.org/api/v1/tiles/dop20/{z}/{x}/{y}.jpg',
       viewportBbox: [8.22, 49.97, 8.32, 50.03],
       vg250AttributionEnabled: true,
       vg250DataYear: 2025,
@@ -1775,7 +1779,7 @@ describe('Dynamic native attribution text & offline bundled license plugin', () 
       ) => string[];
     };
     const tmpTarget = fs.mkdtempSync(
-      path.join(os.tmpdir(), 'unseal-bundled-licenses-'),
+      path.join(os.tmpdir(), 'openunseal-bundled-licenses-'),
     );
     try {
       const copied = withBundledLicenses.copyBundledLicensesToNativeDir(
@@ -1851,7 +1855,7 @@ describe('Dynamic native attribution text & offline bundled license plugin', () 
     );
     assert.equal(
       formatWebDocumentTitle('de', {
-        appName: 'Unseal',
+        appName: 'OpenUnseal',
         subtitleDe: null,
         subtitleEn: null,
       }),
@@ -1951,5 +1955,90 @@ describe('Dynamic native attribution text & offline bundled license plugin', () 
       'https://map.musterstadt.de/api/v1/branding/logo?v=abc123def456',
     );
     assert.equal(loaded.branding?.introEnabled, false);
+
+    // Hosted legal/auth page URLs carry the active map colorScheme without mutating external third-party URLs
+    assert.equal(
+      appendHostedPageTheme(
+        'https://map.musterstadt.de/auth/privacy',
+        'dark',
+        'https://map.musterstadt.de',
+      ),
+      'https://map.musterstadt.de/auth/privacy?theme=dark',
+    );
+    assert.equal(
+      appendHostedPageTheme(
+        'https://map.musterstadt.de/auth/licenses',
+        'light',
+        'https://map.musterstadt.de',
+      ),
+      'https://map.musterstadt.de/auth/licenses?theme=light',
+    );
+    assert.equal(
+      appendHostedPageTheme('/auth/impressum', 'dark', 'https://map.musterstadt.de'),
+      '/auth/impressum?theme=dark',
+    );
+    assert.equal(
+      appendHostedPageTheme(
+        'https://www.musterstadt.de/datenschutz',
+        'dark',
+        'https://map.musterstadt.de',
+      ),
+      'https://www.musterstadt.de/datenschutz',
+    );
+    assert.equal(
+      appendHostedPageTheme(
+        'https://map.musterstadt.de/auth/third-party-notices',
+        'dark',
+        'https://map.musterstadt.de',
+      ),
+      'https://map.musterstadt.de/auth/third-party-notices',
+    );
+  });
+});
+
+describe('Responsive layout edge cases (narrow phones & short landscape)', () => {
+  it('bounds modalMaxWidth inside 320px viewports and adapts sheets & controls for short landscape screens', () => {
+    const narrowPhone = deriveResponsiveLayout(320, 568);
+    assert.equal(narrowPhone.tier, 'compact');
+    assert.equal(narrowPhone.isCompact, true);
+    assert.equal(narrowPhone.isShortViewport, false);
+    assert.equal(narrowPhone.useHorizontalMapControls, false);
+    assert.equal(narrowPhone.modalMaxWidth, 300);
+    assert.ok(narrowPhone.modalMaxWidth <= 320 - 20);
+
+    const shortLandscape = deriveResponsiveLayout(640, 360);
+    assert.equal(shortLandscape.tier, 'compact');
+    assert.equal(shortLandscape.isShortViewport, true);
+    assert.equal(shortLandscape.useHorizontalMapControls, true);
+    assert.equal(shortLandscape.modalMaxWidth, 448);
+    assert.ok(shortLandscape.sheetMaxHeightPx <= 360 - 52);
+    assert.ok(shortLandscape.drawingSheetMaxHeightPx <= 360 - 52);
+
+    const standardPhone = deriveResponsiveLayout(390, 844);
+    assert.equal(standardPhone.isShortViewport, false);
+    assert.equal(standardPhone.useHorizontalMapControls, false);
+    assert.equal(standardPhone.modalMaxWidth, 370);
+  });
+
+  it('collapses secondary navbar controls into the overflow menu on narrow compact viewports', () => {
+    const phone320 = deriveNavbarLayoutMode('compact', 320);
+    assert.equal(phone320.collapseSecondaryNavToMenu, true);
+    assert.equal(phone320.isSingleHeaderRow, true);
+
+    const phone390 = deriveNavbarLayoutMode('compact', 390);
+    assert.equal(phone390.collapseSecondaryNavToMenu, true);
+
+    const compactUnknownWidth = deriveNavbarLayoutMode('compact');
+    assert.equal(compactUnknownWidth.collapseSecondaryNavToMenu, true);
+
+    const compactLandscape = deriveNavbarLayoutMode('compact', 640);
+    assert.equal(compactLandscape.collapseSecondaryNavToMenu, false);
+    assert.equal(compactLandscape.isSingleHeaderRow, true);
+
+    const tablet = deriveNavbarLayoutMode('medium', 768);
+    assert.equal(tablet.collapseSecondaryNavToMenu, false);
+
+    const desktop = deriveNavbarLayoutMode('expanded', 1440);
+    assert.equal(desktop.collapseSecondaryNavToMenu, false);
   });
 });

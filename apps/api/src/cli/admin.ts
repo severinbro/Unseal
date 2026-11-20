@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -18,7 +18,7 @@ import {
   type LandCoverCategory,
   type LandCoverSource,
   type PolygonOrigin,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import {
   emailTombstoneCandidates,
@@ -219,7 +219,7 @@ async function sendAdminModerationNoticeBestEffort(
   try {
     await options.mailer.sendModerationReasonEmail({
       to: params.to,
-      pseudonym: params.pseudonym ?? 'Unseal-Nutzer/in',
+      pseudonym: params.pseudonym ?? 'OpenUnseal-Nutzer/in',
       action: params.action,
       targetId: params.targetId,
       reason: params.reason?.trim() || DEFAULT_ADMIN_MODERATION_REASON,

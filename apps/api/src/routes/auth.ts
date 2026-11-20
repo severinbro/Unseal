@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import {
   AUTH_LIMITS,
@@ -20,7 +20,7 @@ import {
   SessionResponseSchema,
   VerifyEmailRequestSchema,
   VerifyEmailResponseSchema,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import {
   TIMING_GUARD_OPAQUE_TOKEN_HASH,
@@ -1215,7 +1215,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
         .header('Cache-Control', 'no-store')
         .header(
           'Content-Disposition',
-          `attachment; filename="unseal-data-export-${datePart}.json"`,
+          `attachment; filename="openunseal-data-export-${datePart}.json"`,
         )
         .send(data);
     },

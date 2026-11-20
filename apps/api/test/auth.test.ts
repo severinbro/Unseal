@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, it } from 'node:test';
@@ -13,7 +13,7 @@ import {
   SessionResponseSchema,
   VerifyEmailResponseSchema,
   normalizeRecoveryCode,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import { buildApp, createMemoryMailer } from '../src/app.js';
 import {
@@ -1382,12 +1382,12 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
     // 2. Configured operator identity -> Impressum, Privacy, Terms, Licenses, terms_accepted_at, ODbL-1.0 headers
     const configuredApp = await buildApp(
       loadEnvConfig({
-        PUBLIC_BASE_URL: 'https://unseal.example.org',
+        PUBLIC_BASE_URL: 'https://openunseal.example.org',
         OPERATOR_NAME: 'Entsiegelung Musterverein e.V.',
         OPERATOR_ADDRESS: 'Gartenweg 5\\n55116 Mainz',
-        OPERATOR_EMAIL: 'impressum@unseal.example.org',
+        OPERATOR_EMAIL: 'impressum@openunseal.example.org',
         OPERATOR_PHONE: '+49 6131 123456',
-        ABUSE_CONTACT: 'abuse@unseal.example.org',
+        ABUSE_CONTACT: 'abuse@openunseal.example.org',
         AUTO_SEED_VG250: 'true',
       }),
       pool,
@@ -1421,8 +1421,8 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
       assert.equal(impRes.statusCode, 200);
       assert.match(impRes.body, /Entsiegelung Musterverein e\.V\./);
       assert.match(impRes.body, /Gartenweg 5/);
-      assert.match(impRes.body, /href="mailto:impressum@unseal\.example\.org"/);
-      assert.match(impRes.body, /href="mailto:abuse@unseal\.example\.org"/);
+      assert.match(impRes.body, /href="mailto:impressum@openunseal\.example\.org"/);
+      assert.match(impRes.body, /href="mailto:abuse@openunseal\.example\.org"/);
       assert.match(impRes.body, /\+49 6131 123456/);
       assert.match(impRes.body, /Art\. 11 und Art\. 12 Digital Services Act \(DSA\)/);
       assert.match(impRes.body, /Deutsch, Englisch/);
@@ -1504,7 +1504,7 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
       assert.equal(exportRes.headers['content-license'], 'ODbL-1.0');
       assert.equal(
         exportRes.headers.link,
-        '<https://opendatacommons.org/licenses/odbl/1-0/>; rel="license", <https://unseal.example.org/auth/licenses>; rel="describedby", <https://unseal.example.org/auth/terms>; rel="terms-of-service"',
+        '<https://opendatacommons.org/licenses/odbl/1-0/>; rel="license", <https://openunseal.example.org/auth/licenses>; rel="describedby", <https://openunseal.example.org/auth/terms>; rel="terms-of-service"',
       );
       const exportPayload = exportRes.json() as {
         type: string;

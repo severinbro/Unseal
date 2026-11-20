@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import type { ThemePreference } from '../theme/tokens';
 import { type WebStorageLike } from './secureStorage.web';

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { type PolygonFeature, type RuntimeConfig } from '@entsiegelung/shared';
+import { type PolygonFeature, type RuntimeConfig } from '@openunseal/shared';
 import {
   expression as styleExpression,
   featureFilter,
@@ -955,7 +955,7 @@ describe('styleBuilder and MapCanvas contract', () => {
 
   it('builds dynamic Web map attributions for viewport DOP20 states, dark-mode CARTO, and VG250', () => {
     const builtinDop20: NonNullable<RuntimeConfig['orthophoto']> = {
-      urlTemplate: 'https://unseal.example.org/api/v1/tiles/dop20/{z}/{x}/{y}.jpg',
+      urlTemplate: 'https://openunseal.example.org/api/v1/tiles/dop20/{z}/{x}/{y}.jpg',
       tileSize: 256,
       attribution: '© GeoBasis-DE / Bundesländer (2026)',
       bounds: [5.8, 47.2, 15.1, 55.1],
@@ -979,7 +979,7 @@ describe('styleBuilder and MapCanvas contract', () => {
         orthophoto: builtinDop20,
         vg250AttributionEnabled: true,
         vg250DataYear: 2025,
-        licensesUrl: 'https://unseal.example.org/auth/licenses',
+        licensesUrl: 'https://openunseal.example.org/auth/licenses',
       },
       basemapMode: 'orthophoto',
       colorScheme: 'dark',
@@ -1002,7 +1002,7 @@ describe('styleBuilder and MapCanvas contract', () => {
         orthophoto: builtinDop20,
         vg250AttributionEnabled: false,
         vg250DataYear: null,
-        licensesUrl: 'https://unseal.example.org/auth/licenses',
+        licensesUrl: 'https://openunseal.example.org/auth/licenses',
       },
       basemapMode: 'osm',
       colorScheme: 'light',
@@ -1018,7 +1018,7 @@ describe('styleBuilder and MapCanvas contract', () => {
         orthophoto: builtinDop20,
         vg250AttributionEnabled: false,
         vg250DataYear: null,
-        licensesUrl: 'https://unseal.example.org/auth/licenses',
+        licensesUrl: 'https://openunseal.example.org/auth/licenses',
       },
       basemapMode: 'orthophoto',
       colorScheme: 'light',
@@ -1029,7 +1029,7 @@ describe('styleBuilder and MapCanvas contract', () => {
     assert.match(wideGermanyAttrs.join(' '), /DOP20\/DOP10/);
     assert.match(
       wideGermanyAttrs.join(' '),
-      /https:\/\/unseal\.example\.org\/auth\/licenses/,
+      /https:\/\/openunseal\.example\.org\/auth\/licenses\?theme=light/,
     );
   });
 });

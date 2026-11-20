@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -14,7 +14,7 @@ import {
   RuntimeConfigSchema,
   SessionResponseSchema,
   type PolygonFeature,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import {
   buildApp,
@@ -128,7 +128,7 @@ describe('Municipal white-label branding & outbound webhooks (Option 2 Phase 1)'
     assert.equal(stock.branding.portalUrl, null);
     assert.equal(stock.branding.portalLabel, null);
     assert.equal(stock.webhook, null);
-    assert.equal(stock.runtimeConfig.branding?.appName, 'Unseal');
+    assert.equal(stock.runtimeConfig.branding?.appName, 'OpenUnseal');
     assert.equal(stock.runtimeConfig.branding?.logoUrl, null);
 
     const municipal = loadEnvConfig({
@@ -141,7 +141,7 @@ describe('Municipal white-label branding & outbound webhooks (Option 2 Phase 1)'
       INTRO_ENABLED: 'false',
       MUNICIPAL_PORTAL_URL: 'https://www.musterstadt.de/klimaschutz',
       MUNICIPAL_PORTAL_LABEL: 'Klimaschutzportal Musterstadt',
-      WEBHOOK_URL: 'https://gis.musterstadt.de/hooks/unseal',
+      WEBHOOK_URL: 'https://gis.musterstadt.de/hooks/openunseal',
       WEBHOOK_SECRET: 'super-secret-municipal-key-123456',
       WEBHOOK_EVENTS: 'polygon.created, polygon.status_changed',
       WEBHOOK_TIMEOUT_MS: '8000',
@@ -157,7 +157,7 @@ describe('Municipal white-label branding & outbound webhooks (Option 2 Phase 1)'
     );
     assert.equal(municipal.branding.portalLabel, 'Klimaschutzportal Musterstadt');
     assert.deepEqual(municipal.webhook, {
-      url: 'https://gis.musterstadt.de/hooks/unseal',
+      url: 'https://gis.musterstadt.de/hooks/openunseal',
       secret: 'super-secret-municipal-key-123456',
       events: ['polygon.created', 'polygon.status_changed'],
       timeoutMs: 8000,
@@ -207,7 +207,7 @@ describe('Municipal white-label branding & outbound webhooks (Option 2 Phase 1)'
   });
 
   it('serves validated local BRAND_LOGO_FILE (PNG & SVG) with sandboxed headers and rejects forged files', async () => {
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'unseal-logo-'));
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openunseal-logo-'));
     const logoPngPath = path.join(tmpDir, 'wappen.png');
     const logoSvgPath = path.join(tmpDir, 'wappen.svg');
     const forgedPngPath = path.join(tmpDir, 'forged.png');
@@ -320,7 +320,7 @@ describe('Municipal white-label branding & outbound webhooks (Option 2 Phase 1)'
     }
   });
 
-  it('brands hosted /auth/* pages and transactional emails while preserving AGPL/MPL Unseal attribution and GDPR disclosures', async () => {
+  it('brands hosted /auth/* pages and transactional emails while preserving AGPL/MPL OpenUnseal attribution and GDPR disclosures', async () => {
     // 1. Stock defaults preserve exact original CSP (no img-src)
     const stockApp = await buildApp(loadEnvConfig({}), pool, {
       logger: createLogger({ enabled: false }),
@@ -335,7 +335,7 @@ describe('Municipal white-label branding & outbound webhooks (Option 2 Phase 1)'
         stockImp.headers['content-security-policy'],
         "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
       );
-      assert.match(stockImp.body, /<title>Impressum – Unseal<\/title>/);
+      assert.match(stockImp.body, /<title>Impressum – OpenUnseal<\/title>/);
     } finally {
       await stockApp.close();
     }
@@ -349,7 +349,7 @@ describe('Municipal white-label branding & outbound webhooks (Option 2 Phase 1)'
         BRAND_ACCENT_COLOR: '#005a9c',
         MUNICIPAL_PORTAL_URL: 'https://www.musterstadt.de/klimaschutz',
         MUNICIPAL_PORTAL_LABEL: 'Klimaschutzportal Musterstadt',
-        WEBHOOK_URL: 'https://gis.musterstadt.de/hooks/unseal',
+        WEBHOOK_URL: 'https://gis.musterstadt.de/hooks/openunseal',
       }),
       pool,
       { logger: createLogger({ enabled: false }) },
@@ -376,7 +376,7 @@ describe('Municipal white-label branding & outbound webhooks (Option 2 Phase 1)'
       assert.match(impRes.body, /Klimaschutzportal Musterstadt/);
       assert.match(impRes.body, /https:\/\/www\.musterstadt\.de\/klimaschutz/);
       // Upstream AGPLv3 / MPL-2.0 software notice MUST stay preserved!
-      assert.match(impRes.body, /Open-Source-Software <strong>Unseal<\/strong>/);
+      assert.match(impRes.body, /Open-Source-Software <strong>OpenUnseal<\/strong>/);
       assert.match(impRes.body, /AGPL-3\.0-or-later/);
 
       const privRes = await brandedApp.inject({
@@ -384,9 +384,56 @@ describe('Municipal white-label branding & outbound webhooks (Option 2 Phase 1)'
         url: '/auth/privacy',
       });
       assert.equal(privRes.statusCode, 200);
+      assert.match(privRes.body, /<html lang="de">/);
       assert.match(privRes.body, /assets\.musterstadt\.de/);
       assert.match(privRes.body, /Automatisierte Benachrichtigungen \(Webhooks, ohne Personenbezug\)/);
       assert.match(privRes.body, /Outbound webhooks transmit exclusively public, non-PII polygon data/);
+
+      // Explicit ?theme=light and ?theme=dark override system prefers-color-scheme and persist across legal nav links
+      const privLightRes = await brandedApp.inject({
+        method: 'GET',
+        url: '/auth/privacy?theme=light',
+      });
+      assert.equal(privLightRes.statusCode, 200);
+      assert.match(privLightRes.body, /<html lang="de" data-theme="light">/);
+      assert.match(privLightRes.body, /:root:not\(\[data-theme="light"\]\)/);
+      assert.match(
+        privLightRes.body,
+        /href="https:\/\/map\.musterstadt\.de\/auth\/licenses\?theme=light"/,
+      );
+      assert.match(
+        privLightRes.body,
+        /href="https:\/\/map\.musterstadt\.de\/auth\/terms\?theme=light"/,
+      );
+
+      const licDarkRes = await brandedApp.inject({
+        method: 'GET',
+        url: '/auth/licenses?theme=dark',
+      });
+      assert.equal(licDarkRes.statusCode, 200);
+      assert.match(licDarkRes.body, /<html lang="de" data-theme="dark">/);
+      assert.match(
+        licDarkRes.body,
+        /href="https:\/\/map\.musterstadt\.de\/auth\/impressum\?theme=dark"/,
+      );
+      assert.match(
+        licDarkRes.body,
+        /href="https:\/\/map\.musterstadt\.de\/auth\/privacy\?theme=dark"/,
+      );
+      assert.doesNotMatch(licDarkRes.body, /third-party-notices\?theme=/);
+      assert.doesNotMatch(
+        String(licDarkRes.headers['content-security-policy']),
+        /script-src/,
+      );
+
+      // Invalid theme values fall back gracefully to OS preference
+      const invalidThemeRes = await brandedApp.inject({
+        method: 'GET',
+        url: '/auth/terms?theme=sepia',
+      });
+      assert.equal(invalidThemeRes.statusCode, 200);
+      assert.match(invalidThemeRes.body, /<html lang="de">/);
+      assert.doesNotMatch(invalidThemeRes.body, /<html[^>]*data-theme=/);
     } finally {
       await brandedApp.close();
     }
@@ -396,9 +443,9 @@ describe('Municipal white-label branding & outbound webhooks (Option 2 Phase 1)'
       to: 'citizen@example.org',
       pseudonym: 'Anna',
       purpose: 'verify_email',
-      actionUrl: 'https://unseal.example.org/auth/verify-email?token=abc',
+      actionUrl: 'https://openunseal.example.org/auth/verify-email?token=abc',
     });
-    assert.match(defaultAuthMail.subject, /^Unseal – /);
+    assert.match(defaultAuthMail.subject, /^OpenUnseal – /);
     assert.match(defaultAuthMail.html, /color:#176642/);
 
     const brandOpts = {
@@ -530,7 +577,7 @@ describe('Municipal white-label branding & outbound webhooks (Option 2 Phase 1)'
       PUBLIC_BASE_URL: 'https://map.musterstadt.de',
       APP_NAME: 'Entsiegelung Musterstadt',
       REQUIRE_JURISDICTION: 'off',
-      WEBHOOK_URL: 'https://gis.musterstadt.de/hooks/unseal',
+      WEBHOOK_URL: 'https://gis.musterstadt.de/hooks/openunseal',
       WEBHOOK_SECRET: webhookSecret,
       WEBHOOK_EVENTS: 'polygon.created,polygon.status_changed,polygon.deleted',
     });
@@ -605,7 +652,7 @@ describe('Municipal white-label branding & outbound webhooks (Option 2 Phase 1)'
       assert.equal(attemptCount, 4, '1 retry on created + status_changed + deleted = 4 fetches');
       assert.equal(captured.length, 3);
 
-      const events = captured.map((c) => c.headers['x-unseal-event']);
+      const events = captured.map((c) => c.headers['x-openunseal-event']);
       assert.deepEqual(events, [
         'polygon.created',
         'polygon.status_changed',
@@ -613,9 +660,9 @@ describe('Municipal white-label branding & outbound webhooks (Option 2 Phase 1)'
       ]);
 
       for (const req of captured) {
-        assert.equal(req.url, 'https://gis.musterstadt.de/hooks/unseal');
-        const ts = req.headers['x-unseal-timestamp'] ?? '';
-        const sig = req.headers['x-unseal-signature-256'] ?? '';
+        assert.equal(req.url, 'https://gis.musterstadt.de/hooks/openunseal');
+        const ts = req.headers['x-openunseal-timestamp'] ?? '';
+        const sig = req.headers['x-openunseal-signature-256'] ?? '';
         assert.match(ts, /^\d+$/);
         assert.equal(
           sig,

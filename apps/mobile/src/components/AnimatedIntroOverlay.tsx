@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
-import { DEFAULT_APP_NAME, type BrandingConfig } from '@entsiegelung/shared';
+import { DEFAULT_APP_NAME, type BrandingConfig } from '@openunseal/shared';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
@@ -94,11 +94,12 @@ export function AnimatedIntroOverlay({
 }: AnimatedIntroOverlayProps): React.JSX.Element {
   const { palette, isDark } = useTheme();
   const { width, height } = useWindowDimensions();
-  const isCompact = width < 420 || height < 680;
-  const tileSize = isCompact ? 108 : 128;
+  const isShortViewport = height < 520;
+  const isCompact = isShortViewport || width < 420 || height < 680;
+  const tileSize = isShortViewport ? 76 : isCompact ? 108 : 128;
   const styles = useMemo(
-    () => createStyles(palette, isDark, isCompact, tileSize),
-    [palette, isDark, isCompact, tileSize],
+    () => createStyles(palette, isDark, isCompact, isShortViewport, tileSize),
+    [palette, isDark, isCompact, isShortViewport, tileSize],
   );
   const t = getTranslations(locale).intro;
   const appName = branding?.appName?.trim() || DEFAULT_APP_NAME;
@@ -242,7 +243,7 @@ export function AnimatedIntroOverlay({
           }),
         ]),
 
-        // Stage 2 & 3: V-notch fractures open, curved stem rises, upward leaves unfurl into the Unseal logo
+        // Stage 2 & 3: V-notch fractures open, curved stem rises, upward leaves unfurl into the OpenUnseal logo
         Animated.parallel([
           Animated.timing(crackProgress, {
             toValue: 1,
@@ -318,7 +319,7 @@ export function AnimatedIntroOverlay({
           }),
         ]),
 
-        // Stage 4: Brief beat on the complete Unseal mark before dissolving into the map
+        // Stage 4: Brief beat on the complete OpenUnseal mark before dissolving into the map
         Animated.delay(420),
       ]);
 
@@ -437,7 +438,7 @@ export function AnimatedIntroOverlay({
     outputRange: [0.2, 1.15, 0.9],
   });
 
-  // Pivot math for Web SVG layers matching unseal-icon.svg (64x64 viewBox)
+  // Pivot math for Web SVG layers matching openunseal-icon.svg (64x64 viewBox)
   // Stem base: (31, 49) -> offset from center (32, 32)
   const stemPivotX = ((31 - 32) / 64) * tileSize;
   const stemPivotY = ((49 - 32) / 64) * tileSize;
@@ -716,7 +717,7 @@ export function AnimatedIntroOverlay({
               </View>
             ) : Platform.OS === 'web' ? (
               <View pointerEvents="none" style={styles.svgStack}>
-                {/* Permanent V-notch asphalt base matching unseal-icon.svg */}
+                {/* Permanent V-notch asphalt base matching openunseal-icon.svg */}
                 <View style={styles.svgLayer}>
                   {renderWebLogoSvg(
                     tileSize,
@@ -1009,9 +1010,10 @@ function createStyles(
   PALETTE: ThemePalette,
   isDark: boolean,
   isCompact: boolean,
+  isShortViewport: boolean,
   tileSize: number,
 ) {
-  const stageSize = isCompact ? 162 : 192;
+  const stageSize = isShortViewport ? 104 : isCompact ? 162 : 192;
   const slabHeight = Math.round(tileSize * (24 / 64));
 
   return StyleSheet.create({
@@ -1025,9 +1027,9 @@ function createStyles(
       backgroundColor: PALETTE.bgGround,
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingHorizontal: 24,
-      paddingTop: isCompact ? 42 : 56,
-      paddingBottom: isCompact ? 28 : 40,
+      paddingHorizontal: isShortViewport ? 16 : 24,
+      paddingTop: isShortViewport ? 14 : isCompact ? 42 : 56,
+      paddingBottom: isShortViewport ? 14 : isCompact ? 28 : 40,
       overflow: 'hidden',
     },
     gridBackdrop: {
@@ -1252,38 +1254,41 @@ function createStyles(
       borderTopLeftRadius: 3,
     },
     brandBlock: {
-      marginTop: isCompact ? 22 : 28,
+      marginTop: isShortViewport ? 8 : isCompact ? 22 : 28,
       alignItems: 'center',
+      width: '100%',
       maxWidth: 360,
     },
     brandTitle: {
-      fontSize: isCompact ? 30 : 36,
+      fontSize: isShortViewport ? 22 : isCompact ? 30 : 36,
       fontWeight: '800',
-      letterSpacing: 1.4,
+      letterSpacing: isShortViewport ? 0.8 : 1.4,
       color: PALETTE.inkPrimary,
+      textAlign: 'center',
     },
     accentRule: {
-      marginTop: 10,
+      marginTop: isShortViewport ? 6 : 10,
       width: 56,
       height: 3,
       borderRadius: 2,
       backgroundColor: PALETTE.accentPrimary,
     },
     brandSubtitle: {
-      marginTop: 10,
-      fontSize: isCompact ? 14 : 15.5,
+      marginTop: isShortViewport ? 6 : 10,
+      fontSize: isShortViewport ? 13 : isCompact ? 14 : 15.5,
       fontWeight: '600',
       color: PALETTE.inkSecondary,
       textAlign: 'center',
       letterSpacing: 0.2,
     },
     taglinePill: {
-      marginTop: 14,
+      marginTop: isShortViewport ? 8 : 14,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 7,
+      maxWidth: '100%',
       paddingHorizontal: 13,
-      paddingVertical: 6,
+      paddingVertical: isShortViewport ? 4 : 6,
       borderRadius: RADII.pill,
       backgroundColor: PALETTE.bgTinted,
       borderWidth: 1,
@@ -1292,6 +1297,7 @@ function createStyles(
     taglineDot: {
       width: 7,
       height: 7,
+      flexShrink: 0,
       borderRadius: 4,
       backgroundColor: PALETTE.positiveDot,
     },
@@ -1301,12 +1307,13 @@ function createStyles(
       fontWeight: '600',
       color: PALETTE.positiveText,
       textAlign: 'center',
+      flexShrink: 1,
     },
     footerControls: {
       width: '100%',
       maxWidth: 320,
       alignItems: 'center',
-      gap: 14,
+      gap: isShortViewport ? 8 : 14,
     },
     progressTrack: {
       width: PROGRESS_TRACK_WIDTH,

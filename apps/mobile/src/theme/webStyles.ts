@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
-import { DEFAULT_APP_NAME, type BrandingConfig } from '@entsiegelung/shared';
+import { DEFAULT_APP_NAME, type BrandingConfig } from '@openunseal/shared';
 
 import {
   DEFAULT_LOCALE,
@@ -162,6 +162,7 @@ table, .tabular, [data-metric], [data-num] {
   line-height: 16px !important;
   background-color: var(--bg-attrib) !important;
   color: var(--text-secondary) !important;
+  overflow-wrap: anywhere;
 }
 
 .maplibregl-ctrl-attrib a {

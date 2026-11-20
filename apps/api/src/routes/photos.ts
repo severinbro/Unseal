@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import { createReadStream } from 'node:fs';
 import fs from 'node:fs/promises';
@@ -13,7 +13,7 @@ import {
   PolygonPhotoListResponseSchema,
   PolygonPhotoSchema,
   UuidParamSchema,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import { optionalAuth, requireAuth } from '../auth/session.js';
 import { processUploadedPhoto } from '../photos/processor.js';

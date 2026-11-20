@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import {
   SURFACE_TYPES,
@@ -7,7 +7,7 @@ import {
   type PersonalStatsResponse,
   type PublicStatsResponse,
   type SurfaceType,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -236,40 +236,46 @@ export function StatsModal({
       accessibilityLabel={t.modalA11y}
       style={[styles.card, compact ? styles.cardCompact : null]}
     >
-      <View style={styles.headerRow}>
-        <View style={styles.headerTextGroup}>
-          <Text style={styles.title}>{t.title}</Text>
-          <Text style={styles.subtitle}>{t.subtitle}</Text>
-        </View>
-        <View style={styles.headerActionsRow}>
-          {(activeTab === 'community' || isAuthenticated) ? (
+      <View style={styles.headerBlock}>
+        <View style={styles.headerRow}>
+          <Text
+            style={[styles.title, compact ? styles.titleCompact : null]}
+          >
+            {t.title}
+          </Text>
+          <View style={styles.headerActionsRow}>
+            {(activeTab === 'community' || isAuthenticated) ? (
+              <Pressable
+                testID="stats-modal-refresh"
+                accessibilityRole="button"
+                accessibilityLabel={t.refreshA11y}
+                disabled={isLoadingPublic || isLoadingPersonal}
+                onPress={handleRefresh}
+                style={({ pressed }) => [
+                  styles.secondaryHeaderButton,
+                  compact ? styles.headerButtonCompact : null,
+                  pressed ? styles.buttonPressed : null,
+                ]}
+              >
+                <Text style={styles.secondaryHeaderButtonLabel}>{t.refresh}</Text>
+              </Pressable>
+            ) : null}
             <Pressable
-              testID="stats-modal-refresh"
+              testID="stats-modal-close"
               accessibilityRole="button"
-              accessibilityLabel={t.refreshA11y}
-              disabled={isLoadingPublic || isLoadingPersonal}
-              onPress={handleRefresh}
+              accessibilityLabel={t.closeA11y}
+              onPress={onClose}
               style={({ pressed }) => [
-                styles.secondaryHeaderButton,
+                styles.closeButton,
+                compact ? styles.headerButtonCompact : null,
                 pressed ? styles.buttonPressed : null,
               ]}
             >
-              <Text style={styles.secondaryHeaderButtonLabel}>{t.refresh}</Text>
+              <Text style={styles.closeButtonLabel}>{t.close}</Text>
             </Pressable>
-          ) : null}
-          <Pressable
-            testID="stats-modal-close"
-            accessibilityRole="button"
-            accessibilityLabel={t.closeA11y}
-            onPress={onClose}
-            style={({ pressed }) => [
-              styles.closeButton,
-              pressed ? styles.buttonPressed : null,
-            ]}
-          >
-            <Text style={styles.closeButtonLabel}>{t.close}</Text>
-          </Pressable>
+          </View>
         </View>
+        <Text style={styles.subtitle}>{t.subtitle}</Text>
       </View>
 
       <View
@@ -683,6 +689,8 @@ export function StatsModal({
 function createStyles(PALETTE: ThemePalette) {
   return StyleSheet.create({
     card: {
+      width: '100%',
+      maxWidth: '100%',
       backgroundColor: PALETTE.bgSurface,
       borderRadius: RADII.sheet,
       padding: 20,
@@ -691,29 +699,35 @@ function createStyles(PALETTE: ThemePalette) {
       borderColor: PALETTE.borderStrong,
     },
     cardCompact: {
-      padding: 16,
-      gap: 12,
+      padding: 14,
+      gap: 11,
+    },
+    headerBlock: {
+      gap: 6,
+      minWidth: 0,
     },
     headerRow: {
       flexDirection: 'row',
-      alignItems: 'flex-start',
+      flexWrap: 'wrap',
+      alignItems: 'center',
       justifyContent: 'space-between',
-      gap: 12,
-    },
-    headerTextGroup: {
-      flex: 1,
-      gap: 4,
+      gap: 8,
     },
     headerActionsRow: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       alignItems: 'center',
-      gap: 8,
+      gap: 6,
     },
     title: {
       fontSize: 20,
       fontWeight: '700',
       color: PALETTE.inkPrimary,
       letterSpacing: -0.3,
+      flexShrink: 1,
+    },
+    titleCompact: {
+      fontSize: 17.5,
     },
     subtitle: {
       fontSize: 13,
@@ -729,6 +743,9 @@ function createStyles(PALETTE: ThemePalette) {
       backgroundColor: PALETTE.bgSubtle,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    headerButtonCompact: {
+      paddingHorizontal: 10,
     },
     secondaryHeaderButtonLabel: {
       fontSize: 12,
@@ -839,8 +856,10 @@ function createStyles(PALETTE: ThemePalette) {
     },
     heroStatRow: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       alignItems: 'baseline',
       justifyContent: 'space-between',
+      gap: 8,
       paddingVertical: 6,
       paddingHorizontal: 10,
       borderRadius: RADII.md,
@@ -852,6 +871,7 @@ function createStyles(PALETTE: ThemePalette) {
       fontSize: 13,
       fontWeight: '600',
       color: PALETTE.inkSecondary,
+      flexShrink: 1,
     },
     heroValue: {
       ...TABULAR_NUMS_STYLE,
@@ -868,6 +888,7 @@ function createStyles(PALETTE: ThemePalette) {
       flexGrow: 1,
       flexBasis: '46%',
       minWidth: 130,
+      maxWidth: '100%',
       paddingVertical: 10,
       paddingHorizontal: 12,
       borderRadius: RADII.md,
@@ -920,6 +941,7 @@ function createStyles(PALETTE: ThemePalette) {
       flexGrow: 1,
       flexBasis: '30%',
       minWidth: 100,
+      maxWidth: '100%',
       paddingVertical: 9,
       paddingHorizontal: 10,
       borderRadius: RADII.md,
@@ -955,15 +977,17 @@ function createStyles(PALETTE: ThemePalette) {
     },
     surfaceHeaderRow: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       alignItems: 'center',
       justifyContent: 'space-between',
-      gap: 8,
+      gap: 6,
     },
     surfaceLabelGroup: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
       flexShrink: 1,
+      minWidth: 0,
     },
     surfaceSwatchBadge: {
       paddingHorizontal: 6,
@@ -980,11 +1004,13 @@ function createStyles(PALETTE: ThemePalette) {
       fontSize: 13,
       fontWeight: '600',
       color: PALETTE.inkPrimary,
+      flexShrink: 1,
     },
     surfaceMetricsGroup: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       alignItems: 'center',
-      gap: 10,
+      gap: 8,
     },
     surfaceCountText: {
       ...TABULAR_NUMS_STYLE,
@@ -1015,6 +1041,7 @@ function createStyles(PALETTE: ThemePalette) {
     },
     primaryActionButton: {
       minHeight: MIN_TOUCH_TARGET_DP,
+      maxWidth: '100%',
       borderRadius: RADII.md,
       paddingHorizontal: 16,
       backgroundColor: PALETTE.accentPrimary,

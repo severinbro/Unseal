@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import {
   GEOMETRY_LIMITS,
   SURFACE_TYPES,
   type SurfaceType,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 import React, { useMemo } from 'react';
 import {
   Image,
@@ -306,13 +306,14 @@ export function DrawingToolbar({
               style={[
                 styles.touchButton,
                 styles.submitFlexButton,
+                styles.geometryPrimaryButton,
                 styles.submitButton,
                 !toolbar.canAdvanceToDetails
                   ? styles.submitButtonDisabled
                   : null,
               ]}
             >
-              <Text numberOfLines={1} style={styles.primaryButtonLabel}>
+              <Text style={styles.primaryButtonLabel}>
                 {toolbar.isRingClosed ? t.nextStep : t.closeAndNext}
               </Text>
             </Pressable>
@@ -623,6 +624,7 @@ function createStyles(PALETTE: ThemePalette) {
   },
   detailsSubheaderRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
@@ -687,17 +689,27 @@ function createStyles(PALETTE: ThemePalette) {
   },
   geometryActionRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 6,
   },
   compactControlButton: {
+    flexGrow: 1,
+    flexShrink: 1,
     paddingHorizontal: 11,
   },
   flexActionButton: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 120,
   },
   submitFlexButton: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+  },
+  geometryPrimaryButton: {
+    flexGrow: 2,
+    minWidth: 164,
   },
   sectionBlock: {
     gap: 6,
@@ -727,6 +739,7 @@ function createStyles(PALETTE: ThemePalette) {
   },
   surfaceOptionCompact: {
     flexBasis: '46%',
+    minWidth: 120,
   },
   surfaceOptionSelected: {
     borderColor: PALETTE.accentPrimary,
@@ -795,6 +808,7 @@ function createStyles(PALETTE: ThemePalette) {
   },
   photoPickerRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   draftPhotoStrip: {
@@ -851,12 +865,14 @@ function createStyles(PALETTE: ThemePalette) {
   },
   footerActionsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 8,
   },
   touchButton: {
     minHeight: MIN_TOUCH_TARGET_DP,
     minWidth: MIN_TOUCH_TARGET_DP,
+    maxWidth: '100%',
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: RADII.md,

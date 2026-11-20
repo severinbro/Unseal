@@ -6,9 +6,9 @@ COPY packages/shared ./packages/shared
 COPY apps/api ./apps/api
 COPY apps/mobile/package.json ./apps/mobile/package.json
 
-RUN npm ci --workspace=@entsiegelung/shared --workspace=@entsiegelung/api --include-workspace-root
-RUN npm --workspace @entsiegelung/shared run build && npm --workspace @entsiegelung/api run build
-RUN npm prune --omit=dev --workspace=@entsiegelung/shared --workspace=@entsiegelung/api --include-workspace-root
+RUN npm ci --workspace=@openunseal/shared --workspace=@openunseal/api --include-workspace-root
+RUN npm --workspace @openunseal/shared run build && npm --workspace @openunseal/api run build
+RUN npm prune --omit=dev --workspace=@openunseal/shared --workspace=@openunseal/api --include-workspace-root
 
 FROM node:24-bookworm-slim
 WORKDIR /app

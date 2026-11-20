@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import { execFile } from 'node:child_process';
 import assert from 'node:assert/strict';
@@ -18,7 +18,7 @@ import {
   SessionResponseSchema,
   VoteResponseSchema,
   type PolygonFeature,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import {
   VoteRepository,
@@ -1071,7 +1071,7 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
   });
 
   it('GET /api/v1/auth/me/export returns only the caller\'s own data (GDPR Art. 15/20) and requires authentication', async () => {
-    const config = loadEnvConfig({ PUBLIC_BASE_URL: 'https://unseal.example.org' });
+    const config = loadEnvConfig({ PUBLIC_BASE_URL: 'https://openunseal.example.org' });
     const app = await buildApp(config, pool, {
       logger: createLogger({ enabled: false }),
     });
@@ -1127,7 +1127,7 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
       assert.equal(exportRes.headers['cache-control'], 'no-store');
       assert.match(
         String(exportRes.headers['content-disposition']),
-        /^attachment; filename="unseal-data-export-\d{4}-\d{2}-\d{2}\.json"$/,
+        /^attachment; filename="openunseal-data-export-\d{4}-\d{2}-\d{2}\.json"$/,
       );
       const data = exportRes.json() as {
         format: string;
@@ -1145,7 +1145,7 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
         polygonVotes: Array<{ polygonId: string; value: number }>;
         polygonCreationTimestamps: string[];
       };
-      assert.equal(data.format, 'unseal-user-data-export');
+      assert.equal(data.format, 'openunseal-user-data-export');
       assert.equal(data.account.pseudonym, 'ExportAlice');
       assert.equal(data.account.email, 'exportalice@example.org');
       assert.match(data.account.lastActiveDate, /^\d{4}-\d{2}-\d{2}$/);
@@ -1178,7 +1178,7 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
   });
 
   it('admin CLI export-user, set-email, rename-user and lift-ban support GDPR access/rectification requests', async () => {
-    const config = loadEnvConfig({ PUBLIC_BASE_URL: 'https://unseal.example.org' });
+    const config = loadEnvConfig({ PUBLIC_BASE_URL: 'https://openunseal.example.org' });
     const app = await buildApp(config, pool, {
       logger: createLogger({ enabled: false }),
     });
@@ -1333,9 +1333,9 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
     const mailer = createMemoryMailer();
     const app = await buildApp(
       loadEnvConfig({
-        PUBLIC_BASE_URL: 'https://unseal.example.org',
-        OPERATOR_EMAIL: 'impressum@unseal.example.org',
-        ABUSE_CONTACT: 'abuse@unseal.example.org',
+        PUBLIC_BASE_URL: 'https://openunseal.example.org',
+        OPERATOR_EMAIL: 'impressum@openunseal.example.org',
+        ABUSE_CONTACT: 'abuse@openunseal.example.org',
       }),
       pool,
       {
@@ -1424,7 +1424,7 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
           reporterName: 'Erika Musterfrau',
           reporterEmail: 'erika@example.org',
           goodFaithConfirmed: true,
-          pageUrl: `https://unseal.example.org/#p=${poly1.id}`,
+          pageUrl: `https://openunseal.example.org/#p=${poly1.id}`,
         },
       });
       assert.equal(photoReportRes.statusCode, 201);
@@ -1433,7 +1433,7 @@ describe('PPGIS-5: Transactional +1/-1 voting and operator moderation CLI', () =
       );
       assert.equal(photoReportBody.receiptSent, true);
       assert.equal(mailer.contentReports.length, 1);
-      assert.equal(mailer.contentReports[0]!.to, 'abuse@unseal.example.org');
+      assert.equal(mailer.contentReports[0]!.to, 'abuse@openunseal.example.org');
       assert.equal(mailer.contentReports[0]!.targetType, 'photo');
       assert.equal(mailer.contentReports[0]!.targetId, photoId);
       assert.equal(mailer.contentReports[0]!.reporterUserId, null);

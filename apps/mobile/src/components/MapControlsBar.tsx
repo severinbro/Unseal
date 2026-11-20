@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import {
   DEFAULT_APP_NAME,
   type BrandingConfig,
   type PolygonFilter,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -92,7 +92,7 @@ export async function triggerGeoJsonExportDownload(
 }
 
 export async function triggerApkDownload(apkUrl: string): Promise<void> {
-  await triggerFileDownload(apkUrl, 'unseal.apk');
+  await triggerFileDownload(apkUrl, 'openunseal.apk');
 }
 
 export interface MapControlsBarProps {
@@ -123,7 +123,7 @@ export interface MapControlsBarProps {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const UNSEAL_HEADER_LOGO = require('../../assets/header-logo.png') as number;
+const OPENUNSEAL_HEADER_LOGO = require('../../assets/header-logo.png') as number;
 
 export function AndroidGlyph({
   color,
@@ -683,7 +683,7 @@ function PolygonOpacitySlider({
             ? {
                 flex: 1,
                 width: '100%',
-                minWidth: '76px',
+                minWidth: '64px',
               }
             : {
                 width: '96px',
@@ -849,7 +849,7 @@ function ParcelUnsealMark({
       accessible={false}
     >
       <Image
-        source={UNSEAL_HEADER_LOGO}
+        source={OPENUNSEAL_HEADER_LOGO}
         style={styles.brandMarkImage}
         resizeMode="contain"
         accessibilityIgnoresInvertColors
@@ -1066,6 +1066,9 @@ export function MapControlsBar({
   const styles = useMemo(() => createStyles(palette), [palette]);
   const navbarLayout = deriveNavbarLayoutMode(tier, viewportWidth);
   const isCompact = navbarLayout.isCompact;
+  const collapseSecondary = navbarLayout.collapseSecondaryNavToMenu;
+  const isVeryNarrow =
+    viewportWidth !== undefined && Number.isFinite(viewportWidth) && viewportWidth < 360;
   const locale = controls.locale;
   const isDark = controls.colorScheme === 'dark';
   const t = getTranslations(locale).controls;
@@ -1082,7 +1085,12 @@ export function MapControlsBar({
         isCompact ? styles.barShellCompact : null,
       ]}
     >
-      <View style={styles.navbarSingleRow}>
+      <View
+        style={[
+          styles.navbarSingleRow,
+          isCompact ? styles.navbarSingleRowCompact : null,
+        ]}
+      >
         <View
           style={[
             styles.brandGroup,
@@ -1090,7 +1098,12 @@ export function MapControlsBar({
           ]}
         >
           <ParcelUnsealMark compact={isCompact} logoUrl={branding?.logoUrl} />
-          <View style={styles.titleInlineRow}>
+          <View
+            style={[
+              styles.titleInlineRow,
+              isCompact ? styles.titleInlineRowCompact : null,
+            ]}
+          >
             {Platform.OS === 'web' ? (
               React.createElement(
                 'h1',
@@ -1098,7 +1111,11 @@ export function MapControlsBar({
                   style: {
                     margin: 0,
                     padding: 0,
-                    fontSize: isCompact ? '16px' : '18px',
+                    fontSize: isVeryNarrow
+                      ? '15px'
+                      : isCompact
+                        ? '16px'
+                        : '18px',
                     fontWeight: 700,
                     letterSpacing: '-0.35px',
                     lineHeight: '20px',
@@ -1120,7 +1137,11 @@ export function MapControlsBar({
                 aria-level={1}
                 numberOfLines={1}
                 ellipsizeMode="tail"
-                style={[styles.title, isCompact ? styles.titleCompact : null]}
+                style={[
+                styles.title,
+                isCompact ? styles.titleCompact : null,
+                isVeryNarrow ? styles.titleVeryNarrow : null,
+              ]}
               >
                 {appName}
               </Text>
@@ -1179,7 +1200,7 @@ export function MapControlsBar({
             isCompact ? styles.rightHeaderClusterCompact : null,
           ]}
         >
-          {onToggleTheme
+          {!collapseSecondary && onToggleTheme
             ? withWebTooltip(
                 isDark ? t.lightModeTooltip : t.darkModeTooltip,
                 <Pressable
@@ -1205,7 +1226,7 @@ export function MapControlsBar({
               )
             : null}
 
-          {onOpenAbout
+          {!collapseSecondary && onOpenAbout
             ? withWebTooltip(
                 t.aboutButtonTooltip,
                 <Pressable
@@ -1232,15 +1253,17 @@ export function MapControlsBar({
               )
             : null}
 
-          {withWebTooltip(
-            t.switchLocaleA11y,
-            <LocaleTogglePill
-              locale={locale}
-              compact={isCompact}
-              accessibilityLabel={t.switchLocaleA11y}
-              {...(onToggleLocale ? { onPress: onToggleLocale } : {})}
-            />,
-          )}
+          {!collapseSecondary
+            ? withWebTooltip(
+                t.switchLocaleA11y,
+                <LocaleTogglePill
+                  locale={locale}
+                  compact={isCompact}
+                  accessibilityLabel={t.switchLocaleA11y}
+                  {...(onToggleLocale ? { onPress: onToggleLocale } : {})}
+                />,
+              )
+            : null}
 
           <Pressable
             accessibilityRole="button"
@@ -1249,6 +1272,10 @@ export function MapControlsBar({
             style={({ pressed }) => [
               styles.accountChip,
               isCompact ? styles.accountChipCompact : null,
+              isCompact && isVeryNarrow ? styles.accountChipVeryNarrow : null,
+              isCompact && !isVeryNarrow && collapseSecondary
+                ? styles.accountChipPhoneSpacious
+                : null,
               navbarLayout.constrainAccountChipWidth && !isCompact
                 ? styles.accountChipMediumHeader
                 : null,
@@ -1316,7 +1343,11 @@ export interface NavbarOverflowMenuProps {
   impressumUrl?: string | undefined;
   privacyPolicyUrl?: string | undefined;
   isImporting?: boolean;
+  showAppearanceSection?: boolean;
+  maxHeight?: number | undefined;
   onClose: () => void;
+  onToggleTheme?: () => void;
+  onToggleLocale?: () => void;
   onOpenAbout?: () => void;
   onOpenStats?: () => void;
   onOpenInstallApp?: () => void;
@@ -1345,7 +1376,11 @@ export function NavbarOverflowMenu({
   impressumUrl,
   privacyPolicyUrl,
   isImporting = false,
+  showAppearanceSection = false,
+  maxHeight,
   onClose,
+  onToggleTheme,
+  onToggleLocale,
   onOpenAbout,
   onOpenStats,
   onOpenInstallApp,
@@ -1399,6 +1434,8 @@ export function NavbarOverflowMenu({
       accessibilityRole="menu"
       style={[
         styles.popoverCard,
+        styles.overflowMenuCard,
+        maxHeight !== undefined ? { maxHeight } : null,
         Platform.OS === 'web'
           ? {
               boxShadow: isDark
@@ -1408,7 +1445,84 @@ export function NavbarOverflowMenu({
           : styles.nativePopoverShadow,
       ]}
     >
-      <View style={styles.menuSection}>
+      <ScrollView
+        showsVerticalScrollIndicator
+        showsHorizontalScrollIndicator={false}
+        style={
+          maxHeight !== undefined
+            ? { maxHeight: Math.max(120, maxHeight - 2) }
+            : undefined
+        }
+        contentContainerStyle={styles.overflowMenuScrollContent}
+      >
+        {showAppearanceSection && (onToggleTheme || onToggleLocale) ? (
+          <View style={styles.menuSection}>
+            <Text style={styles.menuSectionLabel}>{t.menuSectionAppearance}</Text>
+            {onToggleTheme ? (
+              <Pressable
+                testID="overflow-theme-toggle-button"
+                accessibilityRole="menuitem"
+                accessibilityLabel={
+                  isDark ? t.switchToLightModeA11y : t.switchToDarkModeA11y
+                }
+                accessibilityState={{ selected: isDark }}
+                onPress={onToggleTheme}
+                style={({ pressed }) => [
+                  styles.menuItemRow,
+                  pressed ? styles.menuItemPressed : null,
+                ]}
+              >
+                <ThemeModeGlyph
+                  isDark={isDark}
+                  color={palette.inkPrimary}
+                  size={18}
+                />
+                <Text style={styles.menuItemLabel}>
+                  {isDark ? t.lightModeTooltip : t.darkModeTooltip}
+                </Text>
+              </Pressable>
+            ) : null}
+            {onToggleLocale ? (
+              <Pressable
+                testID="overflow-locale-toggle-button"
+                accessibilityRole="menuitem"
+                accessibilityLabel={t.switchLocaleA11y}
+                onPress={onToggleLocale}
+                style={({ pressed }) => [
+                  styles.menuItemRow,
+                  pressed ? styles.menuItemPressed : null,
+                ]}
+              >
+                <View style={styles.menuLocaleBadge}>
+                  <Text
+                    style={[
+                      styles.localeCodeLabel,
+                      locale === 'de'
+                        ? styles.localeCodeActive
+                        : styles.localeCodeInactive,
+                    ]}
+                  >
+                    DE
+                  </Text>
+                  <Text style={styles.localeDivider}>|</Text>
+                  <Text
+                    style={[
+                      styles.localeCodeLabel,
+                      locale === 'en'
+                        ? styles.localeCodeActive
+                        : styles.localeCodeInactive,
+                    ]}
+                  >
+                    EN
+                  </Text>
+                </View>
+                <Text style={styles.menuItemLabel}>{t.switchLocaleA11y}</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+
+        <View style={styles.menuSection}>
         <Text style={styles.menuSectionLabel}>{t.menuSectionData}</Text>
         {onOpenStats ? (
           <Pressable
@@ -1580,6 +1694,7 @@ export function NavbarOverflowMenu({
           ) : null}
         </View>
       ) : null}
+      </ScrollView>
     </View>
   );
 }
@@ -1798,6 +1913,7 @@ export function FloatingFilterStrip({
 export interface MapLayersPopoverProps {
   visible: boolean;
   controls: MapControlsModel;
+  compact?: boolean;
   onSetBasemapMode: (mode: BasemapMode) => void;
   onSetPolygonOpacity?: (opacity: number) => void;
 }
@@ -1805,6 +1921,7 @@ export interface MapLayersPopoverProps {
 export function MapLayersPopover({
   visible,
   controls,
+  compact = false,
   onSetBasemapMode,
   onSetPolygonOpacity,
 }: MapLayersPopoverProps): React.JSX.Element | null {
@@ -1823,6 +1940,7 @@ export function MapLayersPopover({
       style={[
         styles.popoverCard,
         styles.layersPopoverCard,
+        compact ? styles.layersPopoverCardCompact : null,
         Platform.OS === 'web'
           ? {
               boxShadow: isDark
@@ -1973,6 +2091,9 @@ function createStyles(PALETTE: ThemePalette) {
     justifyContent: 'space-between',
     gap: 10,
     minHeight: 44,
+  },
+  navbarSingleRowCompact: {
+    gap: 6,
   },
   searchSlotWrapper: {
     flex: 1,
@@ -2223,20 +2344,21 @@ function createStyles(PALETTE: ThemePalette) {
     minWidth: 0,
   },
   rightHeaderClusterCompact: {
-    maxWidth: '72%',
-    flexShrink: 1,
+    gap: 4,
+    flexShrink: 0,
   },
   brandGroup: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    flexShrink: 0,
+    flexShrink: 1,
     minWidth: 0,
   },
   brandGroupCompact: {
     gap: 6,
     flex: 1,
     flexShrink: 1,
+    minWidth: 0,
   },
   brandMark: {
     width: 28,
@@ -2267,7 +2389,12 @@ function createStyles(PALETTE: ThemePalette) {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flexShrink: 1,
     minWidth: 0,
+    overflow: 'hidden',
+  },
+  titleInlineRowCompact: {
+    flex: 1,
   },
   title: {
     fontSize: 18,
@@ -2280,6 +2407,9 @@ function createStyles(PALETTE: ThemePalette) {
   titleCompact: {
     fontSize: 16,
     letterSpacing: -0.35,
+  },
+  titleVeryNarrow: {
+    fontSize: 15,
   },
   countBadge: {
     flexDirection: 'row',
@@ -2416,7 +2546,14 @@ function createStyles(PALETTE: ThemePalette) {
   accountChipCompact: {
     paddingHorizontal: 8,
     gap: 4,
-    maxWidth: 100,
+    maxWidth: 104,
+  },
+  accountChipVeryNarrow: {
+    paddingHorizontal: 7,
+    maxWidth: 88,
+  },
+  accountChipPhoneSpacious: {
+    maxWidth: 132,
   },
   accountChipMediumHeader: {
     paddingHorizontal: 10,
@@ -2637,8 +2774,8 @@ function createStyles(PALETTE: ThemePalette) {
     elevation: 3,
   },
   popoverCard: {
-    minWidth: 236,
-    maxWidth: 300,
+    minWidth: 220,
+    maxWidth: '100%',
     padding: 12,
     borderRadius: RADII.lg,
     borderWidth: 1,
@@ -2646,8 +2783,33 @@ function createStyles(PALETTE: ThemePalette) {
     backgroundColor: PALETTE.bgSurface,
     gap: 10,
   },
+  overflowMenuCard: {
+    padding: 0,
+    maxHeight: '100%',
+    overflow: 'hidden',
+  },
+  overflowMenuScrollContent: {
+    padding: 12,
+    gap: 10,
+  },
+  menuLocaleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: RADII.sm,
+    borderWidth: 1,
+    borderColor: PALETTE.borderStrong,
+    backgroundColor: PALETTE.bgSubtle,
+    flexShrink: 0,
+  },
   layersPopoverCard: {
-    minWidth: 248,
+    minWidth: 216,
+  },
+  layersPopoverCardCompact: {
+    padding: 9,
+    gap: 7,
   },
   nativePopoverShadow: {
     shadowColor: '#000000',

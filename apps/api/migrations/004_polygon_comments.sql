@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: AGPL-3.0-or-later
--- Copyright (C) 2026 Unseal Contributors
+-- Copyright (C) 2026 OpenUnseal Contributors
 
 ALTER TABLE polygons
   ADD COLUMN IF NOT EXISTS comment_count INTEGER NOT NULL DEFAULT 0;

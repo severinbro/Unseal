@@ -1,6 +1,6 @@
 cff-version: 1.2.0
-title: "Unseal: An Open-Source, Privacy-Preserving Public Participation GIS for Mapping and Prioritizing Urban Soil Unsealing"
-message: "If you use Unseal in your research or municipal planning workflows, please cite it using the metadata in this file."
+title: "OpenUnseal: An Open-Source, Privacy-Preserving Public Participation GIS for Mapping and Prioritizing Urban Soil Unsealing"
+message: "If you use OpenUnseal in your research or municipal planning workflows, please cite it using the metadata in this file."
 type: software
 authors:
   - given-names: Severin

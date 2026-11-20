@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import exifr from 'exifr';
 import sharp from 'sharp';
 
-import { ApiError, PHOTO_LIMITS } from '@entsiegelung/shared';
+import { ApiError, PHOTO_LIMITS } from '@openunseal/shared';
 
 export interface ProcessedPhotoBuffers {
   fullWebp: Buffer;

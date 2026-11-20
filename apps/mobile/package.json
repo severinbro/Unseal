@@ -1,5 +1,5 @@
 {
-  "name": "@entsiegelung/mobile",
+  "name": "@openunseal/mobile",
   "version": "0.1.0",
   "private": true,
   "license": "MPL-2.0",
@@ -21,7 +21,7 @@
     "test": "node --import tsx --test"
   },
   "dependencies": {
-    "@entsiegelung/shared": "*",
+    "@openunseal/shared": "*",
     "@expo/metro-runtime": "~4.0.0",
     "@maplibre/maplibre-react-native": "^10.0.0",
     "expo": "~52.0.0",

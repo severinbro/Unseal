@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
-import type { BrandingConfig, SurfaceType } from '@entsiegelung/shared';
+import type { BrandingConfig, SurfaceType } from '@openunseal/shared';
 import React, { createContext, useContext, useMemo } from 'react';
 
 import {

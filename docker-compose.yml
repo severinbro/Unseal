@@ -53,7 +53,7 @@ services:
       SMTP_REQUIRE_TLS: "${SMTP_REQUIRE_TLS:-false}"
       SMTP_USER: "${SMTP_USER:-}"
       SMTP_PASS: "${SMTP_PASS:-}"
-      SMTP_FROM: "${SMTP_FROM:-Entsiegelungskartierung <noreply@localhost>}"
+      SMTP_FROM: "${SMTP_FROM:-OpenUnseal <noreply@localhost>}"
       TRUST_PROXY: "${TRUST_PROXY:-false}"
       CORS_ORIGIN: "${CORS_ORIGIN:-*}"
       OSM_STYLE_URL: "${OSM_STYLE_URL:-https://tiles.openfreemap.org/styles/liberty}"

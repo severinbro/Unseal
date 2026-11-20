@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import {
   CONTENT_REPORT_REASONS,
@@ -7,7 +7,7 @@ import {
   type ContentReportTargetType,
   type CreateContentReportRequest,
   type CreateContentReportResponse,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Linking,
@@ -370,6 +370,7 @@ function createStyles(PALETTE: ThemePalette) {
   return StyleSheet.create({
     card: {
       width: '100%',
+      maxWidth: '100%',
       padding: 15,
       borderRadius: RADII.sheet,
       backgroundColor: PALETTE.bgSurface,
@@ -389,6 +390,7 @@ function createStyles(PALETTE: ThemePalette) {
     },
     headerTextGroup: {
       flex: 1,
+      minWidth: 0,
       gap: 2,
     },
     title: {
@@ -444,6 +446,8 @@ function createStyles(PALETTE: ThemePalette) {
       gap: 6,
     },
     reasonChip: {
+      maxWidth: '100%',
+      flexShrink: 1,
       paddingHorizontal: 10,
       paddingVertical: 7,
       borderRadius: RADII.md,
@@ -459,6 +463,7 @@ function createStyles(PALETTE: ThemePalette) {
       fontSize: 12,
       fontWeight: '600',
       color: PALETTE.inkPrimary,
+      flexShrink: 1,
     },
     reasonChipLabelSelected: {
       color: PALETTE.dangerText,
@@ -568,6 +573,8 @@ function createStyles(PALETTE: ThemePalette) {
     touchButton: {
       minHeight: MIN_TOUCH_TARGET_DP,
       minWidth: MIN_TOUCH_TARGET_DP,
+      maxWidth: '100%',
+      flexShrink: 1,
       paddingHorizontal: 14,
       paddingVertical: 9,
       borderRadius: RADII.md,

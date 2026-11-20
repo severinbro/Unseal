@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -17,7 +17,7 @@ import {
   type BrandingConfig,
   type RuntimeConfig,
   type WebhookEventType,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import {
   GERMANY_DOP20_BOUNDS,
@@ -119,7 +119,7 @@ const EPHEMERAL_FALLBACK_CAPTCHA_SECRET = crypto
   .toString('hex');
 
 /** Deterministic development/test fallback; never accepted when NODE_ENV=production. */
-export const DEV_TOMBSTONE_SECRET = 'unseal-dev-only-insecure-tombstone-secret';
+export const DEV_TOMBSTONE_SECRET = 'openunseal-dev-only-insecure-tombstone-secret';
 const MIN_TOMBSTONE_SECRET_LENGTH = 32;
 const DEFAULT_PSEUDONYM_RESERVATION_DAYS = 365;
 
@@ -372,12 +372,12 @@ function parseWebhookEvents(raw: string | undefined): WebhookEventType[] {
 export function resolveCandidateApkPaths(apkFilePath: string): string[] {
   const defaultDevApkPath = path.join(
     path.resolve(process.cwd(), 'uploads'),
-    'unseal.apk',
+    'openunseal.apk',
   );
   if (apkFilePath === defaultDevApkPath) {
     return [
       apkFilePath,
-      path.resolve(process.cwd(), 'downloads', 'unseal.apk'),
+      path.resolve(process.cwd(), 'downloads', 'openunseal.apk'),
       path.resolve(
         process.cwd(),
         'apps/mobile/android/app/build/outputs/apk/release/app-release.apk',
@@ -556,7 +556,7 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     : path.resolve(process.cwd(), 'uploads');
   const apkFilePath = env.APK_FILE_PATH?.trim()
     ? path.resolve(env.APK_FILE_PATH.trim())
-    : path.join(uploadsDir, 'unseal.apk');
+    : path.join(uploadsDir, 'openunseal.apk');
 
   const smtpHostRaw = env.SMTP_HOST?.trim() ?? '';
   const smtpPort = parseIntSetting(env.SMTP_PORT, 587, 'SMTP_PORT');
@@ -568,7 +568,7 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
   const smtpUserRaw = env.SMTP_USER?.trim() ?? '';
   const smtpPassRaw = env.SMTP_PASS ?? '';
   const smtpFrom =
-    env.SMTP_FROM?.trim() || 'Unseal <noreply@localhost>';
+    env.SMTP_FROM?.trim() || 'OpenUnseal <noreply@localhost>';
   const smtpRequireTls = parseBooleanSetting(
     env.SMTP_REQUIRE_TLS,
     !smtpSecure,
@@ -682,7 +682,7 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     env.SOURCE_CODE_URL?.trim() || DEFAULT_SOURCE_CODE_URL;
 
   const rawApkDownloadUrl = env.APK_DOWNLOAD_URL?.trim() ?? '';
-  const defaultApkPath = '/downloads/unseal.apk';
+  const defaultApkPath = '/downloads/openunseal.apk';
   const apkDefaultUrl = hasExplicitPublicBaseUrl
     ? `${publicBaseUrl}${defaultApkPath}`
     : defaultApkPath;
@@ -811,7 +811,7 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     'NEW_USER_MIN_CLEAN_POLYGONS',
   );
 
-  // Municipal branding & theme overrides (all optional; defaults match stock Unseal).
+  // Municipal branding & theme overrides (all optional; defaults match stock OpenUnseal).
   const appName = env.APP_NAME?.trim() || DEFAULT_APP_NAME;
   if (appName.length > 80) {
     throw new Error('APP_NAME must be at most 80 characters.');

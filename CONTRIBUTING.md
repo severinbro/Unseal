@@ -1,6 +1,6 @@
-# Contributing to Unseal
+# Contributing to OpenUnseal
 
-Thank you for your interest in contributing to **Unseal** (`Entsiegelungskartierung`). We welcome bug reports, usability feedback, documentation improvements, localization updates, and code contributions from researchers, municipal planners, civic initiatives, and developers.
+Thank you for your interest in contributing to **OpenUnseal** (`Entsiegelungskartierung`). We welcome bug reports, usability feedback, documentation improvements, localization updates, and code contributions from researchers, municipal planners, civic initiatives, and developers.
 
 By participating in this project, you agree to abide by our [Code of Conduct](./CODE_OF_CONDUCT.md).
 
@@ -68,7 +68,7 @@ By participating in this project, you agree to abide by our [Code of Conduct](./
 
 ## 4. Licensing of Contributions
 
-Unseal uses a split open-source license architecture (see [`LICENSING.md`](./LICENSING.md) for full details and [`THIRD_PARTY_NOTICES.txt`](./THIRD_PARTY_NOTICES.txt) for third-party dependency notices):
+OpenUnseal uses a split open-source license architecture (see [`LICENSING.md`](./LICENSING.md) for full details and [`THIRD_PARTY_NOTICES.txt`](./THIRD_PARTY_NOTICES.txt) for third-party dependency notices):
 
 * Contributions to `apps/api` and root server/deployment files are licensed under **`AGPL-3.0-or-later`** ([`LICENSE`](./LICENSE)).
 * Contributions to `packages/shared` and `apps/mobile` are licensed under **`MPL-2.0`** ([`packages/shared/LICENSE`](./packages/shared/LICENSE), [`apps/mobile/LICENSE`](./apps/mobile/LICENSE)).

@@ -35,7 +35,7 @@
 		reverse_proxy api:3000
 	}
 
-	# 4. Direct Android APK package download (/downloads/unseal.apk)
+	# 4. Direct Android APK package download (/downloads/openunseal.apk)
 	handle /downloads/* {
 		reverse_proxy api:3000
 	}

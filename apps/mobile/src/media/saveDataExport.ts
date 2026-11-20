@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import { Platform, Share } from 'react-native';
 
@@ -28,7 +28,7 @@ interface WebDownloadGlobals {
 }
 
 export function buildDataExportFileName(now: Date = new Date()): string {
-  return `unseal-data-export-${now.toISOString().slice(0, 10)}.json`;
+  return `openunseal-data-export-${now.toISOString().slice(0, 10)}.json`;
 }
 
 /**

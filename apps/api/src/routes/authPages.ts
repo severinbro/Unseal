@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -14,7 +14,7 @@ import {
   DEFAULT_APP_NAME,
   PHOTO_LIMITS,
   formatStateDop20FullAttribution,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import { resolveRuntimeBranding } from '../config.js';
 import {
@@ -88,20 +88,101 @@ function buildHostedCsp(logoUrl: string | null, publicBaseUrl: string): string {
   return `default-src 'none'; img-src ${imgSrc}; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`;
 }
 
+type HostedPageTheme = 'light' | 'dark' | null;
+
+function parseRequestedTheme(source: unknown): HostedPageTheme {
+  const raw = readStringField(source, 'theme').trim().toLowerCase();
+  if (raw === 'light' || raw === 'dark') {
+    return raw;
+  }
+  return null;
+}
+
+function appendHostedThemeParam(
+  url: string,
+  theme: HostedPageTheme,
+  publicBaseUrl: string,
+): string {
+  if (!theme) {
+    return url;
+  }
+  const trimmed = url.trim();
+  if (trimmed.length === 0) {
+    return url;
+  }
+  try {
+    if (trimmed.startsWith('/')) {
+      const parsed = new URL(trimmed, 'http://localhost');
+      if (
+        !parsed.pathname.startsWith('/auth/') ||
+        parsed.pathname === '/auth/third-party-notices'
+      ) {
+        return url;
+      }
+      parsed.searchParams.set('theme', theme);
+      return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    }
+    const parsed = new URL(trimmed);
+    const baseOrigin = new URL(publicBaseUrl).origin;
+    if (
+      parsed.origin !== baseOrigin ||
+      !parsed.pathname.startsWith('/auth/') ||
+      parsed.pathname === '/auth/third-party-notices'
+    ) {
+      return url;
+    }
+    parsed.searchParams.set('theme', theme);
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
 function sendHostedHtml(
   app: FastifyInstance,
   reply: FastifyReply,
   statusCode: number,
   title: string,
   bodyHtml: string,
-  options: { wide?: boolean } = {},
+  options: { wide?: boolean; theme?: HostedPageTheme } = {},
 ): FastifyReply {
   const maxWidthPx = options.wide ? 680 : 460;
+  const theme = options.theme ?? null;
+  const htmlThemeAttr = theme ? ` data-theme="${theme}"` : '';
   const branding = resolveRuntimeBranding(app.config);
   const colors = deriveServerBrandColors(
     branding.accentColor,
     branding.accentDarkColor,
   );
+  const darkVarsCss = `
+      --bg: #0f1613;
+      --fg: #ecf3ef;
+      --card-bg: #16201b;
+      --card-border: #2b3b32;
+      --card-shadow: 0 14px 36px rgba(0, 0, 0, 0.48);
+      --brand-fg: ${colors.brandTextDark};
+      --brand-bg: ${colors.brandBgDark};
+      --accent: ${colors.accentDark};
+      --text-muted: #b7c7be;
+      --sub-fg: #93a89d;
+      --divider: #26352d;
+      --alert-ok-bg: #132e22;
+      --alert-ok-border: #235c42;
+      --alert-ok-fg: #6ee7b7;
+      --alert-err-bg: #311518;
+      --alert-err-border: #70262c;
+      --alert-err-fg: #fca5a5;
+      --alert-warn-bg: #2d2210;
+      --alert-warn-border: #6b4e1b;
+      --alert-warn-fg: #fcd34d;
+      --label-fg: #ecf3ef;
+      --input-border: #394d42;
+      --input-bg: #121a16;
+      --input-fg: #ecf3ef;
+      --focus: ${colors.accentDark};
+      --btn-bg: ${colors.accentDark};
+      --btn-fg: ${colors.inkOnAccentDark};
+      --btn-hover: ${colors.buttonDarkHover};`;
   const brandMarkHtml = branding.logoUrl
     ? `<img src="${escapeHtml(branding.logoUrl)}" alt="" width="22" height="22" class="brand-logo" />`
     : `<svg width="22" height="22" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -112,7 +193,7 @@ function sendHostedHtml(
         <path d="M31 34C29 27 22 25 18 26C19 31 25 35 31 34Z" fill="#176642"/>
       </svg>`;
   const html = `<!doctype html>
-<html lang="de">
+<html lang="de"${htmlThemeAttr}>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -120,37 +201,79 @@ function sendHostedHtml(
   <style>
     :root {
       color-scheme: light dark;
+      --bg: #f3f5f1;
+      --fg: #16201a;
+      --card-bg: #ffffff;
+      --card-border: #d5ddd7;
+      --card-shadow: 0 12px 32px rgba(18, 34, 25, 0.08);
+      --brand-fg: ${colors.accentLight};
+      --brand-bg: ${colors.brandBgLight};
+      --accent: ${colors.accentLight};
+      --text-muted: #3a4940;
+      --sub-fg: #5b6b61;
+      --divider: #e4ebe6;
+      --alert-ok-bg: #eaf5ef;
+      --alert-ok-border: #8bc9a8;
+      --alert-ok-fg: #155236;
+      --alert-err-bg: #fdf0ee;
+      --alert-err-border: #e3a097;
+      --alert-err-fg: #962d20;
+      --alert-warn-bg: #fef7e8;
+      --alert-warn-border: #e6c67c;
+      --alert-warn-fg: #6b4c0e;
+      --label-fg: #24332a;
+      --input-border: #bdcac1;
+      --input-bg: #fbfcfa;
+      --input-fg: #16201a;
+      --focus: ${colors.buttonLight};
+      --btn-bg: ${colors.buttonLight};
+      --btn-fg: ${colors.inkOnAccentLight};
+      --btn-hover: ${colors.buttonLightHover};
+    }
+    :root[data-theme="light"] {
+      color-scheme: light;
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;${darkVarsCss}
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {${darkVarsCss}
+      }
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       min-height: 100vh;
       display: flex;
+      flex-direction: column;
       align-items: center;
-      justify-content: center;
+      justify-content: flex-start;
       padding: 20px;
-      background: #f3f5f1;
-      color: #16201a;
+      background: var(--bg);
+      color: var(--fg);
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     .card {
       width: 100%;
       max-width: ${maxWidthPx}px;
-      background: #ffffff;
-      border: 1px solid #d5ddd7;
+      margin: auto 0;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
       border-radius: 18px;
       padding: 28px 24px;
-      box-shadow: 0 12px 32px rgba(18, 34, 25, 0.08);
+      box-shadow: var(--card-shadow);
+      overflow-wrap: anywhere;
     }
     .brand {
       display: inline-flex;
       align-items: center;
       gap: 8px;
+      max-width: 100%;
       font-size: 14px;
       font-weight: 700;
       letter-spacing: -0.01em;
-      color: ${colors.accentLight};
-      background: ${colors.brandBgLight};
+      color: var(--brand-fg);
+      background: var(--brand-bg);
       padding: 5px 12px 5px 7px;
       border-radius: 999px;
       margin-bottom: 16px;
@@ -172,21 +295,41 @@ function sendHostedHtml(
       margin: 18px 0 8px;
       font-size: 16px;
       line-height: 1.3;
-      color: ${colors.accentLight};
+      color: var(--accent);
     }
     p {
       margin: 0 0 14px;
       font-size: 15px;
       line-height: 1.55;
-      color: #3a4940;
+      color: var(--text-muted);
     }
     a {
-      color: ${colors.accentLight};
+      color: var(--accent);
+      overflow-wrap: anywhere;
+    }
+    code, pre {
+      overflow-wrap: anywhere;
+    }
+    pre {
+      max-width: 100%;
+      overflow-x: auto;
+    }
+    @media (max-width: 480px) {
+      body {
+        padding: 12px;
+      }
+      .card {
+        padding: 20px 16px;
+        border-radius: 14px;
+      }
+      h1 {
+        font-size: 20px;
+      }
     }
     .en-sub {
       font-size: 13px;
-      color: #5b6b61;
-      border-top: 1px solid #e4ebe6;
+      color: var(--sub-fg);
+      border-top: 1px solid var(--divider);
       padding-top: 14px;
       margin-top: 18px;
     }
@@ -195,32 +338,33 @@ function sendHostedHtml(
       flex-wrap: wrap;
       gap: 8px 14px;
       font-size: 13px;
-      border-top: 1px solid #e4ebe6;
+      color: var(--sub-fg);
+      border-top: 1px solid var(--divider);
       padding-top: 14px;
       margin-top: 18px;
     }
     .alert-ok {
-      background: #eaf5ef;
-      border: 1px solid #8bc9a8;
-      color: #155236;
+      background: var(--alert-ok-bg);
+      border: 1px solid var(--alert-ok-border);
+      color: var(--alert-ok-fg);
       padding: 12px 14px;
       border-radius: 12px;
       font-weight: 600;
       margin-bottom: 16px;
     }
     .alert-err {
-      background: #fdf0ee;
-      border: 1px solid #e3a097;
-      color: #962d20;
+      background: var(--alert-err-bg);
+      border: 1px solid var(--alert-err-border);
+      color: var(--alert-err-fg);
       padding: 12px 14px;
       border-radius: 12px;
       font-weight: 600;
       margin-bottom: 16px;
     }
     .alert-warn {
-      background: #fef7e8;
-      border: 1px solid #e6c67c;
-      color: #6b4c0e;
+      background: var(--alert-warn-bg);
+      border: 1px solid var(--alert-warn-border);
+      color: var(--alert-warn-fg);
       padding: 12px 14px;
       border-radius: 12px;
       font-size: 14px;
@@ -231,104 +375,45 @@ function sendHostedHtml(
       font-size: 13px;
       font-weight: 700;
       margin-bottom: 6px;
-      color: #24332a;
+      color: var(--label-fg);
     }
     input[type="password"] {
       width: 100%;
       min-height: 46px;
       padding: 10px 14px;
-      border: 1px solid #bdcac1;
+      border: 1px solid var(--input-border);
       border-radius: 10px;
       font-size: 15px;
       margin-bottom: 14px;
-      background: #fbfcfa;
-      color: #16201a;
+      background: var(--input-bg);
+      color: var(--input-fg);
     }
     input[type="password"]:focus {
-      outline: 2px solid ${colors.buttonLight};
-      border-color: ${colors.buttonLight};
+      outline: 2px solid var(--focus);
+      border-color: var(--focus);
     }
     button {
       width: 100%;
       min-height: 48px;
       border: none;
       border-radius: 999px;
-      background: ${colors.buttonLight};
-      color: ${colors.inkOnAccentLight};
+      background: var(--btn-bg);
+      color: var(--btn-fg);
       font-size: 15px;
       font-weight: 700;
       cursor: pointer;
     }
     button:hover {
-      background: ${colors.buttonLightHover};
+      background: var(--btn-hover);
     }
     ul {
       margin: 0 0 16px;
       padding-left: 20px;
-      color: #3a4940;
+      color: var(--text-muted);
       font-size: 14px;
       line-height: 1.5;
     }
     li { margin-bottom: 8px; }
-    @media (prefers-color-scheme: dark) {
-      body {
-        background: #0f1613;
-        color: #ecf3ef;
-      }
-      .card {
-        background: #16201b;
-        border-color: #2b3b32;
-        box-shadow: 0 14px 36px rgba(0, 0, 0, 0.48);
-      }
-      .brand {
-        color: ${colors.brandTextDark};
-        background: ${colors.brandBgDark};
-      }
-      h2, a {
-        color: ${colors.accentDark};
-      }
-      p, ul {
-        color: #b7c7be;
-      }
-      .en-sub, .legal-nav {
-        color: #93a89d;
-        border-top-color: #26352d;
-      }
-      .alert-ok {
-        background: #132e22;
-        border-color: #235c42;
-        color: #6ee7b7;
-      }
-      .alert-err {
-        background: #311518;
-        border-color: #70262c;
-        color: #fca5a5;
-      }
-      .alert-warn {
-        background: #2d2210;
-        border-color: #6b4e1b;
-        color: #fcd34d;
-      }
-      label {
-        color: #ecf3ef;
-      }
-      input[type="password"] {
-        border-color: #394d42;
-        background: #121a16;
-        color: #ecf3ef;
-      }
-      input[type="password"]:focus {
-        outline-color: ${colors.accentDark};
-        border-color: ${colors.accentDark};
-      }
-      button {
-        background: ${colors.accentDark};
-        color: ${colors.inkOnAccentDark};
-      }
-      button:hover {
-        background: ${colors.buttonDarkHover};
-      }
-    }
   </style>
 </head>
 <body>
@@ -366,12 +451,17 @@ function readStringField(
   return typeof value === 'string' ? value : '';
 }
 
-function buildLegalNavHtml(app: FastifyInstance): string {
+function buildLegalNavHtml(
+  app: FastifyInstance,
+  theme: HostedPageTheme = null,
+): string {
+  const withTheme = (url: string): string =>
+    appendHostedThemeParam(url, theme, app.config.publicBaseUrl);
   return `<nav class="legal-nav" aria-label="Rechtliche Hinweise">
-    <a href="${escapeHtml(app.config.impressumUrl)}">Impressum</a>
-    <a href="${escapeHtml(app.config.privacyPolicyUrl)}">Datenschutz</a>
-    <a href="${escapeHtml(app.config.termsUrl)}">Nutzungsbedingungen</a>
-    <a href="${escapeHtml(app.config.licensesUrl)}">Open-Source-Lizenzen</a>
+    <a href="${escapeHtml(withTheme(app.config.impressumUrl))}">Impressum</a>
+    <a href="${escapeHtml(withTheme(app.config.privacyPolicyUrl))}">Datenschutz</a>
+    <a href="${escapeHtml(withTheme(app.config.termsUrl))}">Nutzungsbedingungen</a>
+    <a href="${escapeHtml(withTheme(app.config.licensesUrl))}">Open-Source-Lizenzen</a>
     <a href="${escapeHtml(app.config.sourceCodeUrl)}" target="_blank" rel="noopener noreferrer">Quellcode (AGPL-3.0 / MPL-2.0)</a>
   </nav>`;
 }
@@ -504,13 +594,26 @@ function buildThirdPartyItemsHtml(app: FastifyInstance): string {
   return items.join('\n         ');
 }
 
-function buildPrivacyPolicyHtml(app: FastifyInstance): string {
+function buildPrivacyPolicyHtml(
+  app: FastifyInstance,
+  theme: HostedPageTheme = null,
+): string {
   const config = app.config;
   const appName = config.branding.appName;
+  const impressumHref = appendHostedThemeParam(
+    config.impressumUrl,
+    theme,
+    config.publicBaseUrl,
+  );
+  const termsHref = appendHostedThemeParam(
+    config.termsUrl,
+    theme,
+    config.publicBaseUrl,
+  );
   const controllerBlock = buildOperatorIdentityHtml(app);
   const contactLine = config.abuseContact
     ? `<p><strong>Kontakt für Datenschutzanfragen:</strong> ${formatContactHtml(config.abuseContact)}</p>`
-    : `<p><strong>Kontakt:</strong> Bitte wende dich bei Fragen zum Datenschutz an die oben bzw. im <a href="${escapeHtml(config.impressumUrl)}">Impressum</a> genannte verantwortliche Stelle.</p>`;
+    : `<p><strong>Kontakt:</strong> Bitte wende dich bei Fragen zum Datenschutz an die oben bzw. im <a href="${escapeHtml(impressumHref)}">Impressum</a> genannte verantwortliche Stelle.</p>`;
   const recentDays = AUTHOR_ACTIVITY.RECENT_DAYS;
   const usesOpenFreeMap = [
     hostOf(config.osmStyleUrl),
@@ -525,8 +628,8 @@ function buildPrivacyPolicyHtml(app: FastifyInstance): string {
       : '';
   const introParagraph =
     appName === DEFAULT_APP_NAME
-      ? 'Unseal ist ein datensparsames Open-Source-Bürgerbeteiligungsprojekt (PPGIS) zur gemeinschaftlichen Kartierung versiegelter Flächen. Hier steht, welche personenbezogenen Daten diese Instanz verarbeitet, wozu und wie lange. Es gibt keine Cookies, kein Tracking und keine Analyse- oder Werbedienste.'
-      : `${escapeHtml(appName)} ist ein datensparsames Bürgerbeteiligungsprojekt (PPGIS) auf Basis der Open-Source-Software Unseal zur gemeinschaftlichen Kartierung versiegelter Flächen. Hier steht, welche personenbezogenen Daten diese Instanz verarbeitet, wozu und wie lange. Es gibt keine Cookies, kein Tracking und keine Analyse- oder Werbedienste.`;
+      ? 'OpenUnseal ist ein datensparsames Open-Source-Bürgerbeteiligungsprojekt (PPGIS) zur gemeinschaftlichen Kartierung versiegelter Flächen. Hier steht, welche personenbezogenen Daten diese Instanz verarbeitet, wozu und wie lange. Es gibt keine Cookies, kein Tracking und keine Analyse- oder Werbedienste.'
+      : `${escapeHtml(appName)} ist ein datensparsames Bürgerbeteiligungsprojekt (PPGIS) auf Basis der Open-Source-Software OpenUnseal zur gemeinschaftlichen Kartierung versiegelter Flächen. Hier steht, welche personenbezogenen Daten diese Instanz verarbeitet, wozu und wie lange. Es gibt keine Cookies, kein Tracking und keine Analyse- oder Werbedienste.`;
   const backupLine =
     config.backupRetentionDays !== null
       ? `<li><strong>Datensicherungen:</strong> werden nach ${config.backupRetentionDays} Tagen gelöscht. Gelöschte Daten verschwinden daher spätestens nach dieser Frist auch aus den Sicherungen.</li>`
@@ -551,7 +654,7 @@ function buildPrivacyPolicyHtml(app: FastifyInstance): string {
        <h2>3. Verarbeitete Daten, Zwecke und Rechtsgrundlagen</h2>
        <ul>
          <li><strong>Konto (Art. 6 Abs. 1 lit. b DSGVO, Bereitstellung der Plattform):</strong> Pseudonym, E-Mail-Adresse (für Bestätigungs- und Wiederherstellungslinks sowie einen Hinweis, falls jemand sich erneut mit deiner Adresse registrieren will), Passwort ausschließlich als Argon2id-Hash, Rolle, Zeitpunkte von Registrierung, E-Mail-Bestätigung, Kenntnisnahme dieser Erklärung und Annahme der Nutzungsbedingungen sowie das Datum deiner letzten Aktivität. Sitzungen werden serverseitig nur als SHA-256-Hash des Tokens gespeichert.</li>
-         <li><strong>Beiträge (Art. 6 Abs. 1 lit. b DSGVO):</strong> Flächen, Notizen, Fotos, Kommentare, Abstimmungen und Meldungen mit Zeitstempeln. Angemeldete Konten können eine persönliche Übersicht ihrer aktuellen Beiträge und abgegebenen Flächenbewertungen abrufen, die ausschließlich aus diesen bestehenden Daten berechnet wird; die allgemeine Statistik zeigt nur anonyme Gesamtzahlen. Die Lizenzen ergeben sich aus den <a href="${escapeHtml(config.termsUrl)}">Nutzungsbedingungen</a>.</li>
+         <li><strong>Beiträge (Art. 6 Abs. 1 lit. b DSGVO):</strong> Flächen, Notizen, Fotos, Kommentare, Abstimmungen und Meldungen mit Zeitstempeln. Angemeldete Konten können eine persönliche Übersicht ihrer aktuellen Beiträge und abgegebenen Flächenbewertungen abrufen, die ausschließlich aus diesen bestehenden Daten berechnet wird; die allgemeine Statistik zeigt nur anonyme Gesamtzahlen. Die Lizenzen ergeben sich aus den <a href="${escapeHtml(termsHref)}">Nutzungsbedingungen</a>.</li>
          <li><strong>Fotos &amp; Metadaten:</strong> Das Foto wird mit seinen Metadaten hochgeladen. Der Server prüft im Arbeitsspeicher, ob die darin enthaltene GPS-Position in der kartierten Fläche (inkl. ${PHOTO_LIMITS.GPS_VERIFY_DISTANCE_M} m Puffer) liegt, speichert nur dieses Ergebnis (<em>GPS verified</em>) und entfernt <strong>alle</strong> EXIF-/XMP-/IPTC-Metadaten (Gerät, Koordinaten, Aufnahmezeit), bevor das Bild als WebP gespeichert wird. Bitte lade keine Aufnahmen hoch, auf denen Personen, Gesichter oder Kfz-Kennzeichen erkennbar sind.</li>
          <li><strong>Missbrauchsschutz (Art. 6 Abs. 1 lit. f DSGVO; Interesse: Schutz vor Spam, Mehrfachkonten und Identitätsmissbrauch):</strong> Anfragebegrenzungen anhand der IP-Adresse ausschließlich im Arbeitsspeicher (IPv6 auf /64 gekürzt, Zeitfenster höchstens 1 Stunde); Zähler fehlgeschlagener Anmeldeversuche je Konto (Sperrung der Anmeldung nach ${AUTH_LIMITS.MAX_FAILED_LOGIN_ATTEMPTS} Fehlversuchen bis zur erneuten E-Mail-Bestätigung); eine Rechenaufgabe (Proof-of-Work, ohne Drittanbieter) bei der Registrierung; ein mit einem geheimen Serverschlüssel gebildeter Hash (HMAC-SHA-256) deiner normalisierten E-Mail-Adresse, um Doppelkonten über Alias-Adressen zu verhindern.</li>
          <li><strong>Server-Protokolle (Art. 6 Abs. 1 lit. f DSGVO; Interesse: sicherer Betrieb, Fehleranalyse):</strong> Anfrage-ID, Methode, Pfad ohne Parameter, Statuscode, Antwortzeit und Fehlermeldungen. <strong>Keine</strong> IP-Adressen, Browserkennungen (User-Agent) oder Referrer. Der vorgeschaltete Webserver schreibt keine Zugriffsprotokolle.</li>
@@ -590,7 +693,7 @@ function buildPrivacyPolicyHtml(app: FastifyInstance): string {
        <p>Es finden keine automatisierten Einzelentscheidungen im Sinne von Art. 22 DSGVO statt.</p>
 
        <p class="en-sub"><strong>English summary:</strong> Public: your pseudonym, your contributions, whether you were active in the last ${recentDays} days (only the date of your last activity is stored) and a "new contributor" hint; the ODbL 1.0 GeoJSON export contains no pseudonym. Your email is used only for account links and DSA Art. 17 moderation notices and is never shown publicly. Accounts and contributions are processed under Art. 6(1)(b) GDPR (signed-in accounts can view a personal summary derived solely from their existing contributions and polygon ratings; public statistics and daily aggregate counters contain zero personal data); abuse prevention and logs under Art. 6(1)(f); DSA Art. 16 illegal-content notices under Art. 6(1)(c) GDPR. Server logs contain no IP addresses, user agents or referrers; rate limiting keeps IPs in memory only. Photo metadata is checked in memory and fully stripped before storage. Device GNSS stays on-device (centering fetches map bbox/tiles without logging); on Web the last viewport is kept in sessionStorage only. ${enThirdPartyNote}${enWebhookNote} Retention: unconfirmed accounts 48 h, sessions up to ${config.sessionTtlDays} days, email links 7 days after use, pseudonym reservation after deletion ${config.pseudonymReservationDays} days (keyed hash only). Rights: download your data in the app (Art. 15/20), delete your account with or without your contributions (open-data licenses on copies legitimately downloaded prior to deletion remain irrevocable under their terms), and contact the operator for corrections, restriction, objection or a complaint to a supervisory authority.</p>
-       ${buildLegalNavHtml(app)}`;
+       ${buildLegalNavHtml(app, theme)}`;
 }
 
 export function registerAuthPageRoutes(app: FastifyInstance): void {
@@ -600,7 +703,8 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
   };
   const safeAppName = escapeHtml(app.config.branding.appName);
 
-  app.get('/auth/impressum', async (_request, reply) => {
+  app.get('/auth/impressum', async (request, reply) => {
+    const theme = parseRequestedTheme(request.query);
     const operatorHtml = buildOperatorIdentityHtml(app);
     const portalHtml = app.config.branding.portalUrl
       ? `<p><strong>${escapeHtml(app.config.branding.portalLabel ?? 'Kommunales Portal')}:</strong> <a href="${escapeHtml(app.config.branding.portalUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(app.config.branding.portalUrl)}</a></p>`
@@ -626,18 +730,24 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
        <p>${escapeHtml(app.config.disclaimerText)}</p>
        <p>Nutzende sind für die von ihnen eingestellten Flächenvorschläge, Texte, Kommentare und Fotos selbst verantwortlich. Hinweise auf rechtswidrige Inhalte werden über die oben genannte Kontaktstelle bzw. die Meldefunktion geprüft und unverzüglich entfernt.</p>
        <h2>Quellcode &amp; Lizenzen</h2>
-       <p>Diese Instanz nutzt die Open-Source-Software <strong>Unseal</strong> (Server: <code>AGPL-3.0-or-later</code>, Client &amp; Shared: <code>MPL-2.0</code>). Der vollständige Quellcode ist unter <a href="${escapeHtml(app.config.sourceCodeUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(app.config.sourceCodeUrl)}</a> verfügbar.</p>
-       <p class="en-sub"><strong>English summary:</strong> Legal notice / operator identification pursuant to German law (§ 5 DDG / § 18(2) MStV) and single point of contact for authorities and users pursuant to Arts. 11, 12 and 16 EU Digital Services Act (accepted languages: German, English). This instance is powered by Unseal open-source software (API: AGPL-3.0-or-later, Client: MPL-2.0); source code is available at <a href="${escapeHtml(app.config.sourceCodeUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(app.config.sourceCodeUrl)}</a>.</p>
-       ${buildLegalNavHtml(app)}`,
-      { wide: true },
+       <p>Diese Instanz nutzt die Open-Source-Software <strong>OpenUnseal</strong> (Server: <code>AGPL-3.0-or-later</code>, Client &amp; Shared: <code>MPL-2.0</code>). Der vollständige Quellcode ist unter <a href="${escapeHtml(app.config.sourceCodeUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(app.config.sourceCodeUrl)}</a> verfügbar.</p>
+       <p class="en-sub"><strong>English summary:</strong> Legal notice / operator identification pursuant to German law (§ 5 DDG / § 18(2) MStV) and single point of contact for authorities and users pursuant to Arts. 11, 12 and 16 EU Digital Services Act (accepted languages: German, English). This instance is powered by OpenUnseal open-source software (API: AGPL-3.0-or-later, Client: MPL-2.0); source code is available at <a href="${escapeHtml(app.config.sourceCodeUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(app.config.sourceCodeUrl)}</a>.</p>
+       ${buildLegalNavHtml(app, theme)}`,
+      { wide: true, theme },
     );
   });
 
-  app.get('/auth/terms', async (_request, reply) => {
+  app.get('/auth/terms', async (request, reply) => {
+    const theme = parseRequestedTheme(request.query);
     const config = app.config;
+    const impressumHref = appendHostedThemeParam(
+      config.impressumUrl,
+      theme,
+      config.publicBaseUrl,
+    );
     const abuseNote = config.abuseContact
       ? `Missbrauchs- und Rechtsverstoßmeldungen (Art. 16 DSA) können jederzeit – auch ohne Benutzerkonto – über das In-App-Meldeformular (<code>POST /api/v1/content-reports</code>) an Flächen, Fotos und Kommentaren oder per E-Mail an ${formatContactHtml(config.abuseContact)} eingereicht werden.`
-      : `Missbrauchs- und Rechtsverstoßmeldungen (Art. 16 DSA) können jederzeit – auch ohne Benutzerkonto – über das In-App-Meldeformular an Flächen, Fotos und Kommentaren oder an die im <a href="${escapeHtml(config.impressumUrl)}">Impressum</a> genannte Kontaktstelle gerichtet werden.`;
+      : `Missbrauchs- und Rechtsverstoßmeldungen (Art. 16 DSA) können jederzeit – auch ohne Benutzerkonto – über das In-App-Meldeformular an Flächen, Fotos und Kommentaren oder an die im <a href="${escapeHtml(impressumHref)}">Impressum</a> genannte Kontaktstelle gerichtet werden.`;
     return sendHostedHtml(
       app,
       reply,
@@ -654,8 +764,8 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
          <li><strong>Inhaltsmoderation, automatisierte Schutzmaßnahmen &amp; Meldeverfahren (Art. 14, 16, 17 DSA):</strong> Rechtswidrige, beleidigende, personenbezogene, urheberrechtsverletzende, irreführende oder Spam-Beiträge können entfernt und Konten bei schwerwiegenden oder wiederholten Verstößen gesperrt werden. Zur Qualitätssicherung und Missbrauchsabwehr setzt die Plattform folgende dokumentierte automatische Verfahren ein: (1) automatische Geometrie-Bereinigung (<code>ST_Difference</code>-Zuschnitt an bestehenden Vorschlägen) sowie Ablehnung von Flächen auf ausgeschlossenen Landnutzungskategorien (z. B. Gewässer, Gleise, Gebäude, Grünflächen, soweit konfiguriert); (2) automatisches Weichzeichnen von Fotos ab einer Community-Glaubwürdigkeitsbewertung von <code>&lt;= ${PHOTO_LIMITS.FAKE_BLUR_SCORE_THRESHOLD}</code>; (3) automatische Entfernung unbewerteter Vorschläge ohne Stimmen, Fotos oder Kommentare nach ${config.staleUnratedPruneDays} Tagen; (4) Blockierung bekannter Wegwerf-E-Mail-Domains, Proof-of-Work-Registrierungsprüfung sowie vorübergehende Anmeldesperre nach ${AUTH_LIMITS.MAX_FAILED_LOGIN_ATTEMPTS} Fehlversuchen bis zur erneuten E-Mail-Bestätigung. Bei manuellen Moderationsmaßnahmen (Löschung von Beiträgen, Schwärzung von Notizen oder Kontosperrung) erhalten betroffene Konten eine schriftliche Begründung per E-Mail (Art. 17 DSA). ${abuseNote}</li>
        </ul>
        <p class="en-sub"><strong>English summary:</strong> Contributions are non-binding civic suggestions. Registration and irrevocable open-data licensing require users to be at least 16 years old (with parental/guardian consent under 18 where required by law). By registering and contributing, you waive your own copyright and database rights in submitted polygon geometries, surface classifications, and proposal notes under <strong>CC0 1.0 Universal</strong> (or, as a Section 3 Public License Fallback where statutory waiver is unavailable, e.g. under § 29 German UrhG, grant an unrestricted, irrevocable license), while the compiled public GeoJSON dataset (<code>/api/v1/polygons/export.geojson</code>) is licensed under <strong>ODbL 1.0</strong> with upstream attributions. Admin bulk imports enter the same ODbL-1.0 export and are restricted to directly compatible open licenses (<code>CC0-1.0</code>, <code>PDDL-1.0</code>, <code>dl-de/zero-2-0</code>, <code>Public Domain</code>, attributed <code>ODbL-1.0</code>) or <code>CC BY 4.0</code> / <code>dl-de/by-2-0</code> datasets with a confirmed explicit ODbL waiver and persisted attribution. Uploaded site photos and comments are licensed under <strong>CC BY 4.0</strong> attributed to your pseudonym (photos are stripped of EXIF/XMP/IPTC metadata and re-encoded/resized to WebP). Automated safeguards (Art. 14 DSA): auto-clipping against overlaps, land-cover checks, photo blurring at credibility score &lt;= ${PHOTO_LIMITS.FAKE_BLUR_SCORE_THRESHOLD}, pruning of unrated proposals after ${config.staleUnratedPruneDays} days, disposable-email blocking, and temporary login lockout after ${AUTH_LIMITS.MAX_FAILED_LOGIN_ATTEMPTS} failed attempts. Suspected illegal content can be reported without an account via the in-app report action (Art. 16 DSA); manual moderation removals or account bans trigger an emailed statement of reasons (Art. 17 DSA).</p>
-       ${buildLegalNavHtml(app)}`,
-      { wide: true },
+       ${buildLegalNavHtml(app, theme)}`,
+      { wide: true, theme },
     );
   });
 
@@ -678,8 +788,14 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
       .send(notices);
   });
 
-  app.get('/auth/licenses', async (_request, reply) => {
+  app.get('/auth/licenses', async (request, reply) => {
+    const theme = parseRequestedTheme(request.query);
     const config = app.config;
+    const termsHref = appendHostedThemeParam(
+      config.termsUrl,
+      theme,
+      config.publicBaseUrl,
+    );
     const currentYear = new Date().getUTCFullYear();
     const noticesHref = `${config.publicBaseUrl}/auth/third-party-notices`;
     const muniStatus = await getMunicipalitiesStatus(app.pool).catch(() => ({
@@ -751,10 +867,10 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
       200,
       'Open-Source-Lizenzen & Geodaten-Quellen',
       `<h1>Open-Source-Lizenzen &amp; Geodaten-Quellen</h1>
-       <h2>1. Software-Lizenzen (Unseal)</h2>
+       <h2>1. Software-Lizenzen (OpenUnseal)</h2>
        <ul>
-         <li><strong>Backend-API &amp; Repository-Wurzel (<code>apps/api</code>):</strong> Lizenziert unter der <strong>GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later)</strong> (Copyright © 2026 Unseal Contributors). Gemäß § 13 AGPLv3 steht der vollständige korrespondierende Quellcode kostenlos unter <a href="${escapeHtml(config.sourceCodeUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(config.sourceCodeUrl)}</a> bereit (Details zur Split-Lizenzierung in <code>LICENSING.md</code>).</li>
-         <li><strong>Client-App &amp; gemeinsame Schemas (<code>apps/mobile</code>, <code>packages/shared</code>):</strong> Lizenziert unter der <strong>Mozilla Public License 2.0 (MPL-2.0)</strong> (Copyright © 2026 Unseal Contributors).</li>
+         <li><strong>Backend-API &amp; Repository-Wurzel (<code>apps/api</code>):</strong> Lizenziert unter der <strong>GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later)</strong> (Copyright © 2026 OpenUnseal Contributors). Gemäß § 13 AGPLv3 steht der vollständige korrespondierende Quellcode kostenlos unter <a href="${escapeHtml(config.sourceCodeUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(config.sourceCodeUrl)}</a> bereit (Details zur Split-Lizenzierung in <code>LICENSING.md</code>).</li>
+         <li><strong>Client-App &amp; gemeinsame Schemas (<code>apps/mobile</code>, <code>packages/shared</code>):</strong> Lizenziert unter der <strong>Mozilla Public License 2.0 (MPL-2.0)</strong> (Copyright © 2026 OpenUnseal Contributors).</li>
          <li><strong>Wesentliche Drittanbieter-Bibliotheken &amp; Laufzeitkomponenten:</strong> Expo, React &amp; React Native (MIT), MapLibre GL JS (BSD-3-Clause), MapLibre React Native (MIT), MapLibre Native Android/iOS (BSD-2-Clause), MapLibre Android Plugins &amp; Turf (Apache-2.0), Android-Image-Cropper (Apache-2.0), SmartLocation (MIT), Google Play Services Location SDK (proprietäre Google APIs Terms of Service, kompatibel unter MPL-2.0 § 3.3), Fastify &amp; Plugins (MIT), PostgreSQL (PostgreSQL License) &amp; PostGIS (GPL-2.0-or-later), sharp (Apache-2.0) / libvips (LGPL-3.0-or-later), Turf.js (MIT), @node-rs/argon2 (MIT), exifr (MIT), pg (MIT), Zod (MIT), Nodemailer (MIT-0), Pino (MIT), Node.js (MIT), Caddy (Apache-2.0).</li>
          <li><strong>Vollständige Paketlizenzen &amp; Copyright-Hinweise:</strong> Alle npm-Abhängigkeiten, wiedergegebenen Lizenztexte, nativen Mobile-SDKs und Docker-Komponenten sind in <a href="${escapeHtml(noticesHref)}"><code>THIRD_PARTY_NOTICES.txt</code></a> (sowie im Quellcode-Repository) vollständig dokumentiert.</li>
        </ul>
@@ -768,22 +884,23 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
        <h2>3. Nutzerbeiträge &amp; Offene Daten</h2>
        <ul>
          <li><strong>Zusammengestellter GeoJSON-Datensatz (<code>/api/v1/polygons/export.geojson</code>):</strong> <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener noreferrer">Open Data Commons Open Database License 1.0 (ODbL 1.0)</a> (inklusive der oben genannten Karten-, Luftbild- und VG250-Quellenvermerke); Mitwirkende verzichten auf eigene Urheber- und Datenbankrechte an eingezeichneten Geometrien, Belagsangaben und Notizen gemäß <a href="https://creativecommons.org/publicdomain/zero/1.0/deed.de" target="_blank" rel="noopener noreferrer">CC0 1.0 Universal</a>.</li>
-         <li><strong>Vor-Ort-Fotos &amp; Kommentare:</strong> <a href="https://creativecommons.org/licenses/by/4.0/deed.de" target="_blank" rel="noopener noreferrer">CC BY 4.0 International</a> (Namensnennung des Pseudonyms; Fotos serverseitig EXIF-bereinigt &amp; als WebP skaliert; Details in den <a href="${escapeHtml(config.termsUrl)}">Nutzungsbedingungen</a>).</li>
+         <li><strong>Vor-Ort-Fotos &amp; Kommentare:</strong> <a href="https://creativecommons.org/licenses/by/4.0/deed.de" target="_blank" rel="noopener noreferrer">CC BY 4.0 International</a> (Namensnennung des Pseudonyms; Fotos serverseitig EXIF-bereinigt &amp; als WebP skaliert; Details in den <a href="${escapeHtml(termsHref)}">Nutzungsbedingungen</a>).</li>
        </ul>
-       <p class="en-sub"><strong>English summary:</strong> Unseal API is licensed under AGPL-3.0-or-later (Corresponding Source available at <a href="${escapeHtml(config.sourceCodeUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(config.sourceCodeUrl)}</a>); the mobile/web client and shared schemas are licensed under MPL-2.0 (Copyright © 2026 Unseal Contributors). Complete third-party notices and license texts (including native Android SDKs) are available at <a href="${escapeHtml(noticesHref)}">THIRD_PARTY_NOTICES.txt</a>. ${usesOpenFreeMap ? 'Vector basemap via OpenFreeMap (MIT), © OpenMapTiles / © CARTO (modified in dark mode) (CC BY 4.0 / BSD-3-Clause), © OpenStreetMap contributors (ODbL), Natural Earth (Public Domain), and Noto Sans (SIL OFL 1.1).' : 'Basemap tiles are loaded from the configured style host.'} Geocoding © OpenStreetMap contributors (ODbL).${vg250EnglishSummary} ${orthoEnglishSummary} Compiled polygon exports are licensed under ODbL 1.0 (with contributor CC0 1.0 rights waiver / Section 3 Public License Fallback); site photos and comments under CC BY 4.0.</p>
-       ${buildLegalNavHtml(app)}`,
-      { wide: true },
+       <p class="en-sub"><strong>English summary:</strong> OpenUnseal API is licensed under AGPL-3.0-or-later (Corresponding Source available at <a href="${escapeHtml(config.sourceCodeUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(config.sourceCodeUrl)}</a>); the mobile/web client and shared schemas are licensed under MPL-2.0 (Copyright © 2026 OpenUnseal Contributors). Complete third-party notices and license texts (including native Android SDKs) are available at <a href="${escapeHtml(noticesHref)}">THIRD_PARTY_NOTICES.txt</a>. ${usesOpenFreeMap ? 'Vector basemap via OpenFreeMap (MIT), © OpenMapTiles / © CARTO (modified in dark mode) (CC BY 4.0 / BSD-3-Clause), © OpenStreetMap contributors (ODbL), Natural Earth (Public Domain), and Noto Sans (SIL OFL 1.1).' : 'Basemap tiles are loaded from the configured style host.'} Geocoding © OpenStreetMap contributors (ODbL).${vg250EnglishSummary} ${orthoEnglishSummary} Compiled polygon exports are licensed under ODbL 1.0 (with contributor CC0 1.0 rights waiver / Section 3 Public License Fallback); site photos and comments under CC BY 4.0.</p>
+       ${buildLegalNavHtml(app, theme)}`,
+      { wide: true, theme },
     );
   });
 
-  app.get('/auth/privacy', async (_request, reply) => {
+  app.get('/auth/privacy', async (request, reply) => {
+    const theme = parseRequestedTheme(request.query);
     return sendHostedHtml(
       app,
       reply,
       200,
       'Datenschutzerklärung',
-      buildPrivacyPolicyHtml(app),
-      { wide: true },
+      buildPrivacyPolicyHtml(app, theme),
+      { wide: true, theme },
     );
   });
 
@@ -791,6 +908,7 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
     '/auth/verify-email',
     { config: { rateLimit: pageLimit } },
     async (request, reply) => {
+      const theme = parseRequestedTheme(request.query);
       const token = readStringField(request.query, 'token').trim();
       const check = await inspectEmailActionToken(
         app.pool,
@@ -808,9 +926,13 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
            <h1>E-Mail-Bestätigung fehlgeschlagen</h1>
            <p>Bitte öffne die ${safeAppName}-App und fordere im Anmeldedialog einen neuen Bestätigungslink an.</p>
            <p class="en-sub"><strong>English:</strong> This confirmation link is invalid, expired, or has already been used. Please request a fresh confirmation link from the sign-in screen in the app.</p>`,
+          { theme },
         );
       }
 
+      const themeInput = theme
+        ? `<input type="hidden" name="theme" value="${theme}" />`
+        : '';
       return sendHostedHtml(
         app,
         reply,
@@ -820,9 +942,11 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
          <p>Hallo <strong>${escapeHtml(check.pseudonym)}</strong>! Klicke auf den Button unten, um dein Konto endgültig freizuschalten.</p>
          <form method="POST" action="/auth/verify-email">
            <input type="hidden" name="token" value="${escapeHtml(token)}" />
+           ${themeInput}
            <button type="submit">E-Mail-Adresse jetzt bestätigen</button>
          </form>
          <p class="en-sub"><strong>English:</strong> Click the button above to activate account <strong>${escapeHtml(check.pseudonym)}</strong>.</p>`,
+        { theme },
       );
     },
   );
@@ -831,6 +955,8 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
     '/auth/verify-email',
     { config: { rateLimit: pageLimit } },
     async (request, reply) => {
+      const theme =
+        parseRequestedTheme(request.body) ?? parseRequestedTheme(request.query);
       const token = readStringField(request.body, 'token').trim();
       try {
         const verified = await consumeVerifyEmailToken(
@@ -847,6 +973,7 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
            <h1>Willkommen, ${escapeHtml(verified.pseudonym)}!</h1>
            <p>Dein Konto ist jetzt aktiv. Du kannst dieses Browserfenster schließen und dich in der <strong>${safeAppName}</strong>-App anmelden.</p>
            <p class="en-sub"><strong>English:</strong> Your email address is confirmed! You can now close this tab and sign in to ${safeAppName}.</p>`,
+          { theme },
         );
       } catch (err: unknown) {
         const status = err instanceof ApiError ? err.statusCode : 400;
@@ -859,6 +986,7 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
            <h1>E-Mail-Bestätigung fehlgeschlagen</h1>
            <p>Falls du dein Konto bereits bestätigt hast, kannst du dich direkt in der App anmelden. Andernfalls fordere dort bitte einen neuen Link an.</p>
            <p class="en-sub"><strong>English:</strong> This confirmation link is invalid or was already used. If already confirmed, sign in directly inside the app.</p>`,
+          { theme },
         );
       }
     },
@@ -868,6 +996,7 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
     '/auth/reset-password',
     { config: { rateLimit: pageLimit } },
     async (request, reply) => {
+      const theme = parseRequestedTheme(request.query);
       const token = readStringField(request.query, 'token').trim();
       const check = await inspectEmailActionToken(
         app.pool,
@@ -885,9 +1014,13 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
            <h1>Passwort-Zurücksetzung nicht möglich</h1>
            <p>Bitte fordere in der ${safeAppName}-App unter <em>Passwort vergessen?</em> einen neuen Link an.</p>
            <p class="en-sub"><strong>English:</strong> This password reset link is invalid, expired, or has already been used. Please request a new reset link inside the app.</p>`,
+          { theme },
         );
       }
 
+      const themeInput = theme
+        ? `<input type="hidden" name="theme" value="${theme}" />`
+        : '';
       return sendHostedHtml(
         app,
         reply,
@@ -897,6 +1030,7 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
          <p>Vergib ein neues Passwort für dein Konto <strong>${escapeHtml(check.pseudonym)}</strong> (mindestens ${AUTH_LIMITS.MIN_PASSWORD_LENGTH} Zeichen).</p>
          <form method="POST" action="/auth/reset-password">
            <input type="hidden" name="token" value="${escapeHtml(token)}" />
+           ${themeInput}
            <label for="newPassword">Neues Passwort / New password</label>
            <input id="newPassword" name="newPassword" type="password" minlength="${AUTH_LIMITS.MIN_PASSWORD_LENGTH}" maxlength="${AUTH_LIMITS.MAX_PASSWORD_LENGTH}" autocomplete="new-password" required />
            <label for="confirmPassword">Passwort wiederholen / Confirm password</label>
@@ -904,6 +1038,7 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
            <button type="submit">Passwort speichern</button>
          </form>
          <p class="en-sub"><strong>English:</strong> Enter and confirm a new password (at least ${AUTH_LIMITS.MIN_PASSWORD_LENGTH} characters) for <strong>${escapeHtml(check.pseudonym)}</strong>.</p>`,
+        { theme },
       );
     },
   );
@@ -912,6 +1047,11 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
     '/auth/reset-password',
     { config: { rateLimit: pageLimit } },
     async (request, reply) => {
+      const theme =
+        parseRequestedTheme(request.body) ?? parseRequestedTheme(request.query);
+      const themeInput = theme
+        ? `<input type="hidden" name="theme" value="${theme}" />`
+        : '';
       const token = readStringField(request.body, 'token').trim();
       const newPassword = readStringField(request.body, 'newPassword');
       const confirmPassword = readStringField(request.body, 'confirmPassword');
@@ -926,6 +1066,7 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
            <h1>Neues Passwort festlegen</h1>
            <form method="POST" action="/auth/reset-password">
              <input type="hidden" name="token" value="${escapeHtml(token)}" />
+             ${themeInput}
              <label for="newPassword">Neues Passwort / New password</label>
              <input id="newPassword" name="newPassword" type="password" minlength="${AUTH_LIMITS.MIN_PASSWORD_LENGTH}" maxlength="${AUTH_LIMITS.MAX_PASSWORD_LENGTH}" autocomplete="new-password" required />
              <label for="confirmPassword">Passwort wiederholen / Confirm password</label>
@@ -933,6 +1074,7 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
              <button type="submit">Passwort speichern</button>
            </form>
            <p class="en-sub"><strong>English:</strong> Passwords did not match. Please try again.</p>`,
+          { theme },
         );
       }
 
@@ -953,6 +1095,7 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
            <h1>Passwort aktualisiert</h1>
            <p>Alle bisherigen Sitzungen wurden aus Sicherheitsgründen abgemeldet. Du kannst dich jetzt mit deinem neuen Passwort in der <strong>${safeAppName}</strong>-App anmelden.</p>
            <p class="en-sub"><strong>English:</strong> Your password has been updated and prior sessions were signed out. You can now sign in to the app with your new password.</p>`,
+          { theme },
         );
       } catch (err: unknown) {
         if (err instanceof ZodError) {
@@ -965,6 +1108,7 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
              <h1>Neues Passwort festlegen</h1>
              <form method="POST" action="/auth/reset-password">
                <input type="hidden" name="token" value="${escapeHtml(token)}" />
+               ${themeInput}
                <label for="newPassword">Neues Passwort / New password</label>
                <input id="newPassword" name="newPassword" type="password" minlength="${AUTH_LIMITS.MIN_PASSWORD_LENGTH}" maxlength="${AUTH_LIMITS.MAX_PASSWORD_LENGTH}" autocomplete="new-password" required />
                <label for="confirmPassword">Passwort wiederholen / Confirm password</label>
@@ -972,6 +1116,7 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
                <button type="submit">Passwort speichern</button>
              </form>
              <p class="en-sub"><strong>English:</strong> Password must be between ${AUTH_LIMITS.MIN_PASSWORD_LENGTH} and ${AUTH_LIMITS.MAX_PASSWORD_LENGTH} characters.</p>`,
+            { theme },
           );
         }
         const message =
@@ -987,6 +1132,7 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
            <h1>Zurücksetzung fehlgeschlagen</h1>
            <p>Bitte prüfe die Eingabe oder fordere in der App einen neuen Wiederherstellungslink an.</p>
            <p class="en-sub"><strong>English:</strong> Password reset could not be completed. Please request a fresh recovery link inside the app if this link has expired.</p>`,
+          { theme },
         );
       }
     },

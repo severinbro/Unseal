@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
@@ -13,7 +13,7 @@ import {
   IMPORT_LIMITS,
   SURFACE_TYPES,
   type SurfaceType,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 export interface ParsedGpbGeometry {
   srsId: number;

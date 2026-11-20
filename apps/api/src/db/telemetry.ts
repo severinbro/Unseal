@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import {
   POLYGON_ORIGINS,
   type PolygonOrigin,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import type pg from 'pg';
 
@@ -51,7 +51,7 @@ export interface PolygonOriginSummary {
 }
 
 export interface TelemetryExportReport {
-  format: 'unseal-research-telemetry';
+  format: 'openunseal-research-telemetry';
   version: 1;
   exportedAt: string;
   window: {
@@ -258,7 +258,7 @@ export async function collectTelemetryExport(
   }
 
   return {
-    format: 'unseal-research-telemetry',
+    format: 'openunseal-research-telemetry',
     version: 1,
     exportedAt: new Date().toISOString(),
     window: {

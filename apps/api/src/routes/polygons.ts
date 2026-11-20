@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import { Readable } from 'node:stream';
 
@@ -20,7 +20,7 @@ import {
   type PolygonCollectionResponse,
   type ExportPolygonFeature,
   type PolygonOrigin,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import { optionalAuth, requireAdmin, requireAuth } from '../auth/session.js';
 import { recordTelemetryBestEffort } from '../db/telemetry.js';

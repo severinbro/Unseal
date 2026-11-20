@@ -1,4 +1,4 @@
-# Production VPS Docker Compose Stack for Entsiegelungskartierung
+# Production VPS Docker Compose Stack for OpenUnseal
 # Usage:
 #   cp .env.vps.example .env.vps
 #   nano .env.vps

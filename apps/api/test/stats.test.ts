@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -13,7 +13,7 @@ import {
   PublicStatsResponseSchema,
   RegisterResponseSchema,
   SessionResponseSchema,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import { buildApp, runAdminCommand } from '../src/app.js';
 import { loadEnvConfig } from '../src/config.js';

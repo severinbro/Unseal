@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -16,20 +16,20 @@ import {
   PolygonFeatureSchema,
   type BboxBounds,
   type ExportPolygonFeature,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 import {
   appReducer,
   initialAppState,
   type AppState,
-} from '@entsiegelung/mobile/appState';
-import { PpgisApiClient } from '@entsiegelung/mobile/client';
-import { createMemorySessionStorage } from '@entsiegelung/mobile/tokenStorage';
+} from '@openunseal/mobile/appState';
+import { PpgisApiClient } from '@openunseal/mobile/client';
+import { createMemorySessionStorage } from '@openunseal/mobile/tokenStorage';
 import {
   deriveAuthModalModel,
   deriveDrawingToolbarModel,
   deriveInspectorOverviewMeta,
   deriveMapControlsModel,
-} from '@entsiegelung/mobile/viewModels';
+} from '@openunseal/mobile/viewModels';
 
 import {
   buildApp,
@@ -158,18 +158,18 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
       ...process.env,
       HOST: '127.0.0.1',
       PORT: '0',
-      PUBLIC_BASE_URL: 'https://entsiegelung.example.org',
+      PUBLIC_BASE_URL: 'https://openunseal.example.org',
       UPLOADS_DIR: uploadsDir,
       AUTO_SEED_VG250: 'false',
       OPERATOR_NAME: 'Initiative Entsiegelung Test e.V.',
       OPERATOR_ADDRESS: 'Musterstraße 1\\n55116 Mainz',
-      OPERATOR_EMAIL: 'kontakt@entsiegelung.example.org',
-      ABUSE_CONTACT: 'moderation@entsiegelung.example.org',
-      BUG_REPORT_TO: 'bugs@entsiegelung.example.org',
+      OPERATOR_EMAIL: 'kontakt@openunseal.example.org',
+      ABUSE_CONTACT: 'moderation@openunseal.example.org',
+      BUG_REPORT_TO: 'bugs@openunseal.example.org',
       AUTH_CAPTCHA_ENABLED: 'true',
       AUTH_CAPTCHA_MAX_NUMBER: '500',
       ORTHOPHOTO_URL_TEMPLATE:
-        'https://ortho.entsiegelung.example.org/dop/{z}/{x}/{y}.jpg',
+        'https://ortho.openunseal.example.org/dop/{z}/{x}/{y}.jpg',
       ORTHOPHOTO_TILE_SIZE: '256',
       ORTHOPHOTO_ATTRIBUTION: '© Municipal Aerial Survey',
       ORTHOPHOTO_BOUNDS: '9.70,53.35,10.35,53.75',
@@ -280,7 +280,7 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     const runtimeConfig = await anonClient.getConfig();
     assert.equal(
       runtimeConfig.abuseContact,
-      'moderation@entsiegelung.example.org',
+      'moderation@openunseal.example.org',
     );
     assert.notEqual(runtimeConfig.orthophoto, null);
 
@@ -770,7 +770,7 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     });
     assert.equal(bugRes.status, 'sent');
     assert.equal(mailer.bugReports.length, 1);
-    assert.equal(mailer.bugReports[0]?.to, 'bugs@entsiegelung.example.org');
+    assert.equal(mailer.bugReports[0]?.to, 'bugs@openunseal.example.org');
     assert.equal(mailer.bugReports[0]?.reporterPseudonym, 'courtyard_author');
     assert.equal(mailer.bugReports[0]?.contactEmail, 'reporter@example.org');
 

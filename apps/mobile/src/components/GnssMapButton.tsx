@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import React, { useMemo } from 'react';
 import {
@@ -29,6 +29,7 @@ export interface GnssMapButtonProps {
   isLocating: boolean;
   onPress: () => void;
   positioned?: boolean;
+  compactSize?: boolean;
 }
 
 export interface NorthArrowButtonProps {
@@ -36,12 +37,14 @@ export interface NorthArrowButtonProps {
   bearingDeg: number;
   onPress: () => void;
   positioned?: boolean;
+  compactSize?: boolean;
 }
 
 export interface SearchMapButtonProps {
   locale?: Locale;
   onPress: () => void;
   positioned?: boolean;
+  compactSize?: boolean;
 }
 
 export interface MapLayersButtonProps {
@@ -50,21 +53,27 @@ export interface MapLayersButtonProps {
   expanded?: boolean;
   onPress: () => void;
   positioned?: boolean;
+  compactSize?: boolean;
 }
 
 export interface TopRightMapControlsProps {
   children: React.ReactNode;
+  horizontal?: boolean;
 }
 
 export function TopRightMapControls({
   children,
+  horizontal = false,
 }: TopRightMapControlsProps): React.JSX.Element {
   const { palette, isDark } = useTheme();
   const styles = useMemo(() => createStyles(palette, isDark), [palette, isDark]);
   return (
     <View
       pointerEvents="box-none"
-      style={styles.topRightControlsContainer}
+      style={[
+        styles.topRightControlsContainer,
+        horizontal ? styles.topRightControlsHorizontal : null,
+      ]}
       testID="top-right-map-controls"
     >
       {children}
@@ -158,6 +167,7 @@ export function GnssMapButton({
   isLocating,
   onPress,
   positioned = true,
+  compactSize = false,
 }: GnssMapButtonProps): React.JSX.Element {
   const { palette, isDark } = useTheme();
   const styles = useMemo(() => createStyles(palette, isDark), [palette, isDark]);
@@ -173,6 +183,7 @@ export function GnssMapButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.floatingButton,
+        compactSize ? styles.floatingButtonCompactSize : null,
         positioned ? styles.floatingButtonPositioned : null,
         pressed && !isLocating ? styles.floatingButtonPressed : null,
         isLocating ? styles.floatingButtonBusy : null,
@@ -192,6 +203,7 @@ export function NorthArrowButton({
   bearingDeg,
   onPress,
   positioned = false,
+  compactSize = false,
 }: NorthArrowButtonProps): React.JSX.Element {
   const { palette, isDark } = useTheme();
   const styles = useMemo(() => createStyles(palette, isDark), [palette, isDark]);
@@ -206,6 +218,7 @@ export function NorthArrowButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.floatingButton,
+        compactSize ? styles.floatingButtonCompactSize : null,
         positioned ? styles.floatingButtonPositioned : null,
         pressed ? styles.floatingButtonPressed : null,
       ]}
@@ -268,6 +281,7 @@ export function SearchMapButton({
   locale = DEFAULT_LOCALE,
   onPress,
   positioned = false,
+  compactSize = false,
 }: SearchMapButtonProps): React.JSX.Element {
   const { palette, isDark } = useTheme();
   const styles = useMemo(() => createStyles(palette, isDark), [palette, isDark]);
@@ -281,6 +295,7 @@ export function SearchMapButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.floatingButton,
+        compactSize ? styles.floatingButtonCompactSize : null,
         positioned ? styles.floatingButtonPositioned : null,
         pressed ? styles.floatingButtonPressed : null,
       ]}
@@ -361,6 +376,7 @@ export function MapLayersButton({
   expanded = false,
   onPress,
   positioned = false,
+  compactSize = false,
 }: MapLayersButtonProps): React.JSX.Element {
   const { palette, isDark } = useTheme();
   const styles = useMemo(() => createStyles(palette, isDark), [palette, isDark]);
@@ -375,6 +391,7 @@ export function MapLayersButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.floatingButton,
+        compactSize ? styles.floatingButtonCompactSize : null,
         positioned ? styles.floatingButtonPositioned : null,
         active || expanded ? styles.floatingButtonActive : null,
         pressed ? styles.floatingButtonPressed : null,
@@ -406,6 +423,12 @@ function createStyles(PALETTE: ThemePalette, isDark: boolean) {
       gap: 8,
       alignItems: 'center',
     },
+    topRightControlsHorizontal: {
+      top: 10,
+      right: 10,
+      flexDirection: 'row',
+      gap: 6,
+    },
     floatingButton: {
       width: BUTTON_SIZE_DP,
       height: BUTTON_SIZE_DP,
@@ -428,6 +451,10 @@ function createStyles(PALETTE: ThemePalette, isDark: boolean) {
             shadowRadius: 5,
             elevation: 5,
           }),
+    },
+    floatingButtonCompactSize: {
+      width: MIN_TOUCH_TARGET_DP,
+      height: MIN_TOUCH_TARGET_DP,
     },
     floatingButtonPositioned: {
       position: 'absolute',

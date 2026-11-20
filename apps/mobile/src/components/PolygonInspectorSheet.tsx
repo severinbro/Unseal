@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import {
   COMMENT_LIMITS,
@@ -21,7 +21,7 @@ import {
   type PolygonPhoto,
   type PolygonStatus,
   type SurfaceType,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -33,6 +33,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
@@ -190,6 +191,10 @@ export function PolygonInspectorSheet({
   onReportContent,
 }: PolygonInspectorSheetProps): React.JSX.Element | null {
   const { palette, surfaceSwatches } = useTheme();
+  const { height: windowHeight } = useWindowDimensions();
+  const lightboxImageHeight = Math.round(
+    Math.min(460, Math.max(160, windowHeight * 0.58)),
+  );
   const styles = useMemo(() => createStyles(palette), [palette]);
   const [activeTab, setActiveTab] = useState<InspectorTab>('overview');
   const [isEditing, setIsEditing] = useState<boolean>(false);
@@ -1159,11 +1164,13 @@ export function PolygonInspectorSheet({
           onPress={() => setActiveTab('overview')}
           style={[
             styles.tabButton,
+            compact ? styles.tabButtonCompact : null,
             activeTab === 'overview' ? styles.tabButtonActive : null,
           ]}
         >
           <Text
             numberOfLines={1}
+            ellipsizeMode="tail"
             style={[
               styles.tabButtonLabel,
               compact ? styles.tabButtonLabelCompact : null,
@@ -1180,11 +1187,13 @@ export function PolygonInspectorSheet({
           onPress={() => setActiveTab('comments')}
           style={[
             styles.tabButton,
+            compact ? styles.tabButtonCompact : null,
             activeTab === 'comments' ? styles.tabButtonActive : null,
           ]}
         >
           <Text
             numberOfLines={1}
+            ellipsizeMode="tail"
             style={[
               styles.tabButtonLabel,
               compact ? styles.tabButtonLabelCompact : null,
@@ -1201,11 +1210,13 @@ export function PolygonInspectorSheet({
           onPress={() => setActiveTab('photos')}
           style={[
             styles.tabButton,
+            compact ? styles.tabButtonCompact : null,
             activeTab === 'photos' ? styles.tabButtonActive : null,
           ]}
         >
           <Text
             numberOfLines={1}
+            ellipsizeMode="tail"
             style={[
               styles.tabButtonLabel,
               compact ? styles.tabButtonLabelCompact : null,
@@ -1222,11 +1233,13 @@ export function PolygonInspectorSheet({
           onPress={() => setActiveTab('manage')}
           style={[
             styles.tabButton,
+            compact ? styles.tabButtonCompact : null,
             activeTab === 'manage' ? styles.tabButtonActive : null,
           ]}
         >
           <Text
             numberOfLines={1}
+            ellipsizeMode="tail"
             style={[
               styles.tabButtonLabel,
               compact ? styles.tabButtonLabelCompact : null,
@@ -2243,7 +2256,7 @@ export function PolygonInspectorSheet({
             <View style={styles.lightboxContent}>
               <Image
                 source={{ uri: toPhotoUrl(lightboxPhoto.url) }}
-                style={styles.lightboxImage}
+                style={[styles.lightboxImage, { height: lightboxImageHeight }]}
                 resizeMode="contain"
               />
               <View style={styles.lightboxFooter}>
@@ -2282,6 +2295,8 @@ export function PolygonInspectorSheet({
 function createStyles(PALETTE: ThemePalette) {
   return StyleSheet.create({
   sheet: {
+    width: '100%',
+    maxWidth: '100%',
     padding: 14,
     borderRadius: RADII.lg,
     backgroundColor: PALETTE.bgSurface,
@@ -2305,7 +2320,8 @@ function createStyles(PALETTE: ThemePalette) {
   },
   headerTitleGroup: {
     flex: 1,
-    minWidth: 180,
+    minWidth: 160,
+    maxWidth: '100%',
     gap: 4,
   },
   materialTitleRow: {
@@ -2392,6 +2408,7 @@ function createStyles(PALETTE: ThemePalette) {
     borderWidth: 1,
     borderColor: PALETTE.infoBorder,
     maxWidth: 190,
+    flexShrink: 1,
   },
   municipalityChipLabel: {
     fontSize: 11,
@@ -2501,6 +2518,8 @@ function createStyles(PALETTE: ThemePalette) {
   },
   voteButtonsGroup: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    maxWidth: '100%',
     gap: 8,
   },
   tabWell: {
@@ -2513,13 +2532,20 @@ function createStyles(PALETTE: ThemePalette) {
     gap: 4,
   },
   tabButton: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 'auto',
+    minWidth: 0,
     minHeight: 40,
-    paddingHorizontal: 5,
+    paddingHorizontal: 6,
     paddingVertical: 7,
     borderRadius: RADII.sm,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  tabButtonCompact: {
+    paddingHorizontal: 3,
   },
   tabButtonActive: {
     backgroundColor: PALETTE.bgSurface,
@@ -2530,6 +2556,7 @@ function createStyles(PALETTE: ThemePalette) {
     fontSize: 12,
     fontWeight: '600',
     color: PALETTE.inkSecondary,
+    maxWidth: '100%',
   },
   tabButtonLabelCompact: {
     fontSize: 11,
@@ -2552,6 +2579,8 @@ function createStyles(PALETTE: ThemePalette) {
     color: PALETTE.infoText,
   },
   commentComposerBox: {
+    minWidth: 0,
+    maxWidth: '100%',
     padding: 10,
     borderRadius: RADII.md,
     backgroundColor: PALETTE.bgSubtle,
@@ -2561,6 +2590,7 @@ function createStyles(PALETTE: ThemePalette) {
   },
   commentComposerFooter: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
@@ -2596,6 +2626,8 @@ function createStyles(PALETTE: ThemePalette) {
     gap: 6,
   },
   commentCard: {
+    minWidth: 0,
+    flexShrink: 1,
     padding: 10,
     borderRadius: RADII.md,
     borderWidth: 1,
@@ -2633,17 +2665,26 @@ function createStyles(PALETTE: ThemePalette) {
     fontSize: 11.5,
     fontWeight: '600',
     color: PALETTE.inkSecondary,
+    flexShrink: 1,
+    ...(Platform.OS === 'web'
+      ? ({ overflowWrap: 'anywhere' } as Record<string, string>)
+      : {}),
   },
   commentHeaderRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
+    gap: 6,
   },
   commentAuthorLabel: {
     fontSize: 12,
     fontWeight: '700',
     color: PALETTE.inkPrimary,
+    flexShrink: 1,
+    ...(Platform.OS === 'web'
+      ? ({ overflowWrap: 'anywhere' } as Record<string, string>)
+      : {}),
   },
   commentDateLabel: {
     ...TABULAR_NUMS_STYLE,
@@ -2655,11 +2696,15 @@ function createStyles(PALETTE: ThemePalette) {
     fontSize: 13,
     lineHeight: 18,
     color: PALETTE.inkPrimary,
+    ...(Platform.OS === 'web'
+      ? ({ overflowWrap: 'anywhere' } as Record<string, string>)
+      : {}),
   },
   commentActionsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
+    maxWidth: '100%',
     gap: 6,
     marginTop: 2,
   },
@@ -2729,6 +2774,8 @@ function createStyles(PALETTE: ThemePalette) {
     color: PALETTE.dangerText,
   },
   noteCard: {
+    minWidth: 0,
+    maxWidth: '100%',
     paddingHorizontal: 11,
     paddingVertical: 9,
     borderRadius: RADII.md,
@@ -2740,8 +2787,13 @@ function createStyles(PALETTE: ThemePalette) {
     fontSize: 13.5,
     lineHeight: 19,
     color: PALETTE.inkPrimary,
+    ...(Platform.OS === 'web'
+      ? ({ overflowWrap: 'anywhere' } as Record<string, string>)
+      : {}),
   },
   creatorInfoCard: {
+    minWidth: 0,
+    maxWidth: '100%',
     paddingHorizontal: 11,
     paddingVertical: 9,
     borderRadius: RADII.md,
@@ -2760,6 +2812,10 @@ function createStyles(PALETTE: ThemePalette) {
   creatorInfoLabel: {
     fontSize: 12.5,
     color: PALETTE.inkSecondary,
+    flexShrink: 1,
+    ...(Platform.OS === 'web'
+      ? ({ overflowWrap: 'anywhere' } as Record<string, string>)
+      : {}),
   },
   creatorInfoValue: {
     fontWeight: '700',
@@ -2822,6 +2878,7 @@ function createStyles(PALETTE: ThemePalette) {
   },
   flagOutlineButton: {
     alignSelf: 'flex-start',
+    maxWidth: '100%',
     backgroundColor: PALETTE.bgSurface,
     borderWidth: 1,
     borderColor: PALETTE.borderStrong,
@@ -2830,9 +2887,12 @@ function createStyles(PALETTE: ThemePalette) {
     fontSize: 12.5,
     fontWeight: '600',
     color: PALETTE.inkSecondary,
+    flexShrink: 1,
+    textAlign: 'center',
   },
   flagActiveButton: {
     alignSelf: 'flex-start',
+    maxWidth: '100%',
     backgroundColor: PALETTE.neutralBg,
     borderWidth: 1,
     borderColor: PALETTE.neutralBorder,
@@ -2841,16 +2901,21 @@ function createStyles(PALETTE: ThemePalette) {
     fontSize: 12.5,
     fontWeight: '700',
     color: PALETTE.neutralText,
+    flexShrink: 1,
+    textAlign: 'center',
   },
   flagSubmitButton: {
     backgroundColor: PALETTE.neutralDot,
   },
   photoUploadBar: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   flexButton: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 120,
   },
   photoSignInBanner: {
     padding: 10,
@@ -2957,17 +3022,25 @@ function createStyles(PALETTE: ThemePalette) {
     flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
+    maxWidth: '100%',
     gap: 6,
   },
   photoAuthorLabel: {
     fontSize: 12,
     fontWeight: '600',
     color: PALETTE.inkSecondary,
+    flexShrink: 1,
+    maxWidth: '100%',
+    ...(Platform.OS === 'web'
+      ? ({ overflowWrap: 'anywhere' } as Record<string, string>)
+      : {}),
   },
   photoRatingRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
+    maxWidth: '100%',
+    flexShrink: 1,
     gap: 6,
   },
   photoVotePill: {
@@ -3054,6 +3127,8 @@ function createStyles(PALETTE: ThemePalette) {
   surfaceChip: {
     minHeight: MIN_TOUCH_TARGET_DP,
     minWidth: MIN_TOUCH_TARGET_DP,
+    maxWidth: '100%',
+    flexShrink: 1,
     paddingHorizontal: 12,
     paddingVertical: 9,
     borderRadius: RADII.md,
@@ -3071,6 +3146,8 @@ function createStyles(PALETTE: ThemePalette) {
     fontSize: 13,
     fontWeight: '600',
     color: PALETTE.inkPrimary,
+    flexShrink: 1,
+    textAlign: 'center',
   },
   surfaceChipLabelSelected: {
     color: PALETTE.positiveText,
@@ -3091,6 +3168,8 @@ function createStyles(PALETTE: ThemePalette) {
   touchButton: {
     minHeight: MIN_TOUCH_TARGET_DP,
     minWidth: MIN_TOUCH_TARGET_DP,
+    maxWidth: '100%',
+    flexShrink: 1,
     paddingHorizontal: 13,
     paddingVertical: 9,
     borderRadius: RADII.md,
@@ -3145,6 +3224,8 @@ function createStyles(PALETTE: ThemePalette) {
     fontSize: 13,
     fontWeight: '700',
     color: PALETTE.inkOnAccent,
+    flexShrink: 1,
+    textAlign: 'center',
   },
   secondaryButton: {
     backgroundColor: PALETTE.bgSurface,
@@ -3155,6 +3236,8 @@ function createStyles(PALETTE: ThemePalette) {
     fontSize: 13,
     fontWeight: '600',
     color: PALETTE.inkPrimary,
+    flexShrink: 1,
+    textAlign: 'center',
   },
   dangerButton: {
     backgroundColor: PALETTE.dangerSolid,
@@ -3168,10 +3251,15 @@ function createStyles(PALETTE: ThemePalette) {
     fontSize: 13,
     fontWeight: '700',
     color: PALETTE.dangerText,
+    flexShrink: 1,
+    textAlign: 'center',
   },
   abuseContactText: {
     fontSize: 11.5,
     color: PALETTE.inkMuted,
+    ...(Platform.OS === 'web'
+      ? ({ overflowWrap: 'anywhere' } as Record<string, string>)
+      : {}),
   },
   abuseContactLink: {
     color: PALETTE.accentPrimary,
@@ -3208,6 +3296,7 @@ function createStyles(PALETTE: ThemePalette) {
   },
   reportContentRowButton: {
     alignSelf: 'flex-start',
+    maxWidth: '100%',
     paddingVertical: 4,
     paddingHorizontal: 2,
   },
@@ -3216,6 +3305,7 @@ function createStyles(PALETTE: ThemePalette) {
     fontWeight: '600',
     color: PALETTE.inkSecondary,
     textDecorationLine: 'underline',
+    flexShrink: 1,
   },
   lightboxBackdrop: {
     flex: 1,
@@ -3234,7 +3324,7 @@ function createStyles(PALETTE: ThemePalette) {
   lightboxContent: {
     width: '100%',
     maxWidth: 880,
-    maxHeight: '90%',
+    maxHeight: '92%',
     gap: 12,
   },
   lightboxImage: {
@@ -3244,6 +3334,7 @@ function createStyles(PALETTE: ThemePalette) {
   },
   lightboxFooter: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
@@ -3252,9 +3343,14 @@ function createStyles(PALETTE: ThemePalette) {
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
+    flexShrink: 1,
+    ...(Platform.OS === 'web'
+      ? ({ overflowWrap: 'anywhere' } as Record<string, string>)
+      : {}),
   },
   lightboxMetaCol: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
   },
   lightboxLicenseLink: {
@@ -3264,6 +3360,7 @@ function createStyles(PALETTE: ThemePalette) {
   },
   ccLicenseNoticeLink: {
     alignSelf: 'flex-start',
+    maxWidth: '100%',
     paddingVertical: 4,
   },
   ccLicenseNoticeText: {
@@ -3271,9 +3368,12 @@ function createStyles(PALETTE: ThemePalette) {
     lineHeight: 15,
     color: PALETTE.inkMuted,
     textDecorationLine: 'underline',
+    flexShrink: 1,
   },
   lightboxCloseBtn: {
-    minHeight: 40,
+    minHeight: MIN_TOUCH_TARGET_DP,
+    minWidth: MIN_TOUCH_TARGET_DP,
+    flexShrink: 0,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: RADII.md,

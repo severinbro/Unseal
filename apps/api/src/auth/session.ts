@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import {
   AUTH_LIMITS,
   ApiError,
   AuthUserSchema,
   type AuthUser,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import {
   generateSessionToken,

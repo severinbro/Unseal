@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 export type Dop20LicenseId = 'dl-de/by-2-0' | 'CC BY 4.0' | 'dl-de/zero-2-0';
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import {
   ApiError,
@@ -9,7 +9,7 @@ import {
   type ErrorCode,
   type PolygonFlagReason,
   type SurfaceType,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 export type Locale = 'de' | 'en';
 
@@ -509,7 +509,7 @@ export interface TranslationDictionary {
     readonly legendLifecycle: string;
     readonly footerTitle: string;
     readonly privacyAndLicenseBody: string;
-    readonly poweredByUnseal: string;
+    readonly poweredByOpenUnseal: string;
     readonly defaultPortalLinkLabel: string;
     readonly attributionOsmShort: string;
     readonly attributionDop20Short: string;
@@ -663,7 +663,7 @@ export interface TranslationDictionary {
 export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
   de: {
     app: {
-      documentTitle: 'Unseal - Gemeinschaftliche Entsiegelungskarte',
+      documentTitle: 'OpenUnseal - Gemeinschaftliche Entsiegelungskarte',
       loadingTitle: 'Entsiegelungskarte wird geladen…',
       errorTitle: 'Verbindung zum Kartendienst fehlgeschlagen',
       errorFallback:
@@ -672,8 +672,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       requestFailedFallback: 'Anfrage konnte nicht abgeschlossen werden.',
       retryButton: 'Erneut verbinden',
       retryA11y: 'Kartenkonfiguration erneut laden',
-      offlineAboutButton: 'Über Unseal & OSS-Lizenzen (MPL-2.0)',
-      offlineAboutA11y: 'Informationen über Unseal, Quellcode und Open-Source-Lizenzen öffnen',
+      offlineAboutButton: 'Über OpenUnseal & OSS-Lizenzen (MPL-2.0)',
+      offlineAboutA11y: 'Informationen über OpenUnseal, Quellcode und Open-Source-Lizenzen öffnen',
       legendBacked: '+ Unterstützt',
       legendNew: '0 Neu',
       legendContested: '− Umstritten',
@@ -695,7 +695,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       switchToLightModeA11y: 'Hellmodus mit heller Hintergrundkarte aktivieren',
       darkModeTooltip: 'Dunkelmodus',
       lightModeTooltip: 'Hellmodus',
-      aboutButtonA11y: 'Über Unseal, Impressum, Kartendaten und Datenschutz öffnen',
+      aboutButtonA11y: 'Über OpenUnseal, Impressum, Kartendaten und Datenschutz öffnen',
       aboutButtonTooltip: 'Info, Impressum & Datenschutz',
       statsButtonA11y: 'Statistiken öffnen',
       statsButtonTooltip: 'Statistiken',
@@ -1170,7 +1170,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
     },
     location: {
       webHttpsRequired:
-        'Die Browser-Standortbestimmung erfordert eine sichere HTTPS-Verbindung (oder localhost). Öffne Unseal über https://, um „Standort“ zu nutzen.',
+        'Die Browser-Standortbestimmung erfordert eine sichere HTTPS-Verbindung (oder localhost). Öffne OpenUnseal über https://, um „Standort“ zu nutzen.',
       webUnsupported:
         'Geolocation wird in diesem Browser nicht unterstützt oder ist nicht verfügbar.',
       webInvalidCoords:
@@ -1190,7 +1190,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       webRequestFailed: (detail) =>
         `Standortabfrage im Browser fehlgeschlagen${detail}`,
       nativePermissionDeniedSettings:
-        'Standortberechtigung verweigert. Bitte aktiviere den Standortzugriff für Unseal in den Geräteeinstellungen.',
+        'Standortberechtigung verweigert. Bitte aktiviere den Standortzugriff für OpenUnseal in den Geräteeinstellungen.',
       nativePermissionDeniedPrompt:
         'Standortberechtigung verweigert. Bitte erlaube den Standortzugriff, um die Karte auf deine GPS-Position zu zentrieren.',
       nativeInvalidCoords:
@@ -1199,8 +1199,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         `Aktuelle GPS-Position konnte nicht bestimmt werden. Bitte prüfe, ob die Ortungsdienste aktiviert sind.${suffix}`,
     },
     about: {
-      modalA11y: 'Über Unseal',
-      title: 'Über Unseal',
+      modalA11y: 'Über OpenUnseal',
+      title: 'Über OpenUnseal',
       aboutNamedTitle: (appName: string) => `Über ${appName}`,
       subtitle: 'Offene Entsiegelungskartierung (PPGIS)',
       closeA11y: 'Infofenster schließen',
@@ -1226,8 +1226,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       footerTitle: 'Datenschutz, Rechtliches & App',
       privacyAndLicenseBody:
         'Öffentlich erscheint nur dein Pseudonym; E-Mails dienen nur Bestätigung & Recovery (jederzeit nach Art. 17 DSGVO löschbar). Beiträge: CC0 1.0 (eigene Geometrien/Notizen), ODbL 1.0 (GeoJSON-Gesamtexport) & CC BY 4.0 (Fotos/Kommentare). Software: AGPL-3.0-or-later (API) & MPL-2.0 (Client-App, Quellcode frei verfügbar).',
-      poweredByUnseal:
-        'Betrieben mit Unseal (Open Source: AGPL-3.0-or-later / MPL-2.0)',
+      poweredByOpenUnseal:
+        'Betrieben mit OpenUnseal (Open Source: AGPL-3.0-or-later / MPL-2.0)',
       defaultPortalLinkLabel: 'Kommunales Portal',
       attributionOsmShort:
         '© OpenStreetMap (ODbL) · © OpenMapTiles / © CARTO (CC BY 4.0, Dunkelmodus angepasst) · OpenFreeMap (MIT)',
@@ -1262,7 +1262,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       modalA11y: 'Fehler melden',
       title: 'Fehler melden',
       subtitle:
-        'Deine Meldung wird per E-Mail an die Betreiberstelle dieser Unseal-Instanz gesendet.',
+        'Deine Meldung wird per E-Mail an die Betreiberstelle dieser OpenUnseal-Instanz gesendet.',
       closeA11y: 'Fehlermeldung schließen',
       close: 'Schließen',
       descriptionLabel: 'Was ist passiert?',
@@ -1340,21 +1340,21 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         'Meldung konnte nicht übermittelt werden. Bitte nutze alternativ die Kontaktadresse im Impressum.',
     },
     installApp: {
-      modalA11y: 'Unseal als App installieren',
-      title: 'Unseal installieren',
+      modalA11y: 'OpenUnseal als App installieren',
+      title: 'OpenUnseal installieren',
       subtitle:
         'Nutze die Web-App direkt auf deinem Startbildschirm (PWA) oder lade die Android-APK herunter.',
       closeA11y: 'Installationsdialog schließen',
       close: 'Schließen',
       androidPwaTitle: 'Android: Browser-App (PWA) installieren',
       androidPwaSteps: [
-        'Öffne Unseal in Chrome (oder einem anderen Chromium-Browser wie Edge oder Brave).',
+        'Öffne OpenUnseal in Chrome (oder einem anderen Chromium-Browser wie Edge oder Brave).',
         'Tippe oben rechts auf das Menü (⋮) und wähle „Zum Startbildschirm hinzufügen“ bzw. „App installieren“.',
-        'Bestätige mit „Installieren“ — danach startet Unseal im Vollbild wie eine eigene App.',
+        'Bestätige mit „Installieren“ — danach startet OpenUnseal im Vollbild wie eine eigene App.',
       ],
       iosPwaTitle: 'iOS (iPhone / iPad): Browser-App (PWA) installieren',
       iosPwaSteps: [
-        'Öffne Unseal in Safari.',
+        'Öffne OpenUnseal in Safari.',
         'Tippe auf das Teilen-Symbol (Quadrat mit Pfeil nach oben in der Browser-Leiste).',
         'Scrolle nach unten, wähle „Zum Home-Bildschirm“ und bestätige mit „Hinzufügen“.',
       ],
@@ -1415,8 +1415,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         'Nur für dich sichtbar — direkt aus deinen aktuell vorhandenen Flächen und Flächenbewertungen berechnet, ohne zusätzliches Tracking.',
     },
     intro: {
-      overlayA11y: 'Unseal Startanimation',
-      title: 'Unseal',
+      overlayA11y: 'OpenUnseal Startanimation',
+      title: 'OpenUnseal',
       subtitle: 'Gemeinschaftliche Entsiegelungskarte',
       tagline: 'Asphalt öffnen · Natur zurückbringen',
       skipButton: 'Überspringen',
@@ -1425,7 +1425,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
   },
   en: {
     app: {
-      documentTitle: 'Unseal - Civic Unsealing Map',
+      documentTitle: 'OpenUnseal - Civic Unsealing Map',
       loadingTitle: 'Loading civic unsealing map…',
       errorTitle: 'Could not connect to map service',
       errorFallback: 'Please verify your network connection and retry.',
@@ -1434,7 +1434,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       retryButton: 'Retry Connection',
       retryA11y: 'Retry loading map configuration',
       offlineAboutButton: 'About & OSS Licenses (MPL-2.0)',
-      offlineAboutA11y: 'Open information about Unseal, source code, and open-source licenses',
+      offlineAboutA11y: 'Open information about OpenUnseal, source code, and open-source licenses',
       legendBacked: '+ Backed',
       legendNew: '0 New',
       legendContested: '− Contested',
@@ -1456,7 +1456,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       switchToLightModeA11y: 'Switch to light mode with light background map',
       darkModeTooltip: 'Dark mode',
       lightModeTooltip: 'Light mode',
-      aboutButtonA11y: 'Open About Unseal, Impressum, map attributions, and privacy',
+      aboutButtonA11y: 'Open About OpenUnseal, Impressum, map attributions, and privacy',
       aboutButtonTooltip: 'About, Impressum & Privacy',
       statsButtonA11y: 'Open statistics',
       statsButtonTooltip: 'Statistics',
@@ -1906,7 +1906,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
     },
     location: {
       webHttpsRequired:
-        'Browser geolocation requires a secure HTTPS connection (or localhost). Open Unseal over https:// to use "Locate me".',
+        'Browser geolocation requires a secure HTTPS connection (or localhost). Open OpenUnseal over https:// to use "Locate me".',
       webUnsupported:
         'Geolocation is not supported or available in this browser.',
       webInvalidCoords:
@@ -1926,7 +1926,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       webRequestFailed: (detail) =>
         `Unable to request browser geolocation${detail}`,
       nativePermissionDeniedSettings:
-        'Location permission was denied. Enable foreground location access for Unseal in your device settings to center the map on your GPS position.',
+        'Location permission was denied. Enable foreground location access for OpenUnseal in your device settings to center the map on your GPS position.',
       nativePermissionDeniedPrompt:
         'Location permission was denied. Grant foreground location access to center the map on your current GPS position.',
       nativeInvalidCoords:
@@ -1935,8 +1935,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         `Unable to determine your current GPS position. Ensure device location services are enabled and try again.${suffix}`,
     },
     about: {
-      modalA11y: 'About Unseal',
-      title: 'About Unseal',
+      modalA11y: 'About OpenUnseal',
+      title: 'About OpenUnseal',
       aboutNamedTitle: (appName: string) => `About ${appName}`,
       subtitle: 'Open Civic Ground-Unsealing Map (PPGIS)',
       closeA11y: 'Close About dialog',
@@ -1962,8 +1962,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       footerTitle: 'Privacy, Legal & App',
       privacyAndLicenseBody:
         'Only your pseudonym is public; emails are used strictly for confirmation & recovery (erasable anytime under GDPR Art. 17). Contributions: CC0 1.0 (own geometries/notes), ODbL 1.0 (compiled GeoJSON export) & CC BY 4.0 (photos/comments). Software: AGPL-3.0-or-later (API) & MPL-2.0 (Client App, Source Code Form freely available).',
-      poweredByUnseal:
-        'Powered by Unseal (Open Source: AGPL-3.0-or-later / MPL-2.0)',
+      poweredByOpenUnseal:
+        'Powered by OpenUnseal (Open Source: AGPL-3.0-or-later / MPL-2.0)',
       defaultPortalLinkLabel: 'Municipal Portal',
       attributionOsmShort:
         '© OpenStreetMap (ODbL) · © OpenMapTiles / © CARTO (CC BY 4.0, dark mode modified) · OpenFreeMap (MIT)',
@@ -1997,7 +1997,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
     bugReport: {
       modalA11y: 'Report a bug',
       title: 'Report a Bug',
-      subtitle: 'Your report will be emailed to the operator of this Unseal instance.',
+      subtitle: 'Your report will be emailed to the operator of this OpenUnseal instance.',
       closeA11y: 'Close bug report dialog',
       close: 'Close',
       descriptionLabel: 'What went wrong?',
@@ -2074,21 +2074,21 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         'Unable to submit notice right now. You can also contact the operator via the Impressum.',
     },
     installApp: {
-      modalA11y: 'Install Unseal app',
-      title: 'Install Unseal',
+      modalA11y: 'Install OpenUnseal app',
+      title: 'Install OpenUnseal',
       subtitle:
         'Add the web app (PWA) to your home screen on iOS or Android, or download the Android APK directly.',
       closeA11y: 'Close install instructions dialog',
       close: 'Close',
       androidPwaTitle: 'Android: Install Browser App (PWA)',
       androidPwaSteps: [
-        'Open Unseal in Chrome (or a Chromium-based browser such as Edge or Brave).',
+        'Open OpenUnseal in Chrome (or a Chromium-based browser such as Edge or Brave).',
         'Tap the menu (⋮) in the top-right corner and select “Add to Home screen” or “Install app”.',
-        'Confirm with “Install” — Unseal will launch full-screen from your home screen.',
+        'Confirm with “Install” — OpenUnseal will launch full-screen from your home screen.',
       ],
       iosPwaTitle: 'iOS (iPhone / iPad): Install Browser App (PWA)',
       iosPwaSteps: [
-        'Open Unseal in Safari.',
+        'Open OpenUnseal in Safari.',
         'Tap the Share button (the square with an upward arrow in the toolbar).',
         'Scroll down, tap “Add to Home Screen”, and confirm with “Add”.',
       ],
@@ -2149,8 +2149,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         'Visible only to you — computed on the fly from your currently existing polygons and polygon ratings, with no extra tracking.',
     },
     intro: {
-      overlayA11y: 'Unseal opening animation',
-      title: 'Unseal',
+      overlayA11y: 'OpenUnseal opening animation',
+      title: 'OpenUnseal',
       subtitle: 'Civic Unsealing Map',
       tagline: 'Break the seal · Bring back living ground',
       skipButton: 'Skip',

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import crypto from 'node:crypto';
 import fastifyCompress from '@fastify/compress';
@@ -9,7 +9,7 @@ import fastifyRateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
 import { ZodError } from 'zod';
 
-import { ApiError, IMPORT_LIMITS, type ErrorCode } from '@entsiegelung/shared';
+import { ApiError, IMPORT_LIMITS, type ErrorCode } from '@openunseal/shared';
 
 import {
   canonicalizeEmail,

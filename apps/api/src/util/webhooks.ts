@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import crypto from 'node:crypto';
 import dns from 'node:dns/promises';
 import net from 'node:net';
 
-import type { PolygonFeature, WebhookEventType } from '@entsiegelung/shared';
+import type { PolygonFeature, WebhookEventType } from '@openunseal/shared';
 import type { FastifyBaseLogger } from 'fastify';
 
 export interface WebhookConfig {
@@ -252,7 +252,7 @@ export function createNoopWebhookDispatcher(): WebhookDispatcher {
 
 export function createMemoryWebhookDispatcher(
   instance: WebhookInstanceMetadata = {
-    appName: 'Unseal',
+    appName: 'OpenUnseal',
     publicBaseUrl: 'http://127.0.0.1:3000',
   },
   subscribedEvents?: readonly WebhookEventType[],
@@ -314,13 +314,13 @@ export function createWebhookDispatcher(
     const timestampSec = String(Math.floor(Date.now() / 1000));
     const headers: Record<string, string> = {
       'Content-Type': 'application/json; charset=utf-8',
-      'User-Agent': 'Unseal-Webhook/1.0',
-      'X-Unseal-Event': envelope.event,
-      'X-Unseal-Delivery': envelope.eventId,
-      'X-Unseal-Timestamp': timestampSec,
+      'User-Agent': 'OpenUnseal-Webhook/1.0',
+      'X-OpenUnseal-Event': envelope.event,
+      'X-OpenUnseal-Delivery': envelope.eventId,
+      'X-OpenUnseal-Timestamp': timestampSec,
     };
     if (config.secret) {
-      headers['X-Unseal-Signature-256'] = signWebhookPayload(
+      headers['X-OpenUnseal-Signature-256'] = signWebhookPayload(
         config.secret,
         timestampSec,
         rawBody,

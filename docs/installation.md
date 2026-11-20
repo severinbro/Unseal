@@ -75,11 +75,11 @@ Because `@maplibre/maplibre-react-native`, `expo-location`, `expo-image-picker`,
 
 ```bash
 # Export static production Web assets into ./dist-web (served by Caddy on the VPS)
-EXPO_PUBLIC_API_BASE_URL=https://unseal.example.org npm --workspace apps/mobile run export:web
+EXPO_PUBLIC_API_BASE_URL=https://openunseal.example.org npm --workspace apps/mobile run export:web
 
 # Prebuild native Android / iOS projects pointing at your production VPS
 cd apps/mobile
-EXPO_PUBLIC_API_BASE_URL=https://unseal.example.org npx expo prebuild
+EXPO_PUBLIC_API_BASE_URL=https://openunseal.example.org npx expo prebuild
 ```
 
 ---
@@ -96,15 +96,15 @@ Perform the following steps on each build machine after running `npx expo prebui
 
 ```bash
 keytool -genkeypair -v -storetype PKCS12 \
-  -keystore unseal-release.keystore -alias unseal-upload \
+  -keystore openunseal-release.keystore -alias openunseal-upload \
   -keyalg RSA -keysize 4096 -validity 10000
 ```
 
-Store `unseal-release.keystore` and its passwords safely outside the repository (losing the keystore prevents signing future in-place APK updates).
+Store `openunseal-release.keystore` and its passwords safely outside the repository (losing the keystore prevents signing future in-place APK updates).
 
 ### Step 2: Configure `signingConfigs.release` in `apps/mobile/android/app/build.gradle`
 
-In `apps/mobile/android/app/build.gradle`, add a `release` block inside `signingConfigs` and wire `buildTypes.release` to require the `UNSEAL_UPLOAD_*` environment variables (or Gradle properties) instead of falling back to `signingConfigs.debug`:
+In `apps/mobile/android/app/build.gradle`, add a `release` block inside `signingConfigs` and wire `buildTypes.release` to require the `OPENUNSEAL_UPLOAD_*` environment variables (or Gradle properties) instead of falling back to `signingConfigs.debug`:
 
 ```groovy
     signingConfigs {
@@ -115,10 +115,10 @@ In `apps/mobile/android/app/build.gradle`, add a `release` block inside `signing
             keyPassword 'android'
         }
         release {
-            def storePath = System.getenv("UNSEAL_UPLOAD_STORE_FILE") ?: findProperty("UNSEAL_UPLOAD_STORE_FILE")
-            def storePass = System.getenv("UNSEAL_UPLOAD_STORE_PASSWORD") ?: findProperty("UNSEAL_UPLOAD_STORE_PASSWORD")
-            def aliasName = System.getenv("UNSEAL_UPLOAD_KEY_ALIAS") ?: findProperty("UNSEAL_UPLOAD_KEY_ALIAS")
-            def aliasPass = System.getenv("UNSEAL_UPLOAD_KEY_PASSWORD") ?: findProperty("UNSEAL_UPLOAD_KEY_PASSWORD")
+            def storePath = System.getenv("OPENUNSEAL_UPLOAD_STORE_FILE") ?: findProperty("OPENUNSEAL_UPLOAD_STORE_FILE")
+            def storePass = System.getenv("OPENUNSEAL_UPLOAD_STORE_PASSWORD") ?: findProperty("OPENUNSEAL_UPLOAD_STORE_PASSWORD")
+            def aliasName = System.getenv("OPENUNSEAL_UPLOAD_KEY_ALIAS") ?: findProperty("OPENUNSEAL_UPLOAD_KEY_ALIAS")
+            def aliasPass = System.getenv("OPENUNSEAL_UPLOAD_KEY_PASSWORD") ?: findProperty("OPENUNSEAL_UPLOAD_KEY_PASSWORD")
             if (storePath && storePass && aliasName && aliasPass) {
                 storeFile file(storePath)
                 storePassword storePass
@@ -132,12 +132,12 @@ In `apps/mobile/android/app/build.gradle`, add a `release` block inside `signing
             signingConfig signingConfigs.debug
         }
         release {
-            // Production release builds require a private keystore via UNSEAL_UPLOAD_* env vars or Gradle properties.
+            // Production release builds require a private keystore via OPENUNSEAL_UPLOAD_* env vars or Gradle properties.
             if (!signingConfigs.release.storeFile) {
                 gradle.taskGraph.whenReady { taskGraph ->
                     if (taskGraph.allTasks.any { it.name.toLowerCase().contains("release") }) {
                         throw new GradleException(
-                            "Release signing keystore not configured. Set UNSEAL_UPLOAD_STORE_FILE, UNSEAL_UPLOAD_STORE_PASSWORD, UNSEAL_UPLOAD_KEY_ALIAS, and UNSEAL_UPLOAD_KEY_PASSWORD."
+                            "Release signing keystore not configured. Set OPENUNSEAL_UPLOAD_STORE_FILE, OPENUNSEAL_UPLOAD_STORE_PASSWORD, OPENUNSEAL_UPLOAD_KEY_ALIAS, and OPENUNSEAL_UPLOAD_KEY_PASSWORD."
                         )
                     }
                 }
@@ -162,14 +162,14 @@ Store your APK build and signing exports in a gitignored `.env.apk` file at the 
 ```bash
 cp .env.apk.example .env.apk
 chmod 600 .env.apk
-# Edit .env.apk with your production EXPO_PUBLIC_API_BASE_URL and UNSEAL_UPLOAD_* values
+# Edit .env.apk with your production EXPO_PUBLIC_API_BASE_URL and OPENUNSEAL_UPLOAD_* values
 
 source .env.apk && (cd apps/mobile/android && ./gradlew assembleRelease --no-daemon)
 ```
 
 The signed APK is written to `apps/mobile/android/app/build/outputs/apk/release/app-release.apk`.
 
-To distribute it directly from your VPS at `/downloads/unseal.apk`, place the signed APK at `<UPLOADS_DIR>/unseal.apk` (or configure `APK_FILE_PATH` on the server). The API automatically detects the file and advertises both `apkDownloadUrl` and its computed SHA-256 checksum (`apkSha256`) on `/api/v1/config` (displayed in the web app's Install modal).
+To distribute it directly from your VPS at `/downloads/openunseal.apk`, place the signed APK at `<UPLOADS_DIR>/openunseal.apk` (or configure `APK_FILE_PATH` on the server). The API automatically detects the file and advertises both `apkDownloadUrl` and its computed SHA-256 checksum (`apkSha256`) on `/api/v1/config` (displayed in the web app's Install modal).
 
 ---
 
@@ -221,19 +221,19 @@ Users can download their own data in the app (*Konto → Meine Daten herunterlad
 | `POSTGRES_DB` | `ppgis` | PostgreSQL database name. |
 | `HOST` / `PORT` | `0.0.0.0` / `3000` | Fastify bind address and HTTP port inside container. |
 | `DATABASE_URL` | `postgresql://ppgis:ppgis@127.0.0.1:5432/ppgis` | Full PostgreSQL connection URI (`@postgis:5432` inside Docker). |
-| `PUBLIC_BASE_URL` | `http://127.0.0.1:3000` | Public origin embedded in registration & password reset email links (e.g. `https://unseal.example.org`). |
+| `PUBLIC_BASE_URL` | `http://127.0.0.1:3000` | Public origin embedded in registration & password reset email links (e.g. `https://openunseal.example.org`). |
 | `UPLOADS_DIR` | `./uploads` | Directory storing EXIF-stripped WebP polygon photos (`/var/lib/entsiegelung/uploads` in Docker). |
 | `AUTO_SEED_VG250` | `false` (`true` in Compose) | Automatically download & seed German BKG VG250 OpenData municipalities when empty. |
 | `SMTP_HOST` / `SMTP_PORT` | *(empty)* / `587` | Outbound SMTP hostname and port (`mailpit` / `1025` in local `docker-compose.yml`). |
 | `SMTP_SECURE` | `false` (`true` if `465`) | Use implicit TLS (`true` for port `465`, `false` for STARTTLS on `587`). |
 | `SMTP_REQUIRE_TLS` | `true` (unless `SMTP_SECURE=true`) | Refuse to send when the server does not offer STARTTLS, so confirmation/reset links and addresses never travel unencrypted. Set `false` only for local Mailpit (as in `docker-compose.yml`). |
 | `SMTP_USER` / `SMTP_PASS` | *(empty)* | SMTP authentication credentials. |
-| `SMTP_FROM` | `Unseal <noreply@localhost>` | Sender `From:` header for confirmation and password reset emails. |
+| `SMTP_FROM` | `OpenUnseal <noreply@localhost>` | Sender `From:` header for confirmation and password reset emails. |
 | `TRUST_PROXY` | `false` | Set `true` behind Caddy/Nginx/Traefik. |
 | `CORS_ORIGIN` | `*` | Allowed browser CORS origin(s), comma-separated. |
 | `OSM_STYLE_URL` / `OSM_DARK_STYLE_URL` | `https://tiles.openfreemap.org/styles/liberty` / `.../styles/dark` | Light and dark mode MapLibre vector style JSON URLs. |
 | `ORTHOPHOTO_*` | *(built-in Germany DOP20)* | Built-in server-proxied German DOP20 aerial orthophotos (`/api/v1/tiles/dop20/{z}/{x}/{y}.png`); set `ORTHOPHOTO_URL_TEMPLATE=none` to disable or override with a custom `EPSG:3857` URL. |
-| `APK_DOWNLOAD_URL` / `APK_FILE_PATH` / `APK_SHA256` | *(auto)* / `<UPLOADS_DIR>/unseal.apk` / *(auto SHA-256)* | Optional direct Android `.apk` download link (`none` to hide button; auto-hidden when no APK file exists), server file path, and SHA-256 checksum. |
+| `APK_DOWNLOAD_URL` / `APK_FILE_PATH` / `APK_SHA256` | *(auto)* / `<UPLOADS_DIR>/openunseal.apk` / *(auto SHA-256)* | Optional direct Android `.apk` download link (`none` to hide button; auto-hidden when no APK file exists), server file path, and SHA-256 checksum. |
 | `INITIAL_LNG` / `LAT` / `ZOOM` | `8.2739` / `49.9989` / `15` | Default initial viewport camera (Mainz Cathedral). |
 | `MAX_DAILY_POLYGONS_PER_USER` | `25` | Rolling 24-hour polygon creation cap per user. |
 | `SESSION_TTL_DAYS` | `30` | Bearer session lifetime in days. |
@@ -248,10 +248,10 @@ Users can download their own data in the app (*Konto → Meine Daten herunterlad
 | `OPERATOR_NAME` / `OPERATOR_ADDRESS` / `OPERATOR_EMAIL` / `OPERATOR_PHONE` | *(empty)* | Legal operator identity rendered on `/auth/impressum` & `/auth/privacy` (§ 5 DDG / § 18 MStV / Art. 13 GDPR); `\n` separates address lines. |
 | `IMPRESSUM_URL` / `PRIVACY_POLICY_URL` / `TERMS_URL` / `LICENSES_URL` / `SOURCE_CODE_URL` | `<PUBLIC_BASE_URL>/auth/{impressum,privacy,terms,licenses}` | Override URLs for hosted legal notices and AGPL-3.0/MPL-2.0 source code repository link. |
 | `BUG_REPORT_TO` | *(falls back to `OPERATOR_EMAIL`)* | Recipient email for `/api/v1/bug-reports` (`none` or unset disables bug-report email submission with HTTP 503). |
-| `APP_NAME` / `APP_SUBTITLE_DE` / `APP_SUBTITLE_EN` | `Unseal` / *(default)* | Optional municipal instance name and localized subtitles shown in the web/mobile UI, hosted `/auth/*` pages, and transactional emails (upstream AGPL/MPL Open-Source attribution stays preserved). |
-| `BRAND_LOGO_FILE` / `BRAND_LOGO_URL` | *(built-in Unseal mark)* | Custom logo file (PNG/JPG/WebP/SVG ≤ 2 MiB, served same-origin at `/api/v1/branding/logo`) or external `https://` URL (external hosts are disclosed automatically on `/auth/privacy`). |
+| `APP_NAME` / `APP_SUBTITLE_DE` / `APP_SUBTITLE_EN` | `OpenUnseal` / *(default)* | Optional municipal instance name and localized subtitles shown in the web/mobile UI, hosted `/auth/*` pages, and transactional emails (upstream AGPL/MPL Open-Source attribution stays preserved). |
+| `BRAND_LOGO_FILE` / `BRAND_LOGO_URL` | *(built-in OpenUnseal mark)* | Custom logo file (PNG/JPG/WebP/SVG ≤ 2 MiB, served same-origin at `/api/v1/branding/logo`) or external `https://` URL (external hosts are disclosed automatically on `/auth/privacy`). |
 | `BRAND_ACCENT_COLOR` / `BRAND_ACCENT_DARK_COLOR` | `#176642` / `#34C785` | Optional 6-digit hex brand accent colors for light and dark themes (dark variant and contrasting ink colors derive automatically when omitted; map status legend colors remain unchanged). |
 | `INTRO_ENABLED` | `true` | Set `false` to skip the animated splash intro overlay on startup. |
 | `MUNICIPAL_PORTAL_URL` / `MUNICIPAL_PORTAL_LABEL` | *(empty)* | Optional external link (e.g. municipal homepage or climate portal) rendered in the About modal and `/auth/impressum`. |
-| `WEBHOOK_URL` / `WEBHOOK_SECRET` / `WEBHOOK_EVENTS` / `WEBHOOK_TIMEOUT_MS` / `WEBHOOK_ALLOW_PRIVATE_NETWORKS` | *(disabled)* / *(empty)* / all 3 / `5000` / `false` | Optional async outbound webhook (`polygon.created`, `polygon.status_changed`, `polygon.deleted`) transmitting exclusively public, non-PII polygon data with optional HMAC-SHA256 signing (`X-Unseal-Signature-256`) and SSRF protection against private/metadata IP ranges. |
+| `WEBHOOK_URL` / `WEBHOOK_SECRET` / `WEBHOOK_EVENTS` / `WEBHOOK_TIMEOUT_MS` / `WEBHOOK_ALLOW_PRIVATE_NETWORKS` | *(disabled)* / *(empty)* / all 3 / `5000` / `false` | Optional async outbound webhook (`polygon.created`, `polygon.status_changed`, `polygon.deleted`) transmitting exclusively public, non-PII polygon data with optional HMAC-SHA256 signing (`X-OpenUnseal-Signature-256`) and SSRF protection against private/metadata IP ranges. |
 | `EXPO_PUBLIC_API_BASE_URL` | `http://127.0.0.1:3000` | Base API URL baked into Expo mobile/web builds at bundle time. |

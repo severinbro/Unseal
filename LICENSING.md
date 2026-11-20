@@ -1,8 +1,8 @@
-# Unseal (`Entsiegelungskartierung`) – Licensing Notice
+# OpenUnseal (`Entsiegelungskartierung`) – Licensing Notice
 
-Copyright (C) 2026 Unseal Contributors
+Copyright (C) 2026 OpenUnseal Contributors
 
-Unseal uses a **split open-source licensing model** across its monorepo workspaces to preserve strong network copyleft on the backend service while keeping the cross-platform client and shared wire contracts compatible with mobile app-store distribution policies.
+OpenUnseal uses a **split open-source licensing model** across its monorepo workspaces to preserve strong network copyleft on the backend service while keeping the cross-platform client and shared wire contracts compatible with mobile app-store distribution policies.
 
 The canonical, unmodified license texts live in their respective `LICENSE` files; this notice defines the scope of each license and provides third-party and data-license references.
 
@@ -13,11 +13,11 @@ The canonical, unmodified license texts live in their respective `LICENSE` files
 | Path | License (SPDX) | Verbatim License Text |
 | :--- | :--- | :--- |
 | Repository root, `apps/api`, `scripts/`, `test/`, Docker & deployment files | `AGPL-3.0-or-later` | [`LICENSE`](./LICENSE) |
-| `packages/shared` (`@entsiegelung/shared`) | `MPL-2.0` | [`packages/shared/LICENSE`](./packages/shared/LICENSE) |
-| `apps/mobile` (`@entsiegelung/mobile`) | `MPL-2.0` | [`apps/mobile/LICENSE`](./apps/mobile/LICENSE) |
+| `packages/shared` (`@openunseal/shared`) | `MPL-2.0` | [`packages/shared/LICENSE`](./packages/shared/LICENSE) |
+| `apps/mobile` (`@openunseal/mobile`) | `MPL-2.0` | [`apps/mobile/LICENSE`](./apps/mobile/LICENSE) |
 
 * **Server & Repository Components (`AGPL-3.0-or-later`):** Except where a workspace directory provides its own `LICENSE` file, this repository (including `apps/api`) is free software licensed under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version (`AGPL-3.0-or-later`).
-* **Client & Shared Contract Packages (`MPL-2.0`):** `packages/shared` and `apps/mobile` are licensed separately under the Mozilla Public License Version 2.0 (`MPL-2.0`), without attaching the Exhibit B "Incompatible With Secondary Licenses" notice to their Source Code Form. Under MPL-2.0 Section 3.3, `apps/api` may combine `@entsiegelung/shared` into an `AGPL-3.0-or-later` work while `@entsiegelung/shared` itself remains available under `MPL-2.0`.
+* **Client & Shared Contract Packages (`MPL-2.0`):** `packages/shared` and `apps/mobile` are licensed separately under the Mozilla Public License Version 2.0 (`MPL-2.0`), without attaching the Exhibit B "Incompatible With Secondary Licenses" notice to their Source Code Form. Under MPL-2.0 Section 3.3, `apps/api` may combine `@openunseal/shared` into an `AGPL-3.0-or-later` work while `@openunseal/shared` itself remains available under `MPL-2.0`.
 
 ---
 

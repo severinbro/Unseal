@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import {
   AltchaChallengeResponseSchema,
@@ -65,7 +65,7 @@ import {
   type SessionResponse,
   type VerifyEmailResponse,
   type VoteResponse,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import {
   encodeUtf8Base64,
@@ -187,6 +187,48 @@ function buildMultiUploadFormData(
     form.append(fieldName, rnFilePart as unknown as Blob);
   }
   return form;
+}
+
+export function appendHostedPageTheme(
+  url: string,
+  colorScheme: 'light' | 'dark',
+  apiBaseUrl?: string,
+): string {
+  const trimmed = url.trim();
+  if (trimmed.length === 0) {
+    return url;
+  }
+  try {
+    if (trimmed.startsWith('/')) {
+      const parsed = new URL(trimmed, 'http://localhost');
+      if (
+        !parsed.pathname.startsWith('/auth/') ||
+        parsed.pathname === '/auth/third-party-notices'
+      ) {
+        return url;
+      }
+      parsed.searchParams.set('theme', colorScheme);
+      return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    }
+    const parsed = new URL(trimmed);
+    if (
+      (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
+      !parsed.pathname.startsWith('/auth/') ||
+      parsed.pathname === '/auth/third-party-notices'
+    ) {
+      return url;
+    }
+    if (apiBaseUrl) {
+      const baseOrigin = new URL(apiBaseUrl).origin;
+      if (parsed.origin !== baseOrigin) {
+        return url;
+      }
+    }
+    parsed.searchParams.set('theme', colorScheme);
+    return parsed.toString();
+  } catch {
+    return url;
+  }
 }
 
 export class PpgisApiClient {

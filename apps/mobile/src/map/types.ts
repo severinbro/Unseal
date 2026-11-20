@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import type {
   BboxBounds,
   PolygonFeature,
   RuntimeConfig,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import type {
   BasemapMode,

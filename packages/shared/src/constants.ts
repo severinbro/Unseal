@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 export const SURFACE_TYPES = ['asphalt', 'concrete', 'pavers', 'other'] as const;
 
@@ -191,7 +191,7 @@ export const AUTH_LIMITS = {
 
 export const RESERVED_PSEUDONYMS = ['deleted'] as const;
 
-export const DEFAULT_APP_NAME = 'Unseal';
+export const DEFAULT_APP_NAME = 'OpenUnseal';
 
 export const WEBHOOK_EVENT_TYPES = [
   'polygon.created',

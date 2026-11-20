@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import nodemailer from 'nodemailer';
 
-import { DEFAULT_APP_NAME } from '@entsiegelung/shared';
+import { DEFAULT_APP_NAME } from '@openunseal/shared';
 
 import { deriveServerBrandColors } from '../util/brandingTheme.js';
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import { z } from 'zod';
 
@@ -346,7 +346,7 @@ function isSafeHttpUrl(raw: string): boolean {
 }
 
 export const BrandingConfigSchema = z.object({
-  appName: z.string().trim().min(1).max(80).default('Unseal'),
+  appName: z.string().trim().min(1).max(80).default('OpenUnseal'),
   subtitleDe: z.string().trim().min(1).max(160).nullable().optional().default(null),
   subtitleEn: z.string().trim().min(1).max(160).nullable().optional().default(null),
   logoUrl: z

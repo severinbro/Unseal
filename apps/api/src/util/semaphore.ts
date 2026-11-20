@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
-import { ApiError, type ErrorCode } from '@entsiegelung/shared';
+import { ApiError, type ErrorCode } from '@openunseal/shared';
 
 export class BoundedSemaphore {
   public readonly maxConcurrent: number;

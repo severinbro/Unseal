@@ -1,5 +1,5 @@
 {
-  "name": "@entsiegelung/api",
+  "name": "@openunseal/api",
   "version": "0.1.0",
   "license": "AGPL-3.0-or-later",
   "type": "module",
@@ -23,7 +23,7 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
-    "@entsiegelung/shared": "*",
+    "@openunseal/shared": "*",
     "@fastify/compress": "^8.0.1",
     "@fastify/cors": "^10.0.1",
     "@fastify/multipart": "^9.4.0",

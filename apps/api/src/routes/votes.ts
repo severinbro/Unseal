@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import {
   ApiError,
   UuidParamSchema,
   VoteRequestSchema,
   VoteResponseSchema,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import { requireAuth } from '../auth/session.js';
 import { VoteRepository } from '../votes/repository.js';

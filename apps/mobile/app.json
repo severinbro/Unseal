@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Unseal",
-    "slug": "unseal",
+    "name": "OpenUnseal",
+    "slug": "openunseal",
     "version": "0.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -14,15 +14,15 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "org.entsiegelung.ppgis",
+      "bundleIdentifier": "de.openunseal.app",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Erlaubt Unseal, die Karte auf deinen aktuellen GNSS-Standort zu zentrieren.",
+        "NSLocationWhenInUseUsageDescription": "Erlaubt OpenUnseal, die Karte auf deinen aktuellen GNSS-Standort zu zentrieren.",
         "NSCameraUsageDescription": "Erlaubt das Aufnehmen von Vor-Ort-Fotos zu vorgeschlagenen Entsiegelungsflächen.",
         "NSPhotoLibraryUsageDescription": "Erlaubt das Hochladen von Fotos vorgeschlagener Entsiegelungsflächen aus deiner Mediathek."
       }
     },
     "android": {
-      "package": "org.entsiegelung.ppgis",
+      "package": "de.openunseal.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#EFF3F0"
@@ -42,8 +42,8 @@
       "bundler": "metro",
       "output": "single",
       "favicon": "./assets/favicon.png",
-      "name": "Unseal - Gemeinschaftliche Entsiegelungskarte",
-      "shortName": "Unseal",
+      "name": "OpenUnseal - Gemeinschaftliche Entsiegelungskarte",
+      "shortName": "OpenUnseal",
       "description": "Gemeinschaftliche Karte für Entsiegelungsvorschläge in Kommunen (Open-Source-PPGIS).",
       "lang": "de",
       "themeColor": "#EFF3F0",
@@ -58,7 +58,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Erlaubt Unseal, die Karte auf deinen aktuellen GNSS-Standort zu zentrieren."
+          "locationWhenInUsePermission": "Erlaubt OpenUnseal, die Karte auf deinen aktuellen GNSS-Standort zu zentrieren."
         }
       ],
       [

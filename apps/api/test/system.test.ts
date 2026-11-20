@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -15,7 +15,7 @@ import {
   ApiErrorEnvelopeSchema,
   HealthResponseSchema,
   RuntimeConfigSchema,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import { buildApp, createSmtpMailer } from '../src/app.js';
 import { loadEnvConfig } from '../src/config.js';
@@ -551,7 +551,7 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
       if (cfg.apkDownloadUrl === null) {
         assert.equal(cfg.apkSha256, null);
       } else {
-        assert.equal(cfg.apkDownloadUrl, '/downloads/unseal.apk');
+        assert.equal(cfg.apkDownloadUrl, '/downloads/openunseal.apk');
         assert.match(String(cfg.apkSha256), /^[a-f0-9]{64}$/);
       }
       assert.equal(cfg.impressumUrl, 'http://127.0.0.1:3000/auth/impressum');
@@ -891,7 +891,7 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
     );
   });
 
-  it('serves Germany DOP20 orthophoto proxy tiles (/api/v1/tiles/dop20/:z/:x/:y.png) and local APK downloads (/downloads/unseal.apk)', async () => {
+  it('serves Germany DOP20 orthophoto proxy tiles (/api/v1/tiles/dop20/:z/:x/:y.png) and local APK downloads (/downloads/openunseal.apk)', async () => {
     const tmpUploads = await fs.mkdtemp(path.join(os.tmpdir(), 'ppgis-apk-dop-'));
     const samplePng = await sharp({
       create: {
@@ -982,25 +982,25 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
 
       const missingApkRes = await app.inject({
         method: 'GET',
-        url: '/downloads/unseal.apk',
+        url: '/downloads/openunseal.apk',
       });
       assert.equal(missingApkRes.statusCode, 404);
 
       // Present APK -> 200 application/vnd.android.package-archive + ETag + exposed in /api/v1/config
-      const fakeApkBytes = Buffer.from('PK\x03\x04unseal-test-apk-payload', 'binary');
-      await fs.writeFile(path.join(tmpUploads, 'unseal.apk'), fakeApkBytes);
+      const fakeApkBytes = Buffer.from('PK\x03\x04openunseal-test-apk-payload', 'binary');
+      await fs.writeFile(path.join(tmpUploads, 'openunseal.apk'), fakeApkBytes);
       const afterCfgRes = await app.inject({
         method: 'GET',
         url: '/api/v1/config',
       });
       assert.equal(afterCfgRes.statusCode, 200);
       const afterCfg = RuntimeConfigSchema.parse(afterCfgRes.json());
-      assert.equal(afterCfg.apkDownloadUrl, '/downloads/unseal.apk');
+      assert.equal(afterCfg.apkDownloadUrl, '/downloads/openunseal.apk');
       assert.match(String(afterCfg.apkSha256), /^[a-f0-9]{64}$/);
 
       const presentApkRes = await app.inject({
         method: 'GET',
-        url: '/downloads/unseal.apk',
+        url: '/downloads/openunseal.apk',
       });
       assert.equal(presentApkRes.statusCode, 200);
       assert.match(

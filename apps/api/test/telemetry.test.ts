@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -16,7 +16,7 @@ import {
   PolygonPhotoSchema,
   RegisterResponseSchema,
   SessionResponseSchema,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import {
   buildApp,
@@ -433,7 +433,7 @@ describe('Research Telemetry & Polygon Provenance Suite (009_research_telemetry)
       const telemetryCmd = await runAdminCommand(pool, ['export-telemetry']);
       assert.equal(telemetryCmd.command, 'export-telemetry');
       const report = telemetryCmd.telemetryExport!;
-      assert.equal(report.format, 'unseal-research-telemetry');
+      assert.equal(report.format, 'openunseal-research-telemetry');
 
       const findCount = (metric: string, dimension: string): number =>
         report.totalsByMetric.find(

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import {
   ApiError,
@@ -9,7 +9,7 @@ import {
   type CommentVoteResponse,
   type PolygonComment,
   type PolygonCommentListResponse,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import { lockUserForWrite } from '../db/integrity.js';
 

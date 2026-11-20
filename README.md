@@ -1,6 +1,6 @@
-# <img src="apps/mobile/assets/unseal-icon.svg" width="36" height="36" align="top" alt="Unseal Icon" /> Unseal - Open-Source Ground-Unsealing PPGIS
+# <img src="apps/mobile/assets/openunseal-icon.svg" width="36" height="36" align="top" alt="OpenUnseal Icon" /> OpenUnseal - Open-Source Ground-Unsealing PPGIS
 
-**Unseal** is an open-source Public Participation Geographic Information System (PPGIS) for **Android, iOS, and Web** (German `de` default language with full English `en` switcher). Citizens map impervious ground surfaces ("ground sealing", such as asphalt parking corners, concrete courtyards, and paved street margins) proposed for unsealing, attach EXIF-sanitized site photos, and prioritize proposals through `+1` / `-1` community voting.
+**OpenUnseal** (`open-unseal.de`) is an open-source Public Participation Geographic Information System (PPGIS) for **Android, iOS, and Web** (German `de` default language with full English `en` switcher). Citizens map impervious ground surfaces ("ground sealing", such as asphalt parking corners, concrete courtyards, and paved street margins) proposed for unsealing, attach EXIF-sanitized site photos, and prioritize proposals through `+1` / `-1` community voting.
 
 Unauthenticated visitors can explore OpenStreetMap vector basemaps in light or dark mode (with automatic OS detection and a one-tap theme toggle), toggle built-in Germany-wide **DOP20 aerial orthophotos** (`EPSG:3857`) beneath proposal geometries, center on their position via the floating top-right **GNSS** button, inspect proposals and site photos, open the **`?` About** dialog, download the standalone Android `.apk` (when hosted on the server), and export all proposals as RFC 7946 GeoJSON (`GET /api/v1/polygons/export.geojson`, `ODbL-1.0`) for direct analysis in QGIS or desktop GIS tools.
 
@@ -80,15 +80,15 @@ docker compose up -d --build
 
 ## Example Workflow (Participatory Mapping to Desktop GIS)
 
-1. **Seed municipal boundaries & start the service:** With `AUTO_SEED_VG250=true` (enabled by default in `docker-compose.yml`), Unseal loads German `BKG VG250` municipality boundaries so positive vote scores normalize within each municipality (`[0, 1]`).
+1. **Seed municipal boundaries & start the service:** With `AUTO_SEED_VG250=true` (enabled by default in `docker-compose.yml`), OpenUnseal loads German `BKG VG250` municipality boundaries so positive vote scores normalize within each municipality (`[0, 1]`).
 2. **Map or import candidate depaving sites:**
    * *Interactive mapping:* Open the Web or mobile client, toggle `DOP20` aerial orthophotos beneath the map, trace an impervious surface (`2-20,000 m²`), select its material (`Asphalt`, `Beton`, `Pflaster`, `Sonstige Versiegelung`), and optionally attach an on-site camera photo (checked in memory against a `3 m` polygon buffer before 100% EXIF stripping).
    * *Field-survey bulk import (`admin`):* Upload existing `.gpkg` (e.g. `QField` surveys) or `.geojson` inventories directly via the Inspector's `Verwaltung` tab, automatically reprojecting to `EPSG:4326` and running PostGIS topology, compactness, overlap-clipping, and land-cover checks.
 3. **Prioritize & stream open `ODbL-1.0` GeoJSON into QGIS:**
    ```bash
-   curl -fsS http://127.0.0.1:3000/api/v1/polygons/export.geojson -o unseal-proposals.geojson
+   curl -fsS http://127.0.0.1:3000/api/v1/polygons/export.geojson -o openunseal-proposals.geojson
    ```
-   Load `unseal-proposals.geojson` (or connect QGIS directly via *Data Source Manager -> Vector -> Protocol: HTTP(S), cloud -> GeoJSON*) to overlay community-ranked depaving polygons (`score`, `municipalityNormalizedScore`, `areaM2`, `surfaceType`, `origin`, `wasAutoClipped`) against municipal heat, stormwater runoff, or `ALKIS` parcel layers.
+   Load `openunseal-proposals.geojson` (or connect QGIS directly via *Data Source Manager -> Vector -> Protocol: HTTP(S), cloud -> GeoJSON*) to overlay community-ranked depaving polygons (`score`, `municipalityNormalizedScore`, `areaM2`, `surfaceType`, `origin`, `wasAutoClipped`) against municipal heat, stormwater runoff, or `ALKIS` parcel layers.
 
 ---
 
@@ -103,7 +103,8 @@ docker compose up -d --build
 
 * **Contributing, reporting bugs & seeking support:** See [`CONTRIBUTING.md`](./CONTRIBUTING.md) and open bug reports, feature requests, or support questions in [GitHub Issues](https://github.com/severinbro/Unseal/issues).
 * **Code of Conduct:** Participation in this project is governed by our [Contributor Covenant Code of Conduct](./CODE_OF_CONDUCT.md).
-* **Citing Unseal:** Machine-readable citation metadata is provided in [`CITATION.cff`](./CITATION.cff).
+* **Citing OpenUnseal:** Machine-readable citation metadata is provided in [`CITATION.cff`](./CITATION.cff).
+* **Name & Affiliation Note:** OpenUnseal (`open-unseal.de`) is an independent open-source software project and is not affiliated with the European Driving Urban Transitions (DUT) *UNSEAL* research consortium (`unseal.eu`) or unrelated commercial applications named "Unseal".
 
 ---
 

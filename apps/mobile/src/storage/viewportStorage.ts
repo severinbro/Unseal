@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
-import type { BboxBounds } from '@entsiegelung/shared';
+import type { BboxBounds } from '@openunseal/shared';
 
 export const LAST_VIEWPORT_KEY = 'entsiegelung.last_viewport';
 

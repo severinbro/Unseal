@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import {
   CommentVoteRequestSchema,
@@ -8,7 +8,7 @@ import {
   PolygonCommentListResponseSchema,
   PolygonCommentSchema,
   UuidParamSchema,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import { optionalAuth, requireAuth } from '../auth/session.js';
 import { CommentRepository } from '../comments/repository.js';

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -215,7 +215,7 @@ function collectRuntimeLockKeys(pkgs, workspaceDir, depNames, skipNames = new Se
   const visited = new Set();
   const queue = [];
   for (const dep of depNames) {
-    if (dep.startsWith('@entsiegelung/') || skipNames.has(dep)) {
+    if (dep.startsWith('@openunseal/') || skipNames.has(dep)) {
       continue;
     }
     const key = resolveLockKey(pkgs, workspaceDir, dep);
@@ -235,7 +235,7 @@ function collectRuntimeLockKeys(pkgs, workspaceDir, depNames, skipNames = new Se
     }
     for (const group of ['dependencies', 'optionalDependencies']) {
       for (const dep of Object.keys(entry[group] ?? {})) {
-        if (dep.startsWith('@entsiegelung/') || skipNames.has(dep)) {
+        if (dep.startsWith('@openunseal/') || skipNames.has(dep)) {
           continue;
         }
         const nextKey = resolveLockKey(pkgs, current, dep);
@@ -255,17 +255,17 @@ function main() {
   const workspaces = [
     {
       dir: 'packages/shared',
-      label: 'packages/shared (@entsiegelung/shared, MPL-2.0)',
+      label: 'packages/shared (@openunseal/shared, MPL-2.0)',
       skipNames: new Set(),
     },
     {
       dir: 'apps/api',
-      label: 'apps/api (@entsiegelung/api, AGPL-3.0-or-later)',
+      label: 'apps/api (@openunseal/api, AGPL-3.0-or-later)',
       skipNames: new Set(),
     },
     {
       dir: 'apps/mobile',
-      label: 'apps/mobile (@entsiegelung/mobile, MPL-2.0)',
+      label: 'apps/mobile (@openunseal/mobile, MPL-2.0)',
       skipNames: BUILD_ONLY_SKIPS,
     },
   ];
@@ -274,12 +274,12 @@ function main() {
   const hr = '='.repeat(80);
   const subHr = '-'.repeat(80);
 
-  lines.push('UNSEAL (ENTSIEGELUNGSKARTIERUNG) - THIRD-PARTY SOFTWARE & GEODATA NOTICES');
+  lines.push('OPENUNSEAL (ENTSIEGELUNGSKARTIERUNG) - THIRD-PARTY SOFTWARE & GEODATA NOTICES');
   lines.push(hr);
   lines.push('');
   lines.push('This document records the third-party software packages, reproduced runtime');
   lines.push('copyright/license notices (direct and transitive), native mobile SDKs,');
-  lines.push('runtime container components, and default geodata sources used by Unseal.');
+  lines.push('runtime container components, and default geodata sources used by OpenUnseal.');
   lines.push('Regenerate from package-lock.json and node_modules via:');
   lines.push('  npm run licenses:generate');
   lines.push('');
@@ -304,7 +304,7 @@ function main() {
       allRuntimeLockKeys.add(key);
     }
     for (const dep of deps) {
-      if (dep.startsWith('@entsiegelung/')) {
+      if (dep.startsWith('@openunseal/')) {
         lines.push(`  - ${dep} (workspace package; MPL-2.0)`);
         continue;
       }
@@ -629,7 +629,7 @@ function main() {
       continue;
     }
     const name = packageNameFromLockKey(lockKey);
-    if (name.startsWith('@entsiegelung/')) {
+    if (name.startsWith('@openunseal/')) {
       continue;
     }
     const version = entry.version ?? 'unknown';

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import {
   DEFAULT_APP_NAME,
   type BrandingConfig,
   type RuntimeConfig,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 import React, { useMemo } from 'react';
 import {
   Linking,
@@ -243,8 +243,8 @@ export function AboutModal({
         <Text style={styles.sectionTitle}>{t.footerTitle}</Text>
         <Text style={styles.subtleNote}>{t.privacyAndLicenseBody}</Text>
         {isCustomBrand ? (
-          <Text testID="about-powered-by-unseal" style={styles.subtleNote}>
-            {t.poweredByUnseal}
+          <Text testID="about-powered-by-openunseal" style={styles.subtleNote}>
+            {t.poweredByOpenUnseal}
           </Text>
         ) : null}
         {abuseContact && abuseContact.trim().length > 0 ? (
@@ -476,6 +476,7 @@ function createStyles(PALETTE: ThemePalette) {
   return StyleSheet.create({
   card: {
     width: '100%',
+    maxWidth: '100%',
     padding: 15,
     borderRadius: RADII.sheet,
     backgroundColor: PALETTE.bgSurface,
@@ -495,6 +496,7 @@ function createStyles(PALETTE: ThemePalette) {
   },
   headerTextGroup: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
   },
   title: {
@@ -538,6 +540,7 @@ function createStyles(PALETTE: ThemePalette) {
     backgroundColor: PALETTE.bgSubtle,
     borderWidth: 1,
     borderColor: PALETTE.borderSubtle,
+    minWidth: 0,
     gap: 6,
   },
   sectionTitle: {
@@ -552,6 +555,7 @@ function createStyles(PALETTE: ThemePalette) {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 6,
+    minWidth: 0,
   },
   bulletMarker: {
     fontSize: 12,
@@ -561,6 +565,7 @@ function createStyles(PALETTE: ThemePalette) {
   },
   bulletText: {
     flex: 1,
+    minWidth: 0,
     fontSize: 12,
     lineHeight: 16.5,
     color: PALETTE.inkSecondary,
@@ -569,6 +574,7 @@ function createStyles(PALETTE: ThemePalette) {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
+    minWidth: 0,
   },
   dotGroup: {
     flexDirection: 'row',
@@ -587,15 +593,22 @@ function createStyles(PALETTE: ThemePalette) {
     fontSize: 11.5,
     lineHeight: 16,
     color: PALETTE.inkMuted,
+    flexShrink: 1,
+    ...(Platform.OS === 'web'
+      ? ({ overflowWrap: 'anywhere' } as object)
+      : {}),
   },
   attributionChipsRow: {
+    width: '100%',
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 5,
   },
   attributionChip: {
-    paddingVertical: 3,
-    paddingHorizontal: 7,
+    maxWidth: '100%',
+    flexShrink: 1,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
     borderRadius: RADII.sm,
     backgroundColor: PALETTE.bgSurface,
     borderWidth: 1,
@@ -606,6 +619,10 @@ function createStyles(PALETTE: ThemePalette) {
     lineHeight: 15,
     color: PALETTE.inkSecondary,
     textDecorationLine: 'underline',
+    flexShrink: 1,
+    ...(Platform.OS === 'web'
+      ? ({ overflowWrap: 'break-word' } as object)
+      : {}),
   },
   actionRow: {
     flexDirection: 'row',
@@ -615,6 +632,8 @@ function createStyles(PALETTE: ThemePalette) {
   touchButton: {
     minHeight: MIN_TOUCH_TARGET_DP,
     minWidth: MIN_TOUCH_TARGET_DP,
+    maxWidth: '100%',
+    flexShrink: 1,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: RADII.md,
@@ -637,6 +656,8 @@ function createStyles(PALETTE: ThemePalette) {
     fontSize: 12.5,
     fontWeight: '700',
     color: PALETTE.inkOnAccent,
+    flexShrink: 1,
+    textAlign: 'center',
   },
   secondaryButton: {
     backgroundColor: PALETTE.bgSurface,
@@ -647,6 +668,8 @@ function createStyles(PALETTE: ThemePalette) {
     fontSize: 12.5,
     fontWeight: '600',
     color: PALETTE.inkPrimary,
+    flexShrink: 1,
+    textAlign: 'center',
   },
   buttonPressed: {
     backgroundColor: PALETTE.bgRecessed,

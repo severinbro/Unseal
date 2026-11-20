@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Unseal - Gemeinschaftliche Entsiegelungskarte",
-  "short_name": "Unseal",
+  "name": "OpenUnseal - Gemeinschaftliche Entsiegelungskarte",
+  "short_name": "OpenUnseal",
   "description": "Gemeinschaftliche Karte für Entsiegelungsvorschläge in Kommunen (Open-Source-PPGIS).",
   "lang": "de",
   "dir": "ltr",

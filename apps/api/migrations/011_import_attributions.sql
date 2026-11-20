@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: AGPL-3.0-or-later
--- Copyright (C) 2026 Unseal Contributors
+-- Copyright (C) 2026 OpenUnseal Contributors
 
 -- Persist upstream dataset license & attribution notices for admin bulk imports
 -- so the public ODbL-1.0 GeoJSON export retains required credits and waiver records.

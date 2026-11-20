@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -29,7 +29,7 @@ import {
   type PolygonStatus,
   type PublicStatsResponse,
   type SurfaceType,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import { lockUserForWrite } from '../db/integrity.js';
 import {

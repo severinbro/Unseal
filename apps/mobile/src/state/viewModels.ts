@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import {
   AUTHOR_ACTIVITY,
@@ -13,7 +13,7 @@ import {
   type PolygonFeature,
   type PolygonFilter,
   type SurfaceType,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 
 import {
   getTranslations,
@@ -532,6 +532,7 @@ export interface NavbarLayoutMode {
   readonly showProposeFab: boolean;
   readonly useCompactCountBadge: boolean;
   readonly constrainAccountChipWidth: boolean;
+  readonly collapseSecondaryNavToMenu: boolean;
 }
 
 /**
@@ -543,6 +544,11 @@ export function deriveNavbarLayoutMode(
   viewportWidth?: number,
 ): NavbarLayoutMode {
   const isCompact = tier === 'compact';
+  const hasKnownWidth =
+    viewportWidth !== undefined &&
+    Number.isFinite(viewportWidth) &&
+    viewportWidth > 0;
+
   if (isCompact) {
     return {
       isCompact: true,
@@ -551,13 +557,9 @@ export function deriveNavbarLayoutMode(
       showProposeFab: true,
       useCompactCountBadge: true,
       constrainAccountChipWidth: true,
+      collapseSecondaryNavToMenu: !hasKnownWidth || viewportWidth < 520,
     };
   }
-
-  const hasKnownWidth =
-    viewportWidth !== undefined &&
-    Number.isFinite(viewportWidth) &&
-    viewportWidth > 0;
 
   return {
     isCompact: false,
@@ -566,5 +568,6 @@ export function deriveNavbarLayoutMode(
     showProposeFab: true,
     useCompactCountBadge: hasKnownWidth && viewportWidth < 920,
     constrainAccountChipWidth: hasKnownWidth && viewportWidth < 1100,
+    collapseSecondaryNavToMenu: false,
   };
 }

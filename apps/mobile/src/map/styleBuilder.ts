@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (C) 2026 Unseal Contributors
+// Copyright (C) 2026 OpenUnseal Contributors
 
 import {
   closeRingIfNeeded,
@@ -9,7 +9,7 @@ import {
   type PolygonStatus,
   type RuntimeConfig,
   type SurfaceType,
-} from '@entsiegelung/shared';
+} from '@openunseal/shared';
 import type {
   Feature,
   FeatureCollection,
@@ -18,6 +18,7 @@ import type {
   Polygon,
 } from 'geojson';
 
+import { appendHostedPageTheme } from '../api/client';
 import type { ColorScheme } from '../theme/tokens';
 
 export const DEFAULT_DARK_OSM_STYLE_URL =
@@ -615,9 +616,12 @@ export function buildWebCustomAttributions(options: {
     options.basemapMode === 'orthophoto' &&
     isBuiltinDop20Orthophoto(options.config.orthophoto)
   ) {
+    const themedLicensesUrl = options.config.licensesUrl
+      ? appendHostedPageTheme(options.config.licensesUrl, options.colorScheme)
+      : undefined;
     const dop20Html = formatDop20WebAttributionHtml(options.viewportBbox, {
       year,
-      licensesUrl: options.config.licensesUrl,
+      licensesUrl: themedLicensesUrl,
     });
     if (dop20Html.length > 0) {
       entries.push(dop20Html);
