@@ -339,13 +339,14 @@ export function App(props: AppProps = {}): React.JSX.Element {
           ? 'light'
           : null;
 
+  const branding = state.config?.branding ?? null;
   const activeColorScheme = resolveColorScheme(
     state.themePreference,
     systemColorScheme,
   );
   const palette = useMemo(
-    () => getPalette(activeColorScheme),
-    [activeColorScheme],
+    () => getPalette(activeColorScheme, branding),
+    [activeColorScheme, branding],
   );
   const isDark = activeColorScheme === 'dark';
   const styles = useMemo(
@@ -359,12 +360,18 @@ export function App(props: AppProps = {}): React.JSX.Element {
   }, []);
 
   useEffect(() => {
-    syncWebDocumentLocale(state.locale);
-  }, [state.locale]);
+    syncWebDocumentLocale(state.locale, branding);
+  }, [state.locale, branding]);
 
   useEffect(() => {
-    syncWebDocumentTheme(activeColorScheme);
-  }, [activeColorScheme]);
+    syncWebDocumentTheme(activeColorScheme, palette);
+  }, [activeColorScheme, palette]);
+
+  useEffect(() => {
+    if (branding?.introEnabled === false) {
+      setIntroVisible(false);
+    }
+  }, [branding?.introEnabled]);
 
   const handleToggleLocale = useCallback((): void => {
     const nextLocale: Locale = state.locale === 'de' ? 'en' : 'de';
@@ -1665,6 +1672,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
           controls={mapControls}
           proposalCount={computeVisibleProposalCount(state)}
           exportGeoJsonUrl={apiClient.getExportGeoJsonUrl()}
+          branding={branding}
           isImporting={isImporting}
           tier={layout.tier}
           viewportWidth={layout.width}
@@ -2188,6 +2196,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
                 visible={aboutModalOpen}
                 locale={state.locale}
                 compact={layout.isCompact}
+                branding={branding}
                 osmStyleUrl={state.config.osmStyleUrl}
                 orthophoto={state.config.orthophoto}
                 vg250AttributionEnabled={state.config.vg250AttributionEnabled}
@@ -2357,6 +2366,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
     <ThemeProvider
       colorScheme={activeColorScheme}
       themePreference={state.themePreference}
+      branding={branding}
     >
       <View style={styles.rootShell}>
         {statusBarNode}
@@ -2364,6 +2374,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
         {introVisible ? (
           <AnimatedIntroOverlay
             locale={state.locale}
+            branding={branding}
             onFinish={handleFinishIntro}
           />
         ) : null}

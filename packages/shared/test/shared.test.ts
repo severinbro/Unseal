@@ -15,6 +15,7 @@ import {
   ApiErrorEnvelopeSchema,
   AuthUserSchema,
   BboxQuerySchema,
+  BrandingConfigSchema,
   COMMENT_LIMITS,
   CONTENT_REPORT_REASONS,
   CONTENT_REPORT_TARGET_TYPES,
@@ -24,6 +25,7 @@ import {
   CreateContentReportResponseSchema,
   CreatePolygonCommentRequestSchema,
   CreatePolygonRequestSchema,
+  DEFAULT_APP_NAME,
   type DraftValidationResult,
   type ErrorCode,
   FlagPolygonRequestSchema,
@@ -31,6 +33,7 @@ import {
   GEOMETRY_LIMITS,
   GERMAN_STATE_DOP20_PROVIDERS,
   HealthResponseSchema,
+  HexColorSchema,
   IMPORT_LIMITS,
   ImportPolygonsResponseSchema,
   LoginRequestSchema,
@@ -60,6 +63,7 @@ import {
   UuidParamSchema,
   VoteRequestSchema,
   VoteResponseSchema,
+  WEBHOOK_EVENT_TYPES,
   checkBboxSpan,
   checkPolygonRingStructure,
   closeRingIfNeeded,
@@ -1321,5 +1325,100 @@ describe('Review Focus 3: BboxQuerySchema vs checkBboxSpan and remaining wire sc
       receiptSent: true,
     });
     assert.equal(parsedReportRes.receiptSent, true);
+  });
+
+  it('validates BrandingConfigSchema, rejects unsafe URLs & invalid hex colors, and preserves RuntimeConfigSchema backwards compatibility', () => {
+    assert.equal(DEFAULT_APP_NAME, 'Unseal');
+    assert.deepEqual(WEBHOOK_EVENT_TYPES, [
+      'polygon.created',
+      'polygon.status_changed',
+      'polygon.deleted',
+    ]);
+
+    assert.equal(HexColorSchema.parse('#005A9C'), '#005A9C');
+    assert.throws(() => HexColorSchema.parse('#fff'), ZodError);
+    assert.throws(() => HexColorSchema.parse('rgb(0,0,0)'), ZodError);
+    assert.throws(() => HexColorSchema.parse('blue'), ZodError);
+
+    const defaults = BrandingConfigSchema.parse({});
+    assert.deepEqual(defaults, {
+      appName: 'Unseal',
+      subtitleDe: null,
+      subtitleEn: null,
+      logoUrl: null,
+      accentColor: null,
+      accentDarkColor: null,
+      introEnabled: true,
+      portalUrl: null,
+      portalLabel: null,
+    });
+
+    const municipal = BrandingConfigSchema.parse({
+      appName: 'Entsiegelung Musterstadt',
+      subtitleDe: 'Bürgerbeteiligung der Stadt Musterstadt',
+      subtitleEn: 'Civic Unsealing Map of Musterstadt',
+      logoUrl: '/api/v1/branding/logo?v=123456789abc',
+      accentColor: '#005a9c',
+      accentDarkColor: '#4fa3e0',
+      introEnabled: false,
+      portalUrl: 'https://www.musterstadt.de/klimaschutz',
+      portalLabel: 'Klimaschutzportal',
+    });
+    assert.equal(municipal.appName, 'Entsiegelung Musterstadt');
+    assert.equal(municipal.introEnabled, false);
+
+    // Reject javascript:/data:/protocol-relative URLs on logoUrl & portalUrl
+    for (const badLogo of [
+      'javascript:alert(1)',
+      'data:image/svg+xml,<svg onload=alert(1)>',
+      '//evil.example/logo.svg',
+      'ftp://example.org/logo.png',
+    ]) {
+      assert.throws(
+        () => BrandingConfigSchema.parse({ logoUrl: badLogo }),
+        ZodError,
+        `Expected logoUrl "${badLogo}" to be rejected`,
+      );
+    }
+
+    for (const badPortal of [
+      'javascript:alert(1)',
+      '/relative-not-allowed-for-portal',
+      'mailto:test@example.org',
+    ]) {
+      assert.throws(
+        () => BrandingConfigSchema.parse({ portalUrl: badPortal }),
+        ZodError,
+        `Expected portalUrl "${badPortal}" to be rejected`,
+      );
+    }
+
+    // Legacy /api/v1/config payload without `branding` remains completely valid
+    const legacyConfigPayload = {
+      osmStyleUrl: 'https://tiles.openfreemap.org/styles/liberty',
+      orthophoto: null,
+      initialView: { lng: 8.2739, lat: 49.9989, zoom: 15 },
+      limits: {
+        minAreaM2: 2,
+        maxAreaM2: 20_000,
+        maxVertices: 200,
+        maxPolygonSpanDeg: 0.05,
+        maxBboxSpanDeg: 1.5,
+        bboxFeatureLimit: 1000,
+        maxDailyPolygonsPerUser: 25,
+      },
+      disclaimerText: 'Test',
+      abuseContact: null,
+      privacyPolicyUrl: 'https://example.org/auth/privacy',
+    };
+    const parsedLegacy = RuntimeConfigSchema.parse(legacyConfigPayload);
+    assert.equal(parsedLegacy.branding, undefined);
+
+    const parsedBranded = RuntimeConfigSchema.parse({
+      ...legacyConfigPayload,
+      branding: municipal,
+    });
+    assert.equal(parsedBranded.branding?.appName, 'Entsiegelung Musterstadt');
+    assert.equal(parsedBranded.branding?.accentColor, '#005a9c');
   });
 });

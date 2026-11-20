@@ -7,16 +7,24 @@ import path from 'node:path';
 
 import {
   AUTH_LIMITS,
+  BrandingConfigSchema,
+  DEFAULT_APP_NAME,
   GEOMETRY_LIMITS,
+  HexColorSchema,
   RuntimeConfigSchema,
   TRUST_AND_MODERATION_LIMITS,
+  WEBHOOK_EVENT_TYPES,
+  type BrandingConfig,
   type RuntimeConfig,
+  type WebhookEventType,
 } from '@entsiegelung/shared';
 
 import {
   GERMANY_DOP20_BOUNDS,
   getDefaultDop20Attribution,
 } from './routes/dop20Tiles.js';
+
+import type { WebhookConfig } from './util/webhooks.js';
 
 export interface SmtpConfig {
   host: string | null;
@@ -29,6 +37,27 @@ export interface SmtpConfig {
   requireTls: boolean;
   /** Development fallback without SMTP may log links; production never does. */
   logFallbackContent: boolean;
+}
+
+export interface BrandingServerConfig {
+  appName: string;
+  subtitleDe: string | null;
+  subtitleEn: string | null;
+  logoFilePath: string | null;
+  logoExternalUrl: string | null;
+  logoDefaultUrl: string;
+  accentColor: string | null;
+  accentDarkColor: string | null;
+  introEnabled: boolean;
+  portalUrl: string | null;
+  portalLabel: string | null;
+}
+
+export interface BrandLogoFileInfo {
+  filePath: string;
+  size: number;
+  sha256: string;
+  contentType: string;
 }
 
 export interface EnvConfig {
@@ -80,6 +109,8 @@ export interface EnvConfig {
   staleUnratedPruneDays: number;
   newUserMinAccountDays: number;
   newUserMinCleanPolygons: number;
+  branding: BrandingServerConfig;
+  webhook: WebhookConfig | null;
   runtimeConfig: RuntimeConfig;
 }
 
@@ -139,6 +170,204 @@ function resolveDefaultDarkStyleUrl(lightStyleUrl: string): string {
 const DISABLED_SETTING_RE = /^(?:none|off|false|disabled|0)$/i;
 const STRICT_NUMBER_RE = /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 const SHA256_HEX_RE = /^[0-9a-f]{64}$/i;
+const MAX_BRAND_LOGO_BYTES = 2 * 1024 * 1024;
+const VALID_WEBHOOK_EVENTS = new Set<string>(WEBHOOK_EVENT_TYPES);
+
+function detectBrandLogoMimeType(
+  filePath: string,
+  bytes: Buffer,
+): string | null {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.png') {
+    if (
+      bytes.length >= 8 &&
+      bytes[0] === 0x89 &&
+      bytes[1] === 0x50 &&
+      bytes[2] === 0x4e &&
+      bytes[3] === 0x47 &&
+      bytes[4] === 0x0d &&
+      bytes[5] === 0x0a &&
+      bytes[6] === 0x1a &&
+      bytes[7] === 0x0a
+    ) {
+      return 'image/png';
+    }
+    return null;
+  }
+  if (ext === '.jpg' || ext === '.jpeg') {
+    if (
+      bytes.length >= 3 &&
+      bytes[0] === 0xff &&
+      bytes[1] === 0xd8 &&
+      bytes[2] === 0xff
+    ) {
+      return 'image/jpeg';
+    }
+    return null;
+  }
+  if (ext === '.webp') {
+    if (
+      bytes.length >= 12 &&
+      bytes.subarray(0, 4).toString('ascii') === 'RIFF' &&
+      bytes.subarray(8, 12).toString('ascii') === 'WEBP'
+    ) {
+      return 'image/webp';
+    }
+    return null;
+  }
+  if (ext === '.svg') {
+    if (bytes.includes(0)) {
+      return null;
+    }
+    const head = bytes.subarray(0, Math.min(bytes.length, 4096)).toString('utf8');
+    if (/<svg[\s>]/i.test(head)) {
+      return 'image/svg+xml';
+    }
+    return null;
+  }
+  return null;
+}
+
+export function findExistingBrandLogoInfo(
+  logoFilePath: string | null,
+): BrandLogoFileInfo | null {
+  if (!logoFilePath) {
+    return null;
+  }
+  try {
+    const stat = fs.statSync(logoFilePath);
+    if (!stat.isFile() || stat.size <= 0 || stat.size > MAX_BRAND_LOGO_BYTES) {
+      return null;
+    }
+    const bytes = fs.readFileSync(logoFilePath);
+    const contentType = detectBrandLogoMimeType(logoFilePath, bytes);
+    if (!contentType) {
+      return null;
+    }
+    const sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
+    return {
+      filePath: logoFilePath,
+      size: bytes.length,
+      sha256,
+      contentType,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function resolveRuntimeBranding(
+  config: Pick<EnvConfig, 'branding'>,
+): BrandingConfig {
+  const b = config.branding;
+  const localLogo = findExistingBrandLogoInfo(b.logoFilePath);
+  const logoUrl = localLogo
+    ? `${b.logoDefaultUrl}?v=${localLogo.sha256.slice(0, 12)}`
+    : b.logoExternalUrl;
+  return BrandingConfigSchema.parse({
+    appName: b.appName,
+    subtitleDe: b.subtitleDe,
+    subtitleEn: b.subtitleEn,
+    logoUrl,
+    accentColor: b.accentColor,
+    accentDarkColor: b.accentDarkColor,
+    introEnabled: b.introEnabled,
+    portalUrl: b.portalUrl,
+    portalLabel: b.portalUrl ? b.portalLabel : null,
+  });
+}
+
+function parseOptionalHexColor(
+  raw: string | undefined,
+  name: string,
+): string | null {
+  const trimmed = raw?.trim() ?? '';
+  if (!trimmed) {
+    return null;
+  }
+  const parsed = HexColorSchema.safeParse(trimmed);
+  if (!parsed.success) {
+    throw new Error(
+      `${name} must be a 6-digit hex color like "#176642" (received "${raw}").`,
+    );
+  }
+  return parsed.data.toLowerCase();
+}
+
+function parseOptionalHttpUrl(
+  raw: string | undefined,
+  name: string,
+): string | null {
+  const trimmed = raw?.trim() ?? '';
+  if (!trimmed) {
+    return null;
+  }
+  if (trimmed.length > 2048) {
+    throw new Error(`${name} must be at most 2048 characters.`);
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new Error();
+    }
+    return trimmed;
+  } catch {
+    throw new Error(
+      `${name} must be a valid http(s) URL (received "${raw}").`,
+    );
+  }
+}
+
+function parseOptionalLogoUrl(
+  raw: string | undefined,
+  name: string,
+): string | null {
+  const trimmed = raw?.trim() ?? '';
+  if (!trimmed) {
+    return null;
+  }
+  if (trimmed.length > 2048) {
+    throw new Error(`${name} must be at most 2048 characters.`);
+  }
+  if (trimmed.startsWith('/')) {
+    if (trimmed.startsWith('//')) {
+      throw new Error(
+        `${name} cannot be a protocol-relative URL (received "${raw}").`,
+      );
+    }
+    return trimmed;
+  }
+  return parseOptionalHttpUrl(trimmed, name);
+}
+
+function parseWebhookEvents(raw: string | undefined): WebhookEventType[] {
+  const trimmed = raw?.trim() ?? '';
+  if (!trimmed) {
+    return [...WEBHOOK_EVENT_TYPES];
+  }
+  const tokens = trimmed
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  if (tokens.length === 0) {
+    return [...WEBHOOK_EVENT_TYPES];
+  }
+  const seen = new Set<WebhookEventType>();
+  const result: WebhookEventType[] = [];
+  for (const token of tokens) {
+    if (!VALID_WEBHOOK_EVENTS.has(token)) {
+      throw new Error(
+        `WEBHOOK_EVENTS contains unknown event "${token}". Allowed events: ${WEBHOOK_EVENT_TYPES.join(', ')}.`,
+      );
+    }
+    const event = token as WebhookEventType;
+    if (!seen.has(event)) {
+      seen.add(event);
+      result.push(event);
+    }
+  }
+  return result;
+}
 
 export function resolveCandidateApkPaths(apkFilePath: string): string[] {
   const defaultDevApkPath = path.join(
@@ -582,6 +811,101 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     'NEW_USER_MIN_CLEAN_POLYGONS',
   );
 
+  // Municipal branding & theme overrides (all optional; defaults match stock Unseal).
+  const appName = env.APP_NAME?.trim() || DEFAULT_APP_NAME;
+  if (appName.length > 80) {
+    throw new Error('APP_NAME must be at most 80 characters.');
+  }
+  const subtitleDe = env.APP_SUBTITLE_DE?.trim() || null;
+  if (subtitleDe && subtitleDe.length > 160) {
+    throw new Error('APP_SUBTITLE_DE must be at most 160 characters.');
+  }
+  const subtitleEn = env.APP_SUBTITLE_EN?.trim() || null;
+  if (subtitleEn && subtitleEn.length > 160) {
+    throw new Error('APP_SUBTITLE_EN must be at most 160 characters.');
+  }
+  const logoFilePath = env.BRAND_LOGO_FILE?.trim()
+    ? path.resolve(env.BRAND_LOGO_FILE.trim())
+    : null;
+  const logoExternalUrl = parseOptionalLogoUrl(
+    env.BRAND_LOGO_URL,
+    'BRAND_LOGO_URL',
+  );
+  const defaultLogoPath = '/api/v1/branding/logo';
+  const logoDefaultUrl = hasExplicitPublicBaseUrl
+    ? `${publicBaseUrl}${defaultLogoPath}`
+    : defaultLogoPath;
+  const accentColor = parseOptionalHexColor(
+    env.BRAND_ACCENT_COLOR,
+    'BRAND_ACCENT_COLOR',
+  );
+  const accentDarkColor = parseOptionalHexColor(
+    env.BRAND_ACCENT_DARK_COLOR,
+    'BRAND_ACCENT_DARK_COLOR',
+  );
+  const introEnabled = parseBooleanSetting(
+    env.INTRO_ENABLED,
+    true,
+    'INTRO_ENABLED',
+  );
+  const portalUrl = parseOptionalHttpUrl(
+    env.MUNICIPAL_PORTAL_URL,
+    'MUNICIPAL_PORTAL_URL',
+  );
+  const rawPortalLabel = env.MUNICIPAL_PORTAL_LABEL?.trim() || null;
+  if (rawPortalLabel && rawPortalLabel.length > 80) {
+    throw new Error('MUNICIPAL_PORTAL_LABEL must be at most 80 characters.');
+  }
+  const branding: BrandingServerConfig = {
+    appName,
+    subtitleDe,
+    subtitleEn,
+    logoFilePath,
+    logoExternalUrl,
+    logoDefaultUrl,
+    accentColor,
+    accentDarkColor,
+    introEnabled,
+    portalUrl,
+    portalLabel: portalUrl ? rawPortalLabel : null,
+  };
+  const resolvedBranding = resolveRuntimeBranding({ branding });
+
+  // Outbound webhooks (optional; transmits exclusively public non-PII polygon data).
+  const rawWebhookUrl = env.WEBHOOK_URL?.trim() ?? '';
+  let webhook: WebhookConfig | null = null;
+  if (rawWebhookUrl.length > 0 && !DISABLED_SETTING_RE.test(rawWebhookUrl)) {
+    const webhookUrl = parseOptionalHttpUrl(rawWebhookUrl, 'WEBHOOK_URL')!;
+    const rawWebhookSecret = env.WEBHOOK_SECRET?.trim() ?? '';
+    if (rawWebhookSecret.length > 0 && /^change[_-]?me/i.test(rawWebhookSecret)) {
+      throw new Error(
+        'WEBHOOK_SECRET still contains the example placeholder; generate one with: openssl rand -hex 32 or leave it empty.',
+      );
+    }
+    const webhookTimeoutMs = parseIntSetting(
+      env.WEBHOOK_TIMEOUT_MS,
+      5_000,
+      'WEBHOOK_TIMEOUT_MS',
+    );
+    if (webhookTimeoutMs < 500 || webhookTimeoutMs > 30_000) {
+      throw new Error(
+        `WEBHOOK_TIMEOUT_MS must be between 500 and 30000 (received ${webhookTimeoutMs}).`,
+      );
+    }
+    const webhookAllowPrivateNetworks = parseBooleanSetting(
+      env.WEBHOOK_ALLOW_PRIVATE_NETWORKS,
+      false,
+      'WEBHOOK_ALLOW_PRIVATE_NETWORKS',
+    );
+    webhook = {
+      url: webhookUrl,
+      secret: rawWebhookSecret.length > 0 ? rawWebhookSecret : null,
+      events: parseWebhookEvents(env.WEBHOOK_EVENTS),
+      timeoutMs: webhookTimeoutMs,
+      allowPrivateNetworks: webhookAllowPrivateNetworks,
+    };
+  }
+
   const runtimeConfig = RuntimeConfigSchema.parse({
     osmStyleUrl,
     osmDarkStyleUrl,
@@ -612,6 +936,7 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     apkDownloadUrl,
     apkSha256,
     authCaptchaRequired: authCaptchaEnabled,
+    branding: resolvedBranding,
   });
 
   return {
@@ -661,6 +986,8 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     staleUnratedPruneDays,
     newUserMinAccountDays,
     newUserMinCleanPolygons,
+    branding,
+    webhook,
     runtimeConfig,
   };
 }

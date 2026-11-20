@@ -493,6 +493,7 @@ export interface TranslationDictionary {
   readonly about: {
     readonly modalA11y: string;
     readonly title: string;
+    readonly aboutNamedTitle: (appName: string) => string;
     readonly subtitle: string;
     readonly closeA11y: string;
     readonly close: string;
@@ -508,6 +509,8 @@ export interface TranslationDictionary {
     readonly legendLifecycle: string;
     readonly footerTitle: string;
     readonly privacyAndLicenseBody: string;
+    readonly poweredByUnseal: string;
+    readonly defaultPortalLinkLabel: string;
     readonly attributionOsmShort: string;
     readonly attributionDop20Short: string;
     readonly attributionVg250Short: string;
@@ -1198,6 +1201,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
     about: {
       modalA11y: 'Über Unseal',
       title: 'Über Unseal',
+      aboutNamedTitle: (appName: string) => `Über ${appName}`,
       subtitle: 'Offene Entsiegelungskartierung (PPGIS)',
       closeA11y: 'Infofenster schließen',
       close: 'Schließen',
@@ -1222,6 +1226,9 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       footerTitle: 'Datenschutz, Rechtliches & App',
       privacyAndLicenseBody:
         'Öffentlich erscheint nur dein Pseudonym; E-Mails dienen nur Bestätigung & Recovery (jederzeit nach Art. 17 DSGVO löschbar). Beiträge: CC0 1.0 (eigene Geometrien/Notizen), ODbL 1.0 (GeoJSON-Gesamtexport) & CC BY 4.0 (Fotos/Kommentare). Software: AGPL-3.0-or-later (API) & MPL-2.0 (Client-App, Quellcode frei verfügbar).',
+      poweredByUnseal:
+        'Betrieben mit Unseal (Open Source: AGPL-3.0-or-later / MPL-2.0)',
+      defaultPortalLinkLabel: 'Kommunales Portal',
       attributionOsmShort:
         '© OpenStreetMap (ODbL) · © OpenMapTiles / © CARTO (CC BY 4.0, Dunkelmodus angepasst) · OpenFreeMap (MIT)',
       attributionDop20Short:
@@ -1930,6 +1937,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
     about: {
       modalA11y: 'About Unseal',
       title: 'About Unseal',
+      aboutNamedTitle: (appName: string) => `About ${appName}`,
       subtitle: 'Open Civic Ground-Unsealing Map (PPGIS)',
       closeA11y: 'Close About dialog',
       close: 'Close',
@@ -1954,6 +1962,9 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       footerTitle: 'Privacy, Legal & App',
       privacyAndLicenseBody:
         'Only your pseudonym is public; emails are used strictly for confirmation & recovery (erasable anytime under GDPR Art. 17). Contributions: CC0 1.0 (own geometries/notes), ODbL 1.0 (compiled GeoJSON export) & CC BY 4.0 (photos/comments). Software: AGPL-3.0-or-later (API) & MPL-2.0 (Client App, Source Code Form freely available).',
+      poweredByUnseal:
+        'Powered by Unseal (Open Source: AGPL-3.0-or-later / MPL-2.0)',
+      defaultPortalLinkLabel: 'Municipal Portal',
       attributionOsmShort:
         '© OpenStreetMap (ODbL) · © OpenMapTiles / © CARTO (CC BY 4.0, dark mode modified) · OpenFreeMap (MIT)',
       attributionDop20Short:

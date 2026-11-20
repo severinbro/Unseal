@@ -169,6 +169,57 @@ Run these from a daily cron job, keep `/root/.backup-passphrase` (`chmod 600`) a
 
 ---
 
+## Municipal White-Label Branding & Outbound Webhooks
+
+Municipalities and public initiatives can adapt the platform's name, coat-of-arms/logo, color theme, portal link, and downstream GIS/ticketing integration **entirely via `.env.vps` configuration without modifying the source code** (so upstream AGPL-3.0-or-later / MPL-2.0 source attribution stays untouched and upgrades remain a simple `git pull`).
+
+### 1. Branding & Visual Theme
+
+Add any of these optional variables to `.env.vps`:
+
+```env
+APP_NAME="Entsiegelung Musterstadt"
+APP_SUBTITLE_DE="Bürgerbeteiligung der Stadt Musterstadt"
+APP_SUBTITLE_EN="Civic Unsealing Map of Musterstadt"
+# Recommended (GDPR-friendly, same-origin): place a PNG/JPG/WebP/SVG (<= 2 MiB) in uploads_data:
+BRAND_LOGO_FILE=/var/lib/entsiegelung/uploads/brand-logo.svg
+# Alternative: external HTTPS logo URL (disclosed automatically on /auth/privacy)
+# BRAND_LOGO_URL=https://www.musterstadt.de/assets/wappen.svg
+BRAND_ACCENT_COLOR=#005A9C
+# Optional dark-mode accent override (auto-derived with WCAG contrast if omitted)
+BRAND_ACCENT_DARK_COLOR=
+INTRO_ENABLED=true
+MUNICIPAL_PORTAL_URL=https://www.musterstadt.de/klimaschutz
+MUNICIPAL_PORTAL_LABEL="Klimaschutzportal Musterstadt"
+```
+
+To place a local logo file into the `uploads_data` volume (served same-origin at `/api/v1/branding/logo` with sandboxed CSP headers):
+
+```bash
+docker compose --env-file .env.vps -f docker-compose.vps.yml cp \
+  ./brand-logo.svg api:/var/lib/entsiegelung/uploads/brand-logo.svg
+```
+
+### 2. Outbound Webhooks (Private GIS / Ticketing Integration)
+
+To trigger internal municipal workflows (e.g. GIS sync, ticket creation, email notifications) without modifying the AGPL-licensed backend, point `WEBHOOK_URL` at a separate webhook receiver service:
+
+```env
+WEBHOOK_URL=https://gis-bridge.musterstadt.de/hooks/unseal
+WEBHOOK_SECRET=<openssl rand -hex 32>
+WEBHOOK_EVENTS=polygon.created,polygon.status_changed,polygon.deleted
+WEBHOOK_TIMEOUT_MS=5000
+# Keep false for public HTTPS endpoints (blocks private/metadata IPs against SSRF).
+# Set true only when delivering to an internal Docker/intranet receiver:
+WEBHOOK_ALLOW_PRIVATE_NETWORKS=false
+```
+
+- **Zero-PII payload:** Webhook bodies contain exclusively public polygon fields (`id`, `geometry`, `surfaceType`, `note`, `status`, `origin`, `areaM2`, `municipality`, `votes`, `createdAt`, `updatedAt`, or `{ id, deletedByAdmin, deletedAt }` for `polygon.deleted`) — **no** user pseudonyms, email addresses, user IDs, or IP addresses.
+- **Signature verification:** When `WEBHOOK_SECRET` is configured, each `POST` includes `X-Unseal-Timestamp` (Unix seconds), `X-Unseal-Event`, `X-Unseal-Delivery` (UUID), and `X-Unseal-Signature-256: sha256=<hex>`, computed as `HMAC-SHA256(WEBHOOK_SECRET, "${timestamp}.${rawBody}")`.
+- **Non-blocking delivery:** Deliveries run asynchronously with a single retry on network/5xx failure so API mutations never fail or slow down if a downstream system is offline.
+
+---
+
 ## GDPR Checklist for Operators
 
 The code keeps data collection small, but running a public instance makes you the controller (Art. 4(7) GDPR). Before going live:

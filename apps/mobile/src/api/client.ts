@@ -257,10 +257,20 @@ export class PpgisApiClient {
       parsed.apkDownloadUrl !== null && parsed.apkDownloadUrl.startsWith('/')
         ? this.resolveUploadUrl(parsed.apkDownloadUrl)
         : parsed.apkDownloadUrl;
+    const resolvedBranding =
+      parsed.branding &&
+      parsed.branding.logoUrl !== null &&
+      parsed.branding.logoUrl.startsWith('/')
+        ? {
+            ...parsed.branding,
+            logoUrl: this.resolveUploadUrl(parsed.branding.logoUrl),
+          }
+        : parsed.branding;
     return {
       ...parsed,
       orthophoto: resolvedOrthophoto,
       apkDownloadUrl: resolvedApkDownloadUrl,
+      ...(resolvedBranding !== undefined ? { branding: resolvedBranding } : {}),
     };
   }
 

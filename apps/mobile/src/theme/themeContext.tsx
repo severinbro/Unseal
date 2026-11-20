@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (C) 2026 Unseal Contributors
 
-import type { SurfaceType } from '@entsiegelung/shared';
+import type { BrandingConfig, SurfaceType } from '@entsiegelung/shared';
 import React, { createContext, useContext, useMemo } from 'react';
 
 import {
@@ -40,23 +40,27 @@ export const ThemeContext = createContext<ThemeContextValue>(
 export interface ThemeProviderProps {
   readonly colorScheme: ColorScheme;
   readonly themePreference?: ThemePreference | undefined;
+  readonly branding?: BrandingConfig | null | undefined;
   readonly children: React.ReactNode;
 }
 
 export function ThemeProvider({
   colorScheme,
   themePreference = 'light',
+  branding = null,
   children,
 }: ThemeProviderProps): React.JSX.Element {
+  const accentColor = branding?.accentColor ?? null;
+  const accentDarkColor = branding?.accentDarkColor ?? null;
   const value = useMemo<ThemeContextValue>(
     () => ({
       colorScheme,
       themePreference,
-      palette: getPalette(colorScheme),
+      palette: getPalette(colorScheme, { accentColor, accentDarkColor }),
       surfaceSwatches: getSurfaceSwatches(colorScheme),
       isDark: colorScheme === 'dark',
     }),
-    [colorScheme, themePreference],
+    [colorScheme, themePreference, accentColor, accentDarkColor],
   );
 
   return (

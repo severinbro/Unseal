@@ -11,14 +11,17 @@ import {
   AUTHOR_ACTIVITY,
   AUTH_LIMITS,
   ApiError,
+  DEFAULT_APP_NAME,
   PHOTO_LIMITS,
   formatStateDop20FullAttribution,
 } from '@entsiegelung/shared';
 
+import { resolveRuntimeBranding } from '../config.js';
 import {
   BKG_VG250_DATENQUELLEN_URL,
   getMunicipalitiesStatus,
 } from '../municipalities/vg250.js';
+import { deriveServerBrandColors } from '../util/brandingTheme.js';
 import {
   consumePasswordResetToken,
   consumeVerifyEmailToken,
@@ -66,7 +69,27 @@ function formatMultilineHtml(value: string): string {
   return escapeHtml(value).replace(/\r?\n/g, '<br />');
 }
 
+function buildHostedCsp(logoUrl: string | null, publicBaseUrl: string): string {
+  if (!logoUrl) {
+    return "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
+  }
+  let imgSrc = "'self'";
+  if (!logoUrl.startsWith('/')) {
+    try {
+      const logoOrigin = new URL(logoUrl).origin;
+      const baseOrigin = new URL(publicBaseUrl).origin;
+      if (logoOrigin !== baseOrigin) {
+        imgSrc = `'self' ${logoOrigin}`;
+      }
+    } catch {
+      // Fall back to 'self' on unexpected URL format.
+    }
+  }
+  return `default-src 'none'; img-src ${imgSrc}; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`;
+}
+
 function sendHostedHtml(
+  app: FastifyInstance,
   reply: FastifyReply,
   statusCode: number,
   title: string,
@@ -74,12 +97,26 @@ function sendHostedHtml(
   options: { wide?: boolean } = {},
 ): FastifyReply {
   const maxWidthPx = options.wide ? 680 : 460;
+  const branding = resolveRuntimeBranding(app.config);
+  const colors = deriveServerBrandColors(
+    branding.accentColor,
+    branding.accentDarkColor,
+  );
+  const brandMarkHtml = branding.logoUrl
+    ? `<img src="${escapeHtml(branding.logoUrl)}" alt="" width="22" height="22" class="brand-logo" />`
+    : `<svg width="22" height="22" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect width="64" height="64" rx="14" fill="#EFF3F0"/>
+        <path d="M0 40H26L31 50L37 40H64V50C64 57.732 57.732 64 50 64H14C6.26801 64 0 57.732 0 50V40Z" fill="#5A6360"/>
+        <path d="M31 49C31 38 32 30 37 22" stroke="#176642" stroke-width="4" stroke-linecap="round"/>
+        <path d="M34 26C35 16 44 13 49 15C48 22 42 27 34 26Z" fill="#1F7A4C"/>
+        <path d="M31 34C29 27 22 25 18 26C19 31 25 35 31 34Z" fill="#176642"/>
+      </svg>`;
   const html = `<!doctype html>
 <html lang="de">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escapeHtml(title)} – Unseal</title>
+  <title>${escapeHtml(title)} – ${escapeHtml(branding.appName)}</title>
   <style>
     :root {
       color-scheme: light dark;
@@ -112,11 +149,18 @@ function sendHostedHtml(
       font-size: 14px;
       font-weight: 700;
       letter-spacing: -0.01em;
-      color: #176642;
-      background: #eaf5ef;
+      color: ${colors.accentLight};
+      background: ${colors.brandBgLight};
       padding: 5px 12px 5px 7px;
       border-radius: 999px;
       margin-bottom: 16px;
+    }
+    .brand-logo {
+      width: 22px;
+      height: 22px;
+      border-radius: 5px;
+      object-fit: contain;
+      display: block;
     }
     h1 {
       margin: 0 0 10px;
@@ -128,7 +172,7 @@ function sendHostedHtml(
       margin: 18px 0 8px;
       font-size: 16px;
       line-height: 1.3;
-      color: #176642;
+      color: ${colors.accentLight};
     }
     p {
       margin: 0 0 14px;
@@ -137,7 +181,7 @@ function sendHostedHtml(
       color: #3a4940;
     }
     a {
-      color: #176642;
+      color: ${colors.accentLight};
     }
     .en-sub {
       font-size: 13px;
@@ -201,22 +245,22 @@ function sendHostedHtml(
       color: #16201a;
     }
     input[type="password"]:focus {
-      outline: 2px solid #1f6f4a;
-      border-color: #1f6f4a;
+      outline: 2px solid ${colors.buttonLight};
+      border-color: ${colors.buttonLight};
     }
     button {
       width: 100%;
       min-height: 48px;
       border: none;
       border-radius: 999px;
-      background: #1f6f4a;
-      color: #ffffff;
+      background: ${colors.buttonLight};
+      color: ${colors.inkOnAccentLight};
       font-size: 15px;
       font-weight: 700;
       cursor: pointer;
     }
     button:hover {
-      background: #18583a;
+      background: ${colors.buttonLightHover};
     }
     ul {
       margin: 0 0 16px;
@@ -237,11 +281,11 @@ function sendHostedHtml(
         box-shadow: 0 14px 36px rgba(0, 0, 0, 0.48);
       }
       .brand {
-        color: #6ee7b7;
-        background: #193126;
+        color: ${colors.brandTextDark};
+        background: ${colors.brandBgDark};
       }
       h2, a {
-        color: #34c785;
+        color: ${colors.accentDark};
       }
       p, ul {
         color: #b7c7be;
@@ -274,15 +318,15 @@ function sendHostedHtml(
         color: #ecf3ef;
       }
       input[type="password"]:focus {
-        outline-color: #34c785;
-        border-color: #34c785;
+        outline-color: ${colors.accentDark};
+        border-color: ${colors.accentDark};
       }
       button {
-        background: #34c785;
-        color: #062115;
+        background: ${colors.accentDark};
+        color: ${colors.inkOnAccentDark};
       }
       button:hover {
-        background: #28b073;
+        background: ${colors.buttonDarkHover};
       }
     }
   </style>
@@ -290,14 +334,8 @@ function sendHostedHtml(
 <body>
   <main class="card">
     <div class="brand">
-      <svg width="22" height="22" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <rect width="64" height="64" rx="14" fill="#EFF3F0"/>
-        <path d="M0 40H26L31 50L37 40H64V50C64 57.732 57.732 64 50 64H14C6.26801 64 0 57.732 0 50V40Z" fill="#5A6360"/>
-        <path d="M31 49C31 38 32 30 37 22" stroke="#176642" stroke-width="4" stroke-linecap="round"/>
-        <path d="M34 26C35 16 44 13 49 15C48 22 42 27 34 26Z" fill="#1F7A4C"/>
-        <path d="M31 34C29 27 22 25 18 26C19 31 25 35 31 34Z" fill="#176642"/>
-      </svg>
-      <span>Unseal</span>
+      ${brandMarkHtml}
+      <span>${escapeHtml(branding.appName)}</span>
     </div>
     ${bodyHtml}
   </main>
@@ -312,7 +350,7 @@ function sendHostedHtml(
     .header('X-Content-Type-Options', 'nosniff')
     .header(
       'Content-Security-Policy',
-      "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+      buildHostedCsp(branding.logoUrl, app.config.publicBaseUrl),
     )
     .send(html);
 }
@@ -445,11 +483,30 @@ function buildThirdPartyItemsHtml(app: FastifyInstance): string {
     '<li><strong>Adresssuche:</strong> Suchanfragen werden über diesen Server an OpenStreetMap Nominatim (OpenStreetMap Foundation, Vereinigtes Königreich – Angemessenheitsbeschluss der EU-Kommission) weitergeleitet. Übermittelt wird nur der Suchtext, nicht deine IP-Adresse. Ergebnisse werden bis zu 10 Minuten im Arbeitsspeicher zwischengespeichert; Suchtexte werden nicht protokolliert.</li>',
   );
 
+  const resolvedBranding = resolveRuntimeBranding(config);
+  const logoUrl = resolvedBranding.logoUrl;
+  if (logoUrl && !logoUrl.startsWith('/')) {
+    const logoHost = hostOf(logoUrl);
+    const selfHost = hostOf(config.publicBaseUrl);
+    if (logoHost && logoHost !== selfHost) {
+      items.push(
+        `<li><strong>Instanz-Logo (Art. 6 Abs. 1 lit. f DSGVO):</strong> Dein Endgerät lädt das konfigurierte Logo direkt von <code>${escapeHtml(logoHost)}</code>; dabei wird technisch bedingt deine IP-Adresse an diesen Server übermittelt.</li>`,
+      );
+    }
+  }
+
+  if (config.webhook !== null) {
+    items.push(
+      '<li><strong>Automatisierte Benachrichtigungen (Webhooks, ohne Personenbezug):</strong> Diese Instanz übermittelt bei Erstellung, Statusänderung oder Löschung von Flächenvorschlägen eine Benachrichtigung an ein konfiguriertes externes System. Übermittelt werden ausschließlich öffentliche, nicht personenbezogene Flächendaten (Geometrie, Belagsart, Notiz, Status, Gemeinde, Zeitstempel) – <strong>keine</strong> Pseudonyme, E-Mail-Adressen, Benutzer-IDs oder IP-Adressen.</li>',
+    );
+  }
+
   return items.join('\n         ');
 }
 
 function buildPrivacyPolicyHtml(app: FastifyInstance): string {
   const config = app.config;
+  const appName = config.branding.appName;
   const controllerBlock = buildOperatorIdentityHtml(app);
   const contactLine = config.abuseContact
     ? `<p><strong>Kontakt für Datenschutzanfragen:</strong> ${formatContactHtml(config.abuseContact)}</p>`
@@ -462,13 +519,21 @@ function buildPrivacyPolicyHtml(app: FastifyInstance): string {
   const enThirdPartyNote = usesOpenFreeMap
     ? 'Third parties (including OpenFreeMap / Hyperknot Software Kft., Hungary, delivered via Cloudflare CDN) are listed in section 4 according to this instance\'s configuration.'
     : 'Third parties are listed in section 4 according to this instance\'s configuration.';
+  const enWebhookNote =
+    config.webhook !== null
+      ? ' Outbound webhooks transmit exclusively public, non-PII polygon data (no pseudonyms, emails, user IDs, or IPs).'
+      : '';
+  const introParagraph =
+    appName === DEFAULT_APP_NAME
+      ? 'Unseal ist ein datensparsames Open-Source-Bürgerbeteiligungsprojekt (PPGIS) zur gemeinschaftlichen Kartierung versiegelter Flächen. Hier steht, welche personenbezogenen Daten diese Instanz verarbeitet, wozu und wie lange. Es gibt keine Cookies, kein Tracking und keine Analyse- oder Werbedienste.'
+      : `${escapeHtml(appName)} ist ein datensparsames Bürgerbeteiligungsprojekt (PPGIS) auf Basis der Open-Source-Software Unseal zur gemeinschaftlichen Kartierung versiegelter Flächen. Hier steht, welche personenbezogenen Daten diese Instanz verarbeitet, wozu und wie lange. Es gibt keine Cookies, kein Tracking und keine Analyse- oder Werbedienste.`;
   const backupLine =
     config.backupRetentionDays !== null
       ? `<li><strong>Datensicherungen:</strong> werden nach ${config.backupRetentionDays} Tagen gelöscht. Gelöschte Daten verschwinden daher spätestens nach dieser Frist auch aus den Sicherungen.</li>`
       : `<li><div class="alert-warn"><strong>Hinweis für Betreibende:</strong> Bitte <code>BACKUP_RETENTION_DAYS</code> setzen, damit hier die Aufbewahrungsdauer von Datensicherungen angegeben wird.</div></li>`;
 
   return `<h1>Datenschutzerklärung (DSGVO)</h1>
-       <p>Unseal ist ein datensparsames Open-Source-Bürgerbeteiligungsprojekt (PPGIS) zur gemeinschaftlichen Kartierung versiegelter Flächen. Hier steht, welche personenbezogenen Daten diese Instanz verarbeitet, wozu und wie lange. Es gibt keine Cookies, kein Tracking und keine Analyse- oder Werbedienste.</p>
+       <p>${introParagraph}</p>
 
        <h2>1. Verantwortliche Stelle (Art. 13 Abs. 1 lit. a DSGVO)</h2>
        ${controllerBlock}
@@ -524,7 +589,7 @@ function buildPrivacyPolicyHtml(app: FastifyInstance): string {
        </ul>
        <p>Es finden keine automatisierten Einzelentscheidungen im Sinne von Art. 22 DSGVO statt.</p>
 
-       <p class="en-sub"><strong>English summary:</strong> Public: your pseudonym, your contributions, whether you were active in the last ${recentDays} days (only the date of your last activity is stored) and a "new contributor" hint; the ODbL 1.0 GeoJSON export contains no pseudonym. Your email is used only for account links and DSA Art. 17 moderation notices and is never shown publicly. Accounts and contributions are processed under Art. 6(1)(b) GDPR (signed-in accounts can view a personal summary derived solely from their existing contributions and polygon ratings; public statistics and daily aggregate counters contain zero personal data); abuse prevention and logs under Art. 6(1)(f); DSA Art. 16 illegal-content notices under Art. 6(1)(c) GDPR. Server logs contain no IP addresses, user agents or referrers; rate limiting keeps IPs in memory only. Photo metadata is checked in memory and fully stripped before storage. Device GNSS stays on-device (centering fetches map bbox/tiles without logging); on Web the last viewport is kept in sessionStorage only. ${enThirdPartyNote} Retention: unconfirmed accounts 48 h, sessions up to ${config.sessionTtlDays} days, email links 7 days after use, pseudonym reservation after deletion ${config.pseudonymReservationDays} days (keyed hash only). Rights: download your data in the app (Art. 15/20), delete your account with or without your contributions (open-data licenses on copies legitimately downloaded prior to deletion remain irrevocable under their terms), and contact the operator for corrections, restriction, objection or a complaint to a supervisory authority.</p>
+       <p class="en-sub"><strong>English summary:</strong> Public: your pseudonym, your contributions, whether you were active in the last ${recentDays} days (only the date of your last activity is stored) and a "new contributor" hint; the ODbL 1.0 GeoJSON export contains no pseudonym. Your email is used only for account links and DSA Art. 17 moderation notices and is never shown publicly. Accounts and contributions are processed under Art. 6(1)(b) GDPR (signed-in accounts can view a personal summary derived solely from their existing contributions and polygon ratings; public statistics and daily aggregate counters contain zero personal data); abuse prevention and logs under Art. 6(1)(f); DSA Art. 16 illegal-content notices under Art. 6(1)(c) GDPR. Server logs contain no IP addresses, user agents or referrers; rate limiting keeps IPs in memory only. Photo metadata is checked in memory and fully stripped before storage. Device GNSS stays on-device (centering fetches map bbox/tiles without logging); on Web the last viewport is kept in sessionStorage only. ${enThirdPartyNote}${enWebhookNote} Retention: unconfirmed accounts 48 h, sessions up to ${config.sessionTtlDays} days, email links 7 days after use, pseudonym reservation after deletion ${config.pseudonymReservationDays} days (keyed hash only). Rights: download your data in the app (Art. 15/20), delete your account with or without your contributions (open-data licenses on copies legitimately downloaded prior to deletion remain irrevocable under their terms), and contact the operator for corrections, restriction, objection or a complaint to a supervisory authority.</p>
        ${buildLegalNavHtml(app)}`;
 }
 
@@ -533,21 +598,27 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
     max: 20,
     timeWindow: '15 minutes',
   };
+  const safeAppName = escapeHtml(app.config.branding.appName);
 
   app.get('/auth/impressum', async (_request, reply) => {
     const operatorHtml = buildOperatorIdentityHtml(app);
+    const portalHtml = app.config.branding.portalUrl
+      ? `<p><strong>${escapeHtml(app.config.branding.portalLabel ?? 'Kommunales Portal')}:</strong> <a href="${escapeHtml(app.config.branding.portalUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(app.config.branding.portalUrl)}</a></p>`
+      : '';
     const dsaContactRaw = app.config.abuseContact ?? app.config.operatorEmail;
     const dsaContactHtml = dsaContactRaw
       ? `<p><strong>Zentrale Kontaktstelle gemäß Art. 11 und Art. 12 Digital Services Act (DSA) für Behörden der Mitgliedstaaten, die EU-Kommission, das Gremium für digitale Dienste sowie Nutzende (inkl. Melde- &amp; Moderationskontakt nach Art. 16 DSA):</strong> ${formatContactHtml(dsaContactRaw)}<br /><strong>Kommunikationssprachen:</strong> Deutsch, Englisch.</p>`
       : `<p><strong>Zentrale Kontaktstelle gemäß Art. 11, 12 und 16 DSA:</strong> Über die oben angegebene Betreiberadresse (<strong>Kommunikationssprachen:</strong> Deutsch, Englisch).</p>`;
     return sendHostedHtml(
+      app,
       reply,
       200,
       'Impressum',
       `<h1>Impressum</h1>
-       <p>Angaben gemäß § 5 Digitale-Dienste-Gesetz (DDG), § 18 Abs. 2 Medienstaatsvertrag (MStV) sowie Art. 11 und 12 Digital Services Act (DSA) für diese Unseal-Instanz:</p>
+       <p>Angaben gemäß § 5 Digitale-Dienste-Gesetz (DDG), § 18 Abs. 2 Medienstaatsvertrag (MStV) sowie Art. 11 und 12 Digital Services Act (DSA) für diese ${safeAppName}-Instanz:</p>
        <h2>Verantwortliche Stelle / Betreibende</h2>
        ${operatorHtml}
+       ${portalHtml}
        <h2>Kontaktstelle nach dem Digital Services Act (DSA)</h2>
        ${dsaContactHtml}
        <p>Mutmaßlich rechtswidrige Inhalte (Flächenvorschläge, Fotos oder Kommentare) können auch ohne Benutzerkonto direkt über den Melde-Button in der App (<code>POST /api/v1/content-reports</code>) oder per E-Mail an die oben genannte Kontaktstelle gemeldet werden (Art. 16 DSA).</p>
@@ -556,7 +627,7 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
        <p>Nutzende sind für die von ihnen eingestellten Flächenvorschläge, Texte, Kommentare und Fotos selbst verantwortlich. Hinweise auf rechtswidrige Inhalte werden über die oben genannte Kontaktstelle bzw. die Meldefunktion geprüft und unverzüglich entfernt.</p>
        <h2>Quellcode &amp; Lizenzen</h2>
        <p>Diese Instanz nutzt die Open-Source-Software <strong>Unseal</strong> (Server: <code>AGPL-3.0-or-later</code>, Client &amp; Shared: <code>MPL-2.0</code>). Der vollständige Quellcode ist unter <a href="${escapeHtml(app.config.sourceCodeUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(app.config.sourceCodeUrl)}</a> verfügbar.</p>
-       <p class="en-sub"><strong>English summary:</strong> Legal notice / operator identification pursuant to German law (§ 5 DDG / § 18(2) MStV) and single point of contact for authorities and users pursuant to Arts. 11, 12 and 16 EU Digital Services Act (accepted languages: German, English). Unseal is open-source software (API: AGPL-3.0-or-later, Client: MPL-2.0); source code is available at <a href="${escapeHtml(app.config.sourceCodeUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(app.config.sourceCodeUrl)}</a>.</p>
+       <p class="en-sub"><strong>English summary:</strong> Legal notice / operator identification pursuant to German law (§ 5 DDG / § 18(2) MStV) and single point of contact for authorities and users pursuant to Arts. 11, 12 and 16 EU Digital Services Act (accepted languages: German, English). This instance is powered by Unseal open-source software (API: AGPL-3.0-or-later, Client: MPL-2.0); source code is available at <a href="${escapeHtml(app.config.sourceCodeUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(app.config.sourceCodeUrl)}</a>.</p>
        ${buildLegalNavHtml(app)}`,
       { wide: true },
     );
@@ -568,11 +639,12 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
       ? `Missbrauchs- und Rechtsverstoßmeldungen (Art. 16 DSA) können jederzeit – auch ohne Benutzerkonto – über das In-App-Meldeformular (<code>POST /api/v1/content-reports</code>) an Flächen, Fotos und Kommentaren oder per E-Mail an ${formatContactHtml(config.abuseContact)} eingereicht werden.`
       : `Missbrauchs- und Rechtsverstoßmeldungen (Art. 16 DSA) können jederzeit – auch ohne Benutzerkonto – über das In-App-Meldeformular an Flächen, Fotos und Kommentaren oder an die im <a href="${escapeHtml(config.impressumUrl)}">Impressum</a> genannte Kontaktstelle gerichtet werden.`;
     return sendHostedHtml(
+      app,
       reply,
       200,
       'Nutzungsbedingungen & Datenlizenzen',
       `<h1>Nutzungsbedingungen &amp; Offene Datenlizenzen</h1>
-       <p>Mit der Registrierung eines Kontos und dem Einstellen von Beiträgen auf dieser Unseal-Instanz akzeptierst du folgende Regeln und Lizenzbedingungen:</p>
+       <p>Mit der Registrierung eines Kontos und dem Einstellen von Beiträgen auf dieser ${safeAppName}-Instanz akzeptierst du folgende Regeln und Lizenzbedingungen:</p>
        <ul>
          <li><strong>Unverbindliche Bürgerbeteiligung:</strong> ${escapeHtml(config.disclaimerText)} Ein Eintrag begründet keinen Rechtsanspruch auf Entsiegelung und greift nicht in bestehende Eigentumsrechte ein.</li>
          <li><strong>Mindestalter &amp; Einwilligung Erziehungsberechtigter (§ 107 BGB / Art. 8 DSGVO):</strong> Die Registrierung und das Einräumen unwiderruflicher offener Datenlizenzen (<code>CC0 1.0</code> / <code>CC BY 4.0</code>) erfordert ein Mindestalter von 16 Jahren (sowie bei Minderjährigen unter 18 Jahren die vorherige Zustimmung der gesetzlichen Vertretung, soweit rechtlich erforderlich).</li>
@@ -674,6 +746,7 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
     }
 
     return sendHostedHtml(
+      app,
       reply,
       200,
       'Open-Source-Lizenzen & Geodaten-Quellen',
@@ -705,6 +778,7 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
 
   app.get('/auth/privacy', async (_request, reply) => {
     return sendHostedHtml(
+      app,
       reply,
       200,
       'Datenschutzerklärung',
@@ -726,17 +800,19 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
 
       if (!check.valid || !check.pseudonym) {
         return sendHostedHtml(
+          app,
           reply,
           400,
           'Link ungültig oder abgelaufen',
           `<div class="alert-err">Dieser Bestätigungslink ist ungültig, abgelaufen oder wurde bereits verwendet.</div>
            <h1>E-Mail-Bestätigung fehlgeschlagen</h1>
-           <p>Bitte öffne die Unseal-App und fordere im Anmeldedialog einen neuen Bestätigungslink an.</p>
+           <p>Bitte öffne die ${safeAppName}-App und fordere im Anmeldedialog einen neuen Bestätigungslink an.</p>
            <p class="en-sub"><strong>English:</strong> This confirmation link is invalid, expired, or has already been used. Please request a fresh confirmation link from the sign-in screen in the app.</p>`,
         );
       }
 
       return sendHostedHtml(
+        app,
         reply,
         200,
         'E-Mail-Adresse bestätigen',
@@ -763,17 +839,19 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
           request.log,
         );
         return sendHostedHtml(
+          app,
           reply,
           200,
           'E-Mail bestätigt',
           `<div class="alert-ok">✓ E-Mail-Adresse erfolgreich bestätigt!</div>
            <h1>Willkommen, ${escapeHtml(verified.pseudonym)}!</h1>
-           <p>Dein Konto ist jetzt aktiv. Du kannst dieses Browserfenster schließen und dich in der <strong>Unseal</strong>-App anmelden.</p>
-           <p class="en-sub"><strong>English:</strong> Your email address is confirmed! You can now close this tab and sign in to the Unseal app.</p>`,
+           <p>Dein Konto ist jetzt aktiv. Du kannst dieses Browserfenster schließen und dich in der <strong>${safeAppName}</strong>-App anmelden.</p>
+           <p class="en-sub"><strong>English:</strong> Your email address is confirmed! You can now close this tab and sign in to ${safeAppName}.</p>`,
         );
       } catch (err: unknown) {
         const status = err instanceof ApiError ? err.statusCode : 400;
         return sendHostedHtml(
+          app,
           reply,
           status >= 400 && status < 500 ? status : 400,
           'Bestätigung nicht möglich',
@@ -799,17 +877,19 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
 
       if (!check.valid || !check.pseudonym) {
         return sendHostedHtml(
+          app,
           reply,
           400,
           'Link ungültig oder abgelaufen',
           `<div class="alert-err">Dieser Wiederherstellungslink ist ungültig, abgelaufen oder wurde bereits verwendet.</div>
            <h1>Passwort-Zurücksetzung nicht möglich</h1>
-           <p>Bitte fordere in der Unseal-App unter <em>Passwort vergessen?</em> einen neuen Link an.</p>
+           <p>Bitte fordere in der ${safeAppName}-App unter <em>Passwort vergessen?</em> einen neuen Link an.</p>
            <p class="en-sub"><strong>English:</strong> This password reset link is invalid, expired, or has already been used. Please request a new reset link inside the app.</p>`,
         );
       }
 
       return sendHostedHtml(
+        app,
         reply,
         200,
         'Neues Passwort festlegen',
@@ -838,6 +918,7 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
 
       if (newPassword !== confirmPassword) {
         return sendHostedHtml(
+          app,
           reply,
           422,
           'Passwörter stimmen nicht überein',
@@ -864,17 +945,19 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
           request.log,
         );
         return sendHostedHtml(
+          app,
           reply,
           200,
           'Passwort gespeichert',
           `<div class="alert-ok">✓ Dein Passwort wurde erfolgreich geändert!</div>
            <h1>Passwort aktualisiert</h1>
-           <p>Alle bisherigen Sitzungen wurden aus Sicherheitsgründen abgemeldet. Du kannst dich jetzt mit deinem neuen Passwort in der <strong>Unseal</strong>-App anmelden.</p>
+           <p>Alle bisherigen Sitzungen wurden aus Sicherheitsgründen abgemeldet. Du kannst dich jetzt mit deinem neuen Passwort in der <strong>${safeAppName}</strong>-App anmelden.</p>
            <p class="en-sub"><strong>English:</strong> Your password has been updated and prior sessions were signed out. You can now sign in to the app with your new password.</p>`,
         );
       } catch (err: unknown) {
         if (err instanceof ZodError) {
           return sendHostedHtml(
+            app,
             reply,
             422,
             'Passwort zu kurz oder ungültig',
@@ -896,6 +979,7 @@ export function registerAuthPageRoutes(app: FastifyInstance): void {
             ? 'Dieser Wiederherstellungslink ist ungültig oder abgelaufen.'
             : `Das Passwort muss zwischen ${AUTH_LIMITS.MIN_PASSWORD_LENGTH} und ${AUTH_LIMITS.MAX_PASSWORD_LENGTH} Zeichen lang sein.`;
         return sendHostedHtml(
+          app,
           reply,
           400,
           'Passwort konnte nicht gespeichert werden',

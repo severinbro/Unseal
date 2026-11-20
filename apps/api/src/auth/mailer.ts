@@ -3,8 +3,35 @@
 
 import nodemailer from 'nodemailer';
 
+import { DEFAULT_APP_NAME } from '@entsiegelung/shared';
+
+import { deriveServerBrandColors } from '../util/brandingTheme.js';
+
 import type { EnvConfig } from '../config.js';
 import type { FastifyBaseLogger } from 'fastify';
+
+export interface EmailBrandingOptions {
+  appName?: string;
+  accentColor?: string | null;
+}
+
+function resolveEmailBranding(branding?: EmailBrandingOptions): {
+  appName: string;
+  safeAppName: string;
+  accentLight: string;
+  buttonLight: string;
+  inkOnAccentLight: string;
+} {
+  const appName = branding?.appName?.trim() || DEFAULT_APP_NAME;
+  const colors = deriveServerBrandColors(branding?.accentColor ?? null, null);
+  return {
+    appName,
+    safeAppName: escapeHtml(appName),
+    accentLight: colors.accentLight,
+    buttonLight: colors.buttonLight,
+    inkOnAccentLight: colors.inkOnAccentLight,
+  };
+}
 
 export interface AuthEmailPayload {
   to: string;
@@ -104,21 +131,25 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-export function renderAuthEmailMessage(payload: AuthEmailPayload): {
+export function renderAuthEmailMessage(
+  payload: AuthEmailPayload,
+  branding?: EmailBrandingOptions,
+): {
   subject: string;
   text: string;
   html: string;
 } {
+  const { appName, safeAppName, accentLight, buttonLight, inkOnAccentLight } =
+    resolveEmailBranding(branding);
   const safeName = escapeHtml(payload.pseudonym);
   const safeUrl = escapeHtml(payload.actionUrl);
 
   if (payload.purpose === 'account_exists') {
-    const subject =
-      'Unseal – Registrierungsversuch mit deiner E-Mail-Adresse / Registration attempt';
+    const subject = `${appName} – Registrierungsversuch mit deiner E-Mail-Adresse / Registration attempt`;
     const text = [
       `Hallo ${payload.pseudonym},`,
       '',
-      'gerade wurde versucht, mit deiner E-Mail-Adresse ein neues Unseal-Konto zu registrieren. Für diese Adresse besteht bereits dein Konto.',
+      `gerade wurde versucht, mit deiner E-Mail-Adresse ein neues ${appName}-Konto zu registrieren. Für diese Adresse besteht bereits dein Konto.`,
       'Falls du das warst: Melde dich einfach an. Wenn du dein Passwort nicht mehr weißt, nutze in der App „Passwort vergessen?“.',
       payload.actionUrl,
       '',
@@ -127,7 +158,7 @@ export function renderAuthEmailMessage(payload: AuthEmailPayload): {
       '---',
       `Hello ${payload.pseudonym},`,
       '',
-      'Someone just tried to register a new Unseal account with your email address, which already has an account.',
+      `Someone just tried to register a new ${appName} account with your email address, which already has an account.`,
       'If this was you, simply sign in, or use "Forgot password?" in the app. If not, no action is needed – no account was created.',
       payload.actionUrl,
     ].join('\n');
@@ -136,7 +167,7 @@ export function renderAuthEmailMessage(payload: AuthEmailPayload): {
 <html lang="de">
 <body style="font-family: system-ui, -apple-system, sans-serif; background:#f5f6f3; padding:24px; color:#18221d;">
   <div style="max-width:540px; margin:0 auto; background:#ffffff; border:1px solid #d5ddd7; border-radius:14px; padding:28px;">
-    <h2 style="margin:0 0 12px; color:#176642;">Unseal</h2>
+    <h2 style="margin:0 0 12px; color:${accentLight};">${safeAppName}</h2>
     <p style="margin:0 0 14px;">Hallo <strong>${safeName}</strong>,</p>
     <p style="margin:0 0 14px; line-height:1.5;">
       gerade wurde versucht, mit deiner E-Mail-Adresse ein neues Konto zu registrieren. Für diese Adresse besteht bereits dein Konto.
@@ -145,8 +176,8 @@ export function renderAuthEmailMessage(payload: AuthEmailPayload): {
       Falls du das warst, melde dich einfach an oder nutze in der App <em>Passwort vergessen?</em>. Falls nicht, musst du nichts tun – es wurde kein neues Konto angelegt.
     </p>
     <p style="margin:0 0 22px;">
-      <a href="${safeUrl}" style="display:inline-block; background:#1f6f4a; color:#ffffff; text-decoration:none; font-weight:700; padding:12px 20px; border-radius:999px;">
-        Unseal öffnen
+      <a href="${safeUrl}" style="display:inline-block; background:${buttonLight}; color:${inkOnAccentLight}; text-decoration:none; font-weight:700; padding:12px 20px; border-radius:999px;">
+        ${safeAppName} öffnen
       </a>
     </p>
     <hr style="border:none; border-top:1px solid #e3e8e4; margin:18px 0;" />
@@ -161,12 +192,11 @@ export function renderAuthEmailMessage(payload: AuthEmailPayload): {
   }
 
   if (payload.purpose === 'verify_email') {
-    const subject =
-      'Unseal – Bitte bestätige deine E-Mail-Adresse / Confirm your email';
+    const subject = `${appName} – Bitte bestätige deine E-Mail-Adresse / Confirm your email`;
     const text = [
       `Hallo ${payload.pseudonym},`,
       '',
-      'bitte bestätige deine E-Mail-Adresse für Unseal über folgenden Link (gültig für 24 Stunden):',
+      `bitte bestätige deine E-Mail-Adresse für ${appName} über folgenden Link (gültig für 24 Stunden):`,
       payload.actionUrl,
       '',
       'Falls du kein Konto erstellt hast, kannst du diese E-Mail einfach ignorieren.',
@@ -174,7 +204,7 @@ export function renderAuthEmailMessage(payload: AuthEmailPayload): {
       '---',
       `Hello ${payload.pseudonym},`,
       '',
-      'Please confirm your email address for Unseal using the link below (valid for 24 hours):',
+      `Please confirm your email address for ${appName} using the link below (valid for 24 hours):`,
       payload.actionUrl,
     ].join('\n');
 
@@ -182,18 +212,18 @@ export function renderAuthEmailMessage(payload: AuthEmailPayload): {
 <html lang="de">
 <body style="font-family: system-ui, -apple-system, sans-serif; background:#f5f6f3; padding:24px; color:#18221d;">
   <div style="max-width:540px; margin:0 auto; background:#ffffff; border:1px solid #d5ddd7; border-radius:14px; padding:28px;">
-    <h2 style="margin:0 0 12px; color:#176642;">Unseal</h2>
+    <h2 style="margin:0 0 12px; color:${accentLight};">${safeAppName}</h2>
     <p style="margin:0 0 14px;">Hallo <strong>${safeName}</strong>,</p>
     <p style="margin:0 0 20px; line-height:1.5;">
       bitte bestätige deine E-Mail-Adresse, um dein Konto zu aktivieren (Link gültig für 24 Stunden):
     </p>
     <p style="margin:0 0 22px;">
-      <a href="${safeUrl}" style="display:inline-block; background:#1f6f4a; color:#ffffff; text-decoration:none; font-weight:700; padding:12px 20px; border-radius:999px;">
+      <a href="${safeUrl}" style="display:inline-block; background:${buttonLight}; color:${inkOnAccentLight}; text-decoration:none; font-weight:700; padding:12px 20px; border-radius:999px;">
         E-Mail-Adresse bestätigen
       </a>
     </p>
     <p style="font-size:13px; color:#526159; word-break:break-all; margin:0 0 18px;">
-      Direktlink: <a href="${safeUrl}" style="color:#1f6f4a;">${safeUrl}</a>
+      Direktlink: <a href="${safeUrl}" style="color:${buttonLight};">${safeUrl}</a>
     </p>
     <hr style="border:none; border-top:1px solid #e3e8e4; margin:18px 0;" />
     <p style="font-size:13px; color:#526159; margin:0; line-height:1.45;">
@@ -207,12 +237,11 @@ export function renderAuthEmailMessage(payload: AuthEmailPayload): {
   }
 
   if (payload.purpose === 'reverify_login') {
-    const subject =
-      'Unseal – Konto nach Fehlversuchen bestätigen / Re-verify your account';
+    const subject = `${appName} – Konto nach Fehlversuchen bestätigen / Re-verify your account`;
     const text = [
       `Hallo ${payload.pseudonym},`,
       '',
-      'nach 5 fehlgeschlagenen Anmeldeversuchen wurde die Anmeldung für dein Unseal-Konto vorübergehend gesperrt.',
+      `nach 5 fehlgeschlagenen Anmeldeversuchen wurde die Anmeldung für dein ${appName}-Konto vorübergehend gesperrt.`,
       'Bitte bestätige deine E-Mail-Adresse über folgenden Link, um dein Konto wieder freizuschalten (gültig für 24 Stunden):',
       payload.actionUrl,
       '',
@@ -221,7 +250,7 @@ export function renderAuthEmailMessage(payload: AuthEmailPayload): {
       '---',
       `Hello ${payload.pseudonym},`,
       '',
-      'After 5 failed sign-in attempts, sign-in for your Unseal account has been temporarily blocked.',
+      `After 5 failed sign-in attempts, sign-in for your ${appName} account has been temporarily blocked.`,
       'Please confirm your email address using the link below to unlock your account (valid for 24 hours):',
       payload.actionUrl,
       '',
@@ -232,7 +261,7 @@ export function renderAuthEmailMessage(payload: AuthEmailPayload): {
 <html lang="de">
 <body style="font-family: system-ui, -apple-system, sans-serif; background:#f5f6f3; padding:24px; color:#18221d;">
   <div style="max-width:540px; margin:0 auto; background:#ffffff; border:1px solid #d5ddd7; border-radius:14px; padding:28px;">
-    <h2 style="margin:0 0 12px; color:#176642;">Unseal</h2>
+    <h2 style="margin:0 0 12px; color:${accentLight};">${safeAppName}</h2>
     <p style="margin:0 0 14px;">Hallo <strong>${safeName}</strong>,</p>
     <p style="margin:0 0 14px; line-height:1.5;">
       nach 5 fehlgeschlagenen Anmeldeversuchen wurde die Anmeldung für dein Konto vorübergehend gesperrt.
@@ -241,12 +270,12 @@ export function renderAuthEmailMessage(payload: AuthEmailPayload): {
       Bitte bestätige deine E-Mail-Adresse, um dein Konto wieder freizuschalten (Link gültig für 24 Stunden):
     </p>
     <p style="margin:0 0 22px;">
-      <a href="${safeUrl}" style="display:inline-block; background:#1f6f4a; color:#ffffff; text-decoration:none; font-weight:700; padding:12px 20px; border-radius:999px;">
+      <a href="${safeUrl}" style="display:inline-block; background:${buttonLight}; color:${inkOnAccentLight}; text-decoration:none; font-weight:700; padding:12px 20px; border-radius:999px;">
         Konto wieder freischalten
       </a>
     </p>
     <p style="font-size:13px; color:#526159; word-break:break-all; margin:0 0 18px;">
-      Direktlink: <a href="${safeUrl}" style="color:#1f6f4a;">${safeUrl}</a>
+      Direktlink: <a href="${safeUrl}" style="color:${buttonLight};">${safeUrl}</a>
     </p>
     <hr style="border:none; border-top:1px solid #e3e8e4; margin:18px 0;" />
     <p style="font-size:13px; color:#526159; margin:0; line-height:1.45;">
@@ -259,8 +288,7 @@ export function renderAuthEmailMessage(payload: AuthEmailPayload): {
     return { subject, text, html };
   }
 
-  const subject =
-    'Unseal – Passwort zurücksetzen / Password reset';
+  const subject = `${appName} – Passwort zurücksetzen / Password reset`;
   const text = [
     `Hallo ${payload.pseudonym},`,
     '',
@@ -272,7 +300,7 @@ export function renderAuthEmailMessage(payload: AuthEmailPayload): {
     '---',
     `Hello ${payload.pseudonym},`,
     '',
-    'Open the link below to set a new password for your Unseal account (valid for 60 minutes):',
+    `Open the link below to set a new password for your ${appName} account (valid for 60 minutes):`,
     payload.actionUrl,
   ].join('\n');
 
@@ -280,18 +308,18 @@ export function renderAuthEmailMessage(payload: AuthEmailPayload): {
 <html lang="de">
 <body style="font-family: system-ui, -apple-system, sans-serif; background:#f5f6f3; padding:24px; color:#18221d;">
   <div style="max-width:540px; margin:0 auto; background:#ffffff; border:1px solid #d5ddd7; border-radius:14px; padding:28px;">
-    <h2 style="margin:0 0 12px; color:#176642;">Unseal</h2>
+    <h2 style="margin:0 0 12px; color:${accentLight};">${safeAppName}</h2>
     <p style="margin:0 0 14px;">Hallo <strong>${safeName}</strong>,</p>
     <p style="margin:0 0 20px; line-height:1.5;">
       über den folgenden Link kannst du ein neues Passwort für dein Konto vergeben (gültig für 60 Minuten):
     </p>
     <p style="margin:0 0 22px;">
-      <a href="${safeUrl}" style="display:inline-block; background:#1f6f4a; color:#ffffff; text-decoration:none; font-weight:700; padding:12px 20px; border-radius:999px;">
+      <a href="${safeUrl}" style="display:inline-block; background:${buttonLight}; color:${inkOnAccentLight}; text-decoration:none; font-weight:700; padding:12px 20px; border-radius:999px;">
         Neues Passwort festlegen
       </a>
     </p>
     <p style="font-size:13px; color:#526159; word-break:break-all; margin:0 0 18px;">
-      Direktlink: <a href="${safeUrl}" style="color:#1f6f4a;">${safeUrl}</a>
+      Direktlink: <a href="${safeUrl}" style="color:${buttonLight};">${safeUrl}</a>
     </p>
     <hr style="border:none; border-top:1px solid #e3e8e4; margin:18px 0;" />
     <p style="font-size:13px; color:#526159; margin:0; line-height:1.45;">
@@ -304,11 +332,15 @@ export function renderAuthEmailMessage(payload: AuthEmailPayload): {
   return { subject, text, html };
 }
 
-export function renderBugReportEmailMessage(payload: BugReportEmailPayload): {
+export function renderBugReportEmailMessage(
+  payload: BugReportEmailPayload,
+  branding?: EmailBrandingOptions,
+): {
   subject: string;
   text: string;
   html: string;
 } {
+  const { appName, safeAppName, accentLight } = resolveEmailBranding(branding);
   const reporterDisplay = payload.reporterPseudonym
     ? `@${payload.reporterPseudonym}`
     : 'Anonym / Anonymous';
@@ -316,10 +348,10 @@ export function renderBugReportEmailMessage(payload: BugReportEmailPayload): {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 60);
-  const subject = `Unseal Bug-Meldung (${reporterDisplay}): ${subjectSummary}`;
+  const subject = `${appName} Bug-Meldung (${reporterDisplay}): ${subjectSummary}`;
 
   const lines = [
-    'Neue Fehlermeldung über Unseal / New Unseal bug report',
+    `Neue Fehlermeldung über ${appName} / New ${appName} bug report`,
     '',
     `Zeitpunkt / Submitted: ${payload.submittedAtIso}`,
     `Meldende Person / Reporter: ${reporterDisplay}${payload.reporterUserId ? ` (${payload.reporterUserId})` : ''}`,
@@ -344,7 +376,7 @@ export function renderBugReportEmailMessage(payload: BugReportEmailPayload): {
 <html lang="de">
 <body style="font-family: system-ui, -apple-system, sans-serif; background:#f5f6f3; padding:24px; color:#18221d;">
   <div style="max-width:600px; margin:0 auto; background:#ffffff; border:1px solid #d5ddd7; border-radius:14px; padding:28px;">
-    <h2 style="margin:0 0 12px; color:#176642;">Unseal – Fehlermeldung</h2>
+    <h2 style="margin:0 0 12px; color:${accentLight};">${safeAppName} – Fehlermeldung</h2>
     <table style="width:100%; border-collapse:collapse; font-size:13px; color:#42524a; margin-bottom:18px;">
       <tr><td style="padding:4px 8px 4px 0; font-weight:700;">Zeitpunkt:</td><td style="padding:4px 0;">${safeSubmitted}</td></tr>
       <tr><td style="padding:4px 8px 4px 0; font-weight:700;">Konto:</td><td style="padding:4px 0;">${safeReporter}</td></tr>
@@ -387,12 +419,14 @@ const MODERATION_ACTION_LABELS: Readonly<
 
 export function renderContentReportEmailMessage(
   payload: ContentReportEmailPayload,
+  branding?: EmailBrandingOptions,
 ): {
   subject: string;
   text: string;
   html: string;
 } {
-  const subject = `Unseal DSA-Meldung [${payload.targetType}] #${payload.reportId.slice(0, 8)} (${payload.reason})`;
+  const { appName, safeAppName } = resolveEmailBranding(branding);
+  const subject = `${appName} DSA-Meldung [${payload.targetType}] #${payload.reportId.slice(0, 8)} (${payload.reason})`;
   const reporterAccount = payload.reporterPseudonym
     ? `@${payload.reporterPseudonym}${payload.reporterUserId ? ` (${payload.reporterUserId})` : ''}`
     : 'Nicht angemeldet / Guest';
@@ -429,7 +463,7 @@ export function renderContentReportEmailMessage(
 <html lang="de">
 <body style="font-family: system-ui, -apple-system, sans-serif; background:#f5f6f3; padding:24px; color:#18221d;">
   <div style="max-width:600px; margin:0 auto; background:#ffffff; border:1px solid #d5ddd7; border-radius:14px; padding:28px;">
-    <h2 style="margin:0 0 12px; color:#962d20;">Unseal – Meldung nach Art. 16 DSA</h2>
+    <h2 style="margin:0 0 12px; color:#962d20;">${safeAppName} – Meldung nach Art. 16 DSA</h2>
     <table style="width:100%; border-collapse:collapse; font-size:13px; color:#42524a; margin-bottom:18px;">
       <tr><td style="padding:4px 8px 4px 0; font-weight:700;">Meldungs-ID:</td><td style="padding:4px 0;"><code>${safeId}</code></td></tr>
       <tr><td style="padding:4px 8px 4px 0; font-weight:700;">Zeitpunkt:</td><td style="padding:4px 0;">${safeSubmitted}</td></tr>
@@ -451,12 +485,14 @@ export function renderContentReportEmailMessage(
 
 export function renderContentReportReceiptEmailMessage(
   payload: ContentReportReceiptEmailPayload,
+  branding?: EmailBrandingOptions,
 ): {
   subject: string;
   text: string;
   html: string;
 } {
-  const subject = `Unseal – Eingangsbestätigung deiner Meldung #${payload.reportId.slice(0, 8)} / Notice receipt`;
+  const { appName, safeAppName, accentLight } = resolveEmailBranding(branding);
+  const subject = `${appName} – Eingangsbestätigung deiner Meldung #${payload.reportId.slice(0, 8)} / Notice receipt`;
   const text = [
     'Eingangsbestätigung gemäß Art. 16 Abs. 4 Digital Services Act (DSA)',
     '',
@@ -486,7 +522,7 @@ export function renderContentReportReceiptEmailMessage(
 <html lang="de">
 <body style="font-family: system-ui, -apple-system, sans-serif; background:#f5f6f3; padding:24px; color:#18221d;">
   <div style="max-width:560px; margin:0 auto; background:#ffffff; border:1px solid #d5ddd7; border-radius:14px; padding:28px;">
-    <h2 style="margin:0 0 12px; color:#176642;">Unseal – Eingangsbestätigung (Art. 16 Abs. 4 DSA)</h2>
+    <h2 style="margin:0 0 12px; color:${accentLight};">${safeAppName} – Eingangsbestätigung (Art. 16 Abs. 4 DSA)</h2>
     <p style="margin:0 0 14px; line-height:1.5;">Wir haben deine Meldung erhalten und prüfen den gemeldeten Inhalt zeitnah.</p>
     <p style="margin:0 0 14px; font-size:13px; color:#42524a; line-height:1.5;">
       <strong>Referenz:</strong> <code>${safeId}</code><br />
@@ -494,7 +530,7 @@ export function renderContentReportReceiptEmailMessage(
       <strong>Grund:</strong> ${safeReason}
     </p>
     <p style="margin:0 0 16px; font-size:13px; color:#42524a; line-height:1.5;">
-      Nach Abschluss der Prüfung erhältst du eine Rückmeldung zu unserer Entscheidung. Bei Rückfragen erreichst du uns unter <strong>${safeContact}</strong> (<a href="${safeImpressum}" style="color:#176642;">Impressum</a>).
+      Nach Abschluss der Prüfung erhältst du eine Rückmeldung zu unserer Entscheidung. Bei Rückfragen erreichst du uns unter <strong>${safeContact}</strong> (<a href="${safeImpressum}" style="color:${accentLight};">Impressum</a>).
     </p>
     <hr style="border:none; border-top:1px solid #e3e8e4; margin:18px 0;" />
     <p style="font-size:13px; color:#526159; margin:0; line-height:1.45;">
@@ -509,13 +545,15 @@ export function renderContentReportReceiptEmailMessage(
 
 export function renderModerationReasonEmailMessage(
   payload: ModerationReasonEmailPayload,
+  branding?: EmailBrandingOptions,
 ): {
   subject: string;
   text: string;
   html: string;
 } {
+  const { appName, safeAppName, accentLight } = resolveEmailBranding(branding);
   const actionLabel = MODERATION_ACTION_LABELS[payload.action];
-  const subject = `Unseal – Moderationshinweis & Begründung (Art. 17 DSA) / Moderation notice`;
+  const subject = `${appName} – Moderationshinweis & Begründung (Art. 17 DSA) / Moderation notice`;
   const contactLineDe = payload.contactEmail
     ? `Wenn du diese Entscheidung überprüfen lassen möchtest oder Rückfragen hast, wende dich bitte an ${payload.contactEmail}.`
     : `Wenn du diese Entscheidung überprüfen lassen möchtest oder Rückfragen hast, nutze bitte die im Impressum (${payload.impressumUrl}) angegebene Kontaktstelle.`;
@@ -567,9 +605,9 @@ export function renderModerationReasonEmailMessage(
 <html lang="de">
 <body style="font-family: system-ui, -apple-system, sans-serif; background:#f5f6f3; padding:24px; color:#18221d;">
   <div style="max-width:580px; margin:0 auto; background:#ffffff; border:1px solid #d5ddd7; border-radius:14px; padding:28px;">
-    <h2 style="margin:0 0 12px; color:#176642;">Unseal – Begründung gemäß Art. 17 DSA</h2>
+    <h2 style="margin:0 0 12px; color:${accentLight};">${safeAppName} – Begründung gemäß Art. 17 DSA</h2>
     <p style="margin:0 0 14px;">Hallo <strong>${safeName}</strong>,</p>
-    <p style="margin:0 0 14px; line-height:1.5;">wir informieren dich über folgende Moderationsmaßnahme auf dieser Unseal-Instanz:</p>
+    <p style="margin:0 0 14px; line-height:1.5;">wir informieren dich über folgende Moderationsmaßnahme auf dieser ${safeAppName}-Instanz:</p>
     <table style="width:100%; border-collapse:collapse; font-size:13px; color:#42524a; margin-bottom:16px;">
       <tr><td style="padding:4px 8px 4px 0; font-weight:700;">Maßnahme:</td><td style="padding:4px 0;">${safeActionDe}</td></tr>
       ${safeTargetId ? `<tr><td style="padding:4px 8px 4px 0; font-weight:700;">Betroffene ID:</td><td style="padding:4px 0;"><code>${safeTargetId}</code></td></tr>` : ''}
@@ -578,7 +616,7 @@ export function renderModerationReasonEmailMessage(
       <tr><td style="padding:4px 8px 4px 0; font-weight:700;">Automatisierung:</td><td style="padding:4px 0;">${payload.automatedMeansUsed ? 'Ja' : 'Nein (manuelle Prüfung)'}</td></tr>
     </table>
     <p style="margin:0 0 14px; font-size:13px; line-height:1.5; color:#42524a;">
-      ${safeContactDe} Grundlage sind unsere <a href="${safeTerms}" style="color:#176642;">Nutzungsbedingungen</a>. Gesetzliche Rechtsbehelfe (einschließlich gerichtlicher Überprüfung) bleiben unberührt.
+      ${safeContactDe} Grundlage sind unsere <a href="${safeTerms}" style="color:${accentLight};">Nutzungsbedingungen</a>. Gesetzliche Rechtsbehelfe (einschließlich gerichtlicher Überprüfung) bleiben unberührt.
     </p>
     <hr style="border:none; border-top:1px solid #e3e8e4; margin:18px 0;" />
     <p style="font-size:13px; color:#526159; margin:0; line-height:1.45;">
@@ -751,9 +789,14 @@ export function createSmtpMailer(
       : {}),
   });
 
+  const emailBranding: EmailBrandingOptions = {
+    appName: config.branding.appName,
+    accentColor: config.branding.accentColor,
+  };
+
   return {
     async sendActionEmail(payload: AuthEmailPayload): Promise<void> {
-      const rendered = renderAuthEmailMessage(payload);
+      const rendered = renderAuthEmailMessage(payload, emailBranding);
       await transporter.sendMail({
         from: config.smtp.from,
         to: payload.to,
@@ -763,7 +806,7 @@ export function createSmtpMailer(
       });
     },
     async sendBugReportEmail(payload: BugReportEmailPayload): Promise<void> {
-      const rendered = renderBugReportEmailMessage(payload);
+      const rendered = renderBugReportEmailMessage(payload, emailBranding);
       await transporter.sendMail({
         from: config.smtp.from,
         to: payload.to,
@@ -776,7 +819,7 @@ export function createSmtpMailer(
     async sendContentReportEmail(
       payload: ContentReportEmailPayload,
     ): Promise<void> {
-      const rendered = renderContentReportEmailMessage(payload);
+      const rendered = renderContentReportEmailMessage(payload, emailBranding);
       await transporter.sendMail({
         from: config.smtp.from,
         to: payload.to,
@@ -789,7 +832,10 @@ export function createSmtpMailer(
     async sendContentReportReceiptEmail(
       payload: ContentReportReceiptEmailPayload,
     ): Promise<void> {
-      const rendered = renderContentReportReceiptEmailMessage(payload);
+      const rendered = renderContentReportReceiptEmailMessage(
+        payload,
+        emailBranding,
+      );
       await transporter.sendMail({
         from: config.smtp.from,
         to: payload.to,
@@ -801,7 +847,10 @@ export function createSmtpMailer(
     async sendModerationReasonEmail(
       payload: ModerationReasonEmailPayload,
     ): Promise<void> {
-      const rendered = renderModerationReasonEmailMessage(payload);
+      const rendered = renderModerationReasonEmailMessage(
+        payload,
+        emailBranding,
+      );
       await transporter.sendMail({
         from: config.smtp.from,
         to: payload.to,

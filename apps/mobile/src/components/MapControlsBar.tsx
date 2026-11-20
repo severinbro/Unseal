@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (C) 2026 Unseal Contributors
 
-import type { PolygonFilter } from '@entsiegelung/shared';
-import React, { useMemo } from 'react';
+import {
+  DEFAULT_APP_NAME,
+  type BrandingConfig,
+  type PolygonFilter,
+} from '@entsiegelung/shared';
+import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -95,6 +99,7 @@ export interface MapControlsBarProps {
   controls: MapControlsModel;
   proposalCount: number;
   exportGeoJsonUrl: string;
+  branding?: BrandingConfig | null | undefined;
   isImporting?: boolean;
   tier?: ViewportTier;
   viewportWidth?: number;
@@ -747,12 +752,52 @@ function PolygonOpacitySlider({
 
 function ParcelUnsealMark({
   compact,
+  logoUrl,
 }: {
   compact: boolean;
+  logoUrl?: string | null | undefined;
 }): React.JSX.Element {
   const { palette, isDark } = useTheme();
   const styles = useMemo(() => createStyles(palette), [palette]);
+  const [failedLogoUrl, setFailedLogoUrl] = useState<string | null>(null);
   const size = compact ? 24 : 28;
+  const effectiveLogoUrl =
+    logoUrl && logoUrl !== failedLogoUrl ? logoUrl : null;
+
+  if (effectiveLogoUrl) {
+    if (Platform.OS === 'web') {
+      return React.createElement('img', {
+        src: effectiveLogoUrl,
+        alt: '',
+        width: size,
+        height: size,
+        onError: () => setFailedLogoUrl(effectiveLogoUrl),
+        style: {
+          width: `${size}px`,
+          height: `${size}px`,
+          flexShrink: 0,
+          display: 'block',
+          objectFit: 'contain',
+          borderRadius: compact ? '6px' : '7px',
+        },
+      });
+    }
+    return (
+      <View
+        style={[styles.brandMark, compact ? styles.brandMarkCompact : null]}
+        accessible={false}
+      >
+        <Image
+          source={{ uri: effectiveLogoUrl }}
+          style={styles.brandMarkImage}
+          resizeMode="contain"
+          onError={() => setFailedLogoUrl(effectiveLogoUrl)}
+          accessibilityIgnoresInvertColors
+        />
+      </View>
+    );
+  }
+
   if (Platform.OS === 'web') {
     return React.createElement(
       'svg',
@@ -1006,6 +1051,7 @@ function PlusGlyph({
 export function MapControlsBar({
   controls,
   proposalCount,
+  branding,
   tier = 'expanded',
   viewportWidth,
   moreMenuOpen = false,
@@ -1023,6 +1069,7 @@ export function MapControlsBar({
   const locale = controls.locale;
   const isDark = controls.colorScheme === 'dark';
   const t = getTranslations(locale).controls;
+  const appName = branding?.appName?.trim() || DEFAULT_APP_NAME;
 
   const accountButtonA11y = controls.isAuthenticated
     ? t.accountSettingsA11y(controls.accountLabel)
@@ -1042,7 +1089,7 @@ export function MapControlsBar({
             isCompact ? styles.brandGroupCompact : null,
           ]}
         >
-          <ParcelUnsealMark compact={isCompact} />
+          <ParcelUnsealMark compact={isCompact} logoUrl={branding?.logoUrl} />
           <View style={styles.titleInlineRow}>
             {Platform.OS === 'web' ? (
               React.createElement(
@@ -1065,7 +1112,7 @@ export function MapControlsBar({
                       'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                   },
                 },
-                'Unseal',
+                appName,
               )
             ) : (
               <Text
@@ -1075,7 +1122,7 @@ export function MapControlsBar({
                 ellipsizeMode="tail"
                 style={[styles.title, isCompact ? styles.titleCompact : null]}
               >
-                Unseal
+                {appName}
               </Text>
             )}
             <View

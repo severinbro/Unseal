@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (C) 2026 Unseal Contributors
 
-import type { RuntimeConfig } from '@entsiegelung/shared';
+import {
+  DEFAULT_APP_NAME,
+  type BrandingConfig,
+  type RuntimeConfig,
+} from '@entsiegelung/shared';
 import React, { useMemo } from 'react';
 import {
   Linking,
@@ -33,6 +37,7 @@ export interface AboutModalProps {
   visible: boolean;
   locale?: Locale;
   compact?: boolean;
+  branding?: BrandingConfig | null | undefined;
   osmStyleUrl?: string | undefined;
   orthophoto?: RuntimeConfig['orthophoto'] | undefined;
   vg250AttributionEnabled?: boolean | undefined;
@@ -77,6 +82,7 @@ export function AboutModal({
   visible,
   locale = DEFAULT_LOCALE,
   compact = false,
+  branding,
   osmStyleUrl,
   orthophoto,
   vg250AttributionEnabled,
@@ -101,6 +107,15 @@ export function AboutModal({
 
   const dict = getTranslations(locale);
   const t = dict.about;
+  const appName = branding?.appName?.trim() || DEFAULT_APP_NAME;
+  const isCustomBrand = appName !== DEFAULT_APP_NAME;
+  const headingTitle = isCustomBrand ? t.aboutNamedTitle(appName) : t.title;
+  const customSubtitle =
+    (locale === 'en' ? branding?.subtitleEn : branding?.subtitleDe)?.trim() ||
+    null;
+  const headingSubtitle = customSubtitle ?? t.subtitle;
+  const portalUrl = branding?.portalUrl?.trim() || null;
+  const portalLabel = branding?.portalLabel?.trim() || t.defaultPortalLinkLabel;
   const hasApkDownloadUrl =
     apkDownloadUrl !== null && apkDownloadUrl.length > 0;
   const showApkButton =
@@ -128,13 +143,13 @@ export function AboutModal({
   return (
     <View
       testID="about-modal-card"
-      accessibilityLabel={t.modalA11y}
+      accessibilityLabel={headingTitle}
       style={[styles.card, compact ? styles.cardCompact : null]}
     >
       <View style={styles.headerRow}>
         <View style={styles.headerTextGroup}>
-          <Text style={styles.title}>{t.title}</Text>
-          <Text style={styles.subtitle}>{t.subtitle}</Text>
+          <Text style={styles.title}>{headingTitle}</Text>
+          <Text style={styles.subtitle}>{headingSubtitle}</Text>
           <Text style={styles.introText}>{t.introBody}</Text>
         </View>
         <Pressable
@@ -227,6 +242,11 @@ export function AboutModal({
       <View style={styles.sectionCard}>
         <Text style={styles.sectionTitle}>{t.footerTitle}</Text>
         <Text style={styles.subtleNote}>{t.privacyAndLicenseBody}</Text>
+        {isCustomBrand ? (
+          <Text testID="about-powered-by-unseal" style={styles.subtleNote}>
+            {t.poweredByUnseal}
+          </Text>
+        ) : null}
         {abuseContact && abuseContact.trim().length > 0 ? (
           <Text style={styles.subtleNote}>
             {dict.inspector.abuseContactPrefix}{' '}
@@ -320,6 +340,21 @@ export function AboutModal({
 
       <View style={styles.sectionCard}>
         <View style={styles.actionRow}>
+          {portalUrl ? (
+            <Pressable
+              testID="about-portal-link"
+              accessibilityRole="link"
+              onPress={() => openExternalUrl(portalUrl)}
+              style={({ pressed }) => [
+                styles.touchButton,
+                styles.secondaryButton,
+                pressed ? styles.buttonPressed : null,
+              ]}
+            >
+              <Text style={styles.secondaryButtonLabel}>{portalLabel}</Text>
+            </Pressable>
+          ) : null}
+
           {impressumUrl ? (
             <Pressable
               accessibilityRole="link"

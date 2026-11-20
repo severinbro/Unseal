@@ -11,7 +11,9 @@ import {
 
 import {
   findExistingApkInfo,
+  findExistingBrandLogoInfo,
   resolveRuntimeApkAvailability,
+  resolveRuntimeBranding,
 } from '../config.js';
 import { getMigrationFiles } from '../db/migrate.js';
 import { getMunicipalitiesStatus } from '../municipalities/vg250.js';
@@ -110,8 +112,48 @@ export function registerSystemRoutes(
       vg250DataYear,
       apkDownloadUrl: apkAvailability.apkDownloadUrl,
       apkSha256: apkAvailability.apkSha256,
+      branding: resolveRuntimeBranding(app.config),
     });
   });
+
+  app.get(
+    '/api/v1/branding/logo',
+    {
+      config: {
+        compress: false,
+        rateLimit: {
+          max: 120,
+          timeWindow: '5 minutes',
+        },
+      },
+    },
+    async (_request, reply) => {
+      const existing = findExistingBrandLogoInfo(
+        app.config.branding.logoFilePath,
+      );
+      if (existing) {
+        return reply
+          .status(200)
+          .header('Content-Type', existing.contentType)
+          .header('Content-Length', String(existing.size))
+          .header('ETag', `"sha256-${existing.sha256}"`)
+          .header('Cache-Control', 'public, max-age=300')
+          .header('X-Content-Type-Options', 'nosniff')
+          .header('Cross-Origin-Resource-Policy', 'cross-origin')
+          .header(
+            'Content-Security-Policy',
+            "default-src 'none'; sandbox",
+          )
+          .send(createReadStream(existing.filePath));
+      }
+
+      throw new ApiError(
+        404,
+        'NOT_FOUND',
+        'No custom brand logo is configured on this server.',
+      );
+    },
+  );
 
   app.get(
     '/downloads/unseal.apk',

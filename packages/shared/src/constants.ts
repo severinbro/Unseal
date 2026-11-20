@@ -190,3 +190,13 @@ export const AUTH_LIMITS = {
 } as const;
 
 export const RESERVED_PSEUDONYMS = ['deleted'] as const;
+
+export const DEFAULT_APP_NAME = 'Unseal';
+
+export const WEBHOOK_EVENT_TYPES = [
+  'polygon.created',
+  'polygon.status_changed',
+  'polygon.deleted',
+] as const;
+
+export type WebhookEventType = (typeof WEBHOOK_EVENT_TYPES)[number];

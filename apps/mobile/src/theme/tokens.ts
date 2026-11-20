@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Unseal Contributors
 
 import type { TextStyle } from 'react-native';
-import type { SurfaceType } from '@entsiegelung/shared';
+import type { BrandingConfig, SurfaceType } from '@entsiegelung/shared';
 
 export type ViewportTier = 'compact' | 'medium' | 'expanded';
 export type ColorScheme = 'light' | 'dark';
@@ -271,8 +271,139 @@ export const DARK_PALETTE: ThemePalette = {
 
 export const PALETTE = LIGHT_PALETTE;
 
-export function getPalette(colorScheme: ColorScheme = 'light'): ThemePalette {
-  return colorScheme === 'dark' ? DARK_PALETTE : LIGHT_PALETTE;
+export type BrandAccentOverrides = Pick<
+  BrandingConfig,
+  'accentColor' | 'accentDarkColor'
+>;
+
+interface RgbColor {
+  readonly r: number;
+  readonly g: number;
+  readonly b: number;
+}
+
+function parseHexRgb(hex: string): RgbColor | null {
+  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex.trim());
+  if (!match?.[1] || !match[2] || !match[3]) {
+    return null;
+  }
+  return {
+    r: Number.parseInt(match[1], 16),
+    g: Number.parseInt(match[2], 16),
+    b: Number.parseInt(match[3], 16),
+  };
+}
+
+function rgbToHex({ r, g, b }: RgbColor): string {
+  const clamp = (n: number): string =>
+    Math.max(0, Math.min(255, Math.round(n)))
+      .toString(16)
+      .padStart(2, '0');
+  return `#${clamp(r)}${clamp(g)}${clamp(b)}`;
+}
+
+function mixHex(baseHex: string, targetHex: string, ratio: number): string {
+  const a = parseHexRgb(baseHex);
+  const b = parseHexRgb(targetHex);
+  if (!a || !b) {
+    return baseHex;
+  }
+  const t = Math.max(0, Math.min(1, ratio));
+  return rgbToHex({
+    r: a.r + (b.r - a.r) * t,
+    g: a.g + (b.g - a.g) * t,
+    b: a.b + (b.b - a.b) * t,
+  });
+}
+
+function relativeLuminance(rgb: RgbColor): number {
+  const linearize = (channel: number): number => {
+    const s = channel / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  return (
+    0.2126 * linearize(rgb.r) +
+    0.7152 * linearize(rgb.g) +
+    0.0722 * linearize(rgb.b)
+  );
+}
+
+function contrastRatio(lumA: number, lumB: number): number {
+  const lighter = Math.max(lumA, lumB);
+  const darker = Math.min(lumA, lumB);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function pickContrastingInk(
+  backgroundHex: string,
+  darkInk: string,
+  lightInk: string,
+): string {
+  const bg = parseHexRgb(backgroundHex);
+  const dark = parseHexRgb(darkInk);
+  const light = parseHexRgb(lightInk);
+  if (!bg || !dark || !light) {
+    return lightInk;
+  }
+  const bgLum = relativeLuminance(bg);
+  const darkContrast = contrastRatio(bgLum, relativeLuminance(dark));
+  const lightContrast = contrastRatio(bgLum, relativeLuminance(light));
+  return lightContrast >= darkContrast ? lightInk : darkInk;
+}
+
+export function deriveBrandedPalette(
+  colorScheme: ColorScheme = 'light',
+  branding?: Partial<BrandAccentOverrides> | null,
+): ThemePalette {
+  const base = colorScheme === 'dark' ? DARK_PALETTE : LIGHT_PALETTE;
+  if (!branding) {
+    return base;
+  }
+  const cleanLight =
+    branding.accentColor && parseHexRgb(branding.accentColor)
+      ? branding.accentColor.trim().toLowerCase()
+      : null;
+  const cleanDark =
+    branding.accentDarkColor && parseHexRgb(branding.accentDarkColor)
+      ? branding.accentDarkColor.trim().toLowerCase()
+      : null;
+
+  if (colorScheme === 'light') {
+    if (!cleanLight) {
+      return base;
+    }
+    return {
+      ...base,
+      accentPrimary: cleanLight,
+      accentPrimaryStrong: mixHex(cleanLight, '#000000', 0.22),
+      accentDisabled: mixHex(cleanLight, base.borderSubtle, 0.56),
+      borderAccent: mixHex(cleanLight, '#ffffff', 0.45),
+      bgTinted: mixHex(cleanLight, '#ffffff', 0.88),
+      inkOnAccent: pickContrastingInk(cleanLight, '#0b1510', '#ffffff'),
+    };
+  }
+
+  const effectiveDarkAccent =
+    cleanDark ?? (cleanLight ? mixHex(cleanLight, '#ffffff', 0.38) : null);
+  if (!effectiveDarkAccent) {
+    return base;
+  }
+  return {
+    ...base,
+    accentPrimary: effectiveDarkAccent,
+    accentPrimaryStrong: mixHex(effectiveDarkAccent, '#000000', 0.14),
+    accentDisabled: mixHex(effectiveDarkAccent, base.borderSubtle, 0.62),
+    borderAccent: mixHex(effectiveDarkAccent, base.bgSurface, 0.45),
+    bgTinted: mixHex(effectiveDarkAccent, base.bgGround, 0.82),
+    inkOnAccent: pickContrastingInk(effectiveDarkAccent, '#062115', '#ffffff'),
+  };
+}
+
+export function getPalette(
+  colorScheme: ColorScheme = 'light',
+  branding?: Partial<BrandAccentOverrides> | null,
+): ThemePalette {
+  return deriveBrandedPalette(colorScheme, branding);
 }
 
 export const SURFACE_SWATCHES: Record<

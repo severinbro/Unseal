@@ -102,6 +102,19 @@ import { registerSystemRoutes } from './routes/system.js';
 import { registerVoteRoutes } from './routes/votes.js';
 import { normalizeRateLimitIp } from './util/rateLimit.js';
 import { BoundedSemaphore } from './util/semaphore.js';
+import {
+  buildPublicPolygonWebhookData,
+  createMemoryWebhookDispatcher,
+  createNoopWebhookDispatcher,
+  createWebhookDispatcher,
+  isPrivateOrReservedIp,
+  signWebhookPayload,
+  type LookupAllFn,
+  type MemoryWebhookDispatcher,
+  type WebhookConfig,
+  type WebhookDispatcher,
+  type WebhookEnvelope,
+} from './util/webhooks.js';
 import { VoteRepository } from './votes/repository.js';
 
 import type pg from 'pg';
@@ -138,6 +151,10 @@ export interface BuildAppOptions {
   mailer?: AuthMailer;
   dop20TileFetch?: Dop20TileRoutesOptions['fetchImpl'];
   geocodeFetch?: GeocodeRoutesOptions['fetchImpl'];
+  webhookDispatcher?: WebhookDispatcher;
+  webhookFetch?: typeof fetch;
+  webhookLookup?: LookupAllFn;
+  webhookRetryDelayMs?: number;
 }
 
 declare module 'fastify' {
@@ -148,6 +165,7 @@ declare module 'fastify' {
     exportSemaphore: BoundedSemaphore;
     rateLimitOverrides: RateLimitOverrides;
     mailer: AuthMailer;
+    webhookDispatcher: WebhookDispatcher;
     runAdminCommand: (argv: string[]) => Promise<AdminCommandResult>;
   }
 }
@@ -179,6 +197,19 @@ export async function buildApp(
     options.exportSemaphore ??
     new BoundedSemaphore(2, 0, 'SERVICE_UNAVAILABLE');
   const mailer = options.mailer ?? createSmtpMailer(config, logger);
+  const webhookDispatcher =
+    options.webhookDispatcher ??
+    createWebhookDispatcher({
+      config: config.webhook,
+      instance: {
+        appName: config.branding.appName,
+        publicBaseUrl: config.publicBaseUrl,
+      },
+      logger,
+      fetchImpl: options.webhookFetch,
+      lookupImpl: options.webhookLookup,
+      retryDelayMs: options.webhookRetryDelayMs,
+    });
 
   const app = Fastify({
     loggerInstance: logger,
@@ -199,6 +230,7 @@ export async function buildApp(
   app.decorate('exportSemaphore', exportSemaphore);
   app.decorate('rateLimitOverrides', options.rateLimits ?? {});
   app.decorate('mailer', mailer);
+  app.decorate('webhookDispatcher', webhookDispatcher);
   app.decorate('runAdminCommand', (argv: string[]) =>
     runAdminCommand(pool, argv, {
       uploadsDir: config.uploadsDir,
@@ -433,13 +465,17 @@ export {
   PhotoRepository,
   PolygonRepository,
   VoteRepository,
+  buildPublicPolygonWebhookData,
   canonicalizeEmail,
   classifyLandCoverFeatureProperties,
   collectTelemetryExport,
   createAltchaChallenge,
   createMemoryMailer,
+  createMemoryWebhookDispatcher,
+  createNoopWebhookDispatcher,
   createSession,
   createSmtpMailer,
+  createWebhookDispatcher,
   deleteOrBanUserAccount,
   generateEmailActionToken,
   generateRecoveryCode,
@@ -450,6 +486,7 @@ export {
   hashPassword,
   hashPseudonymTombstone,
   isDisposableEmailDomain,
+  isPrivateOrReservedIp,
   legacyEmailTombstoneDigest,
   legacyPseudonymTombstoneDigest,
   loadLandCoverFile,
@@ -482,6 +519,7 @@ export {
   runAdminCommand,
   seedLandCoverExclusions,
   setupTestDb,
+  signWebhookPayload,
   solveAltchaChallenge,
   upsertMunicipalitiesAndBackfill,
   verifyAltchaPayload,
@@ -496,9 +534,14 @@ export {
   type LandCoverSeedItem,
   type LoadLandCoverOptions,
   type LoadLandCoverResult,
+  type LookupAllFn,
   type MemoryMailer,
+  type MemoryWebhookDispatcher,
   type ModerationActionKind,
   type ModerationReasonEmailPayload,
   type MunicipalitySeedInput,
   type TelemetryExportReport,
+  type WebhookConfig,
+  type WebhookDispatcher,
+  type WebhookEnvelope,
 };

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (C) 2026 Unseal Contributors
 
+import { DEFAULT_APP_NAME, type BrandingConfig } from '@entsiegelung/shared';
+
 import {
   DEFAULT_LOCALE,
   getTranslations,
@@ -10,6 +12,7 @@ import {
   DARK_PALETTE,
   LIGHT_PALETTE,
   type ColorScheme,
+  type ThemePalette,
 } from './tokens';
 
 const STYLE_ELEMENT_ID = 'entsiegelung-craft-styles';
@@ -23,9 +26,15 @@ interface WebStyleElementLike {
   textContent: string | null;
 }
 
+interface WebStyleDeclLike {
+  setProperty?(name: string, value: string): void;
+  removeProperty?(name: string): void;
+}
+
 interface WebHtmlElementLike {
   lang?: string;
   dataset?: Record<string, string>;
+  style?: WebStyleDeclLike;
 }
 
 interface WebMetaElementLike {
@@ -215,7 +224,34 @@ function resolveWebDocument(): WebCraftDocumentLike | null {
   return scope.document;
 }
 
-export function syncWebDocumentLocale(locale: Locale = DEFAULT_LOCALE): void {
+export function formatWebDocumentTitle(
+  locale: Locale,
+  branding?: Partial<
+    Pick<BrandingConfig, 'appName' | 'subtitleDe' | 'subtitleEn'>
+  > | null,
+): string {
+  const dict = getTranslations(locale);
+  const customAppName = branding?.appName?.trim();
+  const customSubtitle =
+    (locale === 'en' ? branding?.subtitleEn : branding?.subtitleDe)?.trim() ||
+    null;
+  if (!customAppName && !customSubtitle) {
+    return dict.app.documentTitle;
+  }
+  const effectiveName = customAppName || DEFAULT_APP_NAME;
+  if (effectiveName === DEFAULT_APP_NAME && !customSubtitle) {
+    return dict.app.documentTitle;
+  }
+  const effectiveSubtitle = customSubtitle ?? dict.about.subtitle;
+  return `${effectiveName} - ${effectiveSubtitle}`;
+}
+
+export function syncWebDocumentLocale(
+  locale: Locale = DEFAULT_LOCALE,
+  branding?: Partial<
+    Pick<BrandingConfig, 'appName' | 'subtitleDe' | 'subtitleEn'>
+  > | null,
+): void {
   const doc = resolveWebDocument();
   if (!doc) {
     return;
@@ -225,7 +261,7 @@ export function syncWebDocumentLocale(locale: Locale = DEFAULT_LOCALE): void {
     doc.documentElement.lang = locale;
   }
 
-  doc.title = getTranslations(locale).app.documentTitle;
+  doc.title = formatWebDocumentTitle(locale, branding);
 }
 
 function syncThemeColorMeta(
@@ -248,13 +284,31 @@ function syncThemeColorMeta(
   }
 }
 
-export function syncWebDocumentTheme(colorScheme: ColorScheme = 'light'): void {
+export function syncWebDocumentTheme(
+  colorScheme: ColorScheme = 'light',
+  palette?: Pick<ThemePalette, 'accentPrimary' | 'inkOnAccent'> | null,
+): void {
   const doc = resolveWebDocument();
   if (!doc) {
     return;
   }
   if (doc.documentElement?.dataset) {
     doc.documentElement.dataset['theme'] = colorScheme;
+  }
+  const styleDecl = doc.documentElement?.style;
+  if (styleDecl) {
+    const base = colorScheme === 'dark' ? DARK_PALETTE : LIGHT_PALETTE;
+    const isCustom =
+      palette != null &&
+      (palette.accentPrimary !== base.accentPrimary ||
+        palette.inkOnAccent !== base.inkOnAccent);
+    if (isCustom && typeof styleDecl.setProperty === 'function') {
+      styleDecl.setProperty('--accent-primary', palette.accentPrimary);
+      styleDecl.setProperty('--text-on-accent', palette.inkOnAccent);
+    } else if (typeof styleDecl.removeProperty === 'function') {
+      styleDecl.removeProperty('--accent-primary');
+      styleDecl.removeProperty('--text-on-accent');
+    }
   }
   syncThemeColorMeta(doc, colorScheme);
 }

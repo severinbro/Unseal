@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (C) 2026 Unseal Contributors
 
+import { DEFAULT_APP_NAME, type BrandingConfig } from '@entsiegelung/shared';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   Animated,
   Easing,
+  Image,
   Platform,
   Pressable,
   StyleSheet,
@@ -25,6 +27,7 @@ import {
 
 export interface AnimatedIntroOverlayProps {
   readonly locale?: Locale;
+  readonly branding?: BrandingConfig | null | undefined;
   readonly onFinish: () => void;
 }
 
@@ -86,6 +89,7 @@ function renderWebLogoSvg(
 
 export function AnimatedIntroOverlay({
   locale = DEFAULT_LOCALE,
+  branding = null,
   onFinish,
 }: AnimatedIntroOverlayProps): React.JSX.Element {
   const { palette, isDark } = useTheme();
@@ -97,6 +101,15 @@ export function AnimatedIntroOverlay({
     [palette, isDark, isCompact, tileSize],
   );
   const t = getTranslations(locale).intro;
+  const appName = branding?.appName?.trim() || DEFAULT_APP_NAME;
+  const customSubtitle =
+    (locale === 'en' ? branding?.subtitleEn : branding?.subtitleDe)?.trim() ||
+    null;
+  const [failedLogoUrl, setFailedLogoUrl] = useState<string | null>(null);
+  const effectiveLogoUrl =
+    branding?.logoUrl && branding.logoUrl !== failedLogoUrl
+      ? branding.logoUrl
+      : null;
 
   const overlayOpacity = useRef(new Animated.Value(1)).current;
   const overlayScale = useRef(new Animated.Value(1)).current;
@@ -666,7 +679,7 @@ export function AnimatedIntroOverlay({
             );
           })}
 
-          {/* Central Unseal Logo Tile */}
+          {/* Central Logo Tile */}
           <Animated.View
             style={[
               styles.parcelTile,
@@ -677,7 +690,31 @@ export function AnimatedIntroOverlay({
               },
             ]}
           >
-            {Platform.OS === 'web' ? (
+            {effectiveLogoUrl ? (
+              <View style={styles.customLogoWrap}>
+                {Platform.OS === 'web' ? (
+                  React.createElement('img', {
+                    src: effectiveLogoUrl,
+                    alt: '',
+                    onError: () => setFailedLogoUrl(effectiveLogoUrl),
+                    style: {
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'contain',
+                      display: 'block',
+                    },
+                  })
+                ) : (
+                  <Image
+                    source={{ uri: effectiveLogoUrl }}
+                    style={styles.customLogoImage}
+                    resizeMode="contain"
+                    onError={() => setFailedLogoUrl(effectiveLogoUrl)}
+                    accessibilityIgnoresInvertColors
+                  />
+                )}
+              </View>
+            ) : Platform.OS === 'web' ? (
               <View pointerEvents="none" style={styles.svgStack}>
                 {/* Permanent V-notch asphalt base matching unseal-icon.svg */}
                 <View style={styles.svgLayer}>
@@ -895,7 +932,7 @@ export function AnimatedIntroOverlay({
               },
             ]}
           >
-            {t.title}
+            {appName}
           </Animated.Text>
 
           <Animated.View
@@ -917,7 +954,7 @@ export function AnimatedIntroOverlay({
               },
             ]}
           >
-            {t.subtitle}
+            {customSubtitle ?? t.subtitle}
           </Animated.Text>
 
           <Animated.View
@@ -1132,6 +1169,17 @@ function createStyles(
       position: 'relative',
       width: tileSize,
       height: tileSize,
+    },
+    customLogoWrap: {
+      width: tileSize,
+      height: tileSize,
+      padding: Math.round(tileSize * 0.14),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    customLogoImage: {
+      width: '100%',
+      height: '100%',
     },
     svgLayer: {
       position: 'absolute',

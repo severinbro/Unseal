@@ -42,6 +42,7 @@ import {
   extractOptionalModerationReason,
   notifyAuthorOfModerationActionBestEffort,
 } from '../util/moderationNotice.js';
+import { buildPublicPolygonWebhookData } from '../util/webhooks.js';
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
@@ -432,7 +433,12 @@ export function registerPolygonRoutes(
         requireJurisdiction: app.config.requireJurisdiction,
       });
 
-      return reply.status(201).send(PolygonFeatureSchema.parse(created));
+      const parsed = PolygonFeatureSchema.parse(created);
+      app.webhookDispatcher.emit(
+        'polygon.created',
+        buildPublicPolygonWebhookData(parsed),
+      );
+      return reply.status(201).send(parsed);
     },
   );
 
@@ -660,7 +666,12 @@ export function registerPolygonRoutes(
         status: body.status,
       });
 
-      return PolygonFeatureSchema.parse(updated);
+      const parsed = PolygonFeatureSchema.parse(updated);
+      app.webhookDispatcher.emit(
+        'polygon.status_changed',
+        buildPublicPolygonWebhookData(parsed),
+      );
+      return parsed;
     },
   );
 
@@ -779,6 +790,11 @@ export function registerPolygonRoutes(
           automatedMeansUsed: false,
         });
       }
+      app.webhookDispatcher.emit('polygon.deleted', {
+        id,
+        deletedByAdmin: deletedInfo.deletedByAdmin,
+        deletedAt: new Date().toISOString(),
+      });
       return reply.status(204).send();
     },
   );

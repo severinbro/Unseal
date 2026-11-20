@@ -66,6 +66,7 @@ import {
   MIN_TOUCH_TARGET_DP,
 } from '../src/state/viewModels';
 import {
+  deriveBrandedPalette,
   deriveResponsiveLayout,
   DARK_PALETTE,
   formatRecoveryCodeBlocks,
@@ -75,7 +76,9 @@ import {
   resolveColorScheme,
 } from '../src/theme/tokens';
 import {
+  formatWebDocumentTitle,
   injectWebCraftStyles,
+  syncWebDocumentLocale,
   syncWebDocumentTheme,
   WEB_CRAFT_CSS,
 } from '../src/theme/webStyles';
@@ -1803,5 +1806,150 @@ describe('Dynamic native attribution text & offline bundled license plugin', () 
     } finally {
       fs.rmSync(tmpTarget, { recursive: true, force: true });
     }
+  });
+
+  it('derives WCAG-contrasting branded palettes, syncs web title/CSS vars, and resolves relative branding logo URLs in PpgisApiClient', async () => {
+    // Stock defaults return exact reference equality
+    assert.equal(deriveBrandedPalette('light'), LIGHT_PALETTE);
+    assert.equal(deriveBrandedPalette('dark'), DARK_PALETTE);
+    assert.equal(
+      deriveBrandedPalette('light', { accentColor: null, accentDarkColor: null }),
+      LIGHT_PALETTE,
+    );
+
+    // Municipal dark blue accent: light gets white ink; dark auto-derives lighter tone
+    const blueLight = getPalette('light', {
+      accentColor: '#005A9C',
+      accentDarkColor: null,
+    });
+    assert.equal(blueLight.accentPrimary, '#005a9c');
+    assert.equal(blueLight.inkOnAccent, '#ffffff');
+    // Semantic map legend tokens remain untouched
+    assert.equal(blueLight.positiveDot, LIGHT_PALETTE.positiveDot);
+    assert.equal(blueLight.dangerDot, LIGHT_PALETTE.dangerDot);
+    assert.equal(blueLight.inProgressDot, LIGHT_PALETTE.inProgressDot);
+    assert.equal(blueLight.finishedDot, LIGHT_PALETTE.finishedDot);
+
+    const blueDark = getPalette('dark', {
+      accentColor: '#005A9C',
+      accentDarkColor: null,
+    });
+    assert.notEqual(blueDark.accentPrimary, DARK_PALETTE.accentPrimary);
+    assert.notEqual(blueDark.accentPrimary, '#005a9c');
+
+    // Bright yellow accent picks dark ink for WCAG legibility
+    const yellowLight = deriveBrandedPalette('light', {
+      accentColor: '#FACC15',
+      accentDarkColor: null,
+    });
+    assert.equal(yellowLight.inkOnAccent, '#0b1510');
+
+    // Document title formatting (stock vs branded)
+    assert.equal(
+      formatWebDocumentTitle('de', null),
+      getTranslations('de').app.documentTitle,
+    );
+    assert.equal(
+      formatWebDocumentTitle('de', {
+        appName: 'Unseal',
+        subtitleDe: null,
+        subtitleEn: null,
+      }),
+      getTranslations('de').app.documentTitle,
+    );
+    assert.equal(
+      formatWebDocumentTitle('de', {
+        appName: 'Entsiegelung Musterstadt',
+        subtitleDe: 'Bürgerbeteiligung der Stadt Musterstadt',
+        subtitleEn: 'Musterstadt Civic Map',
+      }),
+      'Entsiegelung Musterstadt - Bürgerbeteiligung der Stadt Musterstadt',
+    );
+    assert.equal(
+      formatWebDocumentTitle('en', {
+        appName: 'Entsiegelung Musterstadt',
+        subtitleDe: 'Bürgerbeteiligung der Stadt Musterstadt',
+        subtitleEn: 'Musterstadt Civic Map',
+      }),
+      'Entsiegelung Musterstadt - Musterstadt Civic Map',
+    );
+
+    // Web document sync sets & clears --accent-primary / --text-on-accent CSS custom properties
+    const cssProps = new Map<string, string>();
+    const fakeDoc = {
+      title: '',
+      documentElement: {
+        lang: '',
+        dataset: {} as Record<string, string>,
+        style: {
+          setProperty: (name: string, value: string) => {
+            cssProps.set(name, value);
+          },
+          removeProperty: (name: string) => {
+            cssProps.delete(name);
+          },
+        },
+      },
+      querySelector: () => null,
+    };
+    const prevDoc = (globalThis as { document?: unknown }).document;
+    (globalThis as { document?: unknown }).document = fakeDoc;
+    try {
+      syncWebDocumentLocale('de', {
+        appName: 'Entsiegelung Musterstadt',
+        subtitleDe: 'Stadtkarte',
+        subtitleEn: null,
+      });
+      assert.equal(fakeDoc.title, 'Entsiegelung Musterstadt - Stadtkarte');
+      assert.equal(fakeDoc.documentElement.lang, 'de');
+
+      syncWebDocumentTheme('light', blueLight);
+      assert.equal(fakeDoc.documentElement.dataset['theme'], 'light');
+      assert.equal(cssProps.get('--accent-primary'), '#005a9c');
+      assert.equal(cssProps.get('--text-on-accent'), '#ffffff');
+
+      // Stock palette removes inline CSS overrides so stylesheet theme defaults apply
+      syncWebDocumentTheme('dark', DARK_PALETTE);
+      assert.equal(fakeDoc.documentElement.dataset['theme'], 'dark');
+      assert.equal(cssProps.has('--accent-primary'), false);
+      assert.equal(cssProps.has('--text-on-accent'), false);
+    } finally {
+      if (prevDoc === undefined) {
+        delete (globalThis as { document?: unknown }).document;
+      } else {
+        (globalThis as { document?: unknown }).document = prevDoc;
+      }
+    }
+
+    // PpgisApiClient resolves relative branding.logoUrl against API baseUrl
+    const brandedFetch: FetchLike = async () =>
+      new Response(
+        JSON.stringify({
+          ...SAMPLE_CONFIG,
+          branding: {
+            appName: 'Entsiegelung Musterstadt',
+            subtitleDe: null,
+            subtitleEn: null,
+            logoUrl: '/api/v1/branding/logo?v=abc123def456',
+            accentColor: '#005a9c',
+            accentDarkColor: null,
+            introEnabled: false,
+            portalUrl: 'https://www.musterstadt.de',
+            portalLabel: 'Stadtportal',
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    const client = new PpgisApiClient(
+      'https://map.musterstadt.de',
+      createMemorySessionStorage(),
+      brandedFetch,
+    );
+    const loaded = await client.getConfig();
+    assert.equal(
+      loaded.branding?.logoUrl,
+      'https://map.musterstadt.de/api/v1/branding/logo?v=abc123def456',
+    );
+    assert.equal(loaded.branding?.introEnabled, false);
   });
 });

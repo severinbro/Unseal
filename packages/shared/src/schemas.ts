@@ -320,6 +320,64 @@ const OrthophotoConfigSchema = z.object({
   maxZoom: z.number().int().min(0).max(24),
 });
 
+export const HexColorSchema = z
+  .string()
+  .regex(/^#[0-9a-f]{6}$/i, 'Color must be a 6-digit hex value (e.g. #176642).');
+
+function isSafeHttpOrRelativeUrl(raw: string): boolean {
+  if (raw.startsWith('/') && !raw.startsWith('//')) {
+    return true;
+  }
+  try {
+    const parsed = new URL(raw);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
+function isSafeHttpUrl(raw: string): boolean {
+  try {
+    const parsed = new URL(raw);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
+export const BrandingConfigSchema = z.object({
+  appName: z.string().trim().min(1).max(80).default('Unseal'),
+  subtitleDe: z.string().trim().min(1).max(160).nullable().optional().default(null),
+  subtitleEn: z.string().trim().min(1).max(160).nullable().optional().default(null),
+  logoUrl: z
+    .string()
+    .trim()
+    .min(1)
+    .max(2048)
+    .refine(isSafeHttpOrRelativeUrl, {
+      message: 'Branding logoUrl must be an http(s) URL or a relative path starting with "/".',
+    })
+    .nullable()
+    .optional()
+    .default(null),
+  accentColor: HexColorSchema.nullable().optional().default(null),
+  accentDarkColor: HexColorSchema.nullable().optional().default(null),
+  introEnabled: z.boolean().optional().default(true),
+  portalUrl: z
+    .string()
+    .trim()
+    .max(2048)
+    .refine(isSafeHttpUrl, {
+      message: 'Branding portalUrl must be a valid http(s) URL.',
+    })
+    .nullable()
+    .optional()
+    .default(null),
+  portalLabel: z.string().trim().min(1).max(80).nullable().optional().default(null),
+});
+
+export type BrandingConfig = z.output<typeof BrandingConfigSchema>;
+
 export const RuntimeConfigSchema = z.object({
   osmStyleUrl: z.string().url(),
   osmDarkStyleUrl: z.string().url().optional(),
@@ -356,6 +414,7 @@ export const RuntimeConfigSchema = z.object({
     .optional()
     .default(null),
   authCaptchaRequired: z.boolean().optional().default(false),
+  branding: BrandingConfigSchema.optional(),
 });
 
 export type RuntimeConfig = z.output<typeof RuntimeConfigSchema>;
