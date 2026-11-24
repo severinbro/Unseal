@@ -1,9 +1,22 @@
 {
 	email {$ACME_EMAIL}
+
+	# GDPR IP minimization (default logger): besides access logs, Caddy writes
+	# per-request entries carrying client IP, User-Agent, Referer and the full URI
+	# (incl. query string) to its default log. Drop those namespaces entirely:
+	#   http.log.error               handler errors >= 500 (e.g. 502 while `api` restarts)
+	#   http.handlers.reverse_proxy  "aborting with incomplete response" (client
+	#                                disconnects mid-download), "reading from backend"
+	#   http.stdlib                  recovered panics ("http: panic serving <ip:port>")
+	# Startup, TLS/ACME and config messages are unaffected. Upstream failures stay
+	# visible via `docker compose ps` and the `api` container log.
+	log {
+		exclude http.log.error http.handlers.reverse_proxy http.stdlib
+	}
 }
 
 {$DOMAIN} {
-	# GDPR IP minimization: discard per-request client IP access logs
+	# GDPR IP minimization (access log): discard per-request client IP access logs
 	log {
 		output discard
 	}
