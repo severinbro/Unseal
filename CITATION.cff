@@ -11,8 +11,8 @@ repository-code: "https://github.com/severinbro/Unseal"
 # Split per-component licensing (AGPL-3.0-or-later server/root, MPL-2.0 client/shared).
 # No `license` list here: CFF 1.2.0 reads multiple entries as OR (dual licensing).
 license-url: "https://github.com/severinbro/Unseal/blob/main/LICENSING.md"
-version: "0.1.0"
-date-released: "2026-11-16"
+version: "1.0.1"
+date-released: "2026-11-24"
 keywords:
   - TypeScript
   - PostGIS
