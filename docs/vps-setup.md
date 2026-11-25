@@ -214,7 +214,7 @@ WEBHOOK_TIMEOUT_MS=5000
 WEBHOOK_ALLOW_PRIVATE_NETWORKS=false
 ```
 
-- **Zero-PII payload:** Webhook bodies contain exclusively public polygon fields (`id`, `geometry`, `surfaceType`, `note`, `status`, `origin`, `areaM2`, `municipality`, `votes`, `createdAt`, `updatedAt`, or `{ id, deletedByAdmin, deletedAt }` for `polygon.deleted`) — **no** user pseudonyms, email addresses, user IDs, or IP addresses.
+- **Zero-PII payload:** Webhook bodies contain exclusively public polygon fields (`id`, `geometry`, `surfaceType`, `note`, `status`, `origin`, `areaM2`, `municipality`, `votes`, `createdAt`, `updatedAt`, or `{ id, deletedByAdmin, deletedAt }` for `polygon.deleted`) - **no** user pseudonyms, email addresses, user IDs, or IP addresses.
 - **Signature verification:** When `WEBHOOK_SECRET` is configured, each `POST` includes `X-OpenUnseal-Timestamp` (Unix seconds), `X-OpenUnseal-Event`, `X-OpenUnseal-Delivery` (UUID), and `X-OpenUnseal-Signature-256: sha256=<hex>`, computed as `HMAC-SHA256(WEBHOOK_SECRET, "${timestamp}.${rawBody}")`.
 - **Non-blocking delivery:** Deliveries run asynchronously with a single retry on network/5xx failure so API mutations never fail or slow down if a downstream system is offline.
 

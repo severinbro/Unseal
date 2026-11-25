@@ -766,7 +766,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       exportFull: 'GeoJSON-Export',
       exportErrorFallback: 'GeoJSON-Export konnte nicht geöffnet werden.',
       importA11y:
-        'Polygone aus GeoJSON oder GeoPackage importieren (Admin; Veröffentlichung im ODbL-1.0-Export – nur kompatible offene Lizenzen)',
+        'Polygone aus GeoJSON oder GeoPackage importieren (Admin; Veröffentlichung im ODbL-1.0-Export - nur kompatible offene Lizenzen)',
       importCompact: 'Import',
       importFull: 'Import (.geojson/.gpkg)',
       importingBusy: 'Import…',
@@ -854,14 +854,14 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       crossingError: (lng, lat, undoLabel) =>
         `Kanten kreuzen sich nahe [${lng}, ${lat}]. Tippe auf „${undoLabel}“, um die Überschneidung aufzulösen.`,
       nearBoundNotice:
-        'Geschätzte Fläche liegt nahe an der Grenze (2–20.000 m²); beim Einreichen wird die exakte PostGIS-Ellipsoidfläche geprüft.',
+        'Geschätzte Fläche liegt nahe an der Grenze (2-20.000 m²); beim Einreichen wird die exakte PostGIS-Ellipsoidfläche geprüft.',
       surfaceSectionTitle: 'Versiegelungsmaterial',
       noteSectionTitle: 'Standorthinweis (optional)',
       noteInputA11y: 'Optionaler Standorthinweis',
       notePlaceholder:
         'Ungenutzte Parkecke, Hitzeinsel oder Versickerungspotenzial (keine Klarnamen oder Kontaktdaten)',
       notePublicHint:
-        'Wird öffentlich veröffentlicht (eigener Rechtsverzicht CC0 1.0 · Gesamtexport ODbL 1.0) – bitte keine personenbezogenen Daten eintragen.',
+        'Wird öffentlich veröffentlicht (eigener Rechtsverzicht CC0 1.0 · Gesamtexport ODbL 1.0) - bitte keine personenbezogenen Daten eintragen.',
       discardConfirmTitle:
         'Noch nicht eingereichten Flächenentwurf verwerfen?',
       keepEditingA11y: 'Flächenentwurf weiter bearbeiten',
@@ -1038,9 +1038,9 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       selfVoteDisabledHint:
         'Eigene Vorschläge können nicht selbst bewertet werden.',
       votingClosedInProgressHint:
-        'Abstimmung geschlossen – diese Fläche wird bereits entsiegelt.',
+        'Abstimmung geschlossen - diese Fläche wird bereits entsiegelt.',
       votingClosedFinishedHint:
-        'Abstimmung geschlossen – diese Fläche wurde bereits entsiegelt.',
+        'Abstimmung geschlossen - diese Fläche wurde bereits entsiegelt.',
       commentsClosedFinishedHint:
         'Kommentare sind für bereits entsiegelte Flächen geschlossen.',
       commentLicenseNotice:
@@ -1093,7 +1093,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       sessionExpired:
         'Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.',
       registerHint:
-        'Wähle ein öffentliches Pseudonym (3–32 Zeichen) und gib deine E-Mail-Adresse ein. Du erhältst einen Bestätigungslink per E-Mail; deine E-Mail wird niemals öffentlich angezeigt.',
+        'Wähle ein öffentliches Pseudonym (3-32 Zeichen) und gib deine E-Mail-Adresse ein. Du erhältst einen Bestätigungslink per E-Mail; deine E-Mail wird niemals öffentlich angezeigt.',
       publicPseudonymLabel: 'Öffentliches Pseudonym',
       pseudonymLabel: 'Pseudonym',
       pseudonymA11y: 'Pseudonym',
@@ -1161,7 +1161,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       loggingOut: 'Abmeldung läuft…',
       logout: 'Abmelden',
       deleteAccountWarning:
-        'Das Löschen deines Kontos entfernt dauerhaft deine E-Mail-Adresse, Zugangsdaten, Sitzungen, Stimmen und gesendeten Direktnachrichten (Art. 17 DSGVO) und reserviert dein Pseudonym zeitlich begrenzt gegen Nachahmung. Deine Flächenvorschläge, Fotos und Kommentare bleiben anonym unter „gelöscht“ sichtbar – außer du wählst unten, dass sie mitgelöscht werden.',
+        'Das Löschen deines Kontos entfernt dauerhaft deine E-Mail-Adresse, Zugangsdaten, Sitzungen, Stimmen und gesendeten Direktnachrichten (Art. 17 DSGVO) und reserviert dein Pseudonym zeitlich begrenzt gegen Nachahmung. Deine Flächenvorschläge, Fotos und Kommentare bleiben anonym unter „gelöscht“ sichtbar - außer du wählst unten, dass sie mitgelöscht werden.',
       purgeContentLabel:
         'Auch alle meine Flächenvorschläge, Fotos und Kommentare endgültig löschen (Antworten anderer auf meine Kommentare werden dabei mitgelöscht).',
       purgeContentA11y: 'Auch alle eigenen Beiträge löschen',
@@ -1173,7 +1173,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       deleteAccountA11y: 'Konto löschen',
       deleteAccount: 'Konto löschen',
       invalidPseudonym:
-        'Das Pseudonym muss 3–32 Zeichen lang sein (Buchstaben, Ziffern, Unterstrich _ oder Bindestrich -).',
+        'Das Pseudonym muss 3-32 Zeichen lang sein (Buchstaben, Ziffern, Unterstrich _ oder Bindestrich -).',
       invalidEmail: 'Bitte gib eine gültige E-Mail-Adresse ein.',
       privacyConsentRequired:
         'Bitte bestätige, dass du die Datenschutzerklärung gelesen hast, und akzeptiere die Nutzungsbedingungen.',
@@ -1315,7 +1315,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       modalA11y: 'Rechtsverstoß oder Datenschutzproblem melden (Art. 16 DSA)',
       title: 'Rechtsverstoß / Datenschutz melden',
       subtitle:
-        'Meldeverfahren nach Art. 16 Digital Services Act (DSA) — auch ohne Benutzerkonto nutzbar.',
+        'Meldeverfahren nach Art. 16 Digital Services Act (DSA) - auch ohne Benutzerkonto nutzbar.',
       closeA11y: 'Meldedialog schließen',
       close: 'Schließen',
       targetLabel: (targetType, targetId) => {
@@ -1378,7 +1378,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       androidPwaSteps: [
         'Öffne OpenUnseal in Chrome (oder einem anderen Chromium-Browser wie Edge oder Brave).',
         'Tippe oben rechts auf das Menü (⋮) und wähle „Zum Startbildschirm hinzufügen“ bzw. „App installieren“.',
-        'Bestätige mit „Installieren“ — danach startet OpenUnseal im Vollbild wie eine eigene App.',
+        'Bestätige mit „Installieren“ - danach startet OpenUnseal im Vollbild wie eine eigene App.',
       ],
       iosPwaTitle: 'iOS (iPhone / iPad): Browser-App (PWA) installieren',
       iosPwaSteps: [
@@ -1440,7 +1440,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       personalEngagementTitle: 'Beteiligung an der Prüfung',
       personalRatedPolygonsLabel: 'Bewertete Flächen',
       personalPrivacyNote:
-        'Nur für dich sichtbar — direkt aus deinen aktuell vorhandenen Flächen und Flächenbewertungen berechnet, ohne zusätzliches Tracking.',
+        'Nur für dich sichtbar - direkt aus deinen aktuell vorhandenen Flächen und Flächenbewertungen berechnet, ohne zusätzliches Tracking.',
     },
     intro: {
       overlayA11y: 'OpenUnseal Startanimation',
@@ -1468,7 +1468,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       licenseLabel: 'Quell-Datenlizenz',
       licenseLabels: {
         'CC0-1.0': 'CC0-1.0 (Eigene Erhebung / Gemeinfrei)',
-        'dl-de/zero-2-0': 'dl-de/zero-2-0 (Datenlizenz DE – Zero 2.0)',
+        'dl-de/zero-2-0': 'dl-de/zero-2-0 (Datenlizenz DE - Zero 2.0)',
         'PDDL-1.0': 'PDDL-1.0 (Public Domain Dedication)',
         'Public Domain': 'Public Domain (Amtliches Werk / gemeinfrei)',
         'ODbL-1.0': 'ODbL-1.0 (mit Quellenangabe)',
@@ -1571,7 +1571,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       exportFull: 'Export GeoJSON',
       exportErrorFallback: 'Unable to open GeoJSON export URL.',
       importA11y:
-        'Import polygons from GeoJSON or GeoPackage (Admin; published in ODbL-1.0 export — compatible open licenses only)',
+        'Import polygons from GeoJSON or GeoPackage (Admin; published in ODbL-1.0 export - compatible open licenses only)',
       importCompact: 'Import',
       importFull: 'Import (.geojson/.gpkg)',
       importingBusy: 'Importing…',
@@ -1655,14 +1655,14 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       crossingError: (lng, lat, undoLabel) =>
         `Edges cross near [${lng}, ${lat}]. Tap “${undoLabel}” to uncross the boundary.`,
       nearBoundNotice:
-        'Estimated area is close to the allowed range (2–20,000 m²); exact PostGIS ellipsoid area is verified on submit.',
+        'Estimated area is close to the allowed range (2-20,000 m²); exact PostGIS ellipsoid area is verified on submit.',
       surfaceSectionTitle: 'Sealed Surface Material',
       noteSectionTitle: 'Site Context (Optional)',
       noteInputA11y: 'Optional site context note',
       notePlaceholder:
         'Unused paved corner, heat island, or drainage potential (no personal names or contact data)',
       notePublicHint:
-        'Published openly (CC0 1.0 waiver on own input · ODbL 1.0 dataset export) – please do not enter any personal data.',
+        'Published openly (CC0 1.0 waiver on own input · ODbL 1.0 dataset export) - please do not enter any personal data.',
       discardConfirmTitle: 'Discard your unsubmitted polygon draft?',
       keepEditingA11y: 'Keep editing polygon draft',
       keepEditing: 'Keep Editing',
@@ -1824,9 +1824,9 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       flagErrorFallback: 'Unable to update review flag.',
       selfVoteDisabledHint: 'You cannot vote on your own proposal.',
       votingClosedInProgressHint:
-        'Voting closed — unsealing is already in progress for this area.',
+        'Voting closed - unsealing is already in progress for this area.',
       votingClosedFinishedHint:
-        'Voting closed — this area has already been unsealed.',
+        'Voting closed - this area has already been unsealed.',
       commentsClosedFinishedHint:
         'Comments are closed for finished areas.',
       commentLicenseNotice:
@@ -1877,7 +1877,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         'Your vote will be submitted automatically once you sign in.',
       sessionExpired: 'Your session expired. Please sign in to continue.',
       registerHint:
-        'Choose a public pseudonym (3–32 characters) and enter your email address. We will send you a confirmation link; your email is never shown publicly.',
+        'Choose a public pseudonym (3-32 characters) and enter your email address. We will send you a confirmation link; your email is never shown publicly.',
       publicPseudonymLabel: 'Public Pseudonym',
       pseudonymLabel: 'Pseudonym',
       pseudonymA11y: 'Pseudonym',
@@ -1944,7 +1944,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       loggingOut: 'Signing Out…',
       logout: 'Log Out',
       deleteAccountWarning:
-        'Deleting your account permanently erases your email address, credentials, sessions, votes and the direct messages you sent (GDPR Art. 17) and reserves your pseudonym for a limited time to prevent impersonation. Your proposals, photos and comments stay public anonymised as “deleted” – unless you choose below to delete them too.',
+        'Deleting your account permanently erases your email address, credentials, sessions, votes and the direct messages you sent (GDPR Art. 17) and reserves your pseudonym for a limited time to prevent impersonation. Your proposals, photos and comments stay public anonymised as “deleted” - unless you choose below to delete them too.',
       purgeContentLabel:
         'Also permanently delete all my proposals, photos and comments (replies by others to my comments are removed as well).',
       purgeContentA11y: 'Also delete all my contributions',
@@ -1956,7 +1956,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       deleteAccountA11y: 'Delete account',
       deleteAccount: 'Delete Account',
       invalidPseudonym:
-        'Pseudonym must be 3–32 characters using letters, digits, underscores (_), or hyphens (-).',
+        'Pseudonym must be 3-32 characters using letters, digits, underscores (_), or hyphens (-).',
       invalidEmail: 'Please enter a valid email address.',
       privacyConsentRequired:
         'Please confirm that you have read the Privacy Policy and accept the Terms of Use.',
@@ -2013,7 +2013,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       closeA11y: 'Close About dialog',
       close: 'Close',
       introBody:
-        'Non-binding public unsealing suggestions — regardless of property ownership.',
+        'Non-binding public unsealing suggestions - regardless of property ownership.',
       featuresTitle: 'Key Features',
       featureMapBullet:
         'Map & document: Outline sites in 2 steps, pick surface material, attach on-site photos (EXIF stripped, “GPS verified” within 3 m), and comment.',
@@ -2094,7 +2094,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       modalA11y: 'Report illegal content or privacy issue (Art. 16 DSA)',
       title: 'Report Illegal Content / Privacy',
       subtitle:
-        'Notice-and-action procedure pursuant to Art. 16 EU Digital Services Act (DSA) — available without an account.',
+        'Notice-and-action procedure pursuant to Art. 16 EU Digital Services Act (DSA) - available without an account.',
       closeA11y: 'Close content report dialog',
       close: 'Close',
       targetLabel: (targetType, targetId) => {
@@ -2157,7 +2157,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       androidPwaSteps: [
         'Open OpenUnseal in Chrome (or a Chromium-based browser such as Edge or Brave).',
         'Tap the menu (⋮) in the top-right corner and select “Add to Home screen” or “Install app”.',
-        'Confirm with “Install” — OpenUnseal will launch full-screen from your home screen.',
+        'Confirm with “Install” - OpenUnseal will launch full-screen from your home screen.',
       ],
       iosPwaTitle: 'iOS (iPhone / iPad): Install Browser App (PWA)',
       iosPwaSteps: [
@@ -2219,7 +2219,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       personalEngagementTitle: 'Review Participation',
       personalRatedPolygonsLabel: 'Polygons rated',
       personalPrivacyNote:
-        'Visible only to you — computed on the fly from your currently existing polygons and polygon ratings, with no extra tracking.',
+        'Visible only to you - computed on the fly from your currently existing polygons and polygon ratings, with no extra tracking.',
     },
     intro: {
       overlayA11y: 'OpenUnseal opening animation',
@@ -2247,7 +2247,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       licenseLabel: 'Source data license',
       licenseLabels: {
         'CC0-1.0': 'CC0-1.0 (Own survey / public domain dedication)',
-        'dl-de/zero-2-0': 'dl-de/zero-2-0 (Data Licence Germany – Zero 2.0)',
+        'dl-de/zero-2-0': 'dl-de/zero-2-0 (Data Licence Germany - Zero 2.0)',
         'PDDL-1.0': 'PDDL-1.0 (Public Domain Dedication)',
         'Public Domain': 'Public Domain',
         'ODbL-1.0': 'ODbL-1.0 (with source attribution)',
@@ -2546,7 +2546,7 @@ const GERMAN_API_ERROR_MESSAGES: Readonly<Record<ErrorCode, string>> = {
   GEOMETRY_NOT_COMPACT:
     'Die Polygonform ist zu dünn oder ausgefranst. Bitte eine zusammenhängende Fläche einzeichnen.',
   AREA_OUT_OF_BOUNDS:
-    'Die Polygonfläche liegt außerhalb des zulässigen Bereichs (2–20.000 m²).',
+    'Die Polygonfläche liegt außerhalb des zulässigen Bereichs (2-20.000 m²).',
   POLYGON_OVERLAP:
     'Dieser Vorschlag überlappt zu stark mit einer bereits eingetragenen Fläche.',
   SPATIAL_CLUSTER_LIMIT:

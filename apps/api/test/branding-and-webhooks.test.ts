@@ -335,7 +335,7 @@ describe('Municipal white-label branding & outbound webhooks (Option 2 Phase 1)'
         stockImp.headers['content-security-policy'],
         "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
       );
-      assert.match(stockImp.body, /<title>Impressum – OpenUnseal<\/title>/);
+      assert.match(stockImp.body, /<title>Impressum - OpenUnseal<\/title>/);
     } finally {
       await stockApp.close();
     }
@@ -366,7 +366,7 @@ describe('Municipal white-label branding & outbound webhooks (Option 2 Phase 1)'
       );
       assert.match(
         impRes.body,
-        /<title>Impressum – Entsiegelung Musterstadt<\/title>/,
+        /<title>Impressum - Entsiegelung Musterstadt<\/title>/,
       );
       assert.match(impRes.body, /#005a9c/);
       assert.match(
@@ -445,7 +445,7 @@ describe('Municipal white-label branding & outbound webhooks (Option 2 Phase 1)'
       purpose: 'verify_email',
       actionUrl: 'https://openunseal.example.org/auth/verify-email?token=abc',
     });
-    assert.match(defaultAuthMail.subject, /^OpenUnseal – /);
+    assert.match(defaultAuthMail.subject, /^OpenUnseal - /);
     assert.match(defaultAuthMail.html, /color:#176642/);
 
     const brandOpts = {
@@ -461,7 +461,7 @@ describe('Municipal white-label branding & outbound webhooks (Option 2 Phase 1)'
       },
       brandOpts,
     );
-    assert.match(brandedAuthMail.subject, /^Entsiegelung Musterstadt – /);
+    assert.match(brandedAuthMail.subject, /^Entsiegelung Musterstadt - /);
     assert.match(brandedAuthMail.text, /Entsiegelung Musterstadt/);
     assert.match(brandedAuthMail.html, /color:#005a9c/);
     assert.match(brandedAuthMail.html, /background:#005a9c/);
@@ -514,7 +514,7 @@ describe('Municipal white-label branding & outbound webhooks (Option 2 Phase 1)'
       },
       brandOpts,
     );
-    assert.match(brandedReceipt.subject, /^Entsiegelung Musterstadt – /);
+    assert.match(brandedReceipt.subject, /^Entsiegelung Musterstadt - /);
     assert.match(brandedReceipt.html, /color:#005a9c/);
 
     const brandedMod = renderModerationReasonEmailMessage(
@@ -532,7 +532,7 @@ describe('Municipal white-label branding & outbound webhooks (Option 2 Phase 1)'
       },
       brandOpts,
     );
-    assert.match(brandedMod.subject, /^Entsiegelung Musterstadt – /);
+    assert.match(brandedMod.subject, /^Entsiegelung Musterstadt - /);
     assert.match(brandedMod.html, /Entsiegelung Musterstadt-Instanz/);
     assert.match(brandedMod.html, /color:#005a9c/);
   });

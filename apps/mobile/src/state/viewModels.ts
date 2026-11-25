@@ -536,16 +536,23 @@ export interface NavbarLayoutMode {
   readonly constrainAccountChipWidth: boolean;
   readonly collapseThemeToMenu: boolean;
   readonly collapseLocaleToMenu: boolean;
+  readonly hideBrandTitle: boolean;
+  readonly hideCountBadge: boolean;
+  readonly iconOnlyAccount: boolean;
 }
 
 /**
  * Derives responsive single-row navbar rules for `MapControlsBar` + floating
- * map overlays across phone (<768 px), tablet (768–1099 px), and wide (>=1100 px).
+ * map overlays across phone (<768 px), tablet (768-1099 px), and wide (>=1100 px).
  *
  * The `?` info button stays in the top navbar on every viewport. The `DE | EN`
  * language switch sits beside it on all standard phones (>=360 px) and larger
  * screens, collapsing into the overflow menu only on ultra-narrow (<360 px)
  * devices; the theme toggle collapses into the overflow menu below 520 px.
+ *
+ * The map, feed and chat icons are in the navbar on every viewport. Where they
+ * do not fit beside everything else, the app name gives way first (the logo
+ * stays), then the account name (its icon stays), then the count badge.
  */
 export function deriveNavbarLayoutMode(
   tier: ViewportTier,
@@ -567,6 +574,9 @@ export function deriveNavbarLayoutMode(
       constrainAccountChipWidth: true,
       collapseThemeToMenu: !hasKnownWidth || viewportWidth < 520,
       collapseLocaleToMenu: hasKnownWidth && viewportWidth < 360,
+      hideBrandTitle: !hasKnownWidth || viewportWidth < 640,
+      hideCountBadge: !hasKnownWidth || viewportWidth < 390,
+      iconOnlyAccount: !hasKnownWidth || viewportWidth < 460,
     };
   }
 
@@ -579,6 +589,9 @@ export function deriveNavbarLayoutMode(
     constrainAccountChipWidth: hasKnownWidth && viewportWidth < 1100,
     collapseThemeToMenu: false,
     collapseLocaleToMenu: false,
+    hideBrandTitle: hasKnownWidth && viewportWidth < 1060,
+    hideCountBadge: false,
+    iconOnlyAccount: false,
   };
 }
 

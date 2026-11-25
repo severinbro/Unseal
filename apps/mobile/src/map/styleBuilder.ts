@@ -117,6 +117,25 @@ export const DARK_BASEMAP_PAINT_TUNING: Readonly<
   },
 };
 
+/** The same tuning on a live map instance (web). */
+export function applyDarkBasemapTuning(map: {
+  getLayer(id: string): unknown;
+  setPaintProperty(id: string, name: string, value: unknown): unknown;
+}): void {
+  for (const [layerId, paintProps] of Object.entries(DARK_BASEMAP_PAINT_TUNING)) {
+    if (!map.getLayer(layerId)) {
+      continue;
+    }
+    for (const [propName, propValue] of Object.entries(paintProps)) {
+      try {
+        map.setPaintProperty(layerId, propName, propValue);
+      } catch {
+        // Ignore non-matching third-party layer property types.
+      }
+    }
+  }
+}
+
 export function tuneOpenFreeMapDarkStyleLayers<
   T extends { layers: readonly { id: string; paint?: Record<string, unknown> }[] },
 >(style: T): T {
@@ -154,6 +173,8 @@ export const SPACE_ZONES_FILL_LAYER_ID = 'space-zones-fill';
 export const SPACE_ZONES_LINE_LAYER_ID = 'space-zones-outline';
 /** Orange and blue stay apart for the common forms of colour blindness. */
 export const SPACE_ZONE_COLORS = { private: '#d95f02', public: '#1f78b4' } as const;
+/** Shared with the legend, so its swatches match the map. */
+export const SPACE_ZONE_FILL_OPACITY = 0.3;
 
 export const MIN_POLYGON_OPACITY = 0;
 export const MAX_POLYGON_OPACITY = 1;
@@ -1161,7 +1182,7 @@ export function buildSpaceZoneLayerSpecs(): [
       id: SPACE_ZONES_FILL_LAYER_ID,
       type: 'fill',
       source: SPACE_ZONES_SOURCE_ID,
-      paint: { 'fill-color': color, 'fill-opacity': 0.3 },
+      paint: { 'fill-color': color, 'fill-opacity': SPACE_ZONE_FILL_OPACITY },
     },
     {
       id: SPACE_ZONES_LINE_LAYER_ID,

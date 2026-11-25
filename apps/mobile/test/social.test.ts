@@ -8,6 +8,7 @@ import {
   PolygonFeatureSchema,
   type ChatMessage,
   type PolygonFeature,
+  type PolygonFeedItem,
 } from '@openunseal/shared';
 
 import { getSocialCopy } from '../src/i18n/social';
@@ -81,13 +82,11 @@ describe('social client state', () => {
       {
         ...initialAppState,
         activeMainTab: 'feed',
-        spaceFilter: 'public',
         polygonFilter: 'finished',
       },
       { type: 'SHOW_POLYGON', feature: feature({ spaceType: 'private' }) },
     );
     assert.equal(state.activeMainTab, 'map');
-    assert.equal(state.spaceFilter, 'all');
     assert.equal(state.polygonFilter, 'all');
     assert.equal(state.selectedFeatureId, ID);
     assert.equal(state.cameraTarget?.seq, 1);
@@ -209,11 +208,10 @@ describe('social client state', () => {
     const keep = polygonMatchesFilters(shown.properties, 'finished', 'public', now);
     assert.equal(keep, true);
     const state = appReducer(
-      { ...initialAppState, spaceFilter: 'public', polygonFilter: 'finished' },
+      { ...initialAppState, polygonFilter: 'finished' },
       { type: 'SHOW_POLYGON', feature: shown, keepFilters: keep },
     );
     assert.equal(state.polygonFilter, 'finished');
-    assert.equal(state.spaceFilter, 'public');
     assert.equal(state.selectedFeatureId, ID);
 
     const p = shown.properties;
@@ -289,6 +287,61 @@ describe('social client state', () => {
       access({ status: 'finished', spaceVerification: 'user_override' }),
       'open',
     );
+  });
+
+  it('announces new feed entries and adds them without losing the list', async () => {
+    const { findNewEntries, mergeFreshPage, refreshKnownEntries } = await import(
+      '../src/state/feedScope'
+    );
+    const at = (minute: number): string =>
+      new Date(Date.parse('2026-11-20T10:00:00.000Z') + minute * 60_000).toISOString();
+    const entry = (n: number, minute: number, upvotes = 0): PolygonFeedItem => {
+      const id = `22222222-2222-4222-8222-${String(n).padStart(12, '0')}`;
+      return {
+        feature: { ...feature({ id, upvotes }), id },
+        activity: 'created',
+        activityAt: at(minute),
+        photos: [],
+        topComment: null,
+      };
+    };
+    const ids = (list: readonly PolygonFeedItem[]): number[] =>
+      list.map((item) => Number(item.feature.id.slice(-12)));
+    const list = [entry(4, 40), entry(3, 30), entry(2, 20), entry(1, 10)];
+
+    // Nothing new: only the votes of known entries are brought up to date.
+    const same = [entry(4, 40, 7), entry(3, 30)];
+    assert.deepEqual(findNewEntries(list, same), []);
+    const refreshed = refreshKnownEntries(list, same);
+    assert.deepEqual(ids(refreshed), [4, 3, 2, 1]);
+    assert.equal(refreshed[0]!.feature.properties.upvotes, 7);
+
+    // A new area and a status change of a known one are both new entries.
+    const fresh = [entry(5, 60), entry(2, 50), entry(4, 40)];
+    assert.deepEqual(ids(findNewEntries(list, fresh)), [5, 2]);
+    // They are announced, not inserted.
+    assert.deepEqual(ids(refreshKnownEntries(list, fresh)), [4, 3, 2, 1]);
+    const merged = mergeFreshPage(list, 'older', { items: fresh, nextCursor: 'c' });
+    assert.deepEqual(ids(merged.items), [5, 2, 4, 3, 1]);
+    assert.equal(merged.cursor, 'older');
+
+    // An older entry that moves up into the page because one was removed is not new.
+    const afterRemoval = [entry(4, 40), entry(2, 20), entry(0, 5)];
+    assert.deepEqual(findNewEntries([entry(4, 40), entry(3, 30), entry(2, 20)], afterRemoval), []);
+    // The removed entry disappears with the next merge.
+    const cleaned = mergeFreshPage(list, 'older', {
+      items: [entry(5, 60), entry(4, 40), entry(2, 20)],
+      nextCursor: 'c',
+    });
+    assert.deepEqual(ids(cleaned.items), [5, 4, 2, 1]);
+
+    // More new entries than a page holds: no gap, the list starts over.
+    const far = mergeFreshPage(list, 'older', {
+      items: [entry(9, 90), entry(8, 80)],
+      nextCursor: 'c2',
+    });
+    assert.deepEqual(ids(far.items), [9, 8]);
+    assert.equal(far.cursor, 'c2');
   });
 
   it('marks where the unread messages of a conversation start', async () => {

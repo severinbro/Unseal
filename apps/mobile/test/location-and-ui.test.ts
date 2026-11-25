@@ -1533,7 +1533,7 @@ describe('German default localization and DE <-> EN switching', () => {
     assert.ok(de.intro.tagline.length > 0 && en.intro.tagline.length > 0);
     assert.ok(de.intro.skipButton.length > 0 && en.intro.skipButton.length > 0);
 
-    // Single-row navbar + floating map overlays across phone (<768 px), tablet (768–1099 px), and wide (>=1100 px)
+    // Single-row navbar + floating map overlays across phone (<768 px), tablet (768-1099 px), and wide (>=1100 px)
     const phoneNav = deriveNavbarLayoutMode('compact', 390);
     assert.equal(phoneNav.isCompact, true);
     assert.equal(phoneNav.isSingleHeaderRow, true);
@@ -2080,7 +2080,17 @@ describe('Responsive layout edge cases (narrow phones & short landscape)', () =>
     assert.equal(compactLandscape.collapseLocaleToMenu, false);
     assert.equal(compactLandscape.isSingleHeaderRow, true);
 
+    // The navigation icons are always there; on phones the app name, the
+    // account name and the count badge give way to them in this order.
+    assert.equal(compactLandscape.hideBrandTitle, false);
+    assert.equal(phone390.hideBrandTitle, true);
+    assert.equal(phone390.iconOnlyAccount, true);
+    assert.equal(phone390.hideCountBadge, false);
+    assert.equal(phone360.hideCountBadge, true);
+
     const tablet = deriveNavbarLayoutMode('medium', 768);
+    assert.equal(tablet.hideBrandTitle, true);
+    assert.equal(tablet.iconOnlyAccount, false);
     assert.equal(tablet.collapseThemeToMenu, false);
     assert.equal(tablet.collapseLocaleToMenu, false);
 

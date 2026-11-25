@@ -3,25 +3,56 @@
 
 import {
   FEED_LIMITS,
-  POLYGON_FILTERS,
   type BboxBounds,
   type PolygonFeature,
   type PolygonFeedItem,
   type PolygonFeedResponse,
   type PolygonFilter,
+  type RuntimeConfig,
   type SpaceFilter,
   type VoteResponse,
 } from '@openunseal/shared';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Text, View } from 'react-native';
+import { AppState, FlatList, Platform, Pressable, Text, View } from 'react-native';
 
 import { getSocialCopy } from '../i18n/social';
 import { localizeError, type Locale } from '../i18n/translations';
-import { computeFeedBbox, describeVoteAccess, type FeedScope } from '../state/feedScope';
+import {
+  computeFeedBbox,
+  describeVoteAccess,
+  findNewEntries,
+  mergeFreshPage,
+  refreshKnownEntries,
+  type FeedScope,
+} from '../state/feedScope';
+import { isForeground } from './DirectChatModal';
+import { FeedFilterBar } from './FeedFilterBar';
 import { FeedCardSkeleton, PolygonFeedCard } from './PolygonFeedCard';
 import type { InspectorTab } from './PolygonInspectorSheet';
 import { SocialButton, useSocialStyles } from './SocialUi';
-import { SpaceFilterRow } from './SpaceSections';
+
+/** How often an open feed looks for new entries. */
+const CHECK_INTERVAL_MS = 30_000;
+/** Scrolled less than this, the list counts as being at its top. */
+const TOP_TOLERANCE_PX = 8;
+
+/** Calls back when the page or app comes to the foreground. */
+function onForeground(callback: () => void): () => void {
+  if (Platform.OS === 'web') {
+    const doc = (
+      globalThis as {
+        document?: {
+          addEventListener(type: string, listener: () => void): void;
+          removeEventListener(type: string, listener: () => void): void;
+        };
+      }
+    ).document;
+    doc?.addEventListener('visibilitychange', callback);
+    return () => doc?.removeEventListener('visibilitychange', callback);
+  }
+  const subscription = AppState.addEventListener('change', callback);
+  return () => subscription.remove();
+}
 
 function applyVote(
   items: readonly PolygonFeedItem[],
@@ -57,12 +88,15 @@ export interface FeedLoadOptions {
 /**
  * Stays mounted while the map is shown so that the list, its scroll position
  * and the chosen area survive "show on map". It only loads while `active`.
+ *
+ * An open feed keeps itself up to date. New entries are announced at the top
+ * instead of being inserted, so nothing moves under the reader.
  */
 export function FeedView(props: {
   locale: Locale;
   active: boolean;
   filter: PolygonFilter;
-  spaceFilter: SpaceFilter;
+  mapConfig: RuntimeConfig;
   /** Changes whenever the signed-in account changes, to refetch viewer data. */
   viewerKey: string;
   /** The map's current section; only used when the feed is narrowed to it. */
@@ -74,24 +108,29 @@ export function FeedView(props: {
   /** A vote cast elsewhere (for example after signing in) to show on its card. */
   latestVote?: VoteResponse | null;
   onSetFilter: (filter: PolygonFilter) => void;
-  onSetSpaceFilter: (filter: SpaceFilter) => void;
   /** Opens the area on the map, on the given tab of its card. */
   onShowOnMap: (feature: PolygonFeature, tab: InspectorTab) => void;
 }): React.JSX.Element {
   const { styles } = useSocialStyles();
   const t = getSocialCopy(props.locale);
-  const { filter, spaceFilter, load, locale, viewerKey, active, onVote } = props;
+  const { filter, load, locale, viewerKey, active, onVote } = props;
+  const [spaceFilter, setSpaceFilter] = useState<SpaceFilter>('all');
   const [scope, setScope] = useState<FeedScope>({ kind: 'all' });
   const [items, setItems] = useState<PolygonFeedItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
+  /** A newer first page that waits for the reader to ask for it. */
+  const [pending, setPending] = useState<PolygonFeedResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [votingId, setVotingId] = useState<string | null>(null);
   // "2 hours ago" is computed against the time of the last load.
   const [nowMs, setNowMs] = useState(() => Date.now());
   const requestRef = useRef(0);
+  /** Known at once, unlike `loading`, which only holds after the next render. */
+  const busyRef = useRef(false);
   const loadedKeyRef = useRef<string | null>(null);
+  const listRef = useRef<FlatList<PolygonFeedItem>>(null);
+  const scrollOffsetRef = useRef(0);
 
   const nearBbox = useMemo(
     () => (props.mapBbox ? computeFeedBbox(props.mapBbox) : null),
@@ -104,6 +143,7 @@ export function FeedView(props: {
   const fetchPage = useCallback(
     async (from: string | null): Promise<void> => {
       const request = ++requestRef.current;
+      busyRef.current = true;
       setLoading(true);
       setError(null);
       try {
@@ -124,14 +164,17 @@ export function FeedView(props: {
           return [...base, ...page.items.filter((i) => !known.has(i.feature.id))];
         });
         setCursor(page.nextCursor);
+        if (from === null) {
+          setPending(null);
+        }
       } catch (err: unknown) {
         if (request === requestRef.current) {
           setError(localizeError(err, t.failed, locale));
         }
       } finally {
         if (request === requestRef.current) {
+          busyRef.current = false;
           setLoading(false);
-          setRefreshing(false);
         }
       }
     },
@@ -149,29 +192,110 @@ export function FeedView(props: {
     loadedKeyRef.current = queryKey;
     setItems([]);
     setCursor(null);
+    setPending(null);
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
     void fetchPage(null);
   }, [active, queryKey, fetchPage]);
+
+  const current = useRef({ items, cursor, queryKey });
+  current.current = { items, cursor, queryKey };
+
+  /** Looks for new entries; `insert` puts them in right away. */
+  const checkForNew = useCallback(
+    async (insert: boolean): Promise<void> => {
+      const before = current.current;
+      if (
+        !isForeground() ||
+        busyRef.current ||
+        loadedKeyRef.current !== before.queryKey
+      ) {
+        return;
+      }
+      if (before.items.length === 0) {
+        // Nothing on screen that could move, or the first load failed.
+        await fetchPage(null);
+        return;
+      }
+      const request = requestRef.current;
+      try {
+        const fresh = await load({
+          cursor: null,
+          filter,
+          spaceFilter,
+          bbox: scopeBbox,
+          ags: scopeAgs,
+        });
+        if (
+          request !== requestRef.current ||
+          current.current.queryKey !== before.queryKey
+        ) {
+          return;
+        }
+        setNowMs(Date.now());
+        const { items: shown, cursor: shownCursor } = current.current;
+        if (findNewEntries(shown, fresh.items).length === 0) {
+          setPending(null);
+          setItems(refreshKnownEntries(shown, fresh.items));
+        } else if (insert && scrollOffsetRef.current <= TOP_TOLERANCE_PX) {
+          const merged = mergeFreshPage(shown, shownCursor, fresh);
+          setPending(null);
+          setItems(merged.items);
+          setCursor(merged.cursor);
+        } else {
+          setPending(fresh);
+          setItems(refreshKnownEntries(shown, fresh.items));
+        }
+      } catch {
+        // Tried again at the next interval; what is on screen stays.
+      }
+    },
+    // scopeBbox is covered by queryKey, as above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [load, queryKey, fetchPage],
+  );
+
+  useEffect(() => {
+    if (!active) {
+      return;
+    }
+    // Coming back to a feed that is at its top shows what is new directly.
+    void checkForNew(true);
+    const timer = setInterval(() => void checkForNew(false), CHECK_INTERVAL_MS);
+    const unsubscribe = onForeground(() => void checkForNew(false));
+    return () => {
+      clearInterval(timer);
+      unsubscribe();
+    };
+  }, [active, checkForNew]);
+
+  const newEntries = useMemo(
+    () => (pending === null ? [] : findNewEntries(items, pending.items)),
+    [items, pending],
+  );
+
+  const showNewEntries = (): void => {
+    if (pending !== null) {
+      const merged = mergeFreshPage(items, cursor, pending);
+      setItems(merged.items);
+      setCursor(merged.cursor);
+      setPending(null);
+    }
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+  };
+
+  const recordVote = useCallback((result: VoteResponse): void => {
+    setItems((prev) => applyVote(prev, result));
+    setPending((prev) =>
+      prev === null ? null : { ...prev, items: applyVote(prev.items, result) },
+    );
+  }, []);
 
   const { latestVote } = props;
   useEffect(() => {
     if (latestVote) {
-      setItems((prev) => applyVote(prev, latestVote));
+      recordVote(latestVote);
     }
-  }, [latestVote]);
-
-  const refresh = (): void => {
-    // A nearby feed follows the map only on request, here.
-    if (
-      scope.kind === 'near' &&
-      nearBbox !== null &&
-      JSON.stringify(nearBbox) !== JSON.stringify(scope.bbox)
-    ) {
-      setScope({ kind: 'near', bbox: nearBbox });
-      return;
-    }
-    setRefreshing(true);
-    void fetchPage(null);
-  };
+  }, [latestVote, recordVote]);
 
   const vote = (feature: PolygonFeature, value: 1 | -1): void => {
     if (describeVoteAccess(feature.properties) !== 'open') {
@@ -183,22 +307,33 @@ export function FeedView(props: {
     onVote(feature, next)
       .then((result) => {
         if (result !== null) {
-          setItems((prev) => applyVote(prev, result));
+          recordVote(result);
         }
       })
       .catch((err: unknown) => setError(localizeError(err, t.failed, locale)))
       .finally(() => setVotingId(null));
   };
 
+  // A first page full of new entries may hide even more of them.
+  const newEntriesLabel = t.newEntries(
+    newEntries.length,
+    pending !== null &&
+      pending.nextCursor !== null &&
+      newEntries.length === pending.items.length,
+  );
+
   return (
     <View style={styles.fill} testID="feed-view">
       <FlatList
+        ref={listRef}
         data={items}
         keyExtractor={(item) => item.feature.id}
         contentContainerStyle={styles.feedContent}
         onEndReachedThreshold={0.6}
-        refreshing={refreshing}
-        onRefresh={refresh}
+        scrollEventThrottle={100}
+        onScroll={(event) => {
+          scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+        }}
         onEndReached={() => {
           if (cursor !== null && !loading && error === null) {
             void fetchPage(cursor);
@@ -206,63 +341,25 @@ export function FeedView(props: {
         }}
         ListHeaderComponent={
           <View style={styles.section}>
-            <View style={styles.spread}>
-              <Text style={[styles.hint, styles.grow]}>
-                {t.feedHint(FEED_LIMITS.MAX_AGE_DAYS)}
-              </Text>
-              <SocialButton
-                testID="feed-refresh"
-                label={t.refresh}
-                disabled={loading}
-                onPress={refresh}
-              />
-            </View>
-            <View style={styles.row} accessibilityLabel={t.scopeLabel}>
-              <SocialButton
-                testID="feed-scope-all"
-                label={t.scopeAll}
-                selected={scope.kind === 'all'}
-                onPress={() => setScope({ kind: 'all' })}
-              />
-              <SocialButton
-                testID="feed-scope-near"
-                label={t.scopeNear}
-                selected={scope.kind === 'near'}
-                disabled={nearBbox === null}
-                onPress={() => {
-                  if (nearBbox !== null) {
-                    setScope({ kind: 'near', bbox: nearBbox });
-                  }
-                }}
-              />
-              {scope.kind === 'municipality' ? (
-                <SocialButton
-                  testID="feed-scope-municipality"
-                  label={`${t.scopeMunicipality(scope.name)} ✕`}
-                  selected
-                  onPress={() => setScope({ kind: 'all' })}
-                />
-              ) : null}
-            </View>
+            <FeedFilterBar
+              locale={locale}
+              scope={scope}
+              filter={filter}
+              spaceFilter={spaceFilter}
+              canUseNear={nearBbox !== null}
+              caption={t.feedHint(FEED_LIMITS.MAX_AGE_DAYS)}
+              onScopeAll={() => setScope({ kind: 'all' })}
+              onScopeNear={() => {
+                if (nearBbox !== null) {
+                  setScope({ kind: 'near', bbox: nearBbox });
+                }
+              }}
+              onFilter={props.onSetFilter}
+              onSpaceFilter={setSpaceFilter}
+            />
             {scope.kind === 'near' ? (
               <Text style={styles.hint}>{t.scopeNearHint}</Text>
             ) : null}
-            <View style={styles.row}>
-              {POLYGON_FILTERS.map((value) => (
-                <SocialButton
-                  key={value}
-                  testID={`feed-filter-${value}`}
-                  label={t.filters[value]}
-                  selected={filter === value}
-                  onPress={() => props.onSetFilter(value)}
-                />
-              ))}
-            </View>
-            <SpaceFilterRow
-              locale={locale}
-              value={spaceFilter}
-              onChange={props.onSetSpaceFilter}
-            />
           </View>
         }
         ListFooterComponent={
@@ -293,6 +390,7 @@ export function FeedView(props: {
               item={item}
               locale={locale}
               nowMs={nowMs}
+              mapConfig={props.mapConfig}
               voteBusy={votingId === item.feature.id}
               canNarrowToMunicipality={scope.kind !== 'municipality'}
               resolveUploadUrl={props.resolveUploadUrl}
@@ -307,6 +405,23 @@ export function FeedView(props: {
           );
         }}
       />
+      <View
+        pointerEvents="box-none"
+        accessibilityLiveRegion="polite"
+        style={styles.newEntriesAnchor}
+      >
+        {newEntries.length > 0 ? (
+          <Pressable
+            testID="feed-new-entries"
+            accessibilityRole="button"
+            accessibilityLabel={`${newEntriesLabel}. ${t.newEntriesA11y}`}
+            onPress={showNewEntries}
+            style={styles.newEntriesPill}
+          >
+            <Text style={styles.newEntriesLabel}>↑ {newEntriesLabel}</Text>
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 }

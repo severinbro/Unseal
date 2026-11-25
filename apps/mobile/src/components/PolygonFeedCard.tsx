@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (C) 2026 OpenUnseal Contributors
 
-import type { PolygonFeedItem } from '@openunseal/shared';
+import type { PolygonFeedItem, RuntimeConfig } from '@openunseal/shared';
 import React, { useEffect, useMemo, useRef } from 'react';
 import {
   Animated,
@@ -16,6 +16,8 @@ import {
 
 import { getSocialCopy } from '../i18n/social';
 import { getTranslations, type Locale } from '../i18n/translations';
+import { MapPreview } from '../map/MapPreview';
+import { MAP_PREVIEW_HEIGHT } from '../map/MapPreview.types';
 import { formatRelativeTime } from '../state/feedScope';
 import { computeSilhouetteSegments } from '../state/silhouette';
 import { formatInspectorDate } from '../state/viewModels';
@@ -79,13 +81,14 @@ function Silhouette(props: {
 
 /**
  * An area as a feed entry. It is assembled from the same parts as the sheet
- * on the map (title, votes, note, contributor), in the same order, with the
- * photos and the top comment laid open instead of behind tabs.
+ * on the map (title, votes, note, contributor), in the same order, with its
+ * place on the map, the photos and the top comment laid open.
  */
 export function PolygonFeedCard(props: {
   item: PolygonFeedItem;
   locale: Locale;
   nowMs: number;
+  mapConfig: RuntimeConfig;
   voteBusy: boolean;
   /** Hides the "only this municipality" shortcut when it is already active. */
   canNarrowToMunicipality: boolean;
@@ -95,7 +98,7 @@ export function PolygonFeedCard(props: {
   onOnlyMunicipality: () => void;
 }): React.JSX.Element {
   const { item, locale } = props;
-  const { palette } = useTheme();
+  const { palette, isDark } = useTheme();
   const styles = useMemo(() => createPolygonCardStyles(palette), [palette]);
   const social = getSocialCopy(locale);
   const t = getTranslations(locale).inspector;
@@ -196,6 +199,29 @@ export function PolygonFeedCard(props: {
 
       <SpaceBadges locale={locale} feature={item.feature} />
 
+      <Pressable
+        testID={`feed-map-${item.feature.id}`}
+        accessibilityRole="button"
+        accessibilityLabel={social.mapPreviewA11y}
+        onPress={() => props.onShowOnMap('overview')}
+        style={({ pressed }) => [
+          local.mapBox,
+          { backgroundColor: palette.bgSubtle },
+          pressed ? local.pressed : null,
+        ]}
+      >
+        <MapPreview
+          geometry={item.feature.geometry}
+          color={tone}
+          dashed={p.spaceType === 'private'}
+          config={props.mapConfig}
+          colorScheme={isDark ? 'dark' : 'light'}
+          fallback={
+            <Silhouette ring={item.feature.geometry.coordinates[0] ?? []} color={tone} />
+          }
+        />
+      </Pressable>
+
       {photos.length > 0 ? (
         <ScrollView
           horizontal
@@ -224,11 +250,7 @@ export function PolygonFeedCard(props: {
             </View>
           ))}
         </ScrollView>
-      ) : (
-        <View style={[local.silhouetteBox, { backgroundColor: palette.bgSubtle }]}>
-          <Silhouette ring={item.feature.geometry.coordinates[0] ?? []} color={tone} />
-        </View>
-      )}
+      ) : null}
 
       {p.note && p.note.trim().length > 0 ? (
         <PolygonNoteCard note={p.note} locale={locale} />
@@ -327,7 +349,7 @@ export function FeedCardSkeleton(): React.JSX.Element {
       {bar('45%', 14)}
       {bar('70%', 22)}
       {bar('100%', 44)}
-      {bar('100%', 120)}
+      {bar('100%', MAP_PREVIEW_HEIGHT)}
       {bar('60%', 16)}
     </Animated.View>
   );
@@ -364,11 +386,11 @@ const local = StyleSheet.create({
     color: '#FFFFFF',
     backgroundColor: 'rgba(0, 0, 0, 0.55)',
   },
-  silhouetteBox: {
-    alignItems: 'center',
+  mapBox: {
+    height: MAP_PREVIEW_HEIGHT,
     justifyContent: 'center',
-    paddingVertical: 10,
     borderRadius: RADII.md,
+    overflow: 'hidden',
   },
-  silhouette: { width: 132, height: 96 },
+  silhouette: { width: 132, height: 96, alignSelf: 'center' },
 });

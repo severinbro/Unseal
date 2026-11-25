@@ -510,7 +510,7 @@ function main() {
     lines.push('--- Installed runtime packages without a root LICENSE file in their npm tarball ---');
     lines.push('');
     for (const info of packagesWithoutRootLicenseFile) {
-      const creditSuffix = info.credit ? ` — ${info.credit}` : '';
+      const creditSuffix = info.credit ? ` - ${info.credit}` : '';
       lines.push(`  - ${info.id} : ${info.license} (declared in package.json)${creditSuffix}`);
     }
     lines.push('');
@@ -739,22 +739,22 @@ function main() {
   lines.push('Unless required by applicable law or agreed to in writing, software distributed under the');
   lines.push('License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND.');
   lines.push('');
-  lines.push('[NOTICE — Apache Commons IO 2.6 (commons-io:commons-io:2.6)]');
+  lines.push('[NOTICE - Apache Commons IO 2.6 (commons-io:commons-io:2.6)]');
   lines.push('Apache Commons IO');
   lines.push('Copyright 2002-2017 The Apache Software Foundation');
   lines.push('This product includes software developed at The Apache Software Foundation (http://www.apache.org/).');
   lines.push('');
-  lines.push('[NOTICE — Apache Commons Codec 1.10 (commons-codec:commons-codec:1.10)]');
+  lines.push('[NOTICE - Apache Commons Codec 1.10 (commons-codec:commons-codec:1.10)]');
   lines.push('Apache Commons Codec');
   lines.push('Copyright 2002-2014 The Apache Software Foundation');
   lines.push('This product includes software developed at The Apache Software Foundation (http://www.apache.org/).');
   lines.push('src/test/org/apache/commons/codec/language/DoubleMetaphoneTest.java contains test data from');
-  lines.push('http://aspell.net/test/orig/batch0.tab — Copyright (C) 2002 Kevin Atkinson (kevina@gnu.org).');
+  lines.push('http://aspell.net/test/orig/batch0.tab - Copyright (C) 2002 Kevin Atkinson (kevina@gnu.org).');
   lines.push('The content of package org.apache.commons.codec.language.bm has been translated from the');
   lines.push('original php source code available at http://stevemorse.org/phoneticinfo.htm with permission');
   lines.push('from the original authors. Original source copyright: Copyright (c) 2008 Alexander Beider & Stephen P. Morse.');
   lines.push('');
-  lines.push('[NOTICE — OkHttp Embedded Public Suffix List (okhttp3/internal/publicsuffix/NOTICE)]');
+  lines.push('[NOTICE - OkHttp Embedded Public Suffix List (okhttp3/internal/publicsuffix/NOTICE)]');
   lines.push('Note that publicsuffixes.gz is compiled from The Public Suffix List:');
   lines.push('https://publicsuffix.org/list/public_suffix_list.dat');
   lines.push('It is subject to the terms of the Mozilla Public License, v. 2.0: https://mozilla.org/MPL/2.0/');
@@ -848,13 +848,13 @@ function main() {
   lines.push('      * HE  (Hessen)                 : dl-de/zero-2-0 | © Hessische Verwaltung für Bodenmanagement und Geoinformation (HVBG) (<Jahr>)');
   lines.push('      * NW  (Nordrhein-Westfalen)    : dl-de/zero-2-0 | © Land NRW (Geobasis NRW) (<Jahr>)');
   lines.push('      * BW  (Baden-Württemberg)      : dl-de/by-2-0   | LGL-BW (<Jahr>) Datenlizenz Deutschland - Namensnennung - Version 2.0, www.lgl-bw.de');
-  lines.push('      * BY  (Bayern)                 : CC BY 4.0      | Datenquelle: Bayerische Vermessungsverwaltung – www.geodaten.bayern.de (<Jahr>)');
+  lines.push('      * BY  (Bayern)                 : CC BY 4.0      | Datenquelle: Bayerische Vermessungsverwaltung - www.geodaten.bayern.de (<Jahr>)');
   lines.push('      * SL  (Saarland)               : dl-de/by-2-0   | © GeoBasis DE/LVGL-SL (<Jahr>)');
   lines.push('      * BE/BB (Berlin / Brandenburg) : dl-de/by-2-0   | © GeoBasis-DE / LGB (<Jahr>), dl-de/by-2-0; © Geoportal Berlin (<Jahr>), dl-de/zero-2-0');
   lines.push('                                       (Berlin publishes its own orthophotos under dl-de/zero-2-0; the Berlin credit is kept voluntarily)');
   lines.push('      * HH  (Hamburg, TIME=2026)     : dl-de/by-2-0   | © Freie und Hansestadt Hamburg, Landesbetrieb Geoinformation und Vermessung (LGV) (<Jahr>)');
   lines.push('                                       (pinned to LGV OpenData aerial vintage TIME=2026; excludes 2023 Maxar satellite vintage)');
-  lines.push('      * NI  (Niedersachsen)          : CC BY 4.0      | LGLN (<Jahr>) Creative Commons Namensnennung – 4.0 International (CC BY 4.0)');
+  lines.push('      * NI  (Niedersachsen)          : CC BY 4.0      | LGLN (<Jahr>) Creative Commons Namensnennung - 4.0 International (CC BY 4.0)');
   lines.push('      * HB  (Bremen / Bremerhaven)   : CC BY 4.0      | © Landesamt GeoInformation Bremen (<Jahr>)');
   lines.push('      * SH  (Schleswig-Holstein)     : CC BY 4.0      | © GeoBasis-DE/LVermGeo SH/CC BY 4.0 (<Jahr>)');
   lines.push('      * MV  (Mecklenburg-Vorpommern) : CC BY 4.0      | © GeoBasis-DE/M-V <Jahr> (https://www.laiv-mv.de)');

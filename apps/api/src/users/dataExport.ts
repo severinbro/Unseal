@@ -487,9 +487,9 @@ export async function collectUserData(
       createdAt: iso(r.created_at),
     })),
     excludedSecurityData: [
-      'Password hash (Argon2id) – needed to verify your password, useless to you and risky if leaked',
-      'Hashed session and email-link tokens – security credentials',
-      'Keyed hash of your canonical email address – used only to block duplicate/alias registrations',
+      'Password hash (Argon2id) - needed to verify your password, useless to you and risky if leaked',
+      'Hashed session and email-link tokens - security credentials',
+      'Keyed hash of your canonical email address - used only to block duplicate/alias registrations',
     ],
   };
 }

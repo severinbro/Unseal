@@ -15,6 +15,7 @@ import React, { useEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import {
+  applyDarkBasemapTuning,
   buildDraftGeoJson,
   buildDraftLayerSpecs,
   buildGermanyBorderOutlineGeoJson,
@@ -25,7 +26,6 @@ import {
   buildPolygonLayerSpecs,
   buildProposalGeoJson,
   buildWebCustomAttributions,
-  DARK_BASEMAP_PAINT_TUNING,
   DEFAULT_POLYGON_OPACITY,
   dedupeFeatureIdsPreservingOrder,
   DRAFT_SOURCE_ID,
@@ -108,21 +108,6 @@ function extractErrorMessage(event: unknown): string | undefined {
     return record.message;
   }
   return undefined;
-}
-
-function applyDarkBasemapTuningToMap(map: MapLibreMap): void {
-  for (const [layerId, paintProps] of Object.entries(DARK_BASEMAP_PAINT_TUNING)) {
-    if (!map.getLayer(layerId)) {
-      continue;
-    }
-    for (const [propName, propValue] of Object.entries(paintProps)) {
-      try {
-        map.setPaintProperty(layerId, propName, propValue);
-      } catch {
-        // Ignore non-matching third-party layer property types.
-      }
-    }
-  }
 }
 
 export function MapCanvas({
@@ -354,7 +339,7 @@ export function MapCanvas({
         colorSchemeRef.current === 'dark' &&
         isOpenFreeMapDarkStyleUrl(activeStyleUrlRef.current)
       ) {
-        applyDarkBasemapTuningToMap(map);
+        applyDarkBasemapTuning(map);
       }
 
       const proposalGeoJson = buildProposalGeoJson(

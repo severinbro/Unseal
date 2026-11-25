@@ -2,7 +2,7 @@
 // Copyright (C) 2026 OpenUnseal Contributors
 
 import React, { useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { MIN_TOUCH_TARGET_DP } from '../state/viewModels';
 import { useTheme } from '../theme/themeContext';
@@ -108,16 +108,6 @@ function createSocialStyles(p: ThemePalette) {
       backgroundColor: p.bgTinted,
       gap: 8,
     },
-    tabBar: {
-      flexDirection: 'row',
-      gap: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      backgroundColor: p.bgSurface,
-      borderColor: p.borderSubtle,
-    },
-    tabBarBottom: { borderTopWidth: 1, justifyContent: 'space-around' },
-    tabBarItem: { flex: 1 },
     row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
     spread: {
       flexDirection: 'row',
@@ -139,6 +129,43 @@ function createSocialStyles(p: ThemePalette) {
       fontSize: 12,
       color: p.inkPrimary,
     },
+    badgeGroup: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    layerSection: {
+      gap: 8,
+      paddingTop: 4,
+      borderTopWidth: 1,
+      borderColor: p.borderSubtle,
+    },
+    legendRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    legendSwatch: {
+      width: 28,
+      height: 18,
+      borderWidth: 1.5,
+      borderRadius: 4,
+      overflow: 'hidden',
+    },
+    legendSwatchFill: { flex: 1 },
+    legendText: { fontSize: 13, color: p.inkPrimary },
+    newEntriesAnchor: {
+      position: 'absolute',
+      top: 12,
+      left: 0,
+      right: 0,
+      alignItems: 'center',
+      zIndex: 5,
+    },
+    newEntriesPill: {
+      minHeight: MIN_TOUCH_TARGET_DP,
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 18,
+      borderRadius: RADII.pill,
+      backgroundColor: p.accentPrimary,
+      ...(Platform.OS === 'web'
+        ? { boxShadow: '0 4px 16px rgba(0, 0, 0, 0.28)' }
+        : { elevation: 6 }),
+    },
+    newEntriesLabel: { fontSize: 14, fontWeight: '700', color: p.inkOnAccent },
     button: {
       minHeight: MIN_TOUCH_TARGET_DP,
       paddingHorizontal: 14,

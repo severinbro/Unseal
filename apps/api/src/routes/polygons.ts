@@ -318,7 +318,7 @@ export function registerPolygonRoutes(
             }
             if (usesBuiltinDop20 || vg250Active || hasDlDeBy20Import) {
               upstreamConditionParts.push(
-                'Upstream Datenlizenz Deutschland – Namensnennung 2.0 (dl-de/by-2-0, https://www.govdata.de/dl-de/by-2-0) source-attribution obligations remain concurrently binding on municipality attributes and elements derived from dl-de/by-2-0 sources; OpenStreetMap-specific agency waivers/addenda apply solely when contributing directly to OpenStreetMap.',
+                'Upstream Datenlizenz Deutschland - Namensnennung 2.0 (dl-de/by-2-0, https://www.govdata.de/dl-de/by-2-0) source-attribution obligations remain concurrently binding on municipality attributes and elements derived from dl-de/by-2-0 sources; OpenStreetMap-specific agency waivers/addenda apply solely when contributing directly to OpenStreetMap.',
               );
             }
 
@@ -339,7 +339,7 @@ export function registerPolygonRoutes(
             }
             if (vg250Active) {
               attributionClauses.push(
-                `Municipality codes/names derived from VG250: © BKG (${vg250Year}) dl-de/by-2-0 (https://www.govdata.de/dl-de/by-2-0), Datenquellen: ${BKG_VG250_DATENQUELLEN_URL} (Daten verändert; upstream dl-de/by-2-0 attribution remains concurrently binding alongside ODbL-1.0 — pass ?includeMunicipality=false to omit VG250 attributes).`,
+                `Municipality codes/names derived from VG250: © BKG (${vg250Year}) dl-de/by-2-0 (https://www.govdata.de/dl-de/by-2-0), Datenquellen: ${BKG_VG250_DATENQUELLEN_URL} (Daten verändert; upstream dl-de/by-2-0 attribution remains concurrently binding alongside ODbL-1.0 - pass ?includeMunicipality=false to omit VG250 attributes).`,
               );
             }
             if (activeImportAttributions.length > 0) {

@@ -290,7 +290,7 @@ export function PolygonCreatorCard(props: {
         <Text testID="overview-entry-date" style={styles.creatorMetaItem}>
           {t.entryDateLabel}:{' '}
           <Text style={styles.creatorMetaMono}>
-            {entryDateText ?? '—'}
+            {entryDateText ?? '-'}
           </Text>
         </Text>
         <Text

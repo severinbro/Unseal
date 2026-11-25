@@ -150,7 +150,7 @@ export function renderAuthEmailMessage(
   const safeUrl = escapeHtml(payload.actionUrl);
 
   if (payload.purpose === 'account_exists') {
-    const subject = `${appName} – Registrierungsversuch mit deiner E-Mail-Adresse / Registration attempt`;
+    const subject = `${appName} - Registrierungsversuch mit deiner E-Mail-Adresse / Registration attempt`;
     const text = [
       `Hallo ${payload.pseudonym},`,
       '',
@@ -158,13 +158,13 @@ export function renderAuthEmailMessage(
       'Falls du das warst: Melde dich einfach an. Wenn du dein Passwort nicht mehr weißt, nutze in der App „Passwort vergessen?“.',
       payload.actionUrl,
       '',
-      'Falls du das nicht warst, musst du nichts tun – es wurde kein neues Konto angelegt.',
+      'Falls du das nicht warst, musst du nichts tun - es wurde kein neues Konto angelegt.',
       '',
       '---',
       `Hello ${payload.pseudonym},`,
       '',
       `Someone just tried to register a new ${appName} account with your email address, which already has an account.`,
-      'If this was you, simply sign in, or use "Forgot password?" in the app. If not, no action is needed – no account was created.',
+      'If this was you, simply sign in, or use "Forgot password?" in the app. If not, no action is needed - no account was created.',
       payload.actionUrl,
     ].join('\n');
 
@@ -178,7 +178,7 @@ export function renderAuthEmailMessage(
       gerade wurde versucht, mit deiner E-Mail-Adresse ein neues Konto zu registrieren. Für diese Adresse besteht bereits dein Konto.
     </p>
     <p style="margin:0 0 20px; line-height:1.5;">
-      Falls du das warst, melde dich einfach an oder nutze in der App <em>Passwort vergessen?</em>. Falls nicht, musst du nichts tun – es wurde kein neues Konto angelegt.
+      Falls du das warst, melde dich einfach an oder nutze in der App <em>Passwort vergessen?</em>. Falls nicht, musst du nichts tun - es wurde kein neues Konto angelegt.
     </p>
     <p style="margin:0 0 22px;">
       <a href="${safeUrl}" style="display:inline-block; background:${buttonLight}; color:${inkOnAccentLight}; text-decoration:none; font-weight:700; padding:12px 20px; border-radius:999px;">
@@ -197,7 +197,7 @@ export function renderAuthEmailMessage(
   }
 
   if (payload.purpose === 'verify_email') {
-    const subject = `${appName} – Bitte bestätige deine E-Mail-Adresse / Confirm your email`;
+    const subject = `${appName} - Bitte bestätige deine E-Mail-Adresse / Confirm your email`;
     const text = [
       `Hallo ${payload.pseudonym},`,
       '',
@@ -242,7 +242,7 @@ export function renderAuthEmailMessage(
   }
 
   if (payload.purpose === 'reverify_login') {
-    const subject = `${appName} – Konto nach Fehlversuchen bestätigen / Re-verify your account`;
+    const subject = `${appName} - Konto nach Fehlversuchen bestätigen / Re-verify your account`;
     const text = [
       `Hallo ${payload.pseudonym},`,
       '',
@@ -293,7 +293,7 @@ export function renderAuthEmailMessage(
     return { subject, text, html };
   }
 
-  const subject = `${appName} – Passwort zurücksetzen / Password reset`;
+  const subject = `${appName} - Passwort zurücksetzen / Password reset`;
   const text = [
     `Hallo ${payload.pseudonym},`,
     '',
@@ -381,7 +381,7 @@ export function renderBugReportEmailMessage(
 <html lang="de">
 <body style="font-family: system-ui, -apple-system, sans-serif; background:#f5f6f3; padding:24px; color:#18221d;">
   <div style="max-width:600px; margin:0 auto; background:#ffffff; border:1px solid #d5ddd7; border-radius:14px; padding:28px;">
-    <h2 style="margin:0 0 12px; color:${accentLight};">${safeAppName} – Fehlermeldung</h2>
+    <h2 style="margin:0 0 12px; color:${accentLight};">${safeAppName} - Fehlermeldung</h2>
     <table style="width:100%; border-collapse:collapse; font-size:13px; color:#42524a; margin-bottom:18px;">
       <tr><td style="padding:4px 8px 4px 0; font-weight:700;">Zeitpunkt:</td><td style="padding:4px 0;">${safeSubmitted}</td></tr>
       <tr><td style="padding:4px 8px 4px 0; font-weight:700;">Konto:</td><td style="padding:4px 0;">${safeReporter}</td></tr>
@@ -480,7 +480,7 @@ export function renderContentReportEmailMessage(
 <html lang="de">
 <body style="font-family: system-ui, -apple-system, sans-serif; background:#f5f6f3; padding:24px; color:#18221d;">
   <div style="max-width:600px; margin:0 auto; background:#ffffff; border:1px solid #d5ddd7; border-radius:14px; padding:28px;">
-    <h2 style="margin:0 0 12px; color:#962d20;">${safeAppName} – Meldung nach Art. 16 DSA</h2>
+    <h2 style="margin:0 0 12px; color:#962d20;">${safeAppName} - Meldung nach Art. 16 DSA</h2>
     <table style="width:100%; border-collapse:collapse; font-size:13px; color:#42524a; margin-bottom:18px;">
       <tr><td style="padding:4px 8px 4px 0; font-weight:700;">Meldungs-ID:</td><td style="padding:4px 0;"><code>${safeId}</code></td></tr>
       <tr><td style="padding:4px 8px 4px 0; font-weight:700;">Zeitpunkt:</td><td style="padding:4px 0;">${safeSubmitted}</td></tr>
@@ -509,7 +509,7 @@ export function renderContentReportReceiptEmailMessage(
   html: string;
 } {
   const { appName, safeAppName, accentLight } = resolveEmailBranding(branding);
-  const subject = `${appName} – Eingangsbestätigung deiner Meldung #${payload.reportId.slice(0, 8)} / Notice receipt`;
+  const subject = `${appName} - Eingangsbestätigung deiner Meldung #${payload.reportId.slice(0, 8)} / Notice receipt`;
   const text = [
     'Eingangsbestätigung gemäß Art. 16 Abs. 4 Digital Services Act (DSA)',
     '',
@@ -539,7 +539,7 @@ export function renderContentReportReceiptEmailMessage(
 <html lang="de">
 <body style="font-family: system-ui, -apple-system, sans-serif; background:#f5f6f3; padding:24px; color:#18221d;">
   <div style="max-width:560px; margin:0 auto; background:#ffffff; border:1px solid #d5ddd7; border-radius:14px; padding:28px;">
-    <h2 style="margin:0 0 12px; color:${accentLight};">${safeAppName} – Eingangsbestätigung (Art. 16 Abs. 4 DSA)</h2>
+    <h2 style="margin:0 0 12px; color:${accentLight};">${safeAppName} - Eingangsbestätigung (Art. 16 Abs. 4 DSA)</h2>
     <p style="margin:0 0 14px; line-height:1.5;">Wir haben deine Meldung erhalten und prüfen den gemeldeten Inhalt zeitnah.</p>
     <p style="margin:0 0 14px; font-size:13px; color:#42524a; line-height:1.5;">
       <strong>Referenz:</strong> <code>${safeId}</code><br />
@@ -570,7 +570,7 @@ export function renderModerationReasonEmailMessage(
 } {
   const { appName, safeAppName, accentLight } = resolveEmailBranding(branding);
   const actionLabel = MODERATION_ACTION_LABELS[payload.action];
-  const subject = `${appName} – Moderationshinweis & Begründung (Art. 17 DSA) / Moderation notice`;
+  const subject = `${appName} - Moderationshinweis & Begründung (Art. 17 DSA) / Moderation notice`;
   const contactLineDe = payload.contactEmail
     ? `Wenn du diese Entscheidung überprüfen lassen möchtest oder Rückfragen hast, wende dich bitte an ${payload.contactEmail}.`
     : `Wenn du diese Entscheidung überprüfen lassen möchtest oder Rückfragen hast, nutze bitte die im Impressum (${payload.impressumUrl}) angegebene Kontaktstelle.`;
@@ -622,7 +622,7 @@ export function renderModerationReasonEmailMessage(
 <html lang="de">
 <body style="font-family: system-ui, -apple-system, sans-serif; background:#f5f6f3; padding:24px; color:#18221d;">
   <div style="max-width:580px; margin:0 auto; background:#ffffff; border:1px solid #d5ddd7; border-radius:14px; padding:28px;">
-    <h2 style="margin:0 0 12px; color:${accentLight};">${safeAppName} – Begründung gemäß Art. 17 DSA</h2>
+    <h2 style="margin:0 0 12px; color:${accentLight};">${safeAppName} - Begründung gemäß Art. 17 DSA</h2>
     <p style="margin:0 0 14px;">Hallo <strong>${safeName}</strong>,</p>
     <p style="margin:0 0 14px; line-height:1.5;">wir informieren dich über folgende Moderationsmaßnahme auf dieser ${safeAppName}-Instanz:</p>
     <table style="width:100%; border-collapse:collapse; font-size:13px; color:#42524a; margin-bottom:16px;">

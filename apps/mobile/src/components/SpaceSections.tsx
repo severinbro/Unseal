@@ -3,12 +3,10 @@
 
 import {
   POLYGON_STATUSES,
-  SPACE_FILTERS,
   SPACE_TYPES,
   type ClassifySpaceResponse,
   type PolygonFeature,
   type PolygonStatus,
-  type SpaceFilter,
   type SpaceZoneAttribution,
   type SpaceType,
   type StoredSpaceType,
@@ -18,9 +16,12 @@ import { Text, View } from 'react-native';
 
 import { getSocialCopy, type SocialCopy } from '../i18n/social';
 import { localizeError, type Locale } from '../i18n/translations';
+import { SPACE_ZONE_COLORS, SPACE_ZONE_FILL_OPACITY } from '../map/styleBuilder';
 import type { DraftSpace } from '../state/appState';
 import { formatInspectorDate } from '../state/viewModels';
+import { VerifiedGlyph } from './NavGlyphs';
 import { SocialButton, SocialCheckbox, useSocialStyles } from './SocialUi';
+import { withWebTooltip } from './webTooltip';
 
 /** Credit line for land-use data on screen (ODbL-1.0 § 4.3). */
 export function formatZoneCredits(
@@ -37,24 +38,55 @@ export function groundLabel(type: StoredSpaceType, t: SocialCopy): string {
       : t.groundUnknown;
 }
 
-export function SpaceFilterRow(props: {
+/** Land-use layer in the layer manager: the switch and what its colours mean. */
+export function SpaceZonesControl(props: {
   locale: Locale;
-  value: SpaceFilter;
-  onChange: (value: SpaceFilter) => void;
+  on: boolean;
+  /** Shown instead of the legend when there is nothing on the map to explain. */
+  notice: string | null;
+  onToggle: () => void;
 }): React.JSX.Element {
   const { styles } = useSocialStyles();
   const t = getSocialCopy(props.locale);
   return (
-    <View style={styles.row} accessibilityLabel={t.groundFilter}>
-      {SPACE_FILTERS.map((value) => (
-        <SocialButton
-          key={value}
-          testID={`space-filter-${value}`}
-          label={value === 'all' ? t.groundAll : groundLabel(value, t)}
-          selected={props.value === value}
-          onPress={() => props.onChange(value)}
-        />
-      ))}
+    <View style={styles.layerSection}>
+      <SocialCheckbox
+        testID="space-zones-toggle"
+        label={t.zonesToggle}
+        checked={props.on}
+        onToggle={props.onToggle}
+      />
+      {!props.on ? null : props.notice !== null ? (
+        <Text style={styles.hint}>{props.notice}</Text>
+      ) : (
+        <View
+          testID="space-zones-legend"
+          accessibilityLabel={t.zonesLegendLabel}
+          style={styles.section}
+        >
+          {(['private', 'public'] as const).map((kind) => (
+            <View key={kind} style={styles.legendRow}>
+              <View
+                style={[styles.legendSwatch, { borderColor: SPACE_ZONE_COLORS[kind] }]}
+              >
+                <View
+                  style={[
+                    styles.legendSwatchFill,
+                    {
+                      backgroundColor: SPACE_ZONE_COLORS[kind],
+                      opacity: SPACE_ZONE_FILL_OPACITY,
+                    },
+                  ]}
+                />
+              </View>
+              <Text style={styles.legendText}>
+                {kind === 'private' ? t.zonesPrivate : t.zonesPublic}
+              </Text>
+            </View>
+          ))}
+          <Text style={styles.hint}>{t.zonesDisclaimer}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -184,21 +216,35 @@ export function SpaceBadges(props: {
   locale: Locale;
   feature: PolygonFeature;
 }): React.JSX.Element {
-  const { styles } = useSocialStyles();
+  const { styles, palette } = useSocialStyles();
   const t = getSocialCopy(props.locale);
   const p = props.feature.properties;
-  const verification =
-    p.spaceVerification === 'gis_verified'
-      ? t.verified
-      : p.spaceVerification === 'user_override'
-        ? t.override
-        : p.spaceVerification === 'admin_override'
-          ? t.adminSet
-          : null;
+  const isVerified = p.spaceVerification === 'gis_verified';
+  const deviation =
+    p.spaceVerification === 'user_override'
+      ? t.override
+      : p.spaceVerification === 'admin_override'
+        ? t.adminSet
+        : null;
   return (
     <View style={styles.row}>
-      <Text style={styles.badge}>{groundLabel(p.spaceType, t)}</Text>
-      {verification ? <Text style={styles.badge}>{verification}</Text> : null}
+      <View style={styles.badgeGroup}>
+        <Text style={styles.badge}>{groundLabel(p.spaceType, t)}</Text>
+        {isVerified
+          ? withWebTooltip(
+              t.verified,
+              <View
+                testID="badge-gis-verified"
+                role="img"
+                accessible
+                accessibilityLabel={t.verified}
+              >
+                <VerifiedGlyph color={palette.accentPrimary} size={17} />
+              </View>,
+            )
+          : null}
+      </View>
+      {deviation ? <Text style={styles.badge}>{deviation}</Text> : null}
       {p.openForPublicAccess ? (
         <Text style={styles.badge}>{t.openAccessBadge}</Text>
       ) : null}

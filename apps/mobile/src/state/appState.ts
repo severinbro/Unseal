@@ -21,7 +21,6 @@ import {
   type PolygonFeature,
   type PolygonFilter,
   type RuntimeConfig,
-  type SpaceFilter,
   type SpaceType,
   type SurfaceType,
   type VoteResponse,
@@ -121,7 +120,6 @@ export interface AppState {
   basemapMode: BasemapMode;
   polygonOpacity: number;
   polygonFilter: PolygonFilter;
-  spaceFilter: SpaceFilter;
   activeMainTab: MainTab;
   highlightMineOnly: boolean;
   tileWarning: string | null;
@@ -175,7 +173,6 @@ export type AppAction =
   | { type: 'SET_BASEMAP_MODE'; mode: BasemapMode }
   | { type: 'SET_POLYGON_OPACITY'; opacity: number }
   | { type: 'SET_POLYGON_FILTER'; filter: PolygonFilter }
-  | { type: 'SET_SPACE_FILTER'; filter: SpaceFilter }
   | { type: 'SET_MAIN_TAB'; tab: MainTab }
   | {
       type: 'SHOW_POLYGON';
@@ -263,7 +260,6 @@ export const initialAppState: AppState = {
   basemapMode: 'osm',
   polygonOpacity: DEFAULT_POLYGON_OPACITY,
   polygonFilter: 'all',
-  spaceFilter: 'all',
   activeMainTab: 'map',
   highlightMineOnly: false,
   tileWarning: null,
@@ -646,16 +642,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
     }
 
-    case 'SET_SPACE_FILTER': {
-      return state.spaceFilter === action.filter
-        ? state
-        : {
-            ...state,
-            spaceFilter: action.filter,
-            viewportRefreshSeq: state.viewportRefreshSeq + 1,
-          };
-    }
-
     case 'SET_MAIN_TAB': {
       return state.activeMainTab === action.tab
         ? state
@@ -690,7 +676,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         mode: 'browse',
         // Filters that would hide the target are lifted.
         polygonFilter: action.keepFilters ? state.polygonFilter : 'all',
-        spaceFilter: action.keepFilters ? state.spaceFilter : 'all',
         highlightMineOnly: false,
         features: sortFeaturesCanonical([
           action.feature,

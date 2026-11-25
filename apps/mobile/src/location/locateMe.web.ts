@@ -78,7 +78,7 @@ export const FALLBACK_GEOLOCATION_OPTIONS: GeolocationPositionOptionsLike = {
 /**
  * Threshold in meters for accepting a browser geolocation reading immediately
  * without waiting for further GNSS / Wi-Fi refinement. Coarse ISP/GeoIP fixes
- * (typically 3,000–50,000 m, e.g. regional backbone hubs) exceed this and wait
+ * (typically 3,000-50,000 m, e.g. regional backbone hubs) exceed this and wait
  * briefly for hardware GPS or Wi-Fi triangulation to lock onto the user.
  */
 export const PRECISE_ACCURACY_THRESHOLD_M = 250;

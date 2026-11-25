@@ -110,14 +110,9 @@ import {
   type InspectorTab,
 } from './src/components/PolygonInspectorSheet';
 import {
-  SocialButton,
-  SocialCheckbox,
-  useSocialStyles,
-} from './src/components/SocialUi';
-import {
   DraftSpaceSection,
   PolygonSpaceCard,
-  SpaceFilterRow,
+  SpaceZonesControl,
   formatZoneCredits,
   type ClassifyState,
 } from './src/components/SpaceSections';
@@ -209,6 +204,10 @@ import {
 } from './src/theme/webStyles';
 
 const DEFAULT_API_BASE_URL = 'http://127.0.0.1:3000';
+/** Room the navbar, the docked card and the button for new areas take up. */
+const NAVBAR_HEIGHT_PX = 58;
+const DOCK_INSET_PX = 14;
+const FAB_SIZE_PX = 48;
 const LOCATE_ME_TARGET_ZOOM = 17;
 const COARSE_WEB_ACCURACY_NOTICE_M = 2_500;
 
@@ -548,14 +547,10 @@ export function App(props: AppProps = {}): React.JSX.Element {
     let cancelled = false;
     const bbox = state.viewport.bbox;
     const filter = state.polygonFilter;
-    const spaceFilter = state.spaceFilter;
 
     void (async () => {
       try {
-        const collection = await apiClient.listPolygons(bbox, {
-          filter,
-          spaceFilter,
-        });
+        const collection = await apiClient.listPolygons(bbox, { filter });
         if (!cancelled) {
           dispatch({
             type: 'VIEWPORT_FEATURES_LOADED',
@@ -585,7 +580,6 @@ export function App(props: AppProps = {}): React.JSX.Element {
     state.viewport,
     state.spanTooWide,
     state.polygonFilter,
-    state.spaceFilter,
     state.activeMainTab,
     state.viewportRefreshSeq,
   ]);
@@ -809,6 +803,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
 
   const handleMapTap = useCallback<MapCanvasProps['onMapTap']>(
     (point) => {
+      setLayersPopoverOpen(false);
       if (state.mode === 'drawing') {
         dispatch({ type: 'ADD_VERTEX', point });
       } else {
@@ -820,6 +815,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
 
   const handleFeaturePress = useCallback<MapCanvasProps['onFeaturePress']>(
     (featureIds) => {
+      setLayersPopoverOpen(false);
       dispatch({ type: 'SELECT_FEATURES_AT_TAP', featureIds });
     },
     [],
@@ -968,7 +964,6 @@ export function App(props: AppProps = {}): React.JSX.Element {
   const [zones, setZones] = useState<SpaceZoneCollection | null>(null);
   const chatScrollRef = useRef<ScrollView | null>(null);
   const social = getSocialCopy(state.locale);
-  const { styles: socialStyles } = useSocialStyles();
   const userId = state.currentUser?.id ?? null;
 
   useEffect(() => {
@@ -1127,7 +1122,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
         keepFilters: polygonMatchesFilters(
           feature.properties,
           current.polygonFilter,
-          current.spaceFilter,
+          'all',
           Date.now(),
         ),
       });
@@ -1935,6 +1930,13 @@ export function App(props: AppProps = {}): React.JSX.Element {
       (locationNotice !== null && locationNotice.length > 0) ||
       mapControls.showZoomInPrompt ||
       mapControls.showTruncatedNotice;
+    // The button for new areas keeps its place; a docked card ends above it.
+    const fabBottomPx =
+      zoomDividerBottomPx !== null
+        ? Math.max(12, Math.round(zoomDividerBottomPx - 24))
+        : layout.isCompact
+          ? 64
+          : 49;
     const activeMaxHeight = drawingToolbar.visible
       ? layout.isDocked
         ? Math.max(
@@ -1942,7 +1944,20 @@ export function App(props: AppProps = {}): React.JSX.Element {
             layout.drawingSheetMaxHeightPx - (hasVisibleBanner ? 148 : 92),
           )
         : layout.drawingSheetMaxHeightPx
-      : layout.sheetMaxHeightPx;
+      : layout.isDocked
+        ? Math.max(
+            160,
+            Math.min(
+              layout.sheetMaxHeightPx,
+              layout.height -
+                NAVBAR_HEIGHT_PX -
+                DOCK_INSET_PX -
+                fabBottomPx -
+                FAB_SIZE_PX -
+                12,
+            ),
+          )
+        : layout.sheetMaxHeightPx;
     const navbarLayout = deriveNavbarLayoutMode(layout.tier, layout.width);
 
     const apiBaseUrl = apiClient.getBaseUrl();
@@ -2124,59 +2139,6 @@ export function App(props: AppProps = {}): React.JSX.Element {
         </ScrollView>
       ) : null;
 
-    const mainTabBar = (
-      <View
-        testID="main-tab-bar"
-        accessibilityRole="tablist"
-        style={[
-          socialStyles.tabBar,
-          layout.isCompact ? socialStyles.tabBarBottom : null,
-        ]}
-      >
-        {(
-          [
-            {
-              id: 'map',
-              label: social.map,
-              selected: state.activeMainTab === 'map',
-              onPress: () => dispatch({ type: 'SET_MAIN_TAB', tab: 'map' }),
-            },
-            {
-              id: 'feed',
-              label: social.feed,
-              selected: state.activeMainTab === 'feed',
-              onPress: () => dispatch({ type: 'SET_MAIN_TAB', tab: 'feed' }),
-            },
-            {
-              id: 'chat',
-              label:
-                unreadChats > 0 ? `${social.chat} (${unreadChats})` : social.chat,
-              selected: false,
-              onPress: () => {
-                if (state.currentUser === null) {
-                  dispatch({ type: 'OPEN_AUTH_MODAL', view: 'login' });
-                } else {
-                  setChatStart({});
-                }
-              },
-            },
-          ] as const
-        ).map((tab) => (
-          <View
-            key={tab.id}
-            style={layout.isCompact ? socialStyles.tabBarItem : null}
-          >
-            <SocialButton
-              testID={`tab-${tab.id}`}
-              label={tab.label}
-              selected={tab.selected}
-              onPress={tab.onPress}
-            />
-          </View>
-        ))}
-      </View>
-    );
-
     // What the land-use layer shows: the matched parts of a draft in step 2,
     // otherwise the reference areas of the visible section.
     const draftOverlay =
@@ -2260,9 +2222,23 @@ export function App(props: AppProps = {}): React.JSX.Element {
           }}
           onImportPress={handleAdminImport}
           onExportError={(message) => setLocationNotice(message)}
+          activeMainTab={state.activeMainTab}
+          unreadChats={unreadChats}
+          onSelectMainTab={(tab) => {
+            setMoreMenuOpen(false);
+            setLayersPopoverOpen(false);
+            dispatch({ type: 'SET_MAIN_TAB', tab });
+          }}
+          onOpenChat={() => {
+            setMoreMenuOpen(false);
+            setLayersPopoverOpen(false);
+            if (state.currentUser === null) {
+              dispatch({ type: 'OPEN_AUTH_MODAL', view: 'login' });
+            } else {
+              setChatStart({});
+            }
+          }}
         />
-
-      {layout.isCompact ? null : mainTabBar}
 
       <View style={styles.mapStage}>
         {feedOpened || state.activeMainTab === 'feed' ? (
@@ -2278,8 +2254,8 @@ export function App(props: AppProps = {}): React.JSX.Element {
               locale={state.locale}
               active={state.activeMainTab === 'feed'}
               filter={state.polygonFilter}
-              spaceFilter={state.spaceFilter}
               viewerKey={userId ?? 'guest'}
+              mapConfig={state.config}
               mapBbox={state.viewport?.bbox ?? null}
               load={loadFeedPage}
               resolveUploadUrl={resolveUploadUrl}
@@ -2287,9 +2263,6 @@ export function App(props: AppProps = {}): React.JSX.Element {
               latestVote={latestVote}
               onSetFilter={(filter) =>
                 dispatch({ type: 'SET_POLYGON_FILTER', filter })
-              }
-              onSetSpaceFilter={(filter) =>
-                dispatch({ type: 'SET_SPACE_FILTER', filter })
               }
               onShowOnMap={showPolygonOnMap}
             />
@@ -2477,17 +2450,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
             pointerEvents="box-none"
             style={[
               styles.proposeFabAnchor,
-              {
-                bottom:
-                  zoomDividerBottomPx !== null
-                    ? Math.max(12, Math.round(zoomDividerBottomPx - 24))
-                    : layout.isCompact
-                      ? 64
-                      : 49,
-              },
-              layout.isDocked && hasActivePanel
-                ? { left: layout.dockWidth + 26 }
-                : null,
+              { bottom: fabBottomPx },
             ]}
           >
             <ProposeFabButton
@@ -2502,69 +2465,47 @@ export function App(props: AppProps = {}): React.JSX.Element {
         ) : null}
 
         {layersPopoverOpen ? (
-          <>
-            <Pressable
-              accessible={false}
-              onPress={() => setLayersPopoverOpen(false)}
-              style={styles.popoverDismissScrim}
-            />
-            <View
-              style={[
-                styles.layersPopoverAnchor,
-                layout.useHorizontalMapControls
-                  ? {
-                      top: 56,
-                      right: 10,
-                      maxWidth: Math.min(280, layout.width - 20),
-                    }
-                  : layout.isCompact
-                    ? {
-                        top: 68,
-                        right: layout.width < 360 ? 64 : 68,
-                        maxWidth: Math.min(
-                          280,
-                          Math.max(216, layout.width - (layout.width < 360 ? 72 : 78)),
-                        ),
-                      }
-                    : { maxWidth: Math.min(280, layout.width - 80) },
-              ]}
-            >
-              <MapLayersPopover
-                visible={layersPopoverOpen}
-                controls={mapControls}
-                compact={layout.isShortViewport}
-                onSetBasemapMode={(mode) =>
-                  dispatch({ type: 'SET_BASEMAP_MODE', mode })
-                }
-                onSetPolygonOpacity={(opacity) =>
-                  dispatch({ type: 'SET_POLYGON_OPACITY', opacity })
-                }
-              />
-              <View style={styles.spaceFilterPopover}>
-                <SpaceFilterRow
-                  locale={state.locale}
-                  value={state.spaceFilter}
-                  onChange={(filter) =>
-                    dispatch({ type: 'SET_SPACE_FILTER', filter })
+          // No scrim: the map stays usable while the layer manager is open.
+          <View
+            style={[
+              styles.layersPopoverAnchor,
+              layout.useHorizontalMapControls
+                ? {
+                    top: 56,
+                    right: 10,
+                    maxWidth: Math.min(280, layout.width - 20),
                   }
-                />
-                <SocialCheckbox
-                  testID="space-zones-toggle"
-                  label={social.zonesToggle}
-                  checked={zonesOn}
-                  onToggle={() => setZonesOn((on) => !on)}
-                />
-                {zonesOn ? (
-                  <Text style={socialStyles.hint}>
-                    {zonesNotice ?? social.zonesLegend}
-                    {zonesNotice === null && zonesCredit !== null
-                      ? ` ${zonesCredit}`
-                      : ''}
-                  </Text>
-                ) : null}
-              </View>
-            </View>
-          </>
+                : layout.isCompact
+                  ? {
+                      top: 68,
+                      right: layout.width < 360 ? 64 : 68,
+                      maxWidth: Math.min(
+                        280,
+                        Math.max(216, layout.width - (layout.width < 360 ? 72 : 78)),
+                      ),
+                    }
+                  : { maxWidth: Math.min(280, layout.width - 80) },
+            ]}
+          >
+            <MapLayersPopover
+              visible={layersPopoverOpen}
+              controls={mapControls}
+              compact={layout.isShortViewport}
+              onSetBasemapMode={(mode) =>
+                dispatch({ type: 'SET_BASEMAP_MODE', mode })
+              }
+              onSetPolygonOpacity={(opacity) =>
+                dispatch({ type: 'SET_POLYGON_OPACITY', opacity })
+              }
+            >
+              <SpaceZonesControl
+                locale={state.locale}
+                on={zonesOn}
+                notice={zonesNotice}
+                onToggle={() => setZonesOn((on) => !on)}
+              />
+            </MapLayersPopover>
+          </View>
         ) : null}
 
         {Platform.OS !== 'web' ? (
@@ -2659,8 +2600,6 @@ export function App(props: AppProps = {}): React.JSX.Element {
           </KeyboardAvoidingView>
         ) : null}
       </View>
-
-      {layout.isCompact ? mainTabBar : null}
 
       {moreMenuOpen ? (
         <>
@@ -3292,12 +3231,6 @@ function createStyles(PALETTE: ThemePalette, isDark: boolean) {
     ...StyleSheet.absoluteFillObject,
     zIndex: 60,
     elevation: 60,
-  },
-  spaceFilterPopover: {
-    marginTop: 8,
-    padding: 10,
-    borderRadius: 14,
-    backgroundColor: PALETTE.bgSurface,
   },
   legendPrivateSwatch: {
     width: 14,

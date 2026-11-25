@@ -33,6 +33,8 @@ import {
   type MapControlsModel,
 } from '../state/viewModels';
 import { useTheme } from '../theme/themeContext';
+import { ChatGlyph, FeedGlyph, MapGlyph, UserGlyph } from './NavGlyphs';
+import { withWebTooltip } from './webTooltip';
 import {
   RADII,
   TABULAR_NUMS_STYLE,
@@ -121,6 +123,11 @@ export interface MapControlsBarProps {
   onOpenAccount: () => void;
   onImportPress?: () => void;
   onExportError: (message: string) => void;
+  /** Which of the main views is shown; the icons for them sit in the navbar. */
+  activeMainTab?: 'map' | 'feed';
+  unreadChats?: number;
+  onSelectMainTab?: (tab: 'map' | 'feed') => void;
+  onOpenChat?: () => void;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -293,23 +300,6 @@ export function BugGlyph({
         />
       </View>
     </View>
-  );
-}
-
-function withWebTooltip(
-  tooltip: string,
-  child: React.JSX.Element,
-): React.JSX.Element {
-  if (Platform.OS !== 'web') {
-    return child;
-  }
-  return React.createElement(
-    'div',
-    {
-      title: tooltip,
-      style: { display: 'inline-flex', flexShrink: 0 },
-    },
-    child,
   );
 }
 
@@ -1076,6 +1066,10 @@ export function MapControlsBar({
   onToggleTheme,
   onOpenAbout,
   onOpenAccount,
+  activeMainTab = 'map',
+  unreadChats = 0,
+  onSelectMainTab,
+  onOpenChat,
 }: MapControlsBarProps): React.JSX.Element {
   const { palette } = useTheme();
   const styles = useMemo(() => createStyles(palette), [palette]);
@@ -1090,7 +1084,48 @@ export function MapControlsBar({
   const locale = controls.locale;
   const isDark = controls.colorScheme === 'dark';
   const t = getTranslations(locale).controls;
+  const social = getSocialCopy(locale);
   const appName = branding?.appName?.trim() || DEFAULT_APP_NAME;
+
+  const navIconButton = (
+    id: 'map' | 'feed' | 'chat',
+    label: string,
+    Glyph: typeof MapGlyph,
+    selected: boolean,
+    onPress: () => void,
+    badge = 0,
+  ): React.JSX.Element =>
+    withWebTooltip(
+      label,
+      <Pressable
+        key={id}
+        testID={`tab-${id}`}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityState={{ selected }}
+        {...(id === 'chat' ? {} : { 'aria-pressed': selected })}
+        hitSlop={isCompact ? { top: 4, bottom: 4, left: 2, right: 2 } : undefined}
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.navIconButton,
+          isCompact ? styles.navIconButtonCompact : null,
+          selected ? styles.navIconButtonActive : null,
+          pressed ? styles.buttonPressed : null,
+        ]}
+      >
+        <Glyph
+          color={selected ? palette.inkOnAccent : palette.inkPrimary}
+          size={isCompact ? 19 : 20}
+        />
+        {badge > 0 ? (
+          <View testID={`tab-${id}-badge`} style={styles.navIconBadge}>
+            <Text style={styles.navIconBadgeLabel}>
+              {badge > 9 ? '9+' : `${badge}`}
+            </Text>
+          </View>
+        ) : null}
+      </Pressable>,
+    );
 
   const accountButtonA11y = controls.isAuthenticated
     ? t.accountSettingsA11y(controls.accountLabel)
@@ -1115,16 +1150,19 @@ export function MapControlsBar({
           style={[
             styles.brandGroup,
             isCompact ? styles.brandGroupCompact : null,
+            navbarLayout.hideBrandTitle ? styles.brandGroupTitleless : null,
           ]}
         >
           <ParcelUnsealMark compact={isCompact} logoUrl={branding?.logoUrl} />
           <View
             style={[
               styles.titleInlineRow,
-              isCompact ? styles.titleInlineRowCompact : null,
+              isCompact && !navbarLayout.hideBrandTitle
+                ? styles.titleInlineRowCompact
+                : null,
             ]}
           >
-            {Platform.OS === 'web' ? (
+            {navbarLayout.hideBrandTitle ? null : Platform.OS === 'web' ? (
               React.createElement(
                 'h1',
                 {
@@ -1166,25 +1204,63 @@ export function MapControlsBar({
                 {appName}
               </Text>
             )}
-            <View
-              style={[
-                styles.countBadge,
-                isCompact ? styles.countBadgeCompact : null,
-              ]}
-            >
-              <View style={styles.countBadgeDot} />
-              <Text style={styles.countBadgeLabel}>
-                {navbarLayout.useCompactCountBadge
-                  ? `${proposalCount}`
-                  : `${proposalCount} ${
-                      controls.highlightMineOnly
-                        ? t.mineInViewSuffix
-                        : t.inViewSuffix
-                    }`}
-              </Text>
-            </View>
+            {navbarLayout.hideCountBadge ? null : (
+              <View
+                style={[
+                  styles.countBadge,
+                  isCompact ? styles.countBadgeCompact : null,
+                ]}
+              >
+                <View style={styles.countBadgeDot} />
+                <Text style={styles.countBadgeLabel}>
+                  {navbarLayout.useCompactCountBadge
+                    ? `${proposalCount}`
+                    : `${proposalCount} ${
+                        controls.highlightMineOnly
+                          ? t.mineInViewSuffix
+                          : t.inViewSuffix
+                      }`}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
+
+        {onSelectMainTab && onOpenChat ? (
+          <View
+            testID="main-tab-bar"
+            role="navigation"
+            style={[
+              styles.navIconGroup,
+              isCompact ? styles.navIconGroupCompact : null,
+            ]}
+          >
+            {navIconButton(
+              'map',
+              social.map,
+              MapGlyph,
+              activeMainTab === 'map',
+              () => onSelectMainTab('map'),
+            )}
+            {navIconButton(
+              'feed',
+              social.feed,
+              FeedGlyph,
+              activeMainTab === 'feed',
+              () => onSelectMainTab('feed'),
+            )}
+            {navIconButton(
+              'chat',
+              unreadChats > 0
+                ? social.chatUnread(unreadChats)
+                : social.chat,
+              ChatGlyph,
+              false,
+              onOpenChat,
+              unreadChats,
+            )}
+          </View>
+        ) : null}
 
         {navbarLayout.showSearchBarInNavbar && onOpenSearch ? (
           <View style={styles.searchSlotWrapper}>
@@ -1296,6 +1372,7 @@ export function MapControlsBar({
               navbarLayout.constrainAccountChipWidth && !isCompact
                 ? styles.accountChipMediumHeader
                 : null,
+              navbarLayout.iconOnlyAccount ? styles.accountChipIconOnly : null,
               controls.isAuthenticated ? styles.accountChipActive : null,
               pressed ? styles.buttonPressed : null,
             ]}
@@ -1308,18 +1385,29 @@ export function MapControlsBar({
                   : styles.accountStatusDotGuest,
               ]}
             />
-            <Text
-              numberOfLines={1}
-              ellipsizeMode="tail"
-              style={[
-                styles.accountChipLabel,
-                isCompact ? styles.accountChipLabelCompact : null,
-                isCompact && isNarrowPhone ? styles.accountChipLabelNarrowPhone : null,
-                controls.isAuthenticated ? styles.accountChipLabelActive : null,
-              ]}
-            >
-              {controls.accountLabel}
-            </Text>
+            {navbarLayout.iconOnlyAccount ? (
+              <UserGlyph
+                color={
+                  controls.isAuthenticated
+                    ? palette.accentPrimary
+                    : palette.inkPrimary
+                }
+                size={17}
+              />
+            ) : (
+              <Text
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                style={[
+                  styles.accountChipLabel,
+                  isCompact ? styles.accountChipLabelCompact : null,
+                  isCompact && isNarrowPhone ? styles.accountChipLabelNarrowPhone : null,
+                  controls.isAuthenticated ? styles.accountChipLabelActive : null,
+                ]}
+              >
+                {controls.accountLabel}
+              </Text>
+            )}
           </Pressable>
 
           {onToggleMoreMenu
@@ -1955,6 +2043,8 @@ export interface MapLayersPopoverProps {
   compact?: boolean;
   onSetBasemapMode: (mode: BasemapMode) => void;
   onSetPolygonOpacity?: (opacity: number) => void;
+  /** Further layers, shown below the basemap and opacity controls. */
+  children?: React.ReactNode;
 }
 
 export function MapLayersPopover({
@@ -1963,6 +2053,7 @@ export function MapLayersPopover({
   compact = false,
   onSetBasemapMode,
   onSetPolygonOpacity,
+  children,
 }: MapLayersPopoverProps): React.JSX.Element | null {
   const { palette, isDark } = useTheme();
   const styles = useMemo(() => createStyles(palette), [palette]);
@@ -2065,6 +2156,7 @@ export function MapLayersPopover({
         accessibilityLabel={t.polygonOpacityA11y}
         {...(onSetPolygonOpacity ? { onChange: onSetPolygonOpacity } : {})}
       />
+      {children}
     </View>
   );
 }
@@ -2408,6 +2500,12 @@ function createStyles(PALETTE: ThemePalette) {
     flexShrink: 1,
     minWidth: 0,
   },
+  brandGroupTitleless: {
+    flex: 0,
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: 'auto',
+  },
   brandMark: {
     width: 28,
     height: 28,
@@ -2614,6 +2712,56 @@ function createStyles(PALETTE: ThemePalette) {
   accountChipVeryNarrow: {
     paddingHorizontal: 6,
     maxWidth: 88,
+  },
+  accountChipIconOnly: {
+    minWidth: 36,
+    paddingHorizontal: 5,
+    gap: 2,
+  },
+  navIconGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
+  },
+  navIconGroupCompact: {
+    gap: 4,
+  },
+  navIconButton: {
+    width: MIN_TOUCH_TARGET_DP,
+    height: MIN_TOUCH_TARGET_DP,
+    borderRadius: RADII.pill,
+    borderWidth: 1,
+    borderColor: PALETTE.borderStrong,
+    backgroundColor: PALETTE.bgSurface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  navIconButtonCompact: {
+    width: 36,
+    height: 36,
+  },
+  navIconButtonActive: {
+    backgroundColor: PALETTE.accentPrimary,
+    borderColor: PALETTE.accentPrimary,
+  },
+  navIconBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 17,
+    height: 17,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: PALETTE.dangerDot,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navIconBadgeLabel: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   accountChipMediumHeader: {
     paddingHorizontal: 10,

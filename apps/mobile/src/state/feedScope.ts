@@ -1,11 +1,17 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (C) 2026 OpenUnseal Contributors
 
-import { FEED_LIMITS, type BboxBounds, type ChatMessage } from '@openunseal/shared';
+import {
+  FEED_LIMITS,
+  type BboxBounds,
+  type ChatMessage,
+  type PolygonFeedItem,
+  type PolygonFeedResponse,
+} from '@openunseal/shared';
 
 export type FeedScope =
   | { kind: 'all' }
-  /** The section is taken once, when chosen or refreshed, so the list stays put. */
+  /** The section is taken once, when it is chosen, so the list stays put. */
   | { kind: 'near'; bbox: BboxBounds }
   | { kind: 'municipality'; ags: string; name: string };
 
@@ -109,4 +115,71 @@ export function formatRelativeTime(
     month: '2-digit',
     year: 'numeric',
   });
+}
+
+/** When an entry got its place in the feed. */
+function activityMs(item: PolygonFeedItem): number {
+  return Date.parse(item.activityAt ?? item.feature.properties.createdAt);
+}
+
+const entryKey = (item: PolygonFeedItem): string =>
+  `${item.feature.id}@${activityMs(item)}`;
+
+/**
+ * Entries of a freshly loaded first page that came in after the list was
+ * loaded: new areas, and known ones with a newer status change.
+ */
+export function findNewEntries(
+  items: readonly PolygonFeedItem[],
+  fresh: readonly PolygonFeedItem[],
+): PolygonFeedItem[] {
+  if (items.length === 0) {
+    return [...fresh];
+  }
+  const known = new Set(items.map(entryKey));
+  const newest = activityMs(items[0]!);
+  return fresh.filter(
+    (item) => !known.has(entryKey(item)) && activityMs(item) >= newest,
+  );
+}
+
+/**
+ * Brings votes and counts of entries on screen up to date without moving
+ * anything: order, photos and comments stay until the reader asks for more.
+ */
+export function refreshKnownEntries(
+  items: readonly PolygonFeedItem[],
+  fresh: readonly PolygonFeedItem[],
+): PolygonFeedItem[] {
+  const byKey = new Map(fresh.map((item) => [entryKey(item), item]));
+  return items.map((item) => {
+    const update = byKey.get(entryKey(item));
+    return update ? { ...item, feature: update.feature } : item;
+  });
+}
+
+/**
+ * Puts a fresh first page on top of the loaded list. Entries that are gone
+ * from the stretch it covers are dropped. Without any overlap there may be a
+ * gap in between, so the list starts over with the fresh page.
+ */
+export function mergeFreshPage(
+  items: readonly PolygonFeedItem[],
+  cursor: string | null,
+  fresh: PolygonFeedResponse,
+): { items: PolygonFeedItem[]; cursor: string | null } {
+  const freshKeys = new Set(fresh.items.map(entryKey));
+  const overlaps = items.some((item) => freshKeys.has(entryKey(item)));
+  const last = fresh.items[fresh.items.length - 1];
+  if (fresh.nextCursor === null || !overlaps || last === undefined) {
+    return { items: [...fresh.items], cursor: fresh.nextCursor };
+  }
+  const freshIds = new Set(fresh.items.map((item) => item.feature.id));
+  const older = items.filter(
+    (item) => !freshIds.has(item.feature.id) && activityMs(item) <= activityMs(last),
+  );
+  return {
+    items: [...fresh.items, ...older],
+    cursor: older.length > 0 ? cursor : fresh.nextCursor,
+  };
 }

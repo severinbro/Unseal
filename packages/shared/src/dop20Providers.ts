@@ -117,9 +117,9 @@ export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
     licenseId: 'CC BY 4.0',
     licenseUrl: DOP20_LICENSE_URLS['CC BY 4.0'],
     attribution:
-      'Datenquelle: Bayerische Vermessungsverwaltung – www.geodaten.bayern.de',
+      'Datenquelle: Bayerische Vermessungsverwaltung - www.geodaten.bayern.de',
     fullAttributionTemplate:
-      'Datenquelle: Bayerische Vermessungsverwaltung – www.geodaten.bayern.de ({year}), CC BY 4.0 (Daten verändert)',
+      'Datenquelle: Bayerische Vermessungsverwaltung - www.geodaten.bayern.de ({year}), CC BY 4.0 (Daten verändert)',
     shortCreditTemplate:
       'Bayerische Vermessungsverwaltung ({year}), www.geodaten.bayern.de',
     modifiedNote: 'Daten verändert',
@@ -187,9 +187,9 @@ export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
     licenseId: 'CC BY 4.0',
     licenseUrl: DOP20_LICENSE_URLS['CC BY 4.0'],
     attribution:
-      'LGLN Creative Commons Namensnennung – 4.0 International (CC BY 4.0)',
+      'LGLN Creative Commons Namensnennung - 4.0 International (CC BY 4.0)',
     fullAttributionTemplate:
-      'LGLN ({year}) Creative Commons Namensnennung – 4.0 International (CC BY 4.0) (Daten verändert)',
+      'LGLN ({year}) Creative Commons Namensnennung - 4.0 International (CC BY 4.0) (Daten verändert)',
     shortCreditTemplate: 'LGLN ({year})',
     modifiedNote: 'Daten verändert',
   },

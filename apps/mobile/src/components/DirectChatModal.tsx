@@ -439,7 +439,7 @@ export function DirectChatModal(props: {
                 ) : null}
                 {comment ? (
                   <Text style={styles.hint}>
-                    „{comment.bodyExcerpt}“ – {t.commentBy(name(comment.authorPseudonym))}
+                    „{comment.bodyExcerpt}“ - {t.commentBy(name(comment.authorPseudonym))}
                   </Text>
                 ) : null}
                 <Text style={styles.hint}>
