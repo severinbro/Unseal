@@ -3,6 +3,7 @@
 
 import { ApiError } from '@openunseal/shared';
 
+import { detachUserFromChats } from '../chat/repository.js';
 import {
   hashCanonicalEmail,
   hashEmailTombstone,
@@ -15,7 +16,7 @@ export interface DeleteOrBanUserParams {
   userId: string;
   pseudonymLower: string;
   /**
-   * - `self_delete`: account erased, contributions stay public anonymised as "deleted".
+   * - `self_delete`: account and direct messages erased, public contributions stay as "deleted".
    * - `self_delete_purge`: account erased together with all own polygons, photos and
    *   comments (GDPR Art. 17 at the user's choice); no email tombstone is written.
    * - `ban`: like `self_delete_purge`, plus pseudonym/email ban tombstones.
@@ -402,6 +403,9 @@ export async function deleteOrBanUserAccount(
       ...flaggedPolygonIds,
     ]);
   }
+
+  // Direct messages are erased with the account in every mode.
+  await detachUserFromChats(client, userRow.id);
 
   await client.query('DELETE FROM users WHERE id = $1', [userRow.id]);
 

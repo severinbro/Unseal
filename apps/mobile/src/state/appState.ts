@@ -5,9 +5,13 @@ import {
   ApiError,
   checkBboxSpan,
   closeRingIfNeeded,
+  computeExteriorRingCentroid,
+  computeRingBbox,
   computeMunicipalityNormalizedScore,
   dedupeConsecutivePoints,
   GEOMETRY_LIMITS,
+  GERMANY_MAX_BOUNDS,
+  GERMANY_MIN_ZOOM,
   PHOTO_LIMITS,
   validateDraftPolygon,
   type AuthUser,
@@ -17,6 +21,8 @@ import {
   type PolygonFeature,
   type PolygonFilter,
   type RuntimeConfig,
+  type SpaceFilter,
+  type SpaceType,
   type SurfaceType,
   type VoteResponse,
 } from '@openunseal/shared';
@@ -73,7 +79,27 @@ export interface CameraTarget {
   seq: number;
 }
 
+/** Owner statements for private ground, entered in step 2. */
+export interface DraftSpace {
+  spaceType: SpaceType | null;
+  openForPublicAccess: boolean;
+  allowChatContact: boolean;
+  helpWanted: boolean;
+  entitlementConfirmed: boolean;
+}
+
+export const EMPTY_DRAFT_SPACE: DraftSpace = {
+  spaceType: null,
+  openForPublicAccess: false,
+  allowChatContact: false,
+  helpWanted: false,
+  entitlementConfirmed: false,
+};
+
+export type MainTab = 'map' | 'feed';
+
 export type PendingIntent =
+  | { type: 'ADVANCE_TO_DETAILS' }
   | {
       type: 'SUBMIT_DRAFT';
       payload: CreatePolygonRequest;
@@ -95,6 +121,8 @@ export interface AppState {
   basemapMode: BasemapMode;
   polygonOpacity: number;
   polygonFilter: PolygonFilter;
+  spaceFilter: SpaceFilter;
+  activeMainTab: MainTab;
   highlightMineOnly: boolean;
   tileWarning: string | null;
   viewport: ViewportState | null;
@@ -106,6 +134,11 @@ export interface AppState {
   overlappingFeatureIds: string[];
   overlapIndex: number;
   selectedFeatureId: string | null;
+  /**
+   * An area opened from the feed or a chat. It stays selected while the map
+   * is still travelling to it and the loaded sections do not contain it yet.
+   */
+  pinnedFeature: PolygonFeature | null;
   mode: InteractionMode;
   drawingStep: DrawingStep;
   drawingSheetCollapsed: boolean;
@@ -114,6 +147,7 @@ export interface AppState {
   draftSurfaceType: SurfaceType;
   draftNote: string;
   draftPhotos: DraftPhotoAttachment[];
+  draftSpace: DraftSpace;
   confirmingDiscardDraft: boolean;
   isSubmittingDraft: boolean;
   draftSubmitError: string | null;
@@ -141,6 +175,16 @@ export type AppAction =
   | { type: 'SET_BASEMAP_MODE'; mode: BasemapMode }
   | { type: 'SET_POLYGON_OPACITY'; opacity: number }
   | { type: 'SET_POLYGON_FILTER'; filter: PolygonFilter }
+  | { type: 'SET_SPACE_FILTER'; filter: SpaceFilter }
+  | { type: 'SET_MAIN_TAB'; tab: MainTab }
+  | {
+      type: 'SHOW_POLYGON';
+      feature: PolygonFeature;
+      /** Set when the area is known to pass the current filters. */
+      keepFilters?: boolean;
+    }
+  | { type: 'SET_DRAFT_SPACE'; patch: Partial<DraftSpace> }
+  | { type: 'USER_UPDATED'; user: AuthUser }
   | { type: 'SET_HIGHLIGHT_MINE_ONLY'; enabled: boolean }
   | { type: 'TOGGLE_HIGHLIGHT_MINE_ONLY' }
   | { type: 'TILE_LOAD_ERROR'; reason?: string }
@@ -219,6 +263,8 @@ export const initialAppState: AppState = {
   basemapMode: 'osm',
   polygonOpacity: DEFAULT_POLYGON_OPACITY,
   polygonFilter: 'all',
+  spaceFilter: 'all',
+  activeMainTab: 'map',
   highlightMineOnly: false,
   tileWarning: null,
   viewport: null,
@@ -230,6 +276,7 @@ export const initialAppState: AppState = {
   overlappingFeatureIds: [],
   overlapIndex: 0,
   selectedFeatureId: null,
+  pinnedFeature: null,
   mode: 'browse',
   drawingStep: 'geometry',
   drawingSheetCollapsed: false,
@@ -238,6 +285,7 @@ export const initialAppState: AppState = {
   draftSurfaceType: 'asphalt',
   draftNote: '',
   draftPhotos: [],
+  draftSpace: EMPTY_DRAFT_SPACE,
   confirmingDiscardDraft: false,
   isSubmittingDraft: false,
   draftSubmitError: null,
@@ -260,6 +308,28 @@ function isBboxSpanTooWide(bbox: BboxBounds, maxSpanDeg: number): boolean {
     }
     return true;
   }
+}
+
+export function isInsideGermanyBounds(lng: number, lat: number): boolean {
+  const [[west, south], [east, north]] = GERMANY_MAX_BOUNDS;
+  return lng >= west && lng <= east && lat >= south && lat <= north;
+}
+
+/** Null when the viewport lies entirely outside Germany (caller falls back to the default view). */
+export function clampViewportToGermany(
+  viewport: ViewportState,
+): ViewportState | null {
+  const [[west, south], [east, north]] = GERMANY_MAX_BOUNDS;
+  const bbox: BboxBounds = {
+    minLng: Math.max(west, viewport.bbox.minLng),
+    minLat: Math.max(south, viewport.bbox.minLat),
+    maxLng: Math.min(east, viewport.bbox.maxLng),
+    maxLat: Math.min(north, viewport.bbox.maxLat),
+  };
+  if (bbox.minLng >= bbox.maxLng || bbox.minLat >= bbox.maxLat) {
+    return null;
+  }
+  return { bbox, zoom: Math.max(GERMANY_MIN_ZOOM, viewport.zoom) };
 }
 
 function dedupeStrings(items: readonly string[]): string[] {
@@ -389,6 +459,45 @@ function recomputeMunicipalityScoresForAgs(
   });
 }
 
+function buildDraftSpacePayload(
+  space: DraftSpace,
+): Pick<
+  CreatePolygonRequest,
+  | 'spaceType'
+  | 'openForPublicAccess'
+  | 'allowChatContact'
+  | 'helpWanted'
+  | 'entitlementConfirmed'
+> {
+  if (space.spaceType === null) {
+    return {};
+  }
+  if (space.spaceType === 'public') {
+    return { spaceType: 'public' };
+  }
+  return {
+    spaceType: 'private',
+    openForPublicAccess: space.openForPublicAccess,
+    allowChatContact: space.allowChatContact,
+    ...(space.helpWanted ? { helpWanted: true } : {}),
+    ...(space.openForPublicAccess || space.allowChatContact || space.helpWanted
+      ? { entitlementConfirmed: space.entitlementConfirmed }
+      : {}),
+  };
+}
+
+/** Owner statements need an explicit confirmation before submitting. */
+export function isDraftSpaceComplete(space: DraftSpace): boolean {
+  return (
+    space.spaceType === 'public' ||
+    (space.spaceType === 'private' &&
+      (space.entitlementConfirmed ||
+        (!space.openForPublicAccess &&
+          !space.allowChatContact &&
+          !space.helpWanted)))
+  );
+}
+
 function buildDraftPolygonPayload(state: AppState): CreatePolygonRequest {
   const deduped = dedupeConsecutivePoints(state.draftVertices);
   const closedRing = closeRingIfNeeded(deduped);
@@ -401,6 +510,7 @@ function buildDraftPolygonPayload(state: AppState): CreatePolygonRequest {
     },
     surfaceType: state.draftSurfaceType,
     ...(trimmedNote.length > 0 ? { note: trimmedNote } : {}),
+    ...buildDraftSpacePayload(state.draftSpace),
   };
 }
 
@@ -447,7 +557,10 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         !hasOrthophoto && state.basemapMode === 'orthophoto'
           ? 'osm'
           : state.basemapMode;
-      const saved = action.savedViewport ?? null;
+      const saved =
+        action.savedViewport && action.config.germanyConfinementEnabled !== false
+          ? clampViewportToGermany(action.savedViewport)
+          : (action.savedViewport ?? null);
       const nextCameraTarget: CameraTarget =
         state.cameraTarget ??
         (saved !== null
@@ -533,6 +646,71 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
     }
 
+    case 'SET_SPACE_FILTER': {
+      return state.spaceFilter === action.filter
+        ? state
+        : {
+            ...state,
+            spaceFilter: action.filter,
+            viewportRefreshSeq: state.viewportRefreshSeq + 1,
+          };
+    }
+
+    case 'SET_MAIN_TAB': {
+      return state.activeMainTab === action.tab
+        ? state
+        : { ...state, activeMainTab: action.tab };
+    }
+
+    case 'SET_DRAFT_SPACE': {
+      const next = { ...state.draftSpace, ...action.patch };
+      return {
+        ...state,
+        draftSpace:
+          next.spaceType === 'private'
+            ? next
+            : { ...EMPTY_DRAFT_SPACE, spaceType: next.spaceType },
+        draftSubmitError: null,
+      };
+    }
+
+    case 'USER_UPDATED': {
+      return state.currentUser?.id === action.user.id
+        ? { ...state, currentUser: action.user }
+        : state;
+    }
+
+    case 'SHOW_POLYGON': {
+      const ring = action.feature.geometry.coordinates[0] ?? [];
+      const [lng, lat] = computeExteriorRingCentroid(ring);
+      const [minLng, minLat, maxLng, maxLat] = computeRingBbox(ring);
+      return {
+        ...state,
+        activeMainTab: 'map',
+        mode: 'browse',
+        // Filters that would hide the target are lifted.
+        polygonFilter: action.keepFilters ? state.polygonFilter : 'all',
+        spaceFilter: action.keepFilters ? state.spaceFilter : 'all',
+        highlightMineOnly: false,
+        features: sortFeaturesCanonical([
+          action.feature,
+          ...state.features.filter((f) => f.id !== action.feature.id),
+        ]),
+        overlappingFeatureIds: [action.feature.id],
+        overlapIndex: 0,
+        selectedFeatureId: action.feature.id,
+        pinnedFeature: action.feature,
+        cameraTarget: {
+          lng,
+          lat,
+          zoom: 18,
+          bounds: { minLng, minLat, maxLng, maxLat },
+          seq: (state.cameraTarget?.seq ?? 0) + 1,
+        },
+        viewportRefreshSeq: state.viewportRefreshSeq + 1,
+      };
+    }
+
     case 'SET_HIGHLIGHT_MINE_ONLY': {
       const nextEnabled = state.currentUser !== null ? action.enabled : false;
       if (state.highlightMineOnly === nextEnabled) {
@@ -579,6 +757,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
       return {
         ...state,
+        activeMainTab: 'map',
         cameraTarget: target,
       };
     }
@@ -599,6 +778,34 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'VIEWPORT_FEATURES_LOADED': {
+      const pinned =
+        state.pinnedFeature !== null &&
+        state.pinnedFeature.id === state.selectedFeatureId
+          ? state.pinnedFeature
+          : null;
+      if (pinned !== null && !action.features.some((f) => f.id === pinned.id)) {
+        const [minLng, minLat, maxLng, maxLat] = computeRingBbox(
+          pinned.geometry.coordinates[0] ?? [],
+        );
+        const view = state.viewport?.bbox;
+        const arrived =
+          view !== undefined &&
+          minLng <= view.maxLng &&
+          maxLng >= view.minLng &&
+          minLat <= view.maxLat &&
+          maxLat >= view.minLat;
+        // On the way there, or cut off by the feature limit: keep it in view.
+        // Arrived and still missing: it is gone, so the selection goes too.
+        if (!arrived || action.truncated) {
+          // Prefer the copy that later votes or edits were applied to.
+          const current = state.features.find((f) => f.id === pinned.id) ?? pinned;
+          return {
+            ...state,
+            features: sortFeaturesCanonical([current, ...action.features]),
+            truncated: action.truncated,
+          };
+        }
+      }
       const presentIds = new Set(action.features.map((f) => f.id));
       const survivingOverlap = state.overlappingFeatureIds.filter((id) =>
         presentIds.has(id),
@@ -616,6 +823,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         overlappingFeatureIds: survivingOverlap,
         overlapIndex: clampedIndex,
         selectedFeatureId,
+        pinnedFeature: null,
       };
     }
 
@@ -629,6 +837,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case 'START_DRAW': {
       return {
         ...state,
+        activeMainTab: 'map',
         mode: 'drawing',
         drawingStep: 'geometry',
         drawingSheetCollapsed: false,
@@ -637,12 +846,17 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         draftSurfaceType: 'asphalt',
         draftNote: '',
         draftPhotos: [],
+        draftSpace: EMPTY_DRAFT_SPACE,
         confirmingDiscardDraft: false,
         isSubmittingDraft: false,
         draftSubmitError: null,
         overlappingFeatureIds: [],
         overlapIndex: 0,
         selectedFeatureId: null,
+        pendingIntent:
+          state.pendingIntent?.type === 'ADVANCE_TO_DETAILS'
+            ? null
+            : state.pendingIntent,
       };
     }
 
@@ -725,6 +939,17 @@ export function appReducer(state: AppState, action: AppAction): AppState {
           draftSubmitError: firstError
             ? translateValidationMessage(firstError, state.locale)
             : null,
+        };
+      }
+      if (state.currentUser === null) {
+        return {
+          ...state,
+          isRingClosed: true,
+          pendingIntent: { type: 'ADVANCE_TO_DETAILS' },
+          authModalOpen: true,
+          authModalView: 'register',
+          authError: null,
+          draftSubmitError: null,
         };
       }
       return {
@@ -863,13 +1088,14 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         draftSurfaceType: 'asphalt',
         draftNote: '',
         draftPhotos: [],
+        draftSpace: EMPTY_DRAFT_SPACE,
         confirmingDiscardDraft: false,
         isSubmittingDraft: false,
         draftSubmitError: null,
         pendingIntent:
-          state.pendingIntent?.type === 'SUBMIT_DRAFT'
-            ? null
-            : state.pendingIntent,
+          state.pendingIntent?.type === 'CAST_VOTE'
+            ? state.pendingIntent
+            : null,
       };
     }
 
@@ -936,6 +1162,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         draftSurfaceType: 'asphalt',
         draftNote: '',
         draftPhotos: [],
+        draftSpace: EMPTY_DRAFT_SPACE,
         confirmingDiscardDraft: false,
         isSubmittingDraft: false,
         draftSubmitError: null,
@@ -943,9 +1170,9 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         overlapIndex: 0,
         selectedFeatureId: action.feature.id,
         pendingIntent:
-          state.pendingIntent?.type === 'SUBMIT_DRAFT'
-            ? null
-            : state.pendingIntent,
+          state.pendingIntent?.type === 'CAST_VOTE'
+            ? state.pendingIntent
+            : null,
       };
     }
 
@@ -1080,7 +1307,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       if (
         targetFeature &&
         (targetFeature.properties.isAuthor ||
-          targetFeature.properties.status !== 'proposed')
+          (targetFeature.properties.status !== 'proposed' &&
+            targetFeature.properties.spaceVerification !== 'user_override'))
       ) {
         return state;
       }
@@ -1238,6 +1466,14 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         currentUser: action.user,
+        ...(state.pendingIntent?.type === 'ADVANCE_TO_DETAILS'
+          ? {
+              pendingIntent: null,
+              ...(state.mode === 'drawing'
+                ? { drawingStep: 'details' as const, drawingSheetCollapsed: false }
+                : {}),
+            }
+          : {}),
         viewportRefreshSeq: state.viewportRefreshSeq + 1,
         authError: null,
         authModalOpen: false,
@@ -1251,6 +1487,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         currentUser: null,
+        pinnedFeature: null,
         highlightMineOnly: false,
         isSubmittingDraft: false,
         viewportRefreshSeq: state.viewportRefreshSeq + 1,
@@ -1268,12 +1505,20 @@ export function appReducer(state: AppState, action: AppAction): AppState {
           myVote: 0 as const,
           myFlag: false,
           isAuthor: false,
+          canMessageAuthor: false,
+          detectedSpaceType: null,
+          privateOverlapRatio: null,
+          spaceVerificationSource: null,
+          allowChatContact: null,
+          helpWantedUntil: null,
+          entitlementConfirmed: null,
         },
       }));
 
       return {
         ...state,
         currentUser: null,
+        pinnedFeature: null,
         highlightMineOnly: false,
         viewportRefreshSeq: state.viewportRefreshSeq + 1,
         features: scrubbedFeatures,
@@ -1323,6 +1568,13 @@ export function appReducer(state: AppState, action: AppAction): AppState {
                 ? null
                 : f.properties.authorRecentlyActive,
               isAuthor: false,
+              canMessageAuthor: false,
+              detectedSpaceType: null,
+              privateOverlapRatio: null,
+              spaceVerificationSource: null,
+              allowChatContact: null,
+              helpWantedUntil: null,
+              entitlementConfirmed: null,
               myVote: 0 as const,
               flagCount: nextFlagCount,
               isFlagged: nextFlagCount > 0,
@@ -1334,6 +1586,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         currentUser: null,
+        pinnedFeature: null,
         highlightMineOnly: false,
         viewportRefreshSeq: state.viewportRefreshSeq + 1,
         features: anonymizedFeatures,

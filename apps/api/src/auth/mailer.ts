@@ -60,7 +60,7 @@ export interface BugReportEmailPayload {
 export interface ContentReportEmailPayload {
   to: string;
   reportId: string;
-  targetType: 'polygon' | 'photo' | 'comment';
+  targetType: 'polygon' | 'photo' | 'comment' | 'chat_message';
   targetId: string;
   reason: string;
   explanation: string;
@@ -70,12 +70,16 @@ export interface ContentReportEmailPayload {
   reporterUserId: string | null;
   pageUrl: string | null;
   submittedAtIso: string;
+  /** Only set when a participant reports a direct message. */
+  reportedMessage?:
+    | { body: string; senderPseudonym: string; createdAt: string }
+    | undefined;
 }
 
 export interface ContentReportReceiptEmailPayload {
   to: string;
   reportId: string;
-  targetType: 'polygon' | 'photo' | 'comment';
+  targetType: 'polygon' | 'photo' | 'comment' | 'chat_message';
   targetId: string;
   reason: string;
   submittedAtIso: string;
@@ -87,6 +91,7 @@ export type ModerationActionKind =
   | 'polygon_deleted'
   | 'photo_deleted'
   | 'comment_deleted'
+  | 'chat_message_deleted'
   | 'note_redacted'
   | 'account_banned';
 
@@ -407,6 +412,10 @@ const MODERATION_ACTION_LABELS: Readonly<
     de: 'Entfernung eines Kommentars',
     en: 'Removal of a comment',
   },
+  chat_message_deleted: {
+    de: 'Entfernung einer Direktnachricht',
+    en: 'Removal of a direct message',
+  },
   note_redacted: {
     de: 'Entfernung/Schwärzung einer Flächennotiz',
     en: 'Redaction of a proposal note',
@@ -447,6 +456,14 @@ export function renderContentReportEmailMessage(
     'Begründung / Explanation:',
     '-------------------------',
     payload.explanation,
+    ...(payload.reportedMessage
+      ? [
+          '',
+          `Gemeldete Nachricht / Reported message (@${payload.reportedMessage.senderPseudonym}, ${payload.reportedMessage.createdAt}):`,
+          '-------------------------',
+          payload.reportedMessage.body,
+        ]
+      : []),
   ].join('\n');
 
   const safeId = escapeHtml(payload.reportId);

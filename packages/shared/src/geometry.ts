@@ -367,3 +367,71 @@ export function validateDraftPolygon(
     errors,
   };
 }
+
+/** Area-weighted centroid of a (closed or open) exterior ring. */
+export function computeExteriorRingCentroid(
+  exteriorRing: readonly (readonly [number, number])[] | undefined,
+): [number, number] {
+  if (!exteriorRing || exteriorRing.length === 0) {
+    return [0, 0];
+  }
+
+  const n = exteriorRing.length;
+  const first = exteriorRing[0]!;
+  const last = exteriorRing[n - 1]!;
+  const uniqueCount =
+    n > 1 && first[0] === last[0] && first[1] === last[1] ? n - 1 : n;
+
+  if (uniqueCount === 0) {
+    return [first[0], first[1]];
+  }
+
+  const [refLng, refLat] = first;
+  let twiceArea = 0;
+  let cxAcc = 0;
+  let cyAcc = 0;
+
+  for (let i = 0; i < uniqueCount; i++) {
+    const [lng0, lat0] = exteriorRing[i]!;
+    const [lng1, lat1] = exteriorRing[(i + 1) % uniqueCount]!;
+    const x0 = lng0 - refLng;
+    const y0 = lat0 - refLat;
+    const x1 = lng1 - refLng;
+    const y1 = lat1 - refLat;
+    const cross = x0 * y1 - x1 * y0;
+    twiceArea += cross;
+    cxAcc += (x0 + x1) * cross;
+    cyAcc += (y0 + y1) * cross;
+  }
+
+  const sixArea = 3 * twiceArea;
+  if (Math.abs(sixArea) > 1e-18) {
+    return [refLng + cxAcc / sixArea, refLat + cyAcc / sixArea];
+  }
+
+  let sumLng = 0;
+  let sumLat = 0;
+  for (let i = 0; i < uniqueCount; i++) {
+    const [lng, lat] = exteriorRing[i]!;
+    sumLng += lng;
+    sumLat += lat;
+  }
+  return [sumLng / uniqueCount, sumLat / uniqueCount];
+}
+
+/** `[minLng, minLat, maxLng, maxLat]` of a non-empty ring. */
+export function computeRingBbox(
+  exteriorRing: readonly (readonly [number, number])[],
+): [number, number, number, number] {
+  let minLng = Infinity;
+  let minLat = Infinity;
+  let maxLng = -Infinity;
+  let maxLat = -Infinity;
+  for (const [lng, lat] of exteriorRing) {
+    minLng = Math.min(minLng, lng);
+    minLat = Math.min(minLat, lat);
+    maxLng = Math.max(maxLng, lng);
+    maxLat = Math.max(maxLat, lat);
+  }
+  return [minLng, minLat, maxLng, maxLat];
+}

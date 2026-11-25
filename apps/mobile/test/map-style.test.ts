@@ -103,6 +103,17 @@ function makeFeature(params: {
       isFlagged: false,
       myFlag: false,
       isAuthor: false,
+      spaceType: 'unknown',
+      spaceVerification: 'unverified',
+      openForPublicAccess: false,
+      canMessageAuthor: false,
+      detectedSpaceType: null,
+      privateOverlapRatio: null,
+      spaceVerificationSource: null,
+      allowChatContact: null,
+      helpWanted: false,
+      helpWantedUntil: null,
+      entitlementConfirmed: null,
       createdAt,
       updatedAt: createdAt,
     },
@@ -234,6 +245,7 @@ describe('styleBuilder and MapCanvas contract', () => {
     assert.deepEqual(INTERACTIVE_PROPOSAL_LAYER_IDS, [
       'proposals-fill',
       'proposals-outline',
+      'proposals-outline-private',
       'proposals-centroid',
     ]);
 
@@ -308,6 +320,7 @@ describe('styleBuilder and MapCanvas contract', () => {
       ORTHOPHOTO_LAYER_ID,
       'proposals-fill',
       'proposals-outline',
+      'proposals-outline-private',
       'proposals-centroid',
       'draft-fill',
       'draft-line',
@@ -581,10 +594,10 @@ describe('styleBuilder and MapCanvas contract', () => {
       assert.deepEqual(validateStyleMin(style), []);
     }
 
-    const [zeroFill, zeroOutline, zeroCentroid] = buildPolygonLayerSpecs(0);
-    const [defaultFill, defaultOutline, defaultCentroid] =
+    const [zeroFill, zeroOutline, , zeroCentroid] = buildPolygonLayerSpecs(0);
+    const [defaultFill, defaultOutline, , defaultCentroid] =
       buildPolygonLayerSpecs(DEFAULT_POLYGON_OPACITY);
-    const [fullFill, fullOutline, fullCentroid] = buildPolygonLayerSpecs(1);
+    const [fullFill, fullOutline, , fullCentroid] = buildPolygonLayerSpecs(1);
 
     assert.equal(zeroOutline.paint['line-opacity'], 0);
     assert.equal(zeroCentroid.paint['circle-opacity'], 0);
@@ -774,7 +787,7 @@ describe('styleBuilder and MapCanvas contract', () => {
         scheme,
         true,
       );
-      const [hlFill, hlOutline, hlCentroid] = highlightLayers;
+      const [hlFill, hlOutline, , hlCentroid] = highlightLayers;
 
       const styleCandidate: StyleSpecification = {
         version: 8,

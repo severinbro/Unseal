@@ -11,8 +11,10 @@ import {
 } from '@openunseal/shared';
 
 import { optionalAuth } from '../auth/session.js';
+import { ChatRepository } from '../chat/repository.js';
 import { normalizeRateLimitIp } from '../util/rateLimit.js';
 
+import type { ContentReportEmailPayload } from '../auth/mailer.js';
 import type { FastifyInstance } from 'fastify';
 import type pg from 'pg';
 
@@ -28,7 +30,7 @@ function extractEmailAddress(raw: string | null | undefined): string | null {
 
 async function targetExists(
   pool: pg.Pool,
-  targetType: ContentReportTargetType,
+  targetType: Exclude<ContentReportTargetType, 'chat_message'>,
   targetId: string,
 ): Promise<boolean> {
   if (targetType === 'polygon') {
@@ -86,11 +88,39 @@ export function registerContentReportRoutes(app: FastifyInstance): void {
         );
       }
 
-      const exists = await targetExists(
-        app.pool,
-        parsed.targetType,
-        parsed.targetId,
-      );
+      let reportedMessage: ContentReportEmailPayload['reportedMessage'];
+      let exists: boolean;
+      if (parsed.targetType === 'chat_message') {
+        // Only a participant can disclose a private message.
+        if (!authUser) {
+          throw new ApiError(
+            401,
+            'AUTH_REQUIRED',
+            'Sign in to report a direct message you received.',
+          );
+        }
+        const message = await new ChatRepository(app.pool).findReportableMessage(
+          authUser.id,
+          parsed.targetId,
+        );
+        if (message?.isOwn) {
+          throw new ApiError(
+            422,
+            'VALIDATION_ERROR',
+            'You cannot report your own message.',
+          );
+        }
+        exists = message !== null;
+        if (message) {
+          reportedMessage = {
+            body: message.body,
+            senderPseudonym: message.senderPseudonym,
+            createdAt: message.createdAt,
+          };
+        }
+      } else {
+        exists = await targetExists(app.pool, parsed.targetType, parsed.targetId);
+      }
       if (!exists) {
         throw new ApiError(
           404,
@@ -116,6 +146,7 @@ export function registerContentReportRoutes(app: FastifyInstance): void {
           reporterUserId: authUser?.id ?? null,
           pageUrl: parsed.pageUrl ?? null,
           submittedAtIso,
+          ...(reportedMessage ? { reportedMessage } : {}),
         });
       } catch (err: unknown) {
         request.log.error(
@@ -130,10 +161,14 @@ export function registerContentReportRoutes(app: FastifyInstance): void {
       }
 
       let receiptSent = false;
-      if (parsed.reporterEmail) {
+      const receiptEmail =
+        parsed.targetType === 'chat_message'
+          ? (authUser?.email ?? null)
+          : (parsed.reporterEmail ?? null);
+      if (receiptEmail) {
         try {
           await app.mailer.sendContentReportReceiptEmail({
-            to: parsed.reporterEmail,
+            to: receiptEmail,
             reportId,
             targetType: parsed.targetType,
             targetId: parsed.targetId,

@@ -483,6 +483,7 @@ export interface TranslationDictionary {
     readonly webPositionUnavailable: string;
     readonly webTimeout: string;
     readonly webApproximateLocationNotice: (accuracyKm: number) => string;
+    readonly outsideGermanyNotice: string;
     readonly webGenericError: (detail: string) => string;
     readonly webRequestFailed: (detail: string) => string;
     readonly nativePermissionDeniedSettings: string;
@@ -1160,7 +1161,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       loggingOut: 'Abmeldung läuft…',
       logout: 'Abmelden',
       deleteAccountWarning:
-        'Das Löschen deines Kontos entfernt dauerhaft deine E-Mail-Adresse, Zugangsdaten, Sitzungen und Stimmen (Art. 17 DSGVO) und reserviert dein Pseudonym zeitlich begrenzt gegen Nachahmung. Deine Flächenvorschläge, Fotos und Kommentare bleiben anonym unter „gelöscht“ sichtbar – außer du wählst unten, dass sie mitgelöscht werden.',
+        'Das Löschen deines Kontos entfernt dauerhaft deine E-Mail-Adresse, Zugangsdaten, Sitzungen, Stimmen und gesendeten Direktnachrichten (Art. 17 DSGVO) und reserviert dein Pseudonym zeitlich begrenzt gegen Nachahmung. Deine Flächenvorschläge, Fotos und Kommentare bleiben anonym unter „gelöscht“ sichtbar – außer du wählst unten, dass sie mitgelöscht werden.',
       purgeContentLabel:
         'Auch alle meine Flächenvorschläge, Fotos und Kommentare endgültig löschen (Antworten anderer auf meine Kommentare werden dabei mitgelöscht).',
       purgeContentA11y: 'Auch alle eigenen Beiträge löschen',
@@ -1204,6 +1205,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         'Dein aktueller Standort ist nicht verfügbar. Bitte prüfe, ob die Ortungsdienste deines Geräts aktiviert sind, und versuche es erneut.',
       webTimeout:
         'Zeitüberschreitung beim Abrufen der GPS-Koordinaten. Bitte begib dich an einen Ort mit freier Sicht oder versuche es erneut.',
+      outsideGermanyNotice:
+        'Dein Standort liegt außerhalb Deutschlands. Die Karte bleibt auf Deutschland begrenzt.',
       webApproximateLocationNotice: (accuracyKm) =>
         `Dein Browser hat nur einen ungefähren Netzwerk-/IP-Standort (±${accuracyKm} km, oft am Netzknoten des Internetanbieters) geliefert. Für deinen exakten Standort bitte WLAN/Ortungsdienste und „Genauer Standort“ im Browser aktivieren.`,
       webGenericError: (detail) =>
@@ -1321,7 +1324,9 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
             ? 'Foto'
             : targetType === 'comment'
               ? 'Kommentar'
-              : 'Flächenvorschlag';
+              : targetType === 'chat_message'
+                ? 'Direktnachricht'
+                : 'Flächenvorschlag';
         return `Betroffener Inhalt: ${typeText} (${targetId.slice(0, 8)}…)`;
       },
       reasonLabel: 'Art des Verstoßes',
@@ -1939,7 +1944,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       loggingOut: 'Signing Out…',
       logout: 'Log Out',
       deleteAccountWarning:
-        'Deleting your account permanently erases your email address, credentials, sessions and votes (GDPR Art. 17) and reserves your pseudonym for a limited time to prevent impersonation. Your proposals, photos and comments stay public anonymised as “deleted” – unless you choose below to delete them too.',
+        'Deleting your account permanently erases your email address, credentials, sessions, votes and the direct messages you sent (GDPR Art. 17) and reserves your pseudonym for a limited time to prevent impersonation. Your proposals, photos and comments stay public anonymised as “deleted” – unless you choose below to delete them too.',
       purgeContentLabel:
         'Also permanently delete all my proposals, photos and comments (replies by others to my comments are removed as well).',
       purgeContentA11y: 'Also delete all my contributions',
@@ -1981,6 +1986,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         'Your current position is unavailable. Check that device location services are enabled and try again.',
       webTimeout:
         'Timed out while waiting for GPS coordinates. Move to an area with a clearer view or try again.',
+      outsideGermanyNotice:
+        'Your location is outside Germany. The map stays limited to Germany.',
       webApproximateLocationNotice: (accuracyKm) =>
         `Your browser only provided an approximate network/IP location (±${accuracyKm} km, often at your ISP’s regional hub). Enable Wi-Fi / location services and “Precise location” in your browser for your exact position.`,
       webGenericError: (detail) =>
@@ -2096,7 +2103,9 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
             ? 'Photo'
             : targetType === 'comment'
               ? 'Comment'
-              : 'Surface proposal';
+              : targetType === 'chat_message'
+                ? 'Direct message'
+                : 'Surface proposal';
         return `Reported item: ${typeText} (${targetId.slice(0, 8)}…)`;
       },
       reasonLabel: 'Type of violation',
@@ -2546,6 +2555,21 @@ const GERMAN_API_ERROR_MESSAGES: Readonly<Record<ErrorCode, string>> = {
     'Die Fläche liegt außerhalb des unterstützten Kartierungsgebiets.',
   LAND_COVER_EXCLUDED:
     'Diese Fläche liegt überwiegend auf Gewässern, Wald, Grünflächen, Ackerland, Bahnanlagen oder Gebäuden.',
+  SPACE_TYPE_IMMUTABLE:
+    'Öffentlich oder privat kann nur beim Anlegen einer Fläche gewählt werden.',
+  PHOTO_REQUIRED_FOR_STATUS:
+    'Für diesen Status ist mindestens ein glaubwürdiges Foto nötig.',
+  ENTITLEMENT_REQUIRED:
+    'Bitte bestätige, dass du Eigentümer/in oder dazu ermächtigt bist.',
+  TERMS_UPDATE_REQUIRED:
+    'Bitte stimme zuerst den aktualisierten Nutzungsbedingungen zu.',
+  FORBIDDEN_SELF_CONTACT: 'Du kannst dir nicht selbst schreiben.',
+  FORBIDDEN_CHAT_ACCESS:
+    'Diese Person kann nicht per Direktnachricht erreicht werden.',
+  CHAT_REQUEST_PENDING:
+    'Bis die Person antwortet, kannst du nur eine Nachricht senden.',
+  CHAT_CONTACT_LIMIT:
+    'Du hast heute bereits die Höchstzahl neuer Unterhaltungen begonnen. Bitte versuche es morgen wieder.',
   BBOX_TOO_LARGE: 'Kartenausschnitt zu groß - bitte näher heranzoomen.',
   PAYLOAD_TOO_LARGE: 'Die gesendeten Daten überschreiten die maximale Größe.',
   RATE_LIMITED:

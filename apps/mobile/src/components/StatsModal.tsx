@@ -7,6 +7,7 @@ import {
   type PersonalStatsResponse,
   type PublicStatsResponse,
   type SurfaceType,
+  type SpaceBreakdown,
 } from '@openunseal/shared';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -17,6 +18,7 @@ import {
   View,
 } from 'react-native';
 
+import { getSocialCopy } from '../i18n/social';
 import {
   DEFAULT_LOCALE,
   getTranslations,
@@ -176,6 +178,34 @@ export function StatsModal({
 
   const handleRefresh = (): void => {
     void loadStats(activeTab === 'personal' ? 'personal' : 'public');
+  };
+
+  const renderSpaceBreakdown = (
+    breakdown: SpaceBreakdown | undefined,
+  ): React.JSX.Element | null => {
+    if (!breakdown) {
+      return null;
+    }
+    const copy = getSocialCopy(locale);
+    return (
+      <View style={styles.sectionCard} testID="stats-space-breakdown">
+        <Text style={styles.sectionTitle}>{copy.statsTitle}</Text>
+        {(['public', 'private'] as const).map((type) => (
+          <View key={type}>
+            <Text style={styles.surfaceName}>
+              {type === 'public' ? copy.groundPublic : copy.groundPrivate}
+            </Text>
+            <Text style={styles.surfaceAreaText}>
+              {copy.statsLine(
+                breakdown[type].totalPolygons,
+                formatAreaDisplay(breakdown[type].totalAreaM2, locale),
+                formatAreaDisplay(breakdown[type].unsealedAreaM2, locale),
+              )}
+            </Text>
+          </View>
+        ))}
+      </View>
+    );
   };
 
   const renderSurfaceRow = (
@@ -534,6 +564,7 @@ export function StatsModal({
                 </View>
               </View>
 
+              {renderSpaceBreakdown(publicStats.spaceBreakdown)}
               <View style={styles.sectionCard}>
                 <Text style={styles.sectionTitle}>{t.surfaceSectionTitle}</Text>
                 <View style={styles.surfaceList}>
@@ -588,6 +619,7 @@ export function StatsModal({
         </View>
       ) : personalStats !== null ? (
         <>
+          {renderSpaceBreakdown(personalStats.spaceBreakdown)}
           <View style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>{t.personalPolygonsTitle}</Text>
             <View style={styles.heroStatRow}>

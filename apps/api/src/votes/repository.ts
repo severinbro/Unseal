@@ -74,8 +74,9 @@ export class VoteRepository {
         id: string;
         user_id: string | null;
         status: PolygonStatus;
+        space_verification: string;
       }>(
-        'SELECT id, user_id, status FROM polygons WHERE id = $1 FOR UPDATE',
+        'SELECT id, user_id, status, space_verification FROM polygons WHERE id = $1 FOR UPDATE',
         [params.polygonId],
       );
       const lockedPolygon = lockRes.rows[0];
@@ -83,7 +84,10 @@ export class VoteRepository {
         throw new ApiError(404, 'NOT_FOUND', 'Polygon not found.');
       }
 
-      if (lockedPolygon.status !== 'proposed') {
+      if (
+        lockedPolygon.status !== 'proposed' &&
+        lockedPolygon.space_verification !== 'user_override'
+      ) {
         throw new ApiError(
           409,
           'VOTING_CLOSED',
@@ -203,8 +207,9 @@ export class VoteRepository {
         id: string;
         user_id: string | null;
         status: PolygonStatus;
+        space_verification: string;
       }>(
-        'SELECT id, user_id, status FROM polygons WHERE id = $1 FOR UPDATE',
+        'SELECT id, user_id, status, space_verification FROM polygons WHERE id = $1 FOR UPDATE',
         [polygonId],
       );
       const lockedPolygon = lockRes.rows[0];
@@ -212,7 +217,10 @@ export class VoteRepository {
         throw new ApiError(404, 'NOT_FOUND', 'Polygon not found.');
       }
 
-      if (lockedPolygon.status !== 'proposed') {
+      if (
+        lockedPolygon.status !== 'proposed' &&
+        lockedPolygon.space_verification !== 'user_override'
+      ) {
         throw new ApiError(
           409,
           'VOTING_CLOSED',

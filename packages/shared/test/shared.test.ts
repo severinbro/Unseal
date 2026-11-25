@@ -1294,7 +1294,7 @@ describe('Review Focus 3: BboxQuerySchema vs checkBboxSpan and remaining wire sc
     assert.equal(formatDop20PlainAttribution(oceanBbox, { year: 2026 }), '');
 
     // DSA Art. 16 Content Report schemas
-    assert.deepEqual(CONTENT_REPORT_TARGET_TYPES, ['polygon', 'photo', 'comment']);
+    assert.deepEqual(CONTENT_REPORT_TARGET_TYPES, ['polygon', 'photo', 'comment', 'chat_message']);
     assert.ok(CONTENT_REPORT_REASONS.includes('privacy_personal_data'));
     assert.ok(CONTENT_REPORT_REASONS.includes('copyright'));
 

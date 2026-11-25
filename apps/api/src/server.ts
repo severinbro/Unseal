@@ -8,7 +8,7 @@ import { buildApp } from './app.js';
 import { rekeyCanonicalEmailHashes } from './auth/tombstones.js';
 import { loadEnvConfig } from './config.js';
 import { runMigrations } from './db/migrate.js';
-import { purgeExpiredPersonalData } from './db/retention.js';
+import { purgeExpiredPersonalData, type RetentionOptions } from './db/retention.js';
 import { createDbPool } from './db/pool.js';
 import { createLogger } from './logger.js';
 import { ensureMunicipalitiesSeededIfEnabled } from './municipalities/vg250.js';
@@ -58,7 +58,7 @@ async function runAdvisoryLockedStalePrune(
 
 async function runAdvisoryLockedPrivacyRetention(
   pool: pg.Pool,
-  pseudonymReservationDays: number,
+  retention: RetentionOptions,
   logger: FastifyBaseLogger,
 ): Promise<void> {
   const lockClient = await pool.connect();
@@ -71,7 +71,7 @@ async function runAdvisoryLockedPrivacyRetention(
     if (!acquired) {
       return;
     }
-    const result = await purgeExpiredPersonalData(pool, { pseudonymReservationDays });
+    const result = await purgeExpiredPersonalData(pool, retention);
     if (Object.values(result).some((count) => count > 0)) {
       logger.info(result, 'Privacy retention purge completed');
     }
@@ -114,7 +114,7 @@ export async function startServer(): Promise<void> {
     );
     void runAdvisoryLockedPrivacyRetention(
       pool,
-      config.pseudonymReservationDays,
+      { pseudonymReservationDays: config.pseudonymReservationDays, chatRetentionDays: config.chatRetentionDays },
       logger,
     );
   }, STALE_PRUNE_INTERVAL_MS);
@@ -170,7 +170,7 @@ export async function startServer(): Promise<void> {
   );
   void runAdvisoryLockedPrivacyRetention(
     pool,
-    config.pseudonymReservationDays,
+    { pseudonymReservationDays: config.pseudonymReservationDays, chatRetentionDays: config.chatRetentionDays },
     logger,
   );
 }

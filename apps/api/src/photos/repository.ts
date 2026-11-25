@@ -144,6 +144,35 @@ export class PhotoRepository {
     return res.rows.map(mapRowToPolygonPhoto);
   }
 
+  public async listByPolygonIds(
+    polygonIds: readonly string[],
+    viewerUserId: string | null,
+  ): Promise<Map<string, PolygonPhoto[]>> {
+    const res = await this.pool.query<PhotoQueryRow>(
+      `SELECT pp.id, pp.polygon_id, pp.user_id, pp.file_name, pp.thumb_name,
+              pp.width, pp.height, pp.gps_verified,
+              COALESCE(u.pseudonym, 'deleted') AS uploader_pseudonym,
+              COALESCE(pp.user_id = $2::uuid, FALSE) AS is_uploader,
+              pp.real_votes, pp.fake_votes, pp.credibility_score,
+              COALESCE(pv.value, 0)::int AS my_vote,
+              pp.created_at
+       FROM polygon_photos pp
+       LEFT JOIN users u ON u.id = pp.user_id
+       LEFT JOIN polygon_photo_votes pv
+         ON pv.photo_id = pp.id AND pv.user_id = $2::uuid
+       WHERE pp.polygon_id = ANY($1::uuid[])
+       ORDER BY pp.polygon_id ASC, pp.credibility_score DESC, pp.created_at DESC, pp.id ASC`,
+      [polygonIds, viewerUserId],
+    );
+    const byPolygon = new Map<string, PolygonPhoto[]>();
+    for (const row of res.rows) {
+      const list = byPolygon.get(row.polygon_id) ?? [];
+      list.push(mapRowToPolygonPhoto(row));
+      byPolygon.set(row.polygon_id, list);
+    }
+    return byPolygon;
+  }
+
   public async createPhoto(params: {
     polygonId: string;
     userId: string;
@@ -438,6 +467,7 @@ export class PhotoRepository {
     authorEmail: string | null;
     authorPseudonym: string | null;
     polygonId: string;
+    statusReset: boolean;
   }> {
     const client = await this.pool.connect();
     let filesToUnlink: { file_name: string; thumb_name: string } | null = null;
@@ -446,6 +476,7 @@ export class PhotoRepository {
       authorEmail: null as string | null,
       authorPseudonym: null as string | null,
       polygonId: '',
+      statusReset: false,
     };
     try {
       await client.query('BEGIN');
@@ -491,6 +522,7 @@ export class PhotoRepository {
           authorEmail: author?.email ?? null,
           authorPseudonym: author?.pseudonym ?? null,
           polygonId: photo.polygon_id,
+          statusReset: false,
         };
       }
 
@@ -509,6 +541,25 @@ export class PhotoRepository {
          WHERE id = $1`,
         [photo.polygon_id],
       );
+      // Deleting a photo is always possible; the status it supported falls back.
+      const resetRes = await client.query(
+        `UPDATE polygons p
+         SET status = 'proposed', finished_at = NULL, finished_by = NULL,
+             feed_at = p.created_at
+         WHERE p.id = $1
+           AND p.space_type = 'private'
+           AND p.status <> 'proposed'
+           AND NOT EXISTS (
+             SELECT 1 FROM users fu WHERE fu.id = p.finished_by AND fu.role = 'admin'
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM polygon_photos pp
+             WHERE pp.polygon_id = p.id
+               AND NOT (pp.credibility_score <= $2 AND pp.fake_votes > pp.real_votes)
+           )`,
+        [photo.polygon_id, PHOTO_LIMITS.FAKE_BLUR_SCORE_THRESHOLD],
+      );
+      moderationInfo.statusReset = (resetRes.rowCount ?? 0) > 0;
 
       filesToUnlink = {
         file_name: photo.file_name,

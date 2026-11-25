@@ -24,12 +24,14 @@ import {
   localizeError,
   type Locale,
 } from '../i18n/translations';
+import { getSocialCopy } from '../i18n/social';
 import type { AuthModalView } from '../state/appState';
 import {
   MIN_TOUCH_TARGET_DP,
   type AuthModalModel,
 } from '../state/viewModels';
 import { useTheme } from '../theme/themeContext';
+import { SocialCheckbox } from './SocialUi';
 import { RADII, type ThemePalette } from '../theme/tokens';
 
 const SIMPLE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -51,6 +53,9 @@ export interface AuthAndAccountModalProps {
   /** GDPR Art. 15/20 self-service data download. */
   onExportData?: () => Promise<void>;
   onOpenPersonalStats?: () => void;
+  /** Direct-message opt-in of the signed-in account (off by default). */
+  allowDirectMessages?: boolean;
+  onSetAllowDirectMessages?: (allow: boolean) => Promise<void>;
 }
 
 export function AuthAndAccountModal({
@@ -69,7 +74,10 @@ export function AuthAndAccountModal({
   onDeleteAccount,
   onExportData,
   onOpenPersonalStats,
+  allowDirectMessages = false,
+  onSetAllowDirectMessages,
 }: AuthAndAccountModalProps): React.JSX.Element | null {
+  const [isSavingPreference, setIsSavingPreference] = useState<boolean>(false);
   const { palette } = useTheme();
   const styles = useMemo(() => createStyles(palette), [palette]);
   const [identifier, setIdentifier] = useState<string>('');
@@ -726,6 +734,31 @@ export function AuthAndAccountModal({
                 {t.openPersonalStatsButton}
               </Text>
             </Pressable>
+          ) : null}
+
+          {onSetAllowDirectMessages ? (
+            <View style={styles.exportDataBlock}>
+              <SocialCheckbox
+                testID="account-allow-direct-messages"
+                label={getSocialCopy(locale).allowDm}
+                checked={allowDirectMessages}
+                disabled={isSubmitting || isSavingPreference}
+                onToggle={() => {
+                  setIsSavingPreference(true);
+                  setLocalError(null);
+                  void onSetAllowDirectMessages(!allowDirectMessages)
+                    .catch((err: unknown) =>
+                      setLocalError(
+                        localizeError(err, getSocialCopy(locale).failed, locale),
+                      ),
+                    )
+                    .finally(() => setIsSavingPreference(false));
+                }}
+              />
+              <Text style={styles.privacyHint}>
+                {getSocialCopy(locale).allowDmHint}
+              </Text>
+            </View>
           ) : null}
 
           {onExportData ? (

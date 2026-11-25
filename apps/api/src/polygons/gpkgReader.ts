@@ -12,6 +12,7 @@ import {
   GEOMETRY_LIMITS,
   IMPORT_LIMITS,
   SURFACE_TYPES,
+  type SpaceType,
   type SurfaceType,
 } from '@openunseal/shared';
 
@@ -29,6 +30,7 @@ export interface RawImportedCandidate {
   wkb?: Buffer;
   surfaceType: SurfaceType;
   note: string | null;
+  spaceType?: SpaceType | null;
 }
 
 export interface ExtractedImportDataset {
@@ -198,6 +200,13 @@ function assertCompatibleEmbeddedLicenseMetadata(
       `Uploaded dataset declares ODbL in ${fieldLabel} ("${trimmed.slice(0, 120)}") and requires a non-empty attribution so upstream credits are preserved in export.geojson.`,
     );
   }
+}
+
+function resolveSpaceTypeFromProps(
+  props: Record<string, unknown> | null | undefined,
+): SpaceType | null {
+  const raw = props?.space_type ?? props?.spaceType;
+  return raw === 'public' || raw === 'private' ? raw : null;
 }
 
 function quoteSqliteIdent(ident: string): string {
@@ -494,6 +503,7 @@ function extractFromGeoJsonBuffer(
       srid: rootSrid,
       geoJsonGeometry: JSON.stringify(entry.geometry),
       surfaceType: resolveSurfaceTypeFromProps(entry.properties),
+      spaceType: resolveSpaceTypeFromProps(entry.properties),
       note: resolveNoteFromProps(entry.properties),
     });
   });
@@ -799,6 +809,7 @@ async function extractFromGpkgBuffer(
           ...(customWkt !== undefined ? { srsWkt: customWkt } : {}),
           wkb: parsedGpb.wkb,
           surfaceType: resolveSurfaceTypeFromProps(nonGeomProps),
+          spaceType: resolveSpaceTypeFromProps(nonGeomProps),
           note: resolveNoteFromProps(nonGeomProps),
         });
       }

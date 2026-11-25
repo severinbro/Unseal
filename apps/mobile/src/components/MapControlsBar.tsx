@@ -24,6 +24,7 @@ import {
   localizeError,
   type Locale,
 } from '../i18n/translations';
+import { getSocialCopy } from '../i18n/social';
 import { clampPolygonOpacity } from '../map/styleBuilder';
 import type { BasemapMode } from '../state/appState';
 import {
@@ -1872,6 +1873,41 @@ export function FloatingFilterStrip({
             {compact ? t.filterNeedsReviewCompact : t.filterNeedsReviewFull}
           </Text>
         </Pressable>
+
+        {/* The same filters the feed offers, so a choice made there stays visible here. */}
+        {(['in_progress', 'finished', 'help_wanted'] as const).map((value) => {
+          const label = getSocialCopy(controls.locale).filters[value];
+          const selected = controls.polygonFilter === value;
+          return (
+            <Pressable
+              key={value}
+              testID={`filter-polygon-${value.replace('_', '-')}`}
+              accessibilityRole="radio"
+              accessibilityLabel={label}
+              accessibilityState={{ checked: selected, selected }}
+              aria-checked={selected}
+              onPress={() => onSetPolygonFilter?.(value)}
+              style={({ pressed }) => [
+                styles.floatingFilterChip,
+                chipElevation,
+                compact ? styles.filterChipCompact : null,
+                selected ? styles.filterChipActive : null,
+                pressed ? styles.buttonPressed : null,
+              ]}
+            >
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.filterChipLabel,
+                  compact ? styles.filterChipLabelCompact : null,
+                  selected ? styles.filterChipLabelActive : null,
+                ]}
+              >
+                {label}
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
 
       {controls.isAuthenticated && onToggleHighlightMine ? (

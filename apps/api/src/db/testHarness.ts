@@ -9,7 +9,7 @@ import type pg from 'pg';
 
 export async function resetTestDb(pool: pg.Pool): Promise<void> {
   await pool.query(
-    'TRUNCATE TABLE daily_telemetry_counters, polygon_flags, land_cover_exclusions, polygon_comment_votes, polygon_comments, polygon_photo_votes, polygon_photos, votes, polygon_creations, polygons, import_attributions, email_tokens, sessions, reserved_emails, reserved_pseudonyms, users, municipalities RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE chat_messages, chat_threads, space_reference_zones, daily_telemetry_counters, polygon_flags, land_cover_exclusions, polygon_comment_votes, polygon_comments, polygon_photo_votes, polygon_photos, votes, polygon_creations, polygons, import_attributions, email_tokens, sessions, reserved_emails, reserved_pseudonyms, users, municipalities RESTART IDENTITY CASCADE',
   );
 }
 

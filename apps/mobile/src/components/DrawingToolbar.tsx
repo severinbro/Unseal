@@ -71,6 +71,9 @@ export interface DrawingToolbarProps {
   onCancelDiscard: () => void;
   onConfirmDiscard: () => void;
   onSubmit: () => void;
+  /** Ground type section, shown in step 2. */
+  spaceSection?: React.ReactNode;
+  canSubmitSpace?: boolean;
 }
 
 export function DrawingToolbar({
@@ -89,6 +92,8 @@ export function DrawingToolbar({
   onCancelDiscard,
   onConfirmDiscard,
   onSubmit,
+  spaceSection,
+  canSubmitSpace = true,
 }: DrawingToolbarProps): React.JSX.Element | null {
   const { palette, surfaceSwatches } = useTheme();
   const styles = useMemo(() => createStyles(palette), [palette]);
@@ -385,6 +390,10 @@ export function DrawingToolbar({
             </View>
           </View>
 
+          {spaceSection ? (
+            <View style={styles.sectionBlock}>{spaceSection}</View>
+          ) : null}
+
           <View style={styles.sectionBlock}>
             <View style={styles.noteHeaderRow}>
               <Text style={styles.sectionTitle}>{t.noteSectionTitle}</Text>
@@ -507,16 +516,18 @@ export function DrawingToolbar({
               accessibilityRole="button"
               accessibilityLabel={t.submitA11y}
               accessibilityState={{
-                disabled: !toolbar.canSubmit,
+                disabled: !toolbar.canSubmit || !canSubmitSpace,
                 busy: toolbar.isSubmitting,
               }}
-              disabled={!toolbar.canSubmit}
+              disabled={!toolbar.canSubmit || !canSubmitSpace}
               onPress={onSubmit}
               style={[
                 styles.touchButton,
                 styles.submitFlexButton,
                 styles.submitButton,
-                !toolbar.canSubmit ? styles.submitButtonDisabled : null,
+                !toolbar.canSubmit || !canSubmitSpace
+                  ? styles.submitButtonDisabled
+                  : null,
               ]}
             >
               <Text style={styles.primaryButtonLabel}>

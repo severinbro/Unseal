@@ -1,6 +1,6 @@
 # <img src="apps/mobile/assets/openunseal-icon.svg" width="36" height="36" align="top" alt="OpenUnseal Icon" /> OpenUnseal - Open-Source Ground-Unsealing PPGIS
 
-**OpenUnseal** (`open-unseal.de`) is an open-source Public Participation Geographic Information System (PPGIS) for **Android, iOS, and Web** (German `de` default language with full English `en` switcher). Citizens map impervious ground surfaces ("ground sealing", such as asphalt parking corners, concrete courtyards, and paved street margins) proposed for unsealing, attach EXIF-sanitized site photos, and prioritize proposals through `+1` / `-1` community voting.
+**OpenUnseal** (`open-unseal.de`) is an open-source Public Participation Geographic Information System (PPGIS) for **Android, iOS, and Web** (German `de` default language with full English `en` switcher). Citizens map impervious ground surfaces ("ground sealing", such as asphalt parking corners, concrete courtyards, and paved street margins) proposed for unsealing, attach EXIF-sanitized site photos, and prioritize proposals through `+1` / `-1` community voting. Every proposal states whether it lies on **public or private ground**; a chronological **Feed** lists new proposals and progress across Germany or around the current map view, and contributors who opt in can coordinate through pseudonymous **1:1 direct messages**.
 
 Unauthenticated visitors can explore OpenStreetMap vector basemaps in light or dark mode (with automatic OS detection and a one-tap theme toggle), toggle built-in Germany-wide **DOP20 aerial orthophotos** (`EPSG:3857`) beneath proposal geometries, center on their position via the floating top-right **GNSS** button, inspect proposals and site photos, open the **`?` About** dialog, download the standalone Android `.apk` (when hosted on the server), and export all proposals as RFC 7946 GeoJSON (`GET /api/v1/polygons/export.geojson`, `ODbL-1.0`) for direct analysis in QGIS or desktop GIS tools.
 
@@ -17,6 +17,13 @@ Contributors register pseudonymous accounts backed by **email link confirmation*
   * Positive proposal scores (`score > 0`) scale along an emerald intensity gradient bounded to each German municipality's (`vg250_gem`) own positive score range (`municipalityNormalizedScore` in `[0, 1]`), so smaller municipalities are not drowned out by large cities. Statuses cover `proposed`, `in_progress` (`⟳ Wird entsiegelt`), and `finished` (`✓ Entsiegelt`).
 * **EXIF-Stripped Site Photos, `"GPS verified"` Badge & `"Real"` / `"Fake"` Rating:**
   * Server-side processing checks EXIF GPS containment inside the polygon (`<= 3 m` tolerance buffer -> **`"GPS verified"`** badge) in memory *before* stripping 100% of EXIF/XMP/IPTC metadata and re-encoding to WebP (`sharp`). Community ratings (`"Echt"` / `"Real"` `+1`, `"Fake"` `-1`) automatically blur flagged photos (`credibilityScore <= -3`).
+* **Public vs. Private Ground, "Help Wanted" & Land-Use Layer:**
+  * Step 2 compares the drawn area with locally loaded land-use reference data (OpenStreetMap or `ALKIS` land use via `load-space-zones`, never ownership records; optional live Overpass lookup, off by default) and proposes `public` or `private`; the matched parts are marked on the map with their source credit. Deviations are flagged as `Nutzer-Override` until an admin decides. Authors of private areas can report progress themselves (with a photo and an entitlement confirmation), state that the area is open to the public, allow messages about it, or publish a time-limited call for help (`Hilfe gesucht`, ends after 90 days). Only the `spaceType` statement is part of the open dataset.
+  * A toggleable **land-use layer** (`GET /api/v1/space-zones`, `ODbL-1.0` with credits) shows the reference data at street zoom. The map is confined to Germany by a bundled Natural Earth outline.
+* **Feed (`Karte` | `Feed` | `Chat`):**
+  * `GET /api/v1/polygons/feed` lists proposals of the last 180 days, newest activity first (creation, `Wird entsiegelt`, `Entsiegelt`). Feed cards are built from the same parts as the map's inspector (title, score and voting, note, contributor) with photos and the top comment laid open, and jump to the area's `Übersicht`, `Kommentare` or `Fotos` tab on the map. The feed can be narrowed to the map section (sent on a coarse `0.05°` grid, never the device position) or to one municipality, and shares its status and ground filters with the map.
+* **Opt-In 1:1 Direct Messages:**
+  * Off by default (GDPR Art. 25(2)). Until the person addressed answers, a conversation is a **request** limited to one message; withdrawing it deletes it. An account can try to reach at most 20 new people per day (only a date and a count are stored). Messages can reference areas and comments, are not end-to-end encrypted, expire after `CHAT_RETENTION_DAYS` (default 365), are erased with the account, and can be blocked, deleted and reported (DSA Art. 16) by participants.
 * **Admin Status Workflow & `.geojson` / `.gpkg` Bulk Import:**
   * `admin` accounts can transition polygon statuses, remove violating content (sending a DSA Art. 17 statement of reasons by email), and bulk-import `.geojson` or OGC GeoPackage (`.gpkg`, with CRS reprojection to `EPSG:4326`, `MultiPolygon` splitting, ODbL-1.0 compatibility checks, and persisted dataset attributions). Editing polygon metadata remains restricted strictly to the creating author.
 
@@ -27,7 +34,7 @@ Contributors register pseudonymous accounts backed by **email link confirmation*
 ```mermaid
 flowchart LR
   subgraph Client["apps/mobile (Expo Android / iOS / Web - MPL-2.0)"]
-    UI["2-Step Wizard, 4-Tab Inspector, Pure Reducers"]
+    UI["2-Step Wizard, 4-Tab Inspector, Feed, Direct Messages, Pure Reducers"]
     MC["MapCanvas (.native.tsx / .web.tsx) + GNSS Button"]
     UI --> MC
   end
@@ -37,7 +44,7 @@ flowchart LR
   subgraph VPS["VPS Docker Stack (docker-compose.vps.yml)"]
     PROXY["Caddy 2 (Auto-HTTPS + Static Web)"]
     API["apps/api (Fastify /api/v1 + /auth/* HTML + /uploads/* - AGPL-3.0-or-later)"]
-    DB[("PostgreSQL 16 + PostGIS 3.4 + BKG VG250")]
+    DB[("PostgreSQL 16 + PostGIS 3.4 + BKG VG250 + Land-Use Zones")]
     VOL[("uploads_data (EXIF-Stripped WebP)")]
     PROXY --> API
     API --> DB
@@ -73,7 +80,7 @@ docker compose up -d --build
 
 * **API & Hosted Auth / Legal Pages:** `http://127.0.0.1:3000`
 * **Mailpit Local Inbox:** `http://127.0.0.1:8025`
-* **Run build, typecheck & tests:** `npm run build && npm run typecheck && npm test`
+* **Run build, typecheck & tests:** `npm run build && npm run typecheck && npm test` (the tests **empty every application table** of the database in `DATABASE_URL`; never point them at data you want to keep)
 * **Run Web client:** `npm --workspace apps/mobile run web`
 
 ---

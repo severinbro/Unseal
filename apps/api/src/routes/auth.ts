@@ -5,7 +5,10 @@ import {
   AUTH_LIMITS,
   AltchaChallengeResponseSchema,
   ApiError,
+  AcceptTermsRequestSchema,
   AuthUserSchema,
+  CURRENT_TERMS_VERSION,
+  PatchAccountPreferencesRequestSchema,
   DeleteAccountQuerySchema,
   EmailActionRequestSchema,
   EmailActionResponseSchema,
@@ -192,6 +195,8 @@ interface UserAuthRow {
   failed_login_attempts: number;
   login_blocked_at: Date | null;
   role: string;
+  allow_direct_messages: boolean;
+  terms_version: number;
   password_hash: string;
   created_at: Date;
 }
@@ -683,11 +688,18 @@ export function registerAuthRoutes(app: FastifyInstance): void {
                password_hash,
                privacy_accepted_at,
                terms_accepted_at,
+               terms_version,
                role
              )
-             VALUES ($1, $2, $3, $4, clock_timestamp(), clock_timestamp(), 'user')
+             VALUES ($1, $2, $3, $4, clock_timestamp(), clock_timestamp(), $5, 'user')
              RETURNING id, pseudonym, email`,
-            [body.pseudonym, emailLower, canonicalEmailHash, passwordHash],
+            [
+              body.pseudonym,
+              emailLower,
+              canonicalEmailHash,
+              passwordHash,
+              CURRENT_TERMS_VERSION,
+            ],
           );
           createdUser = insertRes.rows[0];
         } catch (err: unknown) {
@@ -898,6 +910,8 @@ export function registerAuthRoutes(app: FastifyInstance): void {
            login_blocked_at,
            role,
            password_hash,
+           allow_direct_messages,
+           terms_version,
            created_at
          FROM users
          WHERE LOWER(pseudonym) = $1
@@ -1061,6 +1075,8 @@ export function registerAuthRoutes(app: FastifyInstance): void {
           pseudonym: userRow.pseudonym,
           email: userRow.email,
           role: userRow.role === 'admin' ? 'admin' : 'user',
+          allowDirectMessages: userRow.allow_direct_messages,
+          termsUpdateRequired: userRow.terms_version < CURRENT_TERMS_VERSION,
           createdAt: userRow.created_at.toISOString(),
         },
         sessionToken: session.sessionToken,
@@ -1194,6 +1210,46 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     },
     async (request) => {
       return AuthUserSchema.parse(request.auth!.user);
+    },
+  );
+
+  const preferencesLimit = app.rateLimitOverrides.accountPreferences ?? {
+    max: 20,
+    timeWindow: '1 minute',
+  };
+
+  app.patch(
+    '/api/v1/auth/me/preferences',
+    { config: { rateLimit: preferencesLimit }, preHandler: requireAuth },
+    async (request) => {
+      const { allowDirectMessages } = PatchAccountPreferencesRequestSchema.parse(
+        request.body,
+      );
+      await app.pool.query(
+        'UPDATE users SET allow_direct_messages = $2 WHERE id = $1',
+        [request.auth!.user.id, allowDirectMessages],
+      );
+      return AuthUserSchema.parse({ ...request.auth!.user, allowDirectMessages });
+    },
+  );
+
+  app.post(
+    '/api/v1/auth/me/accept-terms',
+    { config: { rateLimit: preferencesLimit }, preHandler: requireAuth },
+    async (request) => {
+      AcceptTermsRequestSchema.parse(request.body);
+      await app.pool.query(
+        `UPDATE users
+         SET terms_version = $2,
+             terms_accepted_at = clock_timestamp(),
+             privacy_accepted_at = clock_timestamp()
+         WHERE id = $1`,
+        [request.auth!.user.id, CURRENT_TERMS_VERSION],
+      );
+      return AuthUserSchema.parse({
+        ...request.auth!.user,
+        termsUpdateRequired: false,
+      });
     },
   );
 

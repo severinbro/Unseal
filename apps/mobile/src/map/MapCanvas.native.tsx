@@ -15,6 +15,7 @@ import {
   type MapViewRef,
   type RegionPayload,
 } from '@maplibre/maplibre-react-native';
+import { GERMANY_MAX_BOUNDS, GERMANY_MIN_ZOOM } from '@openunseal/shared';
 import type { Feature as GeoJsonFeature, Point as GeoJsonPoint } from 'geojson';
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -22,6 +23,9 @@ import { StyleSheet, View } from 'react-native';
 import {
   buildDraftGeoJson,
   buildDraftLayerSpecs,
+  buildGermanyBorderOutlineGeoJson,
+  buildGermanyInvertedMaskGeoJson,
+  buildGermanyMaskLayerSpecs,
   buildOrthophotoLayerSpec,
   buildOrthophotoSourceSpec,
   buildPolygonLayerSpecs,
@@ -30,10 +34,17 @@ import {
   dedupeFeatureIdsPreservingOrder,
   DRAFT_SOURCE_ID,
   extractRenderedFeatureRawIds,
+  GERMANY_BORDER_SOURCE_ID,
+  GERMANY_MASK_LAYER_ID,
+  GERMANY_MASK_SOURCE_ID,
   INTERACTIVE_PROPOSAL_LAYER_IDS,
+  isGermanyConfined,
   ORTHOPHOTO_SOURCE_ID,
   PROPOSALS_CENTROID_SOURCE_ID,
   PROPOSALS_POLYGON_SOURCE_ID,
+  SPACE_ZONES_SOURCE_ID,
+  buildSpaceZoneLayerSpecs,
+  buildSpaceZonesGeoJson,
   resolveBasemapStyleUrl,
   shouldReportOrthophotoTileError,
 } from './styleBuilder';
@@ -101,6 +112,7 @@ export function MapCanvas({
   selectedFeatureId,
   polygonOpacity = DEFAULT_POLYGON_OPACITY,
   highlightMineOnly = false,
+  spaceZones = null,
   cameraTarget,
   northResetSeq = 0,
   onViewportChange,
@@ -171,19 +183,37 @@ export function MapCanvas({
     () => buildDraftGeoJson(draftVertices, isRingClosed),
     [draftVertices, isRingClosed],
   );
+  const confined = isGermanyConfined(config);
+  const [maskSpec, borderSpec] = useMemo(
+    () => buildGermanyMaskLayerSpecs(colorScheme),
+    [colorScheme],
+  );
+  const zonesShape = useMemo(() => buildSpaceZonesGeoJson(spaceZones), [spaceZones]);
+  const [zoneFillSpec, zoneLineSpec] = useMemo(() => buildSpaceZoneLayerSpecs(), []);
+  const maskShape = useMemo(() => buildGermanyInvertedMaskGeoJson(), []);
+  const borderShape = useMemo(() => buildGermanyBorderOutlineGeoJson(), []);
   const orthoSourceSpec = useMemo(
     () => buildOrthophotoSourceSpec(config.orthophoto),
     [config.orthophoto],
   );
   const orthoLayerSpec = useMemo(
-    () => buildOrthophotoLayerSpec(basemapMode === 'orthophoto'),
-    [basemapMode],
+    () =>
+      buildOrthophotoLayerSpec(
+        basemapMode === 'orthophoto',
+        confined ? GERMANY_MASK_LAYER_ID : 'proposals-fill',
+      ),
+    [basemapMode, confined],
   );
   const activeStyleUrl = useMemo(
     () => resolveBasemapStyleUrl(config, colorScheme),
     [config, colorScheme],
   );
-  const [proposalFillSpec, proposalOutlineSpec, proposalCentroidSpec] = useMemo(
+  const [
+    proposalFillSpec,
+    proposalOutlineSpec,
+    proposalPrivateOutlineSpec,
+    proposalCentroidSpec,
+  ] = useMemo(
     () => buildPolygonLayerSpecs(polygonOpacity, colorScheme, highlightMineOnly),
     [polygonOpacity, colorScheme, highlightMineOnly],
   );
@@ -419,6 +449,15 @@ export function MapCanvas({
         <Camera
           ref={cameraRef}
           defaultSettings={initialCameraDefaultSettings}
+          {...(confined
+            ? {
+                maxBounds: {
+                  sw: [...GERMANY_MAX_BOUNDS[0]] as [number, number],
+                  ne: [...GERMANY_MAX_BOUNDS[1]] as [number, number],
+                },
+                minZoomLevel: GERMANY_MIN_ZOOM,
+              }
+            : {})}
         />
 
         <ShapeSource
@@ -435,12 +474,26 @@ export function MapCanvas({
           <LineLayer
             id={proposalOutlineSpec.id}
             aboveLayerID={proposalFillSpec.id}
+            filter={proposalOutlineSpec.filter}
             style={{
               lineCap: proposalOutlineSpec.layout['line-cap'],
               lineJoin: proposalOutlineSpec.layout['line-join'],
               lineColor: proposalOutlineSpec.paint['line-color'],
               lineWidth: proposalOutlineSpec.paint['line-width'],
               lineOpacity: proposalOutlineSpec.paint['line-opacity'],
+            }}
+          />
+          <LineLayer
+            id={proposalPrivateOutlineSpec.id}
+            aboveLayerID={proposalOutlineSpec.id}
+            filter={proposalPrivateOutlineSpec.filter}
+            style={{
+              lineCap: proposalPrivateOutlineSpec.layout['line-cap'],
+              lineJoin: proposalPrivateOutlineSpec.layout['line-join'],
+              lineColor: proposalPrivateOutlineSpec.paint['line-color'],
+              lineWidth: proposalPrivateOutlineSpec.paint['line-width'],
+              lineOpacity: proposalPrivateOutlineSpec.paint['line-opacity'],
+              lineDasharray: proposalPrivateOutlineSpec.paint['line-dasharray'],
             }}
           />
         </ShapeSource>
@@ -451,7 +504,7 @@ export function MapCanvas({
         >
           <CircleLayer
             id={proposalCentroidSpec.id}
-            aboveLayerID={proposalOutlineSpec.id}
+            aboveLayerID={proposalPrivateOutlineSpec.id}
             style={{
               circleColor: proposalCentroidSpec.paint['circle-color'],
               circleRadius: proposalCentroidSpec.paint['circle-radius'],
@@ -465,6 +518,55 @@ export function MapCanvas({
             }}
           />
         </ShapeSource>
+
+        {confined ? (
+          <ShapeSource id={GERMANY_MASK_SOURCE_ID} shape={maskShape}>
+            <FillLayer
+              id={maskSpec.id}
+              belowLayerID={proposalFillSpec.id}
+              style={{
+                fillColor: maskSpec.paint['fill-color'],
+                fillOpacity: maskSpec.paint['fill-opacity'],
+                fillAntialias: maskSpec.paint['fill-antialias'],
+              }}
+            />
+          </ShapeSource>
+        ) : null}
+        <ShapeSource
+          id={SPACE_ZONES_SOURCE_ID}
+          shape={zonesShape as unknown as GeoJSON.FeatureCollection}
+        >
+          <FillLayer
+            id={zoneFillSpec.id}
+            belowLayerID={proposalFillSpec.id}
+            style={{
+              fillColor: zoneFillSpec.paint['fill-color'],
+              fillOpacity: zoneFillSpec.paint['fill-opacity'],
+            }}
+          />
+          <LineLayer
+            id={zoneLineSpec.id}
+            aboveLayerID={zoneFillSpec.id}
+            style={{
+              lineColor: zoneLineSpec.paint['line-color'],
+              lineWidth: zoneLineSpec.paint['line-width'],
+              lineOpacity: zoneLineSpec.paint['line-opacity'],
+            }}
+          />
+        </ShapeSource>
+        {confined ? (
+          <ShapeSource id={GERMANY_BORDER_SOURCE_ID} shape={borderShape}>
+            <LineLayer
+              id={borderSpec.id}
+              aboveLayerID={maskSpec.id}
+              style={{
+                lineColor: borderSpec.paint['line-color'],
+                lineWidth: borderSpec.paint['line-width'],
+                lineOpacity: borderSpec.paint['line-opacity'],
+              }}
+            />
+          </ShapeSource>
+        ) : null}
 
         {orthoSourceSpec !== null ? (
           <RasterSource

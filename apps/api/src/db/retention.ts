@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 OpenUnseal Contributors
 
+import { CHAT_LIMITS } from '@openunseal/shared';
+
 import type pg from 'pg';
 
 /** Unconfirmed registrations are erased after this many hours (stated in the privacy policy). */
@@ -10,6 +12,7 @@ export const EMAIL_TOKEN_RETENTION_DAYS = 7;
 
 export interface RetentionOptions {
   pseudonymReservationDays: number;
+  chatRetentionDays?: number | undefined;
 }
 
 export interface RetentionResult {
@@ -17,6 +20,9 @@ export interface RetentionResult {
   expiredSessions: number;
   staleEmailTokens: number;
   expiredPseudonymReservations: number;
+  expiredChatMessages: number;
+  emptyChatThreads: number;
+  clearedContactCounters: number;
 }
 
 type Queryable = pg.Pool | pg.PoolClient;
@@ -73,10 +79,73 @@ export async function purgeExpiredPersonalData(
     [options.pseudonymReservationDays],
   );
 
+  const chatRes = await db.query<{ deleted: number }>(
+    `WITH expired AS (
+       DELETE FROM chat_messages m
+       USING chat_threads t
+       WHERE t.id = m.thread_id
+         AND (
+           m.created_at < NOW() - make_interval(days => $1)
+           -- A first message nobody answered does not wait for the general limit.
+           OR (
+             t.accepted_at IS NULL
+             AND t.request_sent_at < NOW() - make_interval(days => $2)
+           )
+         )
+       RETURNING m.id, m.thread_id
+     ),
+     remaining AS (
+       SELECT t.id, COUNT(m.id)::int AS n, MAX(m.created_at) AS last_at
+       FROM (SELECT DISTINCT thread_id AS id FROM expired) t
+       LEFT JOIN chat_messages m
+         ON m.thread_id = t.id AND m.id NOT IN (SELECT id FROM expired)
+       GROUP BY t.id
+     ),
+     updated AS (
+       UPDATE chat_threads t
+       SET message_count = r.n,
+           last_message_at = r.last_at,
+           request_sent_at = CASE
+             WHEN r.n = 0 AND t.accepted_at IS NULL THEN NULL
+             ELSE t.request_sent_at
+           END
+       FROM remaining r WHERE t.id = r.id
+     )
+     SELECT COUNT(*)::int AS deleted FROM expired`,
+    [
+      options.chatRetentionDays ?? CHAT_LIMITS.DEFAULT_RETENTION_DAYS,
+      CHAT_LIMITS.REQUEST_RETENTION_DAYS,
+    ],
+  );
+  // Blocks between two existing accounts are kept so they cannot be reset.
+  const threadsRes = await db.query(
+    `DELETE FROM chat_threads
+     WHERE message_count = 0
+       AND created_at < NOW() - make_interval(days => $1)
+       AND ((NOT blocked_by_low AND NOT blocked_by_high)
+            OR user_low_id IS NULL OR user_high_id IS NULL)`,
+    [CHAT_LIMITS.EMPTY_THREAD_RETENTION_DAYS],
+  );
+
+  // The per-day counter of new conversations has served its purpose a day later.
+  const countersRes = await db.query(
+    `UPDATE users
+     SET chat_contact_day = NULL, chat_contact_count = 0
+     WHERE chat_contact_day < CURRENT_DATE`,
+  );
+  // A lapsed call for help is not kept as a past statement about the ground.
+  await db.query(
+    `UPDATE polygons SET help_wanted_until = NULL
+     WHERE help_wanted_until IS NOT NULL AND help_wanted_until <= NOW()`,
+  );
+
   return {
     unverifiedUsers,
     expiredSessions: sessionsRes.rowCount ?? 0,
     staleEmailTokens: tokensRes.rowCount ?? 0,
     expiredPseudonymReservations: reservationsRes.rowCount ?? 0,
+    expiredChatMessages: chatRes.rows[0]?.deleted ?? 0,
+    emptyChatThreads: threadsRes.rowCount ?? 0,
+    clearedContactCounters: countersRes.rowCount ?? 0,
   };
 }

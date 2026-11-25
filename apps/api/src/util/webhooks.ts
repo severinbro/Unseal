@@ -223,6 +223,8 @@ export function buildPublicPolygonWebhookData(
     geometry: feature.geometry,
     surfaceType: feature.properties.surfaceType,
     status: feature.properties.status,
+    // Classification details and owner statements stay internal.
+    spaceType: feature.properties.spaceType,
     origin: feature.properties.origin,
     wasAutoClipped: feature.properties.wasAutoClipped,
     clippedAreaM2: feature.properties.clippedAreaM2,

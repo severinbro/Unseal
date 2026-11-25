@@ -193,6 +193,17 @@ docker compose exec api node apps/api/dist/cli/admin.js delete-polygon <polygon-
 docker compose exec api node apps/api/dist/cli/admin.js delete-comment <comment-uuid>
 docker compose exec api node apps/api/dist/cli/admin.js redact-note <polygon-uuid>
 
+#    Remove a direct message a participant reported (emails the sender a statement of reasons).
+#    Never browse conversations: § 3 TDDDG may apply.
+docker compose exec api node apps/api/dist/cli/admin.js delete-chat-message <message-uuid> "reason"
+
+#    Correct public/private ground, or load land-use reference zones. Files with cadastral
+#    ownership attributes are rejected; the license rules match bulk imports.
+docker compose exec api node apps/api/dist/cli/admin.js set-space-type <polygon-uuid> <public|private>
+docker compose exec api node apps/api/dist/cli/admin.js load-space-zones <alkis|osm_local> <file> --license=<id> --attribution="<text>" [--source-url=<url>] [--waiver-confirmed] [--replace]
+#    Record the license of land-cover data as well, so it is credited on /auth/licenses
+docker compose exec api node apps/api/dist/cli/admin.js load-landcover <osm|alkis> <file> --license=<id> --attribution="<text>"
+
 # 5. GDPR data subject requests received by email (verify the requester's identity first!)
 #    Art. 15/20 access & portability: writes the same JSON users can download in the app to stdout
 docker compose exec -T api node apps/api/dist/cli/admin.js export-user <pseudonym-or-email> > export.json
@@ -244,6 +255,8 @@ Users can download their own data in the app (*Konto → Meine Daten herunterlad
 | `PSEUDONYM_RESERVATION_DAYS` | `365` | Days a self-deleted pseudonym stays reserved against impersonation before its tombstone is purged. Ban tombstones stay until lifted with `admin lift-ban`. |
 | `DISPOSABLE_EMAIL_BLOCKLIST_EXTRA` | *(empty)* | Comma-separated extra disposable email domains to block at signup. |
 | `REQUIRE_JURISDICTION` / `STALE_UNRATED_PRUNE_DAYS` / `NEW_USER_*` | `when_seeded` / `30` / `14`, `3` | VG250 jurisdiction enforcement, stale unrated proposal pruning days, and new-user badge thresholds. |
+| `OVERPASS_API_URL` | *(empty → disabled)* | Overpass API endpoint for live public/private land-use lookups. Only a grid-aligned 0.005° section is sent. Check the endpoint's terms of use before enabling; `/auth/privacy` names the host. |
+| `CHAT_RETENTION_DAYS` | `365` | Days until direct messages are deleted (stated on `/auth/privacy`). |
 | `DISCLAIMER_TEXT` / `ABUSE_CONTACT` | *(civic notice)* / *(empty)* | Public notice and optional moderation contact shown in inspector, legal pages & bug-report modal. |
 | `OPERATOR_NAME` / `OPERATOR_ADDRESS` / `OPERATOR_EMAIL` / `OPERATOR_PHONE` | *(empty)* | Legal operator identity rendered on `/auth/impressum` & `/auth/privacy` (§ 5 DDG / § 18 MStV / Art. 13 GDPR); `\n` separates address lines. |
 | `IMPRESSUM_URL` / `PRIVACY_POLICY_URL` / `TERMS_URL` / `LICENSES_URL` / `SOURCE_CODE_URL` | `<PUBLIC_BASE_URL>/auth/{impressum,privacy,terms,licenses}` | Override URLs for hosted legal notices and AGPL-3.0/MPL-2.0 source code repository link. |

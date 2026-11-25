@@ -5,6 +5,7 @@ import {
   AUTH_LIMITS,
   ApiError,
   AuthUserSchema,
+  CURRENT_TERMS_VERSION,
   type AuthUser,
 } from '@openunseal/shared';
 
@@ -43,6 +44,8 @@ interface SessionLookupRow {
   email_verified_at: Date | null;
   last_login_at: Date | null;
   role: string;
+  allow_direct_messages: boolean;
+  terms_version: number;
   created_at: Date;
 }
 
@@ -191,6 +194,8 @@ async function resolveSessionFromRequest(
        u.email_verified_at,
        u.last_login_at,
        u.role,
+       u.allow_direct_messages,
+       u.terms_version,
        u.created_at
      FROM sessions s
      INNER JOIN users u ON u.id = s.user_id
@@ -230,6 +235,8 @@ async function resolveSessionFromRequest(
     pseudonym: row.pseudonym,
     email: row.email,
     role: row.role === 'admin' ? 'admin' : 'user',
+    allowDirectMessages: row.allow_direct_messages,
+    termsUpdateRequired: row.terms_version < CURRENT_TERMS_VERSION,
     createdAt: row.created_at.toISOString(),
   });
 
@@ -259,6 +266,20 @@ export async function requireAuth(
     );
   }
   request.auth = authContext;
+}
+
+/** Runs after `requireAuth`: contributions need acceptance of the current terms. */
+export async function requireCurrentTerms(
+  request: FastifyRequest,
+  _reply: FastifyReply,
+): Promise<void> {
+  if (request.auth?.user.termsUpdateRequired) {
+    throw new ApiError(
+      403,
+      'TERMS_UPDATE_REQUIRED',
+      'Please review and accept the updated terms first.',
+    );
+  }
 }
 
 export async function requireAdmin(

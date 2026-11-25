@@ -168,7 +168,8 @@ export function registerGeocodeRoutes(
     },
     async (request, reply) => {
       const parsed = GeocodeQuerySchema.parse(request.query);
-      const cacheKey = `${parsed.lang}:${parsed.q.toLowerCase()}`;
+      const germanyOnly = app.config.requireJurisdiction !== 'off';
+      const cacheKey = `${germanyOnly ? 'de' : 'all'}:${parsed.lang}:${parsed.q.toLowerCase()}`;
       const now = Date.now();
       const cached = cache.get(cacheKey);
       if (cached && cached.expiresAt > now) {
@@ -183,6 +184,9 @@ export function registerGeocodeRoutes(
       url.searchParams.set('limit', '5');
       url.searchParams.set('addressdetails', '1');
       url.searchParams.set('q', parsed.q);
+      if (germanyOnly) {
+        url.searchParams.set('countrycodes', 'de');
+      }
 
       const controller = new AbortController();
       const timeoutHandle = setTimeout(

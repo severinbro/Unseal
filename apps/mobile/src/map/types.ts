@@ -5,6 +5,7 @@ import type {
   BboxBounds,
   PolygonFeature,
   RuntimeConfig,
+  SpaceZoneCollection,
 } from '@openunseal/shared';
 
 import type {
@@ -54,6 +55,8 @@ export interface MapCanvasProps {
   selectedFeatureId: string | null;
   polygonOpacity?: number;
   highlightMineOnly?: boolean;
+  /** Land-use reference areas drawn beneath the proposals; empty hides them. */
+  spaceZones?: SpaceZoneCollection['features'] | null;
   cameraTarget: CameraTarget | null;
   northResetSeq?: number;
   onViewportChange: (viewport: ViewportState) => void;

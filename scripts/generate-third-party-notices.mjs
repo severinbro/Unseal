@@ -834,6 +834,8 @@ function main() {
   lines.push('  - OpenStreetMap Map Data & Nominatim Geocoding : ODbL-1.0 (© OpenStreetMap contributors, https://www.openstreetmap.org/copyright)');
   lines.push('  - OpenMapTiles Vector Tile Schema & Styles (incl. OSM Liberty / CARTO Dark Matter, modified in dark mode) : CC BY 4.0 / BSD-3-Clause / MIT (https://openmaptiles.org/, https://carto.com/attributions)');
   lines.push('  - Natural Earth Low-Zoom Shaded Relief (via OpenFreeMap styles) : Public Domain (https://www.naturalearthdata.com/)');
+  lines.push('  - Germany Outline bundled in apps/mobile (Natural Earth 5.1.1 ne_10m_admin_0_countries, buffered and simplified) : Public Domain (https://www.naturalearthdata.com/)');
+  lines.push('  - Optional OpenStreetMap land-use lookups via Overpass API (OVERPASS_API_URL) : ODbL-1.0 (© OpenStreetMap contributors, https://www.openstreetmap.org/copyright)');
   lines.push('  - Noto Sans Map Label Font Glyphs (via OpenFreeMap styles) : SIL OFL 1.1 (https://openfontlicense.org/)');
   lines.push('  - OpenFreeMap Hosting & Tooling (Hyperknot Software Kft., Hungary) : MIT (https://openfreemap.org/)');
   lines.push('  - German Municipality Boundaries (BKG VG250) : dl-de/by-2-0');

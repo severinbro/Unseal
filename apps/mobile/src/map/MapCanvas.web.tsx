@@ -10,12 +10,16 @@ import {
   type GeoJSONSource,
   type MapMouseEvent,
 } from 'maplibre-gl';
+import { GERMANY_MAX_BOUNDS, GERMANY_MIN_ZOOM } from '@openunseal/shared';
 import React, { useEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import {
   buildDraftGeoJson,
   buildDraftLayerSpecs,
+  buildGermanyBorderOutlineGeoJson,
+  buildGermanyInvertedMaskGeoJson,
+  buildGermanyMaskLayerSpecs,
   buildOrthophotoLayerSpec,
   buildOrthophotoSourceSpec,
   buildPolygonLayerSpecs,
@@ -26,13 +30,20 @@ import {
   dedupeFeatureIdsPreservingOrder,
   DRAFT_SOURCE_ID,
   extractRenderedFeatureRawIds,
+  GERMANY_BORDER_SOURCE_ID,
+  GERMANY_MASK_LAYER_ID,
+  GERMANY_MASK_SOURCE_ID,
   INTERACTIVE_PROPOSAL_LAYER_IDS,
   isBuiltinDop20Orthophoto,
+  isGermanyConfined,
   isOpenFreeMapDarkStyleUrl,
   ORTHOPHOTO_LAYER_ID,
   ORTHOPHOTO_SOURCE_ID,
   PROPOSALS_CENTROID_SOURCE_ID,
   PROPOSALS_POLYGON_SOURCE_ID,
+  SPACE_ZONES_SOURCE_ID,
+  buildSpaceZoneLayerSpecs,
+  buildSpaceZonesGeoJson,
   resolveBasemapStyleUrl,
   shouldReportOrthophotoTileError,
   tuneOpenFreeMapDarkStyleLayers,
@@ -125,6 +136,7 @@ export function MapCanvas({
   selectedFeatureId,
   polygonOpacity = DEFAULT_POLYGON_OPACITY,
   highlightMineOnly = false,
+  spaceZones = null,
   cameraTarget,
   northResetSeq = 0,
   onViewportChange,
@@ -135,6 +147,8 @@ export function MapCanvas({
   onZoomDividerOffsetChange,
 }: MapCanvasProps): React.JSX.Element {
   const activeStyleUrl = resolveBasemapStyleUrl(config, colorScheme);
+  const spaceZonesRef = useRef(spaceZones);
+  spaceZonesRef.current = spaceZones;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -255,6 +269,15 @@ export function MapCanvas({
             center: [initialLng, initialLat],
             zoom: initialZoom,
           }),
+      ...(isGermanyConfined(config)
+        ? {
+            maxBounds: GERMANY_MAX_BOUNDS.map(([lng, lat]) => [lng, lat]) as [
+              [number, number],
+              [number, number],
+            ],
+            minZoom: GERMANY_MIN_ZOOM,
+          }
+        : {}),
       pitchWithRotate: false,
       touchPitch: false,
       dragRotate: true,
@@ -385,6 +408,27 @@ export function MapCanvas({
         }
       }
 
+      // Germany cutaway below the proposals
+      if (isGermanyConfined(configRef.current)) {
+        if (!map.getSource(GERMANY_MASK_SOURCE_ID)) {
+          map.addSource(GERMANY_MASK_SOURCE_ID, {
+            type: 'geojson',
+            data: buildGermanyInvertedMaskGeoJson(),
+          });
+        }
+        if (!map.getSource(GERMANY_BORDER_SOURCE_ID)) {
+          map.addSource(GERMANY_BORDER_SOURCE_ID, {
+            type: 'geojson',
+            data: buildGermanyBorderOutlineGeoJson(),
+          });
+        }
+        for (const layer of buildGermanyMaskLayerSpecs(colorSchemeRef.current)) {
+          if (!map.getLayer(layer.id)) {
+            map.addLayer(layer, 'proposals-fill');
+          }
+        }
+      }
+
       // 2. Orthophoto raster source + layer inserted strictly beneath 'proposals-fill'
       const orthoSourceSpec = buildOrthophotoSourceSpec(
         configRef.current.orthophoto,
@@ -403,7 +447,12 @@ export function MapCanvas({
         const isOrthoVisible = basemapModeRef.current === 'orthophoto';
         if (!map.getLayer(ORTHOPHOTO_LAYER_ID)) {
           const { beforeId, ...rasterLayer } =
-            buildOrthophotoLayerSpec(isOrthoVisible);
+            buildOrthophotoLayerSpec(
+              isOrthoVisible,
+              map.getLayer(GERMANY_MASK_LAYER_ID)
+                ? GERMANY_MASK_LAYER_ID
+                : 'proposals-fill',
+            );
           map.addLayer(
             rasterLayer,
             map.getLayer(beforeId) ? beforeId : undefined,
@@ -414,6 +463,24 @@ export function MapCanvas({
             'visibility',
             isOrthoVisible ? 'visible' : 'none',
           );
+        }
+      }
+
+      // Land use directly beneath the proposals, above mask and aerial imagery.
+      const zonesGeoJson = buildSpaceZonesGeoJson(spaceZonesRef.current);
+      if (!map.getSource(SPACE_ZONES_SOURCE_ID)) {
+        map.addSource(SPACE_ZONES_SOURCE_ID, {
+          type: 'geojson',
+          data: zonesGeoJson as unknown as GeoJSON.FeatureCollection,
+        });
+      } else {
+        map
+          .getSource<GeoJSONSource>(SPACE_ZONES_SOURCE_ID)
+          ?.setData(zonesGeoJson as unknown as GeoJSON.FeatureCollection);
+      }
+      for (const zoneLayer of buildSpaceZoneLayerSpecs()) {
+        if (!map.getLayer(zoneLayer.id)) {
+          map.addLayer(zoneLayer, 'proposals-fill');
         }
       }
 
@@ -622,11 +689,35 @@ export function MapCanvas({
     if (!map || !styleReadyRef.current) {
       return;
     }
-    const [fillSpec, outlineSpec, centroidSpec] = buildPolygonLayerSpecs(
-      polygonOpacity,
-      colorScheme,
-      highlightMineOnly,
-    );
+    map
+      .getSource<GeoJSONSource>(SPACE_ZONES_SOURCE_ID)
+      ?.setData(
+        buildSpaceZonesGeoJson(spaceZones) as unknown as GeoJSON.FeatureCollection,
+      );
+  }, [spaceZones]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleReadyRef.current) {
+      return;
+    }
+    const [fillSpec, outlineSpec, privateOutlineSpec, centroidSpec] =
+      buildPolygonLayerSpecs(polygonOpacity, colorScheme, highlightMineOnly);
+    const [maskSpec, borderSpec] = buildGermanyMaskLayerSpecs(colorScheme);
+    if (map.getLayer(maskSpec.id)) {
+      map.setPaintProperty(
+        maskSpec.id,
+        'fill-color',
+        maskSpec.paint['fill-color'],
+      );
+    }
+    if (map.getLayer(borderSpec.id)) {
+      map.setPaintProperty(
+        borderSpec.id,
+        'line-color',
+        borderSpec.paint['line-color'],
+      );
+    }
     if (map.getLayer(fillSpec.id)) {
       map.setPaintProperty(
         fillSpec.id,
@@ -639,22 +730,13 @@ export function MapCanvas({
         fillSpec.paint['fill-opacity'],
       );
     }
-    if (map.getLayer(outlineSpec.id)) {
-      map.setPaintProperty(
-        outlineSpec.id,
-        'line-color',
-        outlineSpec.paint['line-color'],
-      );
-      map.setPaintProperty(
-        outlineSpec.id,
-        'line-width',
-        outlineSpec.paint['line-width'],
-      );
-      map.setPaintProperty(
-        outlineSpec.id,
-        'line-opacity',
-        outlineSpec.paint['line-opacity'],
-      );
+    for (const lineSpec of [outlineSpec, privateOutlineSpec]) {
+      if (!map.getLayer(lineSpec.id)) {
+        continue;
+      }
+      for (const prop of ['line-color', 'line-width', 'line-opacity'] as const) {
+        map.setPaintProperty(lineSpec.id, prop, lineSpec.paint[prop]);
+      }
     }
     if (map.getLayer(centroidSpec.id)) {
       map.setPaintProperty(
@@ -760,7 +842,12 @@ export function MapCanvas({
 
     const isVisible = basemapMode === 'orthophoto';
     if (!map.getLayer(ORTHOPHOTO_LAYER_ID)) {
-      const { beforeId, ...rasterLayer } = buildOrthophotoLayerSpec(isVisible);
+      const { beforeId, ...rasterLayer } = buildOrthophotoLayerSpec(
+        isVisible,
+        map.getLayer(GERMANY_MASK_LAYER_ID)
+          ? GERMANY_MASK_LAYER_ID
+          : 'proposals-fill',
+      );
       map.addLayer(rasterLayer, map.getLayer(beforeId) ? beforeId : undefined);
     } else {
       map.setLayoutProperty(

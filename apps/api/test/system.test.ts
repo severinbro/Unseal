@@ -45,10 +45,10 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
     }
   });
 
-  it('applies 001..011 migrations idempotently and resetTestDb truncates all application tables', async () => {
+  it('applies 001..014 migrations idempotently and resetTestDb truncates all application tables', async () => {
     const secondRun = await runMigrations(pool);
     assert.equal(secondRun.applied.length, 0);
-    assert.equal(secondRun.totalApplied, 11);
+    assert.equal(secondRun.totalApplied, 14);
 
     const indexRes = await pool.query<{ indexname: string }>(
       `SELECT indexname FROM pg_indexes WHERE schemaname = 'public'`,
@@ -147,7 +147,7 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
     assert.equal(counts.votes_cnt, 0);
     assert.equal(counts.telemetry_cnt, 0);
     assert.equal(counts.import_attr_cnt, 0);
-    assert.equal(counts.migrations_cnt, 11);
+    assert.equal(counts.migrations_cnt, 14);
   });
 
   it('GET /api/v1/health returns 200 against live PostGIS and 503 SERVICE_UNAVAILABLE when DB fails or migrations are incomplete', async () => {
@@ -165,7 +165,7 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
       assert.ok(okRes.headers['x-request-id']);
       const health = HealthResponseSchema.parse(okRes.json());
       assert.equal(health.status, 'ok');
-      assert.equal(health.migrationsApplied, 11);
+      assert.equal(health.migrationsApplied, 14);
       assert.match(health.postgisVersion, /^3\./);
     } finally {
       await app.close();

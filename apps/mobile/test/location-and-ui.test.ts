@@ -172,6 +172,17 @@ function makeSampleFeature(id: string, score: number): PolygonFeature {
       isFlagged: false,
       myFlag: false,
       isAuthor: false,
+      spaceType: 'unknown',
+      spaceVerification: 'unverified',
+      openForPublicAccess: false,
+      canMessageAuthor: false,
+      detectedSpaceType: null,
+      privateOverlapRatio: null,
+      spaceVerificationSource: null,
+      allowChatContact: null,
+      helpWanted: false,
+      helpWantedUntil: null,
+      entitlementConfirmed: null,
       createdAt: '2026-11-12T10:00:00.000Z',
       updatedAt: '2026-11-12T10:00:00.000Z',
     },
@@ -834,6 +845,20 @@ describe('UI sheet, banner, and GPS camera state transitions', () => {
     state = appReducer(state, { type: 'ADD_VERTEX', point: [8.274, 49.9988] });
     state = appReducer(state, { type: 'ADD_VERTEX', point: [8.274, 49.999] });
     state = appReducer(state, { type: 'ADVANCE_TO_DETAILS' });
+    state = appReducer(state, {
+      type: 'AUTH_SUCCEEDED',
+      user: {
+        id: '11111111-1111-4111-8111-111111111111',
+        pseudonym: 'step_two',
+        email: null,
+        role: 'user',
+        allowDirectMessages: false,
+        termsUpdateRequired: false,
+        createdAt: '2026-11-12T10:00:00.000Z',
+      },
+    });
+    state = appReducer(state, { type: 'SESSION_EXPIRED' });
+    state = appReducer(state, { type: 'CLOSE_AUTH_MODAL' });
     state = appReducer(state, {
       type: 'SET_DRAFT_META',
       surfaceType: 'concrete',

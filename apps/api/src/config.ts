@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import {
+  CHAT_LIMITS,
   AUTH_LIMITS,
   BrandingConfigSchema,
   DEFAULT_APP_NAME,
@@ -106,6 +107,9 @@ export interface EnvConfig {
   backupRetentionDays: number | null;
   disposableEmailBlocklistExtra: string[];
   requireJurisdiction: 'when_seeded' | 'strict' | 'off';
+  /** Null (default): no live land-use lookups. */
+  overpassApiUrl: string | null;
+  chatRetentionDays: number;
   staleUnratedPruneDays: number;
   newUserMinAccountDays: number;
   newUserMinCleanPolygons: number;
@@ -906,11 +910,37 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     };
   }
 
+  const rawOverpassUrl = env.OVERPASS_API_URL?.trim() ?? '';
+  let overpassApiUrl: string | null = null;
+  if (rawOverpassUrl.length > 0) {
+    let protocol = '';
+    try {
+      protocol = new URL(rawOverpassUrl).protocol;
+    } catch {
+      // Reported below.
+    }
+    if (protocol !== 'https:' && protocol !== 'http:') {
+      throw new Error('OVERPASS_API_URL must be a valid http(s) URL or empty.');
+    }
+    overpassApiUrl = rawOverpassUrl;
+  }
+
+  const chatRetentionDays = parseIntSetting(
+    env.CHAT_RETENTION_DAYS,
+    CHAT_LIMITS.DEFAULT_RETENTION_DAYS,
+    'CHAT_RETENTION_DAYS',
+  );
+  if (chatRetentionDays < 1) {
+    throw new Error('CHAT_RETENTION_DAYS must be at least 1.');
+  }
+
   const runtimeConfig = RuntimeConfigSchema.parse({
     osmStyleUrl,
     osmDarkStyleUrl,
     orthophoto,
     vg250AttributionEnabled: autoSeedVg250,
+    germanyConfinementEnabled: requireJurisdiction !== 'off',
+    chatRetentionDays,
     initialView: {
       lng: initialLng,
       lat: initialLat,
@@ -983,6 +1013,8 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     backupRetentionDays,
     disposableEmailBlocklistExtra,
     requireJurisdiction,
+    overpassApiUrl,
+    chatRetentionDays,
     staleUnratedPruneDays,
     newUserMinAccountDays,
     newUserMinCleanPolygons,

@@ -3,6 +3,7 @@
 
 import {
   closeRingIfNeeded,
+  computeExteriorRingCentroid,
   dedupeConsecutivePoints,
   formatDop20WebAttributionHtml,
   type PolygonFeature,
@@ -19,7 +20,13 @@ import type {
 } from 'geojson';
 
 import { appendHostedPageTheme } from '../api/client';
-import type { ColorScheme } from '../theme/tokens';
+import { DARK_PALETTE, LIGHT_PALETTE, type ColorScheme } from '../theme/tokens';
+import {
+  buildGermanyBorderOutlineGeoJson,
+  buildGermanyInvertedMaskGeoJson,
+} from './germanyBorder';
+
+export { buildGermanyBorderOutlineGeoJson, buildGermanyInvertedMaskGeoJson };
 
 export const DEFAULT_DARK_OSM_STYLE_URL =
   'https://tiles.openfreemap.org/styles/dark';
@@ -137,6 +144,16 @@ export const ORTHOPHOTO_LAYER_ID = 'orthophoto-raster-layer';
 export const PROPOSALS_POLYGON_SOURCE_ID = 'proposals-polygon-source';
 export const PROPOSALS_CENTROID_SOURCE_ID = 'proposals-centroid-source';
 export const DRAFT_SOURCE_ID = 'draft-source';
+export const GERMANY_MASK_SOURCE_ID = 'germany-mask-source';
+export const GERMANY_MASK_LAYER_ID = 'germany-mask-fill';
+export const GERMANY_BORDER_SOURCE_ID = 'germany-border-source';
+export const GERMANY_BORDER_LAYER_ID = 'germany-border-outline';
+export const PROPOSALS_PRIVATE_OUTLINE_LAYER_ID = 'proposals-outline-private';
+export const SPACE_ZONES_SOURCE_ID = 'space-zones-source';
+export const SPACE_ZONES_FILL_LAYER_ID = 'space-zones-fill';
+export const SPACE_ZONES_LINE_LAYER_ID = 'space-zones-outline';
+/** Orange and blue stay apart for the common forms of colour blindness. */
+export const SPACE_ZONE_COLORS = { private: '#d95f02', public: '#1f78b4' } as const;
 
 export const MIN_POLYGON_OPACITY = 0;
 export const MAX_POLYGON_OPACITY = 1;
@@ -152,6 +169,7 @@ export function clampPolygonOpacity(value: number): number {
 export const INTERACTIVE_PROPOSAL_LAYER_IDS = [
   'proposals-fill',
   'proposals-outline',
+  'proposals-outline-private',
   'proposals-centroid',
 ] as const;
 
@@ -171,7 +189,7 @@ export interface OrthophotoRasterLayerSpec {
   id: typeof ORTHOPHOTO_LAYER_ID;
   type: 'raster';
   source: typeof ORTHOPHOTO_SOURCE_ID;
-  beforeId: 'proposals-fill';
+  beforeId: 'proposals-fill' | typeof GERMANY_MASK_LAYER_ID;
   layout: {
     visibility: 'visible' | 'none';
   };
@@ -424,10 +442,33 @@ export interface ProposalFillLayerSpec {
   };
 }
 
+/** Private, unselected proposals (dashed); `line-dasharray` cannot be data-driven. */
+export type PrivateOutlineFilter = [
+  'all',
+  ['!', ['boolean', ['get', 'selected'], false]],
+  ['==', ['get', 'spaceType'], 'private'],
+];
+
+export type SolidOutlineFilter = [
+  'any',
+  ['boolean', ['get', 'selected'], false],
+  ['!=', ['get', 'spaceType'], 'private'],
+];
+
+export interface ProposalPrivateOutlineLayerSpec
+  extends Omit<ProposalOutlineLayerSpec, 'id' | 'filter' | 'paint'> {
+  id: typeof PROPOSALS_PRIVATE_OUTLINE_LAYER_ID;
+  filter: PrivateOutlineFilter;
+  paint: ProposalOutlineLayerSpec['paint'] & {
+    'line-dasharray': [number, number];
+  };
+}
+
 export interface ProposalOutlineLayerSpec {
   id: 'proposals-outline';
   type: 'line';
   source: typeof PROPOSALS_POLYGON_SOURCE_ID;
+  filter: SolidOutlineFilter;
   layout: {
     'line-cap': 'round';
     'line-join': 'round';
@@ -456,6 +497,7 @@ export interface ProposalCentroidLayerSpec {
 export type PolygonLayerSpecsTuple = [
   ProposalFillLayerSpec,
   ProposalOutlineLayerSpec,
+  ProposalPrivateOutlineLayerSpec,
   ProposalCentroidLayerSpec,
 ];
 
@@ -638,14 +680,88 @@ export function buildWebCustomAttributions(options: {
   return entries;
 }
 
+export interface GermanyMaskFillLayerSpec {
+  id: typeof GERMANY_MASK_LAYER_ID;
+  type: 'fill';
+  source: typeof GERMANY_MASK_SOURCE_ID;
+  paint: {
+    'fill-color': string;
+    'fill-opacity': [
+      'interpolate',
+      ['linear'],
+      ['zoom'],
+      number,
+      number,
+      number,
+      number,
+    ];
+    'fill-antialias': false;
+  };
+}
+
+export interface GermanyBorderLineLayerSpec {
+  id: typeof GERMANY_BORDER_LAYER_ID;
+  type: 'line';
+  source: typeof GERMANY_BORDER_SOURCE_ID;
+  paint: {
+    'line-color': string;
+    'line-width': number;
+    'line-opacity': GermanyMaskFillLayerSpec['paint']['fill-opacity'];
+  };
+}
+
+/** Opaque outside Germany up to zoom 11, gone by zoom 13 so border towns stay visible. */
+export function buildGermanyMaskLayerSpecs(
+  colorScheme: ColorScheme = 'light',
+): [GermanyMaskFillLayerSpec, GermanyBorderLineLayerSpec] {
+  const fade: GermanyMaskFillLayerSpec['paint']['fill-opacity'] = [
+    'interpolate',
+    ['linear'],
+    ['zoom'],
+    11,
+    1,
+    13,
+    0,
+  ];
+  return [
+    {
+      id: GERMANY_MASK_LAYER_ID,
+      type: 'fill',
+      source: GERMANY_MASK_SOURCE_ID,
+      paint: {
+        'fill-color': (colorScheme === 'dark' ? DARK_PALETTE : LIGHT_PALETTE).bgMapCanvas,
+        'fill-opacity': fade,
+        'fill-antialias': false,
+      },
+    },
+    {
+      id: GERMANY_BORDER_LAYER_ID,
+      type: 'line',
+      source: GERMANY_BORDER_SOURCE_ID,
+      paint: {
+        'line-color': colorScheme === 'dark' ? '#3f5a4e' : '#7c9388',
+        'line-width': 1.2,
+        'line-opacity': fade,
+      },
+    },
+  ];
+}
+
+export function isGermanyConfined(
+  config: Pick<RuntimeConfig, 'germanyConfinementEnabled'>,
+): boolean {
+  return config.germanyConfinementEnabled !== false;
+}
+
 export function buildOrthophotoLayerSpec(
   visible: boolean = true,
+  beforeId: OrthophotoRasterLayerSpec['beforeId'] = 'proposals-fill',
 ): OrthophotoRasterLayerSpec {
   return {
     id: ORTHOPHOTO_LAYER_ID,
     type: 'raster',
     source: ORTHOPHOTO_SOURCE_ID,
-    beforeId: 'proposals-fill',
+    beforeId,
     layout: {
       visibility: visible ? 'visible' : 'none',
     },
@@ -654,56 +770,6 @@ export function buildOrthophotoLayerSpec(
       'raster-resampling': 'linear',
     },
   };
-}
-
-function computeExteriorRingCentroid(
-  exteriorRing: readonly (readonly [number, number])[] | undefined,
-): [number, number] {
-  if (!exteriorRing || exteriorRing.length === 0) {
-    return [0, 0];
-  }
-
-  const n = exteriorRing.length;
-  const first = exteriorRing[0]!;
-  const last = exteriorRing[n - 1]!;
-  const uniqueCount =
-    n > 1 && first[0] === last[0] && first[1] === last[1] ? n - 1 : n;
-
-  if (uniqueCount === 0) {
-    return [first[0], first[1]];
-  }
-
-  const [refLng, refLat] = first;
-  let twiceArea = 0;
-  let cxAcc = 0;
-  let cyAcc = 0;
-
-  for (let i = 0; i < uniqueCount; i++) {
-    const [lng0, lat0] = exteriorRing[i]!;
-    const [lng1, lat1] = exteriorRing[(i + 1) % uniqueCount]!;
-    const x0 = lng0 - refLng;
-    const y0 = lat0 - refLat;
-    const x1 = lng1 - refLng;
-    const y1 = lat1 - refLat;
-    const cross = x0 * y1 - x1 * y0;
-    twiceArea += cross;
-    cxAcc += (x0 + x1) * cross;
-    cyAcc += (y0 + y1) * cross;
-  }
-
-  const sixArea = 3 * twiceArea;
-  if (Math.abs(sixArea) > 1e-18) {
-    return [refLng + cxAcc / sixArea, refLat + cyAcc / sixArea];
-  }
-
-  let sumLng = 0;
-  let sumLat = 0;
-  for (let i = 0; i < uniqueCount; i++) {
-    const [lng, lat] = exteriorRing[i]!;
-    sumLng += lng;
-    sumLat += lat;
-  }
-  return [sumLng / uniqueCount, sumLat / uniqueCount];
 }
 
 export function buildProposalGeoJson(
@@ -911,6 +977,11 @@ export function buildPolygonLayerSpecs(
     id: 'proposals-outline',
     type: 'line',
     source: PROPOSALS_POLYGON_SOURCE_ID,
+    filter: [
+      'any',
+      ['boolean', ['get', 'selected'], false],
+      ['!=', ['get', 'spaceType'], 'private'],
+    ],
     layout: {
       'line-cap': 'round',
       'line-join': 'round',
@@ -1016,7 +1087,89 @@ export function buildPolygonLayerSpecs(
     },
   };
 
-  return [fillLayer, outlineLayer, centroidLayer];
+  const privateOutlineLayer: ProposalPrivateOutlineLayerSpec = {
+    ...outlineLayer,
+    id: PROPOSALS_PRIVATE_OUTLINE_LAYER_ID,
+    filter: [
+      'all',
+      ['!', ['boolean', ['get', 'selected'], false]],
+      ['==', ['get', 'spaceType'], 'private'],
+    ],
+    paint: { ...outlineLayer.paint, 'line-dasharray': [2, 1.5] },
+  };
+
+  return [fillLayer, outlineLayer, privateOutlineLayer, centroidLayer];
+}
+
+export interface SpaceZoneFeatureLike {
+  type: 'Feature';
+  geometry: { type: 'Polygon' | 'MultiPolygon'; coordinates: unknown };
+  properties: { kind: 'private' | 'public' };
+}
+
+export interface SpaceZonesGeoJson {
+  type: 'FeatureCollection';
+  features: SpaceZoneFeatureLike[];
+}
+
+export function buildSpaceZonesGeoJson(
+  features: readonly SpaceZoneFeatureLike[] | null | undefined,
+): SpaceZonesGeoJson {
+  return { type: 'FeatureCollection', features: [...(features ?? [])] };
+}
+
+type SpaceZoneColorExpression = [
+  'match',
+  ['get', 'kind'],
+  'private',
+  string,
+  string,
+];
+
+export interface SpaceZoneFillLayerSpec {
+  id: typeof SPACE_ZONES_FILL_LAYER_ID;
+  type: 'fill';
+  source: typeof SPACE_ZONES_SOURCE_ID;
+  paint: { 'fill-color': SpaceZoneColorExpression; 'fill-opacity': number };
+}
+
+export interface SpaceZoneLineLayerSpec {
+  id: typeof SPACE_ZONES_LINE_LAYER_ID;
+  type: 'line';
+  source: typeof SPACE_ZONES_SOURCE_ID;
+  paint: {
+    'line-color': SpaceZoneColorExpression;
+    'line-width': number;
+    'line-opacity': number;
+  };
+}
+
+/** Land use sits below the proposals, so it never hides or blocks them. */
+export function buildSpaceZoneLayerSpecs(): [
+  SpaceZoneFillLayerSpec,
+  SpaceZoneLineLayerSpec,
+] {
+  const color: SpaceZoneColorExpression = [
+    'match',
+    ['get', 'kind'],
+    'private',
+    SPACE_ZONE_COLORS.private,
+    SPACE_ZONE_COLORS.public,
+  ];
+  return [
+    {
+      id: SPACE_ZONES_FILL_LAYER_ID,
+      type: 'fill',
+      source: SPACE_ZONES_SOURCE_ID,
+      paint: { 'fill-color': color, 'fill-opacity': 0.3 },
+    },
+    {
+      id: SPACE_ZONES_LINE_LAYER_ID,
+      type: 'line',
+      source: SPACE_ZONES_SOURCE_ID,
+      paint: { 'line-color': color, 'line-width': 1.2, 'line-opacity': 0.9 },
+    },
+  ];
 }
 
 export function buildDraftGeoJson(

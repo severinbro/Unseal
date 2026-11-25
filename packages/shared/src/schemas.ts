@@ -5,9 +5,14 @@ import { z } from 'zod';
 
 import {
   AUTH_LIMITS,
+  CHAT_LIMITS,
   COMMENT_LIMITS,
   CONTENT_REPORT_REASONS,
   CONTENT_REPORT_TARGET_TYPES,
+  CHAT_REQUEST_STATES,
+  FEED_ACTIVITIES,
+  FEED_LIMITS,
+  FEED_ORIGIN_FILTERS,
   GEOMETRY_LIMITS,
   MUNICIPALITY_NORMS,
   POLYGON_AUTHOR_FILTERS,
@@ -15,11 +20,18 @@ import {
   POLYGON_FLAG_REASONS,
   POLYGON_ORIGINS,
   POLYGON_STATUSES,
+  SPACE_FILTERS,
+  SPACE_TYPES,
+  SPACE_ZONE_KINDS,
+  SPACE_VERIFICATION_SOURCES,
+  SPACE_VERIFICATION_STATUSES,
+  STORED_SPACE_TYPES,
   SURFACE_TYPES,
   TRUST_AND_MODERATION_LIMITS,
   USER_ROLES,
   type PolygonFilter,
   type PolygonStatus,
+  type SpaceFilter,
 } from './constants.js';
 import { ApiError } from './errors.js';
 import { checkPolygonRingStructure } from './geometry.js';
@@ -263,6 +275,8 @@ export const AuthUserSchema = z.object({
   pseudonym: PseudonymSchema,
   email: z.string().email().nullable().optional().default(null),
   role: z.enum(USER_ROLES).optional().default('user'),
+  allowDirectMessages: z.boolean().optional().default(false),
+  termsUpdateRequired: z.boolean().optional().default(false),
   createdAt: IsoDateTimeSchema,
 });
 
@@ -383,6 +397,8 @@ export const RuntimeConfigSchema = z.object({
   osmDarkStyleUrl: z.string().url().optional(),
   orthophoto: OrthophotoConfigSchema.nullable(),
   vg250AttributionEnabled: z.boolean().optional(),
+  germanyConfinementEnabled: z.boolean().optional(),
+  chatRetentionDays: z.number().int().positive().optional(),
   vg250DataYear: z.number().int().min(2000).max(2100).nullable().optional(),
   initialView: z.object({
     lng: z.number().finite().min(-180).max(180),
@@ -450,20 +466,82 @@ export const CreatePolygonRequestSchema = z
     geometry: CreatePolygonGeometrySchema,
     surfaceType: z.enum(SURFACE_TYPES),
     note: z.string().max(GEOMETRY_LIMITS.MAX_NOTE_LENGTH).nullable().optional(),
+    spaceType: z.enum(SPACE_TYPES).optional(),
+    openForPublicAccess: z.boolean().optional(),
+    allowChatContact: z.boolean().optional(),
+    helpWanted: z.boolean().optional(),
+    entitlementConfirmed: z.boolean().optional(),
   })
   .strict();
 
 export type CreatePolygonRequest = z.infer<typeof CreatePolygonRequestSchema>;
 
+export const ClassifySpaceRequestSchema = z
+  .object({ geometry: CreatePolygonGeometrySchema })
+  .strict();
+
+export type ClassifySpaceRequest = z.infer<typeof ClassifySpaceRequestSchema>;
+
+export const ClassifySpaceResponseSchema = z.object({
+  proposedSpaceType: z.enum(SPACE_TYPES),
+  detectedSpaceType: z.enum(STORED_SPACE_TYPES),
+  privateOverlapRatio: z.number().min(0).max(1).nullable(),
+  thresholdRatio: z.number(),
+  wasAutoClipped: z.boolean(),
+  source: z.enum(SPACE_VERIFICATION_SOURCES).nullable(),
+  /** The parts of the drawn area that matched reference data, for display. */
+  overlay: z
+    .lazy(() => SpaceZoneCollectionSchema)
+    .nullable()
+    .optional()
+    .default(null),
+});
+
+export type ClassifySpaceResponse = z.output<typeof ClassifySpaceResponseSchema>;
+
+export const PatchPolygonSpaceTypeRequestSchema = z
+  .object({ spaceType: z.enum(SPACE_TYPES) })
+  .strict();
+
+export type PatchPolygonSpaceTypeRequest = z.infer<
+  typeof PatchPolygonSpaceTypeRequestSchema
+>;
+
+export const PatchAccountPreferencesRequestSchema = z
+  .object({ allowDirectMessages: z.boolean() })
+  .strict();
+
+export type PatchAccountPreferencesRequest = z.infer<
+  typeof PatchAccountPreferencesRequestSchema
+>;
+
+export const AcceptTermsRequestSchema = z
+  .object({
+    acceptedPrivacyPolicy: z.literal(true),
+    acceptedTerms: z.literal(true),
+  })
+  .strict();
+
+export type AcceptTermsRequest = z.infer<typeof AcceptTermsRequestSchema>;
+
 export const PatchPolygonRequestSchema = z
   .object({
     surfaceType: z.enum(SURFACE_TYPES).optional(),
     note: z.string().max(GEOMETRY_LIMITS.MAX_NOTE_LENGTH).nullable().optional(),
+    openForPublicAccess: z.boolean().optional(),
+    allowChatContact: z.boolean().optional(),
+    helpWanted: z.boolean().optional(),
+    entitlementConfirmed: z.boolean().optional(),
   })
   .strict()
   .refine(
-    (payload) => payload.surfaceType !== undefined || payload.note !== undefined,
-    { message: 'At least one of surfaceType or note must be provided.' },
+    (payload) =>
+      payload.surfaceType !== undefined ||
+      payload.note !== undefined ||
+      payload.openForPublicAccess !== undefined ||
+      payload.allowChatContact !== undefined ||
+      payload.helpWanted !== undefined,
+    { message: 'At least one polygon field must be provided.' },
   );
 
 export type PatchPolygonRequest = z.infer<typeof PatchPolygonRequestSchema>;
@@ -471,6 +549,8 @@ export type PatchPolygonRequest = z.infer<typeof PatchPolygonRequestSchema>;
 export const PatchPolygonStatusRequestSchema = z
   .object({
     status: z.enum(POLYGON_STATUSES),
+    /** Needed once before an author reports progress on private ground. */
+    entitlementConfirmed: z.boolean().optional(),
   })
   .strict();
 
@@ -691,6 +771,50 @@ export function computeMunicipalityNormalizedScore(
   return Math.min(1, Math.max(0, Number((score / denom).toFixed(4))));
 }
 
+/** Mirrors the server's filter so the client can tell whether an area is hidden. */
+export function polygonMatchesFilters(
+  properties: {
+    status: PolygonStatus;
+    createdAt: string;
+    score: number;
+    upvotes: number;
+    downvotes: number;
+    spaceType: string;
+    spaceVerification: string;
+    helpWanted: boolean;
+  },
+  filter: PolygonFilter,
+  spaceFilter: SpaceFilter,
+  nowMs: number,
+): boolean {
+  if (spaceFilter !== 'all' && properties.spaceType !== spaceFilter) {
+    return false;
+  }
+  const isNew =
+    nowMs - Date.parse(properties.createdAt) < 7 * 24 * 60 * 60 * 1000;
+  switch (filter) {
+    case 'all':
+      return true;
+    case 'new':
+      return isNew;
+    case 'established':
+      return !isNew;
+    case 'in_progress':
+    case 'finished':
+      return properties.status === filter;
+    case 'help_wanted':
+      return properties.helpWanted;
+    case 'needs_review':
+      return (
+        properties.spaceVerification === 'user_override' ||
+        (properties.status === 'proposed' &&
+          properties.score === 0 &&
+          properties.upvotes === 0 &&
+          properties.downvotes === 0)
+      );
+  }
+}
+
 export interface BboxBounds {
   minLng: number;
   minLat: number;
@@ -788,10 +912,11 @@ export const PolygonListQuerySchema = z
   .object({
     bbox: BboxStringSchema,
     filter: z.enum(POLYGON_FILTERS).optional(),
+    spaceFilter: z.enum(SPACE_FILTERS).optional().default('all'),
     authorType: z.enum(POLYGON_AUTHOR_FILTERS).optional(),
     unratedFlaggedOnly: OptionalBooleanQueryParamSchema,
   })
-  .transform((q): { bbox: BboxBounds; filter: PolygonFilter } => {
+  .transform((q): { bbox: BboxBounds; filter: PolygonFilter; spaceFilter: SpaceFilter } => {
     const resolvedFilter: PolygonFilter =
       q.filter ??
       (q.unratedFlaggedOnly
@@ -804,6 +929,7 @@ export const PolygonListQuerySchema = z
     return {
       bbox: q.bbox,
       filter: resolvedFilter,
+      spaceFilter: q.spaceFilter,
     };
   });
 
@@ -875,6 +1001,27 @@ export const PolygonFeatureSchema = z.object({
     score: z.number().int(),
     myVote: z.union([z.literal(-1), z.literal(0), z.literal(1)]),
     isAuthor: z.boolean(),
+    spaceType: z.enum(STORED_SPACE_TYPES).optional().default('unknown'),
+    spaceVerification: z
+      .enum(SPACE_VERIFICATION_STATUSES)
+      .optional()
+      .default('unverified'),
+    openForPublicAccess: z.boolean().optional().default(false),
+    /** A public, time-limited call for help by the person entitled to the ground. */
+    helpWanted: z.boolean().optional().default(false),
+    /** Viewer-specific; the underlying opt-ins are never published. */
+    canMessageAuthor: z.boolean().optional().default(false),
+    /** The remaining fields are only filled for the author and administrators. */
+    detectedSpaceType: z.enum(STORED_SPACE_TYPES).nullable().optional().default(null),
+    privateOverlapRatio: z.number().min(0).max(1).nullable().optional().default(null),
+    spaceVerificationSource: z
+      .enum(SPACE_VERIFICATION_SOURCES)
+      .nullable()
+      .optional()
+      .default(null),
+    allowChatContact: z.boolean().nullable().optional().default(null),
+    helpWantedUntil: IsoDateTimeSchema.nullable().optional().default(null),
+    entitlementConfirmed: z.boolean().nullable().optional().default(null),
     createdAt: IsoDateTimeSchema,
     updatedAt: IsoDateTimeSchema,
   }),
@@ -901,11 +1048,64 @@ export const ExportPolygonFeatureSchema = z.object({
       myVote: true,
       myFlag: true,
       isAuthor: true,
+      // Statements about a parcel's owner and classification details are not open data.
+      spaceVerification: true,
+      openForPublicAccess: true,
+      canMessageAuthor: true,
+      detectedSpaceType: true,
+      privateOverlapRatio: true,
+      spaceVerificationSource: true,
+      allowChatContact: true,
+      helpWanted: true,
+      helpWantedUntil: true,
+      entitlementConfirmed: true,
     })
     .strict(),
 });
 
 export type ExportPolygonFeature = z.output<typeof ExportPolygonFeatureSchema>;
+
+const SpaceZoneGeometrySchema = z.union([
+  z.object({
+    type: z.literal('Polygon'),
+    coordinates: z.array(z.array(z.tuple([z.number().finite(), z.number().finite()]))),
+  }),
+  z.object({
+    type: z.literal('MultiPolygon'),
+    coordinates: z.array(
+      z.array(z.array(z.tuple([z.number().finite(), z.number().finite()]))),
+    ),
+  }),
+]);
+
+export const SpaceZoneAttributionSchema = z.object({
+  text: z.string(),
+  license: z.string(),
+  sourceUrl: z.string().nullable(),
+});
+
+export type SpaceZoneAttribution = z.output<typeof SpaceZoneAttributionSchema>;
+
+/**
+ * Land-use reference data (never ownership data) as shown on the map. It is a
+ * derivative of the credited sources and offered under ODbL-1.0.
+ */
+export const SpaceZoneCollectionSchema = z.object({
+  type: z.literal('FeatureCollection'),
+  features: z.array(
+    z.object({
+      type: z.literal('Feature'),
+      geometry: SpaceZoneGeometrySchema,
+      properties: z.object({ kind: z.enum(SPACE_ZONE_KINDS) }),
+    }),
+  ),
+  attributions: z.array(SpaceZoneAttributionSchema),
+  /** False when this instance has no reference data loaded at all. */
+  available: z.boolean().optional().default(true),
+  truncated: z.boolean().optional().default(false),
+});
+
+export type SpaceZoneCollection = z.output<typeof SpaceZoneCollectionSchema>;
 
 export const PolygonCollectionResponseSchema = z.object({
   type: z.literal('FeatureCollection'),
@@ -1034,6 +1234,24 @@ export const SurfaceBreakdownSchema = z.object({
 
 export type SurfaceBreakdown = z.output<typeof SurfaceBreakdownSchema>;
 
+export const SpaceStatItemSchema = z.object({
+  totalPolygons: z.number().int().nonnegative(),
+  proposedCount: z.number().int().nonnegative(),
+  inProgressCount: z.number().int().nonnegative(),
+  finishedCount: z.number().int().nonnegative(),
+  totalAreaM2: z.number().finite().nonnegative(),
+  unsealedAreaM2: z.number().finite().nonnegative(),
+});
+
+export type SpaceStatItem = z.output<typeof SpaceStatItemSchema>;
+
+export const SpaceBreakdownSchema = z.object({
+  public: SpaceStatItemSchema,
+  private: SpaceStatItemSchema,
+});
+
+export type SpaceBreakdown = z.output<typeof SpaceBreakdownSchema>;
+
 export const PublicStatsResponseSchema = z.object({
   totalPolygons: z.number().int().nonnegative(),
   proposedCount: z.number().int().nonnegative(),
@@ -1046,6 +1264,7 @@ export const PublicStatsResponseSchema = z.object({
   totalUpvotes: z.number().int().nonnegative(),
   totalDownvotes: z.number().int().nonnegative(),
   surfaceBreakdown: SurfaceBreakdownSchema,
+  spaceBreakdown: SpaceBreakdownSchema.optional(),
 });
 
 export type PublicStatsResponse = z.output<typeof PublicStatsResponseSchema>;
@@ -1058,6 +1277,174 @@ export const PersonalStatsResponseSchema = z.object({
   totalAreaM2: z.number().finite().nonnegative(),
   unsealedAreaM2: z.number().finite().nonnegative(),
   ratedPolygonsCount: z.number().int().nonnegative(),
+  spaceBreakdown: SpaceBreakdownSchema.optional(),
 });
 
 export type PersonalStatsResponse = z.output<typeof PersonalStatsResponseSchema>;
+
+export const PolygonFeedQuerySchema = z.object({
+  cursor: z.string().max(200).optional(),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(FEED_LIMITS.MAX_LIMIT)
+    .optional()
+    .default(FEED_LIMITS.DEFAULT_LIMIT),
+  filter: z.enum(POLYGON_FILTERS).optional().default('all'),
+  spaceFilter: z.enum(SPACE_FILTERS).optional().default('all'),
+  origin: z.enum(FEED_ORIGIN_FILTERS).optional().default('all'),
+  /** Narrows the feed to a map section; never a device position. */
+  bbox: BboxStringSchema.optional(),
+  /** Narrows the feed to one municipality (8-digit AGS). */
+  ags: z
+    .string()
+    .regex(/^\d{8}$/)
+    .optional(),
+});
+
+export type PolygonFeedQuery = z.output<typeof PolygonFeedQuerySchema>;
+
+export const PolygonFeedItemSchema = z.object({
+  feature: PolygonFeatureSchema,
+  activity: z.enum(FEED_ACTIVITIES).optional().default('created'),
+  activityAt: IsoDateTimeSchema.optional(),
+  photos: z.array(PolygonPhotoSchema),
+  topComment: PolygonCommentSchema.nullable(),
+});
+
+export type PolygonFeedItem = z.output<typeof PolygonFeedItemSchema>;
+
+export const PolygonFeedResponseSchema = z.object({
+  items: z.array(PolygonFeedItemSchema),
+  nextCursor: z.string().nullable(),
+});
+
+export type PolygonFeedResponse = z.output<typeof PolygonFeedResponseSchema>;
+
+const RecipientPseudonymSchema = z
+  .string()
+  .trim()
+  .transform((value) => value.replace(/^@/, ''))
+  .pipe(z.string().regex(AUTH_LIMITS.PSEUDONYM_REGEX));
+
+export const OpenDirectChatRequestSchema = z.union([
+  z.object({ polygonId: z.string().uuid() }).strict(),
+  z.object({ recipientPseudonym: RecipientPseudonymSchema }).strict(),
+]);
+
+export type OpenDirectChatRequest = z.input<typeof OpenDirectChatRequestSchema>;
+
+export const ChatPolygonReferenceSchema = z.object({
+  id: z.string().uuid(),
+  surfaceType: z.enum(SURFACE_TYPES).catch('other'),
+  spaceType: z.enum(STORED_SPACE_TYPES),
+  status: z.enum(POLYGON_STATUSES),
+  areaM2: z.number().finite().nonnegative(),
+  municipalityName: z.string().nullable(),
+  bbox: z.tuple([z.number(), z.number(), z.number(), z.number()]),
+  centroid: z.tuple([z.number(), z.number()]),
+  thumbUrl: z.string().nullable(),
+  /** CC BY 4.0 credit for `thumbUrl`. */
+  thumbUploaderPseudonym: z.string().nullable(),
+});
+
+export type ChatPolygonReference = z.output<typeof ChatPolygonReferenceSchema>;
+
+export const ChatCommentReferenceSchema = z.object({
+  id: z.string().uuid(),
+  polygonId: z.string().uuid(),
+  authorPseudonym: z.string(),
+  bodyExcerpt: z.string(),
+  createdAt: IsoDateTimeSchema,
+});
+
+export type ChatCommentReference = z.output<typeof ChatCommentReferenceSchema>;
+
+export const ChatMessageSchema = z.object({
+  id: z.string().uuid(),
+  threadId: z.string().uuid(),
+  senderPseudonym: z.string(),
+  isOwnMessage: z.boolean(),
+  body: z.string(),
+  referencedPolygon: ChatPolygonReferenceSchema.nullable(),
+  referencedComment: ChatCommentReferenceSchema.nullable(),
+  createdAt: IsoDateTimeSchema,
+});
+
+export type ChatMessage = z.output<typeof ChatMessageSchema>;
+
+export const ChatThreadSchema = z.object({
+  id: z.string().uuid(),
+  counterpartPseudonym: z.string(),
+  counterpartActive: z.boolean(),
+  isBlockedByMe: z.boolean(),
+  canSend: z.boolean(),
+  messageCount: z.number().int().nonnegative(),
+  unreadCount: z.number().int().nonnegative(),
+  lastMessageAt: IsoDateTimeSchema.nullable(),
+  lastMessagePreview: z.string().max(CHAT_LIMITS.PREVIEW_MAX_LENGTH).nullable(),
+  lastMessageSenderPseudonym: z.string().nullable(),
+  requestState: z.enum(CHAT_REQUEST_STATES).optional().default('none'),
+});
+
+export type ChatThread = z.output<typeof ChatThreadSchema>;
+
+export const ChatThreadListResponseSchema = z.object({
+  threads: z.array(ChatThreadSchema),
+});
+
+export type ChatThreadListResponse = z.output<typeof ChatThreadListResponseSchema>;
+
+export const ChatUnreadCountResponseSchema = z.object({
+  unreadCount: z.number().int().nonnegative(),
+});
+
+export type ChatUnreadCountResponse = z.output<
+  typeof ChatUnreadCountResponseSchema
+>;
+
+export const ChatMessagesQuerySchema = z
+  .object({
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(CHAT_LIMITS.MESSAGES_PAGE_LIMIT)
+      .optional()
+      .default(CHAT_LIMITS.MESSAGES_PAGE_LIMIT),
+    before: z.string().max(200).optional(),
+    after: z.string().max(200).optional(),
+  })
+  .refine((q) => q.before === undefined || q.after === undefined, {
+    message: 'Use either "before" or "after".',
+  });
+
+export type ChatMessagesQuery = z.output<typeof ChatMessagesQuerySchema>;
+
+export const ChatMessagesResponseSchema = z.object({
+  thread: ChatThreadSchema,
+  messages: z.array(ChatMessageSchema),
+  nextBeforeCursor: z.string().nullable(),
+  nextAfterCursor: z.string().nullable(),
+});
+
+export type ChatMessagesResponse = z.output<typeof ChatMessagesResponseSchema>;
+
+export const CreateChatMessageRequestSchema = z
+  .object({
+    body: z.string().trim().min(1).max(CHAT_LIMITS.MAX_MESSAGE_LENGTH),
+    referencedPolygonId: z.string().uuid().nullable().optional(),
+    referencedCommentId: z.string().uuid().nullable().optional(),
+  })
+  .strict();
+
+export type CreateChatMessageRequest = z.input<
+  typeof CreateChatMessageRequestSchema
+>;
+
+export const BlockChatThreadRequestSchema = z
+  .object({ blocked: z.boolean() })
+  .strict();
+
+export type BlockChatThreadRequest = z.infer<typeof BlockChatThreadRequestSchema>;

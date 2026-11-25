@@ -139,6 +139,32 @@ export class CommentRepository {
     };
   }
 
+  /** Best rated comment per polygon; none when nothing has been upvoted. */
+  public async findTopCommentsByPolygonIds(
+    polygonIds: readonly string[],
+    viewerUserId: string | null,
+  ): Promise<Map<string, PolygonComment>> {
+    const res = await this.pool.query<CommentQueryRow>(
+      `SELECT DISTINCT ON (c.polygon_id)
+         c.id, c.polygon_id, c.parent_id, c.user_id, c.body,
+         COALESCE(u.pseudonym, 'deleted') AS author_pseudonym,
+         COALESCE(c.user_id = $2::uuid, FALSE) AS is_author,
+         c.upvotes,
+         (cv.user_id IS NOT NULL)::int AS my_vote,
+         c.created_at, c.updated_at
+       FROM polygon_comments c
+       LEFT JOIN users u ON u.id = c.user_id
+       LEFT JOIN polygon_comment_votes cv
+         ON cv.comment_id = c.id AND cv.user_id = $2::uuid
+       WHERE c.polygon_id = ANY($1::uuid[]) AND c.upvotes > 0
+       ORDER BY c.polygon_id ASC, c.upvotes DESC, c.created_at DESC, c.id ASC`,
+      [polygonIds, viewerUserId],
+    );
+    return new Map(
+      res.rows.map((row) => [row.polygon_id, mapRowToPolygonComment(row)]),
+    );
+  }
+
   public async createComment(
     params: CreateCommentParams,
   ): Promise<PolygonComment> {
@@ -166,8 +192,9 @@ export class CommentRepository {
         id: string;
         comment_count: number;
         status: string;
+        space_type: string;
       }>(
-        `SELECT id, comment_count, status
+        `SELECT id, comment_count, status, space_type
          FROM polygons
          WHERE id = $1
          FOR UPDATE`,
@@ -178,7 +205,7 @@ export class CommentRepository {
         throw new ApiError(404, 'NOT_FOUND', 'Polygon not found.');
       }
 
-      if (polyRow.status === 'finished') {
+      if (polyRow.status === 'finished' && polyRow.space_type !== 'private') {
         throw new ApiError(
           409,
           'COMMENTS_CLOSED',

@@ -22,7 +22,7 @@ import {
   type PolygonStatus,
   type SurfaceType,
 } from '@openunseal/shared';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -30,7 +30,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  StyleSheet,
   Text,
   TextInput,
   useWindowDimensions,
@@ -59,12 +58,12 @@ import {
   localizeError,
   type Locale,
 } from '../i18n/translations';
+import { getSocialCopy } from '../i18n/social';
 import {
   buildCommentDisplayModel,
   deriveInspectorManagePermissions,
   deriveInspectorOverviewMeta,
   formatInspectorDate,
-  MIN_TOUCH_TARGET_DP,
   pruneDeletedCommentSubtree,
   type CommentDisplayModel,
   type CommentThreadNode,
@@ -73,11 +72,12 @@ import {
 } from '../state/viewModels';
 import { useTheme } from '../theme/themeContext';
 import {
-  MONO_FONT_FAMILY,
-  RADII,
-  TABULAR_NUMS_STYLE,
-  type ThemePalette,
-} from '../theme/tokens';
+  PolygonCardTitle,
+  PolygonCreatorCard,
+  PolygonNoteCard,
+  PolygonVotePanel,
+} from './PolygonCardParts';
+import { createPolygonCardStyles } from './polygonCardStyles';
 
 export type InspectorTab = 'overview' | 'comments' | 'photos' | 'manage';
 export {
@@ -151,6 +151,10 @@ export interface PolygonInspectorSheetProps {
     targetType: ContentReportTargetType;
     targetId: string;
   }) => void;
+  /** Attaches a reference to this comment to a direct message. */
+  onShareCommentInChat?: (commentId: string) => void;
+  /** Opens the given tab for that area, for example when coming from the feed. */
+  requestedTab?: { featureId: string; tab: InspectorTab; seq: number } | null;
 }
 
 export function PolygonInspectorSheet({
@@ -189,13 +193,15 @@ export function PolygonInspectorSheet({
   onUnflagPolygon,
   onClearPolygonFlags,
   onReportContent,
+  onShareCommentInChat,
+  requestedTab = null,
 }: PolygonInspectorSheetProps): React.JSX.Element | null {
-  const { palette, surfaceSwatches } = useTheme();
+  const { palette } = useTheme();
   const { height: windowHeight } = useWindowDimensions();
   const lightboxImageHeight = Math.round(
     Math.min(460, Math.max(160, windowHeight * 0.58)),
   );
-  const styles = useMemo(() => createStyles(palette), [palette]);
+  const styles = useMemo(() => createPolygonCardStyles(palette), [palette]);
   const [activeTab, setActiveTab] = useState<InspectorTab>('overview');
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [editSurfaceType, setEditSurfaceType] =
@@ -248,8 +254,16 @@ export function PolygonInspectorSheet({
     [comments],
   );
 
+  const requestedTabRef = useRef(requestedTab);
+  requestedTabRef.current = requestedTab;
+
   useEffect(() => {
-    setActiveTab('overview');
+    const requested = requestedTabRef.current;
+    setActiveTab(
+      requested !== null && requested.featureId === featureId
+        ? requested.tab
+        : 'overview',
+    );
     setIsEditing(false);
     setConfirmingDelete(false);
     setActionError(null);
@@ -270,6 +284,15 @@ export function PolygonInspectorSheet({
     setSelectedFlagReason('implausible');
     setIsFlagging(false);
   }, [featureId]);
+
+  const requestedSeq = requestedTab?.seq ?? null;
+  useEffect(() => {
+    // The same area can be opened again on another tab.
+    const requested = requestedTabRef.current;
+    if (requested !== null && requested.featureId === featureId) {
+      setActiveTab(requested.tab);
+    }
+  }, [requestedSeq, featureId]);
 
   useEffect(() => {
     if (!isEditing) {
@@ -363,19 +386,12 @@ export function PolygonInspectorSheet({
   const surfaceCopy = dict.surfaces;
 
   const { properties } = feature;
-  const swatch = surfaceSwatches[properties.surfaceType];
   const isFinished = properties.status === 'finished';
   const isInProgress = properties.status === 'in_progress';
-  const isVotingClosedByStatus = isInProgress || isFinished;
-  const isVoteDisabled =
-    isBusy || properties.isAuthor || isVotingClosedByStatus;
-  const voteLockReason = isFinished
-    ? t.votingClosedFinishedHint
-    : isInProgress
-      ? t.votingClosedInProgressHint
-      : properties.isAuthor
-        ? t.selfVoteDisabledHint
-        : null;
+  // Deviating private claims stay open for voting until an admin decides.
+  const isOverride = properties.spaceVerification === 'user_override';
+  const isVotingClosedByStatus = (isInProgress || isFinished) && !isOverride;
+  const areCommentsClosed = isFinished && properties.spaceType !== 'private';
   const effectiveOverlapCount = Math.max(1, overlapCount);
   const displayOverlapPosition = Math.min(
     effectiveOverlapCount,
@@ -388,30 +404,11 @@ export function PolygonInspectorSheet({
       ? comments.length
       : properties.commentCount;
 
-  const scoreToneStyle = isFinished
-    ? styles.scoreBadgeFinished
-    : isInProgress
-      ? styles.scoreBadgeInProgress
-      : properties.score > 0
-        ? styles.scoreBadgePositive
-        : properties.score < 0
-          ? styles.scoreBadgeNegative
-          : styles.scoreBadgeNeutral;
-  const scoreTextToneStyle = isFinished
-    ? styles.scoreBadgeTextFinished
-    : isInProgress
-      ? styles.scoreBadgeTextInProgress
-      : properties.score > 0
-        ? styles.scoreBadgeTextPositive
-        : properties.score < 0
-          ? styles.scoreBadgeTextNegative
-          : styles.scoreBadgeTextNeutral;
-
   const toPhotoUrl = (rawUrl: string): string =>
     resolveUploadUrl ? resolveUploadUrl(rawUrl) : rawUrl;
 
   const handleVotePress = (targetValue: 1 | -1): void => {
-    if (properties.isAuthor || isInProgress || isFinished) {
+    if (properties.isAuthor || isVotingClosedByStatus) {
       return;
     }
     setActionError(null);
@@ -622,7 +619,7 @@ export function PolygonInspectorSheet({
   };
 
   const handleCreateCommentSubmit = (parentId: string | null): void => {
-    if (isFinished || !onCreateComment) {
+    if (areCommentsClosed || !onCreateComment) {
       return;
     }
     if (!isAuthenticated) {
@@ -781,10 +778,6 @@ export function PolygonInspectorSheet({
       });
   };
 
-  const overviewMeta = deriveInspectorOverviewMeta(feature, locale, isAdmin);
-  const entryDateText = overviewMeta.entryDateText;
-  const authorActivityText = overviewMeta.authorActivityText;
-  const displayAuthorHandle = overviewMeta.displayAuthorHandle;
 
   const formatCommentTimestamp = (iso: string): string => {
     const parsed = new Date(iso);
@@ -868,7 +861,7 @@ export function PolygonInspectorSheet({
               </Text>
             </Pressable>
 
-            {canReply && !isFinished && onCreateComment ? (
+            {canReply && !areCommentsClosed && onCreateComment ? (
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={t.replyButton}
@@ -906,6 +899,20 @@ export function PolygonInspectorSheet({
               </Pressable>
             ) : null}
 
+            {onShareCommentInChat && isAuthenticated ? (
+              <Pressable
+                testID={`share-comment-${comment.id}`}
+                accessibilityRole="button"
+                accessibilityLabel={getSocialCopy(locale).shareComment}
+                onPress={() => onShareCommentInChat(comment.id)}
+                style={styles.reportInlinePill}
+              >
+                <Text style={styles.reportInlineLabel}>
+                  {getSocialCopy(locale).shareComment}
+                </Text>
+              </Pressable>
+            ) : null}
+
             {onReportContent ? (
               <Pressable
                 testID={`report-comment-${comment.id}`}
@@ -926,7 +933,7 @@ export function PolygonInspectorSheet({
             ) : null}
           </View>
 
-          {isReplyingHere && !isFinished && isAuthenticated ? (
+          {isReplyingHere && !areCommentsClosed && isAuthenticated ? (
             <View style={styles.replyComposerBox}>
               <TextInput
                 accessibilityLabel={t.replyInputPlaceholder(
@@ -993,63 +1000,7 @@ export function PolygonInspectorSheet({
     >
       <View style={styles.headerRow}>
         <View style={styles.headerTitleGroup}>
-          <View style={styles.materialTitleRow}>
-            <View
-              style={[styles.materialSwatch, { backgroundColor: swatch.color }]}
-            />
-            <Text style={styles.sheetTitle}>
-              {surfaceCopy[properties.surfaceType].label}
-            </Text>
-            <View style={styles.areaPill}>
-              <Text style={styles.areaPillText}>
-                {properties.areaM2.toFixed(1)} m²
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.statusBadge,
-                isFinished
-                  ? styles.statusBadgeFinished
-                  : isInProgress
-                    ? styles.statusBadgeInProgress
-                    : styles.statusBadgeProposed,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.statusBadgeLabel,
-                  isFinished
-                    ? styles.statusBadgeLabelFinished
-                    : isInProgress
-                      ? styles.statusBadgeLabelInProgress
-                      : styles.statusBadgeLabelProposed,
-                ]}
-              >
-                {isFinished
-                  ? t.statusFinishedBadge
-                  : isInProgress
-                    ? t.statusInProgressBadge
-                    : t.statusProposedBadge}
-              </Text>
-            </View>
-            {overviewMeta.needsReviewBadgeText !== null ? (
-              <View
-                testID="needs-review-badge"
-                style={styles.needsReviewBadge}
-              >
-                <Text style={styles.needsReviewBadgeLabel}>
-                  {overviewMeta.needsReviewBadgeText}
-                </Text>
-              </View>
-            ) : null}
-            {properties.municipalityName ? (
-              <View style={styles.municipalityChip}>
-                <Text numberOfLines={1} style={styles.municipalityChipLabel}>
-                  {properties.municipalityName}
-                </Text>
-              </View>
-            ) : null}
-          </View>
+          <PolygonCardTitle feature={feature} locale={locale} isAdmin={isAdmin} />
         </View>
 
         <View style={styles.headerControls}>
@@ -1080,82 +1031,12 @@ export function PolygonInspectorSheet({
         </View>
       </View>
 
-      <View style={styles.votePanel}>
-        <View style={[styles.scoreBadge, scoreToneStyle]}>
-          <Text style={[styles.scoreBadgeValue, scoreTextToneStyle]}>
-            {properties.score > 0
-              ? `+${properties.score}`
-              : `${properties.score}`}
-          </Text>
-          <Text style={[styles.scoreBadgeCaption, scoreTextToneStyle]}>
-            {t.netScore}
-          </Text>
-        </View>
-
-        <View style={styles.voteButtonsGroup}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t.upvoteA11y(properties.upvotes)}
-            accessibilityState={{
-              selected: properties.myVote === 1,
-              disabled: isVoteDisabled,
-            }}
-            disabled={isVoteDisabled}
-            onPress={() => handleVotePress(1)}
-            style={[
-              styles.touchButton,
-              styles.voteButton,
-              properties.myVote === 1 ? styles.upvoteButtonActive : null,
-              properties.isAuthor || isVotingClosedByStatus
-                ? styles.disabledButton
-                : null,
-            ]}
-          >
-            <Text
-              style={[
-                styles.voteButtonLabel,
-                properties.myVote === 1 ? styles.voteButtonLabelActive : null,
-              ]}
-            >
-              +1 ({properties.upvotes})
-            </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t.downvoteA11y(properties.downvotes)}
-            accessibilityState={{
-              selected: properties.myVote === -1,
-              disabled: isVoteDisabled,
-            }}
-            disabled={isVoteDisabled}
-            onPress={() => handleVotePress(-1)}
-            style={[
-              styles.touchButton,
-              styles.voteButton,
-              properties.myVote === -1 ? styles.downvoteButtonActive : null,
-              properties.isAuthor || isVotingClosedByStatus
-                ? styles.disabledButton
-                : null,
-            ]}
-          >
-            <Text
-              style={[
-                styles.voteButtonLabel,
-                properties.myVote === -1 ? styles.voteButtonLabelActive : null,
-              ]}
-            >
-              −1 ({properties.downvotes})
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-
-      {voteLockReason ? (
-        <Text testID="vote-lock-hint" style={styles.immutableNotice}>
-          {voteLockReason}
-        </Text>
-      ) : null}
+      <PolygonVotePanel
+        feature={feature}
+        locale={locale}
+        busy={isBusy}
+        onVotePress={handleVotePress}
+      />
 
       <View style={styles.tabWell} accessibilityRole="tablist">
         <Pressable
@@ -1259,59 +1140,9 @@ export function PolygonInspectorSheet({
 
       {activeTab === 'overview' ? (
         <View style={styles.tabSection}>
-          <View style={styles.noteCard}>
-            <Text style={styles.noteBody}>
-              {properties.note && properties.note.trim().length > 0
-                ? properties.note
-                : t.emptyNote}
-            </Text>
-          </View>
+          <PolygonNoteCard note={properties.note} locale={locale} />
 
-          <View
-            testID="inspector-creator-card"
-            style={styles.creatorInfoCard}
-          >
-            <View style={styles.creatorHeaderRow}>
-              <Text style={styles.creatorInfoLabel}>
-                {t.creatorSectionLabel}:{' '}
-                <Text style={styles.creatorInfoValue}>
-                  @{displayAuthorHandle}
-                  {properties.isAuthor
-                    ? locale === 'de'
-                      ? ' · Du'
-                      : ' · You'
-                    : ''}
-                </Text>
-              </Text>
-              {properties.authorIsNewUser ? (
-                <View
-                  testID="new-contributor-badge"
-                  style={styles.newContributorBadge}
-                >
-                  <Text style={styles.newContributorBadgeLabel}>
-                    {t.newContributorBadge}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-            <View style={styles.creatorMetaRow}>
-              <Text testID="overview-entry-date" style={styles.creatorMetaItem}>
-                {t.entryDateLabel}:{' '}
-                <Text style={styles.creatorMetaMono}>
-                  {entryDateText ?? '—'}
-                </Text>
-              </Text>
-              <Text
-                testID="overview-author-activity"
-                style={styles.creatorMetaItem}
-              >
-                {t.creatorActivityLabel}:{' '}
-                <Text style={styles.creatorMetaMono}>
-                  {authorActivityText}
-                </Text>
-              </Text>
-            </View>
-          </View>
+          <PolygonCreatorCard feature={feature} locale={locale} isAdmin={isAdmin} />
 
           {!properties.isAuthor && (onFlagPolygon || onUnflagPolygon) ? (
             <View style={styles.flagReviewCard}>
@@ -1485,7 +1316,7 @@ export function PolygonInspectorSheet({
 
       {activeTab === 'comments' ? (
         <View style={styles.tabSection}>
-          {isFinished ? (
+          {areCommentsClosed ? (
             <View testID="comments-closed-banner" style={styles.noteCard}>
               <Text style={styles.immutableNotice}>
                 {t.commentsClosedFinishedHint}
@@ -2290,1101 +2121,4 @@ export function PolygonInspectorSheet({
       ) : null}
     </View>
   );
-}
-
-function createStyles(PALETTE: ThemePalette) {
-  return StyleSheet.create({
-  sheet: {
-    width: '100%',
-    maxWidth: '100%',
-    padding: 14,
-    borderRadius: RADII.lg,
-    backgroundColor: PALETTE.bgSurface,
-    borderWidth: 1,
-    borderColor: PALETTE.borderSubtle,
-    gap: 10,
-  },
-  sheetCompact: {
-    borderWidth: 0,
-    borderRadius: 0,
-    paddingHorizontal: 14,
-    paddingTop: 6,
-    paddingBottom: 14,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  headerTitleGroup: {
-    flex: 1,
-    minWidth: 160,
-    maxWidth: '100%',
-    gap: 4,
-  },
-  materialTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  materialSwatch: {
-    width: 12,
-    height: 12,
-    borderRadius: 3,
-  },
-  sheetTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: -0.2,
-    color: PALETTE.inkPrimary,
-  },
-  areaPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: RADII.sm,
-    backgroundColor: PALETTE.bgSubtle,
-    borderWidth: 1,
-    borderColor: PALETTE.borderSubtle,
-  },
-  areaPillText: {
-    ...TABULAR_NUMS_STYLE,
-    fontFamily: MONO_FONT_FAMILY,
-    fontSize: 12,
-    fontWeight: '700',
-    color: PALETTE.inkPrimary,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: RADII.pill,
-    borderWidth: 1,
-  },
-  statusBadgeProposed: {
-    backgroundColor: PALETTE.bgSubtle,
-    borderColor: PALETTE.borderStrong,
-  },
-  statusBadgeInProgress: {
-    backgroundColor: PALETTE.inProgressBg,
-    borderColor: PALETTE.inProgressBorder,
-  },
-  statusBadgeFinished: {
-    backgroundColor: PALETTE.finishedBg,
-    borderColor: PALETTE.finishedBorder,
-  },
-  statusBadgeLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  statusBadgeLabelProposed: {
-    color: PALETTE.inkSecondary,
-  },
-  statusBadgeLabelInProgress: {
-    color: PALETTE.inProgressText,
-  },
-  statusBadgeLabelFinished: {
-    color: PALETTE.finishedText,
-  },
-  needsReviewBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: RADII.pill,
-    borderWidth: 1,
-    backgroundColor: PALETTE.neutralBg,
-    borderColor: PALETTE.neutralBorder,
-  },
-  needsReviewBadgeLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: PALETTE.neutralText,
-  },
-  municipalityChip: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: RADII.pill,
-    backgroundColor: PALETTE.infoBg,
-    borderWidth: 1,
-    borderColor: PALETTE.infoBorder,
-    maxWidth: 190,
-    flexShrink: 1,
-  },
-  municipalityChipLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: PALETTE.infoText,
-  },
-  headerControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  overlapButton: {
-    minHeight: MIN_TOUCH_TARGET_DP,
-    minWidth: MIN_TOUCH_TARGET_DP,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: RADII.md,
-    backgroundColor: PALETTE.infoBg,
-    borderWidth: 1,
-    borderColor: PALETTE.infoBorder,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  overlapButtonLabel: {
-    ...TABULAR_NUMS_STYLE,
-    fontSize: 12,
-    fontWeight: '700',
-    color: PALETTE.infoText,
-  },
-  closeButton: {
-    minHeight: MIN_TOUCH_TARGET_DP,
-    minWidth: MIN_TOUCH_TARGET_DP,
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-    borderRadius: RADII.md,
-    backgroundColor: PALETTE.bgSubtle,
-    borderWidth: 1,
-    borderColor: PALETTE.borderStrong,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  closeButtonLabel: {
-    fontSize: 12.5,
-    fontWeight: '600',
-    color: PALETTE.inkPrimary,
-  },
-  votePanel: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 8,
-  },
-  scoreBadge: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: RADII.md,
-    borderWidth: 1,
-  },
-  scoreBadgePositive: {
-    backgroundColor: PALETTE.positiveBg,
-    borderColor: PALETTE.positiveBorder,
-  },
-  scoreBadgeNeutral: {
-    backgroundColor: PALETTE.neutralBg,
-    borderColor: PALETTE.neutralBorder,
-  },
-  scoreBadgeNegative: {
-    backgroundColor: PALETTE.dangerBg,
-    borderColor: PALETTE.dangerBorder,
-  },
-  scoreBadgeInProgress: {
-    backgroundColor: PALETTE.inProgressBg,
-    borderColor: PALETTE.inProgressBorder,
-  },
-  scoreBadgeFinished: {
-    backgroundColor: PALETTE.finishedBg,
-    borderColor: PALETTE.finishedBorder,
-  },
-  scoreBadgeValue: {
-    ...TABULAR_NUMS_STYLE,
-    fontFamily: MONO_FONT_FAMILY,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  scoreBadgeCaption: {
-    fontSize: 11.5,
-    fontWeight: '600',
-  },
-  scoreBadgeTextPositive: {
-    color: PALETTE.positiveText,
-  },
-  scoreBadgeTextNeutral: {
-    color: PALETTE.neutralText,
-  },
-  scoreBadgeTextNegative: {
-    color: PALETTE.dangerText,
-  },
-  scoreBadgeTextInProgress: {
-    color: PALETTE.inProgressText,
-  },
-  scoreBadgeTextFinished: {
-    color: PALETTE.finishedText,
-  },
-  voteButtonsGroup: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    maxWidth: '100%',
-    gap: 8,
-  },
-  tabWell: {
-    flexDirection: 'row',
-    padding: 3,
-    borderRadius: RADII.md,
-    backgroundColor: PALETTE.bgRecessed,
-    borderWidth: 1,
-    borderColor: PALETTE.borderSubtle,
-    gap: 4,
-  },
-  tabButton: {
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: 'auto',
-    minWidth: 0,
-    minHeight: 40,
-    paddingHorizontal: 6,
-    paddingVertical: 7,
-    borderRadius: RADII.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  tabButtonCompact: {
-    paddingHorizontal: 3,
-  },
-  tabButtonActive: {
-    backgroundColor: PALETTE.bgSurface,
-    borderWidth: 1,
-    borderColor: PALETTE.borderStrong,
-  },
-  tabButtonLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: PALETTE.inkSecondary,
-    maxWidth: '100%',
-  },
-  tabButtonLabelCompact: {
-    fontSize: 11,
-  },
-  tabButtonLabelActive: {
-    color: PALETTE.inkPrimary,
-    fontWeight: '700',
-  },
-  commentsShortcutCard: {
-    paddingHorizontal: 11,
-    paddingVertical: 9,
-    borderRadius: RADII.md,
-    backgroundColor: PALETTE.infoBg,
-    borderWidth: 1,
-    borderColor: PALETTE.infoBorder,
-  },
-  commentsShortcutText: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: PALETTE.infoText,
-  },
-  commentComposerBox: {
-    minWidth: 0,
-    maxWidth: '100%',
-    padding: 10,
-    borderRadius: RADII.md,
-    backgroundColor: PALETTE.bgSubtle,
-    borderWidth: 1,
-    borderColor: PALETTE.borderSubtle,
-    gap: 8,
-  },
-  commentComposerFooter: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  commentCharCounter: {
-    ...TABULAR_NUMS_STYLE,
-    fontFamily: MONO_FONT_FAMILY,
-    fontSize: 11,
-    color: PALETTE.inkMuted,
-  },
-  commentInput: {
-    minHeight: 58,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: RADII.md,
-    borderWidth: 1,
-    borderColor: PALETTE.borderStrong,
-    backgroundColor: PALETTE.bgSurface,
-    fontSize: 13,
-    color: PALETTE.inkPrimary,
-    textAlignVertical: 'top',
-  },
-  disabledButton: {
-    opacity: 0.5,
-  },
-  commentsStack: {
-    gap: 8,
-  },
-  commentThreadGroup: {
-    gap: 6,
-  },
-  commentRepliesStack: {
-    gap: 6,
-  },
-  commentCard: {
-    minWidth: 0,
-    flexShrink: 1,
-    padding: 10,
-    borderRadius: RADII.md,
-    borderWidth: 1,
-    borderColor: PALETTE.borderSubtle,
-    backgroundColor: PALETTE.bgSurface,
-    gap: 6,
-  },
-  commentReplyCard: {
-    backgroundColor: PALETTE.bgSubtle,
-    borderLeftWidth: 3,
-    borderLeftColor: PALETTE.borderStrong,
-  },
-  commentCardTopRated: {
-    borderColor: PALETTE.positiveBorder,
-    backgroundColor: PALETTE.positiveBg,
-  },
-  commentBadgesRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 6,
-  },
-  topCommentBadge: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: RADII.pill,
-    backgroundColor: PALETTE.accentPrimary,
-  },
-  topCommentBadgeLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: PALETTE.inkOnAccent,
-  },
-  replyingToMeta: {
-    fontSize: 11.5,
-    fontWeight: '600',
-    color: PALETTE.inkSecondary,
-    flexShrink: 1,
-    ...(Platform.OS === 'web'
-      ? ({ overflowWrap: 'anywhere' } as Record<string, string>)
-      : {}),
-  },
-  commentHeaderRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 6,
-  },
-  commentAuthorLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: PALETTE.inkPrimary,
-    flexShrink: 1,
-    ...(Platform.OS === 'web'
-      ? ({ overflowWrap: 'anywhere' } as Record<string, string>)
-      : {}),
-  },
-  commentDateLabel: {
-    ...TABULAR_NUMS_STYLE,
-    fontFamily: MONO_FONT_FAMILY,
-    fontSize: 11,
-    color: PALETTE.inkMuted,
-  },
-  commentBodyText: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: PALETTE.inkPrimary,
-    ...(Platform.OS === 'web'
-      ? ({ overflowWrap: 'anywhere' } as Record<string, string>)
-      : {}),
-  },
-  commentActionsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    maxWidth: '100%',
-    gap: 6,
-    marginTop: 2,
-  },
-  commentReplyPill: {
-    minHeight: 34,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: RADII.pill,
-    borderWidth: 1,
-    borderColor: PALETTE.borderStrong,
-    backgroundColor: PALETTE.bgSurface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  commentReplyPillLabel: {
-    fontSize: 11.5,
-    fontWeight: '700',
-    color: PALETTE.inkSecondary,
-  },
-  replyComposerBox: {
-    marginTop: 6,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: PALETTE.borderSubtle,
-    gap: 8,
-  },
-  tabSection: {
-    gap: 10,
-  },
-  permanentDisclaimerBox: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: RADII.md,
-    backgroundColor: PALETTE.bgSubtle,
-    borderWidth: 1,
-    borderColor: PALETTE.borderSubtle,
-  },
-  permanentDisclaimerText: {
-    fontSize: 11.5,
-    lineHeight: 16,
-    color: PALETTE.inkSecondary,
-  },
-  municipalityScaleCard: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: RADII.md,
-    backgroundColor: PALETTE.positiveBg,
-    borderWidth: 1,
-    borderColor: PALETTE.positiveBorder,
-  },
-  municipalityScaleText: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '600',
-    color: PALETTE.positiveText,
-  },
-  errorBox: {
-    padding: 9,
-    borderRadius: RADII.sm,
-    backgroundColor: PALETTE.dangerBg,
-    borderWidth: 1,
-    borderColor: PALETTE.dangerBorder,
-  },
-  errorText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: PALETTE.dangerText,
-  },
-  noteCard: {
-    minWidth: 0,
-    maxWidth: '100%',
-    paddingHorizontal: 11,
-    paddingVertical: 9,
-    borderRadius: RADII.md,
-    backgroundColor: PALETTE.bgSubtle,
-    borderWidth: 1,
-    borderColor: PALETTE.borderSubtle,
-  },
-  noteBody: {
-    fontSize: 13.5,
-    lineHeight: 19,
-    color: PALETTE.inkPrimary,
-    ...(Platform.OS === 'web'
-      ? ({ overflowWrap: 'anywhere' } as Record<string, string>)
-      : {}),
-  },
-  creatorInfoCard: {
-    minWidth: 0,
-    maxWidth: '100%',
-    paddingHorizontal: 11,
-    paddingVertical: 9,
-    borderRadius: RADII.md,
-    backgroundColor: PALETTE.bgSubtle,
-    borderWidth: 1,
-    borderColor: PALETTE.borderSubtle,
-    gap: 6,
-  },
-  creatorHeaderRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 6,
-  },
-  creatorInfoLabel: {
-    fontSize: 12.5,
-    color: PALETTE.inkSecondary,
-    flexShrink: 1,
-    ...(Platform.OS === 'web'
-      ? ({ overflowWrap: 'anywhere' } as Record<string, string>)
-      : {}),
-  },
-  creatorInfoValue: {
-    fontWeight: '700',
-    color: PALETTE.inkPrimary,
-  },
-  newContributorBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: RADII.pill,
-    backgroundColor: PALETTE.infoBg,
-    borderWidth: 1,
-    borderColor: PALETTE.infoBorder,
-  },
-  newContributorBadgeLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: PALETTE.infoText,
-  },
-  creatorMetaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  creatorMetaItem: {
-    fontSize: 12,
-    color: PALETTE.inkMuted,
-  },
-  creatorMetaMono: {
-    ...TABULAR_NUMS_STYLE,
-    fontFamily: MONO_FONT_FAMILY,
-    fontSize: 11.5,
-    fontWeight: '600',
-    color: PALETTE.inkSecondary,
-  },
-  flagReviewCard: {
-    gap: 6,
-  },
-  flagPickerBox: {
-    padding: 10,
-    borderRadius: RADII.md,
-    backgroundColor: PALETTE.bgSubtle,
-    borderWidth: 1,
-    borderColor: PALETTE.borderStrong,
-    gap: 8,
-  },
-  flagReasonPromptText: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: PALETTE.inkPrimary,
-  },
-  flagReasonChipSelected: {
-    borderColor: PALETTE.neutralDot,
-    backgroundColor: PALETTE.neutralBg,
-  },
-  flagReasonChipLabelSelected: {
-    color: PALETTE.neutralText,
-    fontWeight: '700',
-  },
-  flagOutlineButton: {
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
-    backgroundColor: PALETTE.bgSurface,
-    borderWidth: 1,
-    borderColor: PALETTE.borderStrong,
-  },
-  flagOutlineButtonLabel: {
-    fontSize: 12.5,
-    fontWeight: '600',
-    color: PALETTE.inkSecondary,
-    flexShrink: 1,
-    textAlign: 'center',
-  },
-  flagActiveButton: {
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
-    backgroundColor: PALETTE.neutralBg,
-    borderWidth: 1,
-    borderColor: PALETTE.neutralBorder,
-  },
-  flagActiveButtonLabel: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: PALETTE.neutralText,
-    flexShrink: 1,
-    textAlign: 'center',
-  },
-  flagSubmitButton: {
-    backgroundColor: PALETTE.neutralDot,
-  },
-  photoUploadBar: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  flexButton: {
-    flexGrow: 1,
-    flexShrink: 1,
-    minWidth: 120,
-  },
-  photoSignInBanner: {
-    padding: 10,
-    borderRadius: RADII.md,
-    backgroundColor: PALETTE.infoBg,
-    borderWidth: 1,
-    borderColor: PALETTE.infoBorder,
-  },
-  photoSignInBannerText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: PALETTE.infoText,
-  },
-  photosLoadingBox: {
-    paddingVertical: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyPhotosBox: {
-    padding: 14,
-    borderRadius: RADII.md,
-    backgroundColor: PALETTE.bgSubtle,
-    borderWidth: 1,
-    borderColor: PALETTE.borderSubtle,
-    alignItems: 'center',
-  },
-  emptyPhotosText: {
-    fontSize: 12.5,
-    color: PALETTE.inkMuted,
-    textAlign: 'center',
-  },
-  photoCardsStack: {
-    gap: 10,
-  },
-  photoCard: {
-    borderRadius: RADII.md,
-    borderWidth: 1,
-    borderColor: PALETTE.borderStrong,
-    backgroundColor: PALETTE.bgSurface,
-    overflow: 'hidden',
-  },
-  photoImageContainer: {
-    width: '100%',
-    height: 168,
-    backgroundColor: PALETTE.bgRecessed,
-    position: 'relative',
-  },
-  photoPressable: {
-    width: '100%',
-    height: '100%',
-  },
-  photoImage: {
-    width: '100%',
-    height: '100%',
-  },
-  gpsVerifiedBadge: {
-    position: 'absolute',
-    top: 8,
-    left: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: RADII.pill,
-    backgroundColor: 'rgba(16, 77, 49, 0.92)',
-    borderWidth: 1,
-    borderColor: PALETTE.positiveBorder,
-  },
-  gpsVerifiedBadgeLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  fakeShieldOverlay: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: 'rgba(18, 32, 25, 0.72)',
-    padding: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  fakeShieldText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  revealPhotoBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: RADII.pill,
-    backgroundColor: PALETTE.bgSurface,
-  },
-  revealPhotoBtnLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: PALETTE.inkPrimary,
-  },
-  photoMetaRow: {
-    padding: 9,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    maxWidth: '100%',
-    gap: 6,
-  },
-  photoAuthorLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: PALETTE.inkSecondary,
-    flexShrink: 1,
-    maxWidth: '100%',
-    ...(Platform.OS === 'web'
-      ? ({ overflowWrap: 'anywhere' } as Record<string, string>)
-      : {}),
-  },
-  photoRatingRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    maxWidth: '100%',
-    flexShrink: 1,
-    gap: 6,
-  },
-  photoVotePill: {
-    minHeight: 34,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: RADII.pill,
-    borderWidth: 1,
-    borderColor: PALETTE.borderStrong,
-    backgroundColor: PALETTE.bgSubtle,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  photoVotePillRealActive: {
-    backgroundColor: PALETTE.accentPrimary,
-    borderColor: PALETTE.accentPrimaryStrong,
-  },
-  photoVotePillFakeActive: {
-    backgroundColor: PALETTE.dangerSolid,
-    borderColor: PALETTE.dangerSolid,
-  },
-  photoVoteLabel: {
-    ...TABULAR_NUMS_STYLE,
-    fontSize: 11.5,
-    fontWeight: '700',
-    color: PALETTE.inkPrimary,
-  },
-  photoVoteLabelActive: {
-    color: PALETTE.inkOnAccent,
-  },
-  photoDeletePill: {
-    minHeight: 34,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: RADII.pill,
-    borderWidth: 1,
-    borderColor: PALETTE.dangerBorder,
-    backgroundColor: PALETTE.dangerBg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  photoDeleteLabel: {
-    fontSize: 11.5,
-    fontWeight: '700',
-    color: PALETTE.dangerText,
-  },
-  manageCard: {
-    padding: 10,
-    borderRadius: RADII.md,
-    backgroundColor: PALETTE.bgSubtle,
-    borderWidth: 1,
-    borderColor: PALETTE.borderSubtle,
-    gap: 8,
-  },
-  manageSectionTitle: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: PALETTE.inkPrimary,
-  },
-  finishedActionButton: {
-    backgroundColor: PALETTE.finishedSolid,
-  },
-  statusOptionChipInProgress: {
-    borderColor: PALETTE.inProgressSolid,
-    backgroundColor: PALETTE.inProgressBg,
-  },
-  statusOptionChipFinished: {
-    borderColor: PALETTE.finishedSolid,
-    backgroundColor: PALETTE.finishedBg,
-  },
-  editSection: {
-    gap: 8,
-  },
-  immutableNotice: {
-    fontSize: 12,
-    lineHeight: 16,
-    color: PALETTE.inkSecondary,
-  },
-  surfaceChoiceRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  surfaceChip: {
-    minHeight: MIN_TOUCH_TARGET_DP,
-    minWidth: MIN_TOUCH_TARGET_DP,
-    maxWidth: '100%',
-    flexShrink: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: RADII.md,
-    borderWidth: 1,
-    borderColor: PALETTE.borderStrong,
-    backgroundColor: PALETTE.bgSurface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  surfaceChipSelected: {
-    borderColor: PALETTE.accentPrimary,
-    backgroundColor: PALETTE.positiveBg,
-  },
-  surfaceChipLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: PALETTE.inkPrimary,
-    flexShrink: 1,
-    textAlign: 'center',
-  },
-  surfaceChipLabelSelected: {
-    color: PALETTE.positiveText,
-    fontWeight: '700',
-  },
-  editNoteInput: {
-    minHeight: 60,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: RADII.md,
-    borderWidth: 1,
-    borderColor: PALETTE.borderStrong,
-    backgroundColor: PALETTE.bgSurface,
-    fontSize: 13,
-    color: PALETTE.inkPrimary,
-    textAlignVertical: 'top',
-  },
-  touchButton: {
-    minHeight: MIN_TOUCH_TARGET_DP,
-    minWidth: MIN_TOUCH_TARGET_DP,
-    maxWidth: '100%',
-    flexShrink: 1,
-    paddingHorizontal: 13,
-    paddingVertical: 9,
-    borderRadius: RADII.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  voteButton: {
-    backgroundColor: PALETTE.bgSurface,
-    borderWidth: 1,
-    borderColor: PALETTE.borderStrong,
-  },
-  upvoteButtonActive: {
-    backgroundColor: PALETTE.accentPrimary,
-    borderColor: PALETTE.accentPrimaryStrong,
-  },
-  downvoteButtonActive: {
-    backgroundColor: PALETTE.dangerSolid,
-    borderColor: PALETTE.dangerSolid,
-  },
-  voteButtonLabel: {
-    ...TABULAR_NUMS_STYLE,
-    fontSize: 13,
-    fontWeight: '700',
-    color: PALETTE.inkPrimary,
-  },
-  voteButtonLabelActive: {
-    color: PALETTE.inkOnAccent,
-  },
-  deleteConfirmBox: {
-    padding: 10,
-    borderRadius: RADII.md,
-    backgroundColor: PALETTE.dangerBg,
-    borderWidth: 1,
-    borderColor: PALETTE.dangerBorder,
-    gap: 8,
-  },
-  deleteConfirmText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: PALETTE.dangerText,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'flex-end',
-    gap: 8,
-  },
-  primaryButton: {
-    backgroundColor: PALETTE.accentPrimary,
-  },
-  primaryButtonLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: PALETTE.inkOnAccent,
-    flexShrink: 1,
-    textAlign: 'center',
-  },
-  secondaryButton: {
-    backgroundColor: PALETTE.bgSurface,
-    borderWidth: 1,
-    borderColor: PALETTE.borderStrong,
-  },
-  secondaryButtonLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: PALETTE.inkPrimary,
-    flexShrink: 1,
-    textAlign: 'center',
-  },
-  dangerButton: {
-    backgroundColor: PALETTE.dangerSolid,
-  },
-  dangerOutlineButton: {
-    backgroundColor: PALETTE.dangerBg,
-    borderWidth: 1,
-    borderColor: PALETTE.dangerBorder,
-  },
-  dangerOutlineLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: PALETTE.dangerText,
-    flexShrink: 1,
-    textAlign: 'center',
-  },
-  abuseContactText: {
-    fontSize: 11.5,
-    color: PALETTE.inkMuted,
-    ...(Platform.OS === 'web'
-      ? ({ overflowWrap: 'anywhere' } as Record<string, string>)
-      : {}),
-  },
-  abuseContactLink: {
-    color: PALETTE.accentPrimary,
-    textDecorationLine: 'underline',
-  },
-  disclaimerCard: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: RADII.sm,
-    backgroundColor: PALETTE.bgSubtle,
-    borderWidth: 1,
-    borderColor: PALETTE.borderSubtle,
-  },
-  disclaimerText: {
-    fontSize: 11.5,
-    lineHeight: 16,
-    color: PALETTE.inkMuted,
-  },
-  reportInlinePill: {
-    minHeight: 32,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: RADII.sm,
-    borderWidth: 1,
-    borderColor: PALETTE.borderStrong,
-    backgroundColor: PALETTE.bgSurface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  reportInlineLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: PALETTE.inkSecondary,
-  },
-  reportContentRowButton: {
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
-    paddingVertical: 4,
-    paddingHorizontal: 2,
-  },
-  reportContentRowLabel: {
-    fontSize: 11.5,
-    fontWeight: '600',
-    color: PALETTE.inkSecondary,
-    textDecorationLine: 'underline',
-    flexShrink: 1,
-  },
-  lightboxBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(10, 18, 14, 0.92)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-  },
-  lightboxCloseScrim: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-  },
-  lightboxContent: {
-    width: '100%',
-    maxWidth: 880,
-    maxHeight: '92%',
-    gap: 12,
-  },
-  lightboxImage: {
-    width: '100%',
-    height: 460,
-    borderRadius: RADII.md,
-  },
-  lightboxFooter: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  lightboxAuthor: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
-    flexShrink: 1,
-    ...(Platform.OS === 'web'
-      ? ({ overflowWrap: 'anywhere' } as Record<string, string>)
-      : {}),
-  },
-  lightboxMetaCol: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
-  },
-  lightboxLicenseLink: {
-    color: '#D1FAE5',
-    fontSize: 11.5,
-    textDecorationLine: 'underline',
-  },
-  ccLicenseNoticeLink: {
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
-    paddingVertical: 4,
-  },
-  ccLicenseNoticeText: {
-    fontSize: 11,
-    lineHeight: 15,
-    color: PALETTE.inkMuted,
-    textDecorationLine: 'underline',
-    flexShrink: 1,
-  },
-  lightboxCloseBtn: {
-    minHeight: MIN_TOUCH_TARGET_DP,
-    minWidth: MIN_TOUCH_TARGET_DP,
-    flexShrink: 0,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: RADII.md,
-    backgroundColor: PALETTE.bgSurface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  lightboxCloseLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: PALETTE.inkPrimary,
-  },
-  });
 }

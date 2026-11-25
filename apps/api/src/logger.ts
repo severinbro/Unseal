@@ -27,7 +27,12 @@ export function toLoggablePath(url: unknown): string | undefined {
     return undefined;
   }
   const queryIndex = url.indexOf('?');
-  return queryIndex === -1 ? url : url.slice(0, queryIndex);
+  const pathOnly = queryIndex === -1 ? url : url.slice(0, queryIndex);
+  // Conversation and message ids would reveal who talks when (GDPR Art. 5(1)(c)).
+  return pathOnly.replace(
+    /^(\/api\/v1\/chats\/).*[0-9a-f]{8}-.*$/i,
+    '$1[redacted]',
+  );
 }
 
 const REDACTED_PATHS = [

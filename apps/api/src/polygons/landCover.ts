@@ -12,7 +12,10 @@ import {
   type LandCoverSource,
 } from '@openunseal/shared';
 
-import { parseGeoPackageBinary } from './gpkgReader.js';
+import {
+  assertCompatibleImportLicenseParam,
+  parseGeoPackageBinary,
+} from './gpkgReader.js';
 
 import type pg from 'pg';
 
@@ -27,6 +30,11 @@ export interface LoadLandCoverOptions {
   source: LandCoverSource;
   defaultCategory?: LandCoverCategory | undefined;
   replaceSource?: boolean | undefined;
+  /** Checked like an import licence and credited on /auth/licenses. */
+  license?: string | undefined;
+  attribution?: string | undefined;
+  sourceUrl?: string | undefined;
+  waiverConfirmed?: boolean | undefined;
 }
 
 export interface LoadLandCoverResult {
@@ -238,6 +246,36 @@ export async function seedLandCoverExclusions(
 }
 
 export async function loadLandCoverFile(
+  pool: pg.Pool,
+  filePath: string,
+  options: LoadLandCoverOptions,
+): Promise<LoadLandCoverResult> {
+  const attribution = options.attribution?.trim() ?? '';
+  const policy =
+    options.license === undefined
+      ? null
+      : assertCompatibleImportLicenseParam(options.license, {
+          sourceAttribution: attribution,
+          waiverConfirmed: options.waiverConfirmed,
+        });
+  const result = await loadLandCoverFeatures(pool, filePath, options);
+  if (policy !== null && result.importedCount > 0) {
+    await pool.query(
+      `INSERT INTO import_attributions
+         (license, attribution_text, source_url, waiver_confirmed, purpose)
+       VALUES ($1, $2, $3, $4, 'land_cover')`,
+      [
+        policy.canonicalLicense,
+        attribution || policy.canonicalLicense,
+        options.sourceUrl ?? null,
+        policy.requiresWaiver,
+      ],
+    );
+  }
+  return result;
+}
+
+async function loadLandCoverFeatures(
   pool: pg.Pool,
   filePath: string,
   options: LoadLandCoverOptions,

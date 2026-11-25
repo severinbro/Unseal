@@ -10,7 +10,7 @@ All backend services run inside isolated Docker networks defined in [`docker-com
    - Stores both the spatial GIS tables (`polygons`, German BKG VG250 `municipalities`, `polygon_photos`) and the user/authentication tables (`users`, `sessions`, `email_tokens`, `votes`, `photo_votes`, `reserved_pseudonyms`, `reserved_emails`).
    - Air-gapped on an `internal: true` Docker network with **zero host ports exposed**.
 2. **`api` (`apps/api/Dockerfile` on `db_internal` + `edge_net`):**
-   - Runs numbered SQL migrations (`001_initial_schema.sql` through `011_import_attributions.sql`) automatically on boot and re-keys canonical email hashes with `TOMBSTONE_SECRET`.
+   - Runs numbered SQL migrations (`001_initial_schema.sql` through `013_direct_messaging.sql`) automatically on boot and re-keys canonical email hashes with `TOMBSTONE_SECRET`.
    - Runs an hourly privacy retention job (unconfirmed sign-ups after 48 h, expired sessions, stale email links, expired pseudonym reservations).
    - Logs only request id, method, URL path, status and timing - no client IPs, headers or query strings. Container logs are rotated (3 × 10 MB per service).
    - Automatically downloads and seeds Germany's **BKG VG250 OpenData municipality boundaries** (`vg250_gem`, `~11,000` municipalities) on first startup when `AUTO_SEED_VG250=true`.
@@ -227,7 +227,10 @@ The code keeps data collection small, but running a public instance makes you th
 - [ ] **Legal notice & controller:** fill in `OPERATOR_NAME`, `OPERATOR_ADDRESS`, `OPERATOR_EMAIL` and a privacy contact (`ABUSE_CONTACT`); check `/auth/impressum` and `/auth/privacy`.
 - [ ] **Processing agreements (Art. 28):** sign data processing agreements with your VPS host and your SMTP provider, and name them in `PRIVACY_HOSTING_PROVIDER` / `PRIVACY_EMAIL_PROVIDER`.
 - [ ] **Third parties:** if you change `OSM_STYLE_URL`, `OSM_DARK_STYLE_URL`, or `ORTHOPHOTO_URL_TEMPLATE`, `/auth/privacy` names the new hosts automatically - check that provider's own privacy terms and whether it transfers data outside the EU/EEA.
-- [ ] **Record of processing activities (Art. 30):** document the processing described on `/auth/privacy` (accounts, contributions, abuse prevention, logs, bug reports).
+- [ ] **Record of processing activities (Art. 30):** document the processing described on `/auth/privacy` (accounts, contributions, direct messages, abuse prevention, logs, bug reports).
+- [ ] **Direct messages:** decide with legal advice whether your instance provides a telecommunications service (§ 3 Nr. 24 TKG, § 3(2) TDDDG) and record the result; add messages to the record of processing and assess whether a DPIA (Art. 35) is needed. Message text is stored unencrypted in the database and in backups, and reported messages are sent by email.
+- [ ] **Overpass:** if you set `OVERPASS_API_URL`, check the endpoint's terms and where it is hosted.
+- [ ] **Terms update:** this release raises the terms version; existing accounts must accept again before contributing.
 - [ ] **Security (Art. 32):** set `TOMBSTONE_SECRET` and a strong `POSTGRES_PASSWORD`; keep the VPS patched; encrypt backups.
 - [ ] **Retention:** set `BACKUP_RETENTION_DAYS` and delete bug-report emails once handled.
 - [ ] **Data subject requests:** users can download (*Konto → Meine Daten herunterladen*) and delete their data themselves; for requests by email use `admin export-user`, `set-email` and `rename-user` (see [`installation.md`](./installation.md#4-operator-moderation--administration-cli-admints)) after verifying the requester's identity. Answer within one month (Art. 12(3)).

@@ -12,7 +12,12 @@
  */
 import {
   ApiError,
+  CHAT_LIMITS,
+  closeRingIfNeeded,
+  dedupeConsecutivePoints,
   PHOTO_LIMITS,
+  polygonMatchesFilters,
+  SPACE_ZONE_LIMITS,
   type CommentVoteResponse,
   type CreateContentReportRequest,
   type CreateContentReportResponse,
@@ -31,6 +36,9 @@ import {
   type PolygonStatus,
   type PublicStatsResponse,
   type RegisterRequest,
+  type SpaceType,
+  type SpaceZoneCollection,
+  type VoteResponse,
 } from '@openunseal/shared';
 import React, {
   useCallback,
@@ -74,6 +82,11 @@ import {
   ContentReportModal,
   type ContentReportTarget,
 } from './src/components/ContentReportModal';
+import {
+  DirectChatModal,
+  isForeground,
+  type ChatStart,
+} from './src/components/DirectChatModal';
 import { DisclaimerBanner } from './src/components/DisclaimerBanner';
 import { DrawingToolbar } from './src/components/DrawingToolbar';
 import {
@@ -83,6 +96,7 @@ import {
   SearchMapButton,
   TopRightMapControls,
 } from './src/components/GnssMapButton';
+import { FeedView, type FeedLoadOptions } from './src/components/FeedView';
 import { InstallAppModal } from './src/components/InstallAppModal';
 import {
   FloatingFilterStrip,
@@ -91,7 +105,24 @@ import {
   NavbarOverflowMenu,
   ProposeFabButton,
 } from './src/components/MapControlsBar';
-import { PolygonInspectorSheet } from './src/components/PolygonInspectorSheet';
+import {
+  PolygonInspectorSheet,
+  type InspectorTab,
+} from './src/components/PolygonInspectorSheet';
+import {
+  SocialButton,
+  SocialCheckbox,
+  useSocialStyles,
+} from './src/components/SocialUi';
+import {
+  DraftSpaceSection,
+  PolygonSpaceCard,
+  SpaceFilterRow,
+  formatZoneCredits,
+  type ClassifyState,
+} from './src/components/SpaceSections';
+import { TermsUpdateModal } from './src/components/TermsUpdateModal';
+import { getSocialCopy } from './src/i18n/social';
 import { StatsModal, type StatsModalTab } from './src/components/StatsModal';
 import {
   buildNativeAttributionText,
@@ -127,6 +158,8 @@ import {
 import {
   appReducer,
   initialAppState,
+  isDraftSpaceComplete,
+  isInsideGermanyBounds,
   MAX_DRAFT_PHOTOS,
   type AppAction,
   type AppState,
@@ -260,6 +293,12 @@ export function App(props: AppProps = {}): React.JSX.Element {
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [isImporting, setIsImporting] = useState<boolean>(false);
   const [aboutModalOpen, setAboutModalOpen] = useState<boolean>(false);
+  const [latestVote, setLatestVote] = useState<VoteResponse | null>(null);
+  const [inspectorTabRequest, setInspectorTabRequest] = useState<{
+    featureId: string;
+    tab: InspectorTab;
+    seq: number;
+  } | null>(null);
   const [statsModalOpen, setStatsModalOpen] = useState<boolean>(false);
   const [statsModalTab, setStatsModalTab] = useState<StatsModalTab>('community');
   const [installModalOpen, setInstallModalOpen] = useState<boolean>(false);
@@ -500,7 +539,8 @@ export function App(props: AppProps = {}): React.JSX.Element {
     if (
       state.configStatus !== 'ready' ||
       state.viewport === null ||
-      state.spanTooWide
+      state.spanTooWide ||
+      state.activeMainTab !== 'map'
     ) {
       return;
     }
@@ -508,11 +548,13 @@ export function App(props: AppProps = {}): React.JSX.Element {
     let cancelled = false;
     const bbox = state.viewport.bbox;
     const filter = state.polygonFilter;
+    const spaceFilter = state.spaceFilter;
 
     void (async () => {
       try {
         const collection = await apiClient.listPolygons(bbox, {
           filter,
+          spaceFilter,
         });
         if (!cancelled) {
           dispatch({
@@ -543,6 +585,8 @@ export function App(props: AppProps = {}): React.JSX.Element {
     state.viewport,
     state.spanTooWide,
     state.polygonFilter,
+    state.spaceFilter,
+    state.activeMainTab,
     state.viewportRefreshSeq,
   ]);
 
@@ -550,7 +594,8 @@ export function App(props: AppProps = {}): React.JSX.Element {
     if (
       state.currentUser === null ||
       state.authModalOpen ||
-      state.pendingIntent === null
+      state.pendingIntent === null ||
+      state.pendingIntent.type === 'ADVANCE_TO_DETAILS'
     ) {
       return;
     }
@@ -603,6 +648,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
           );
           if (!cancelled) {
             dispatch({ type: 'VOTE_UPDATED', vote: voteResult });
+            setLatestVote(voteResult);
           }
         }
       } catch (err: unknown) {
@@ -618,6 +664,13 @@ export function App(props: AppProps = {}): React.JSX.Element {
         const fallback =
           getTranslations(activeLocale).app.requestFailedFallback;
         const message = localizeError(err, fallback, activeLocale);
+        if (err instanceof ApiError && err.code === 'TERMS_UPDATE_REQUIRED') {
+          setTermsPromptDismissed(false);
+          void apiClient
+            .getMe()
+            .then((user) => dispatch({ type: 'USER_UPDATED', user }))
+            .catch(() => undefined);
+        }
         dispatch({ type: 'CLEAR_PENDING_INTENT' });
         if (activeIntent.type === 'SUBMIT_DRAFT') {
           dispatch({ type: 'SUBMIT_ERROR_PRESERVE_DRAFT', message });
@@ -782,6 +835,9 @@ export function App(props: AppProps = {}): React.JSX.Element {
   const handleLocateMe = useCallback((): void => {
     setIsLocating(true);
     setLocationNotice(null);
+    const outsideGermany = (lng: number, lat: number): boolean =>
+      state.config?.germanyConfinementEnabled !== false &&
+      !isInsideGermanyBounds(lng, lat);
 
     void requestCurrentCoordinates(
       undefined,
@@ -789,6 +845,9 @@ export function App(props: AppProps = {}): React.JSX.Element {
       state.locale,
       undefined,
       (interimFix) => {
+        if (outsideGermany(interimFix.lng, interimFix.lat)) {
+          return;
+        }
         dispatch({
           type: 'SET_CAMERA_TARGET',
           lng: interimFix.lng,
@@ -798,7 +857,11 @@ export function App(props: AppProps = {}): React.JSX.Element {
       },
     )
       .then((gpsResult: LocateMeResult) => {
-        if (gpsResult.ok) {
+        if (gpsResult.ok && outsideGermany(gpsResult.lng, gpsResult.lat)) {
+          setLocationNotice(
+            getTranslations(localeRef.current).location.outsideGermanyNotice,
+          );
+        } else if (gpsResult.ok) {
           dispatch({
             type: 'SET_CAMERA_TARGET',
             lng: gpsResult.lng,
@@ -827,7 +890,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
       .finally(() => {
         setIsLocating(false);
       });
-  }, [state.locale]);
+  }, [state.config, state.locale]);
 
   const handleAddressSearch = useCallback(
     async (query: string): Promise<GeocodeResultItem[]> => {
@@ -891,6 +954,259 @@ export function App(props: AppProps = {}): React.JSX.Element {
       return apiClient.submitContentReport(input);
     },
     [apiClient],
+  );
+
+  // --- Ground type, feed and direct messages -------------------------------
+  const [classifyState, setClassifyState] = useState<ClassifyState>({
+    status: 'idle',
+  });
+  const [chatStart, setChatStart] = useState<ChatStart | null>(null);
+  const [unreadChats, setUnreadChats] = useState(0);
+  const [termsPromptDismissed, setTermsPromptDismissed] = useState(false);
+  const [feedOpened, setFeedOpened] = useState(false);
+  const [zonesOn, setZonesOn] = useState(false);
+  const [zones, setZones] = useState<SpaceZoneCollection | null>(null);
+  const chatScrollRef = useRef<ScrollView | null>(null);
+  const social = getSocialCopy(state.locale);
+  const { styles: socialStyles } = useSocialStyles();
+  const userId = state.currentUser?.id ?? null;
+
+  useEffect(() => {
+    // Nothing of one account stays visible for the next one.
+    setChatStart(null);
+    setUnreadChats(0);
+    setTermsPromptDismissed(false);
+  }, [userId]);
+
+  useEffect(() => {
+    if (state.activeMainTab === 'feed') {
+      setFeedOpened(true);
+    }
+  }, [state.activeMainTab]);
+
+  // Land-use layer: loaded for the visible section only, and only while on.
+  const zonesBbox = state.viewport?.bbox ?? null;
+  const zonesZoomedIn =
+    state.viewport !== null &&
+    state.viewport.zoom >= SPACE_ZONE_LIMITS.MIN_ZOOM &&
+    state.viewport.bbox.maxLng - state.viewport.bbox.minLng <=
+      SPACE_ZONE_LIMITS.MAX_BBOX_SPAN_DEG &&
+    state.viewport.bbox.maxLat - state.viewport.bbox.minLat <=
+      SPACE_ZONE_LIMITS.MAX_BBOX_SPAN_DEG;
+  useEffect(() => {
+    if (!zonesOn || !zonesZoomedIn || zonesBbox === null) {
+      setZones(null);
+      return;
+    }
+    let cancelled = false;
+    apiClient
+      .listSpaceZones(zonesBbox)
+      .then((collection) => {
+        if (!cancelled) {
+          setZones(collection);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setZones(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiClient, zonesOn, zonesZoomedIn, zonesBbox]);
+
+  const isDetailsStep =
+    state.mode === 'drawing' && state.drawingStep === 'details';
+  const draftVerticesRef = useRef(state.draftVertices);
+  draftVerticesRef.current = state.draftVertices;
+  const draftSpaceRef = useRef(state.draftSpace);
+  draftSpaceRef.current = state.draftSpace;
+
+  useEffect(() => {
+    if (!isDetailsStep || userId === null) {
+      setClassifyState({ status: 'idle' });
+      return;
+    }
+    let cancelled = false;
+    setClassifyState({ status: 'loading' });
+    apiClient
+      .classifyPolygonSpace({
+        type: 'Polygon',
+        coordinates: [
+          closeRingIfNeeded(dedupeConsecutivePoints(draftVerticesRef.current)),
+        ],
+      })
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+        setClassifyState({ status: 'done', result });
+        // Without a detection nothing is preselected: no unfounded statement.
+        if (
+          draftSpaceRef.current.spaceType === null &&
+          result.detectedSpaceType !== 'unknown'
+        ) {
+          dispatch({
+            type: 'SET_DRAFT_SPACE',
+            patch: { spaceType: result.proposedSpaceType },
+          });
+        }
+      })
+      .catch((err: unknown) => {
+        if (cancelled) {
+          return;
+        }
+        if (
+          err instanceof ApiError &&
+          (err.statusCode === 409 || err.statusCode === 422)
+        ) {
+          dispatch({ type: 'BACK_TO_GEOMETRY' });
+          dispatch({
+            type: 'SUBMIT_ERROR_PRESERVE_DRAFT',
+            message: localizeError(
+              err,
+              getSocialCopy(localeRef.current).failed,
+              localeRef.current,
+            ),
+          });
+          return;
+        }
+        setClassifyState({ status: 'failed' });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiClient, isDetailsStep, userId]);
+
+  useEffect(() => {
+    if (userId === null) {
+      return;
+    }
+    let cancelled = false;
+    const refresh = (): void => {
+      if (isForeground()) {
+        apiClient
+          .getUnreadChatCount()
+          .then((count) => {
+            if (!cancelled) {
+              setUnreadChats(count);
+            }
+          })
+          .catch(() => undefined);
+      }
+    };
+    refresh();
+    const timer = setInterval(refresh, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [apiClient, userId, chatStart]);
+
+  const loadFeedPage = useCallback(
+    (options: FeedLoadOptions) => apiClient.listPolygonsFeed(options),
+    [apiClient],
+  );
+
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  /** Opens an area on the map; filters stay unless they would hide it. */
+  const showPolygonOnMap = useCallback(
+    (feature: PolygonFeature, tab: InspectorTab = 'overview'): void => {
+      const current = stateRef.current;
+      setInspectorTabRequest((prev) => ({
+        featureId: feature.id,
+        tab,
+        seq: (prev?.seq ?? 0) + 1,
+      }));
+      dispatch({
+        type: 'SHOW_POLYGON',
+        feature,
+        keepFilters: polygonMatchesFilters(
+          feature.properties,
+          current.polygonFilter,
+          current.spaceFilter,
+          Date.now(),
+        ),
+      });
+    },
+    [],
+  );
+
+  const handleSavePolygonFlags = useCallback(
+    async (
+      id: string,
+      patch: {
+        openForPublicAccess: boolean;
+        allowChatContact: boolean;
+        helpWanted?: boolean;
+        entitlementConfirmed?: boolean;
+      },
+    ): Promise<void> => {
+      dispatch({
+        type: 'POLYGON_UPDATED',
+        feature: await apiClient.patchPolygon(id, patch),
+      });
+    },
+    [apiClient],
+  );
+
+  const handleSetSpaceType = useCallback(
+    async (id: string, spaceType: SpaceType): Promise<void> => {
+      dispatch({
+        type: 'POLYGON_UPDATED',
+        feature: await apiClient.setPolygonSpaceType(id, spaceType),
+      });
+    },
+    [apiClient],
+  );
+
+  const handleShowPolygonById = useCallback(
+    (id: string): void => {
+      setChatStart(null);
+      apiClient
+        .getPolygon(id)
+        .then((feature) => showPolygonOnMap(feature))
+        .catch((err: unknown) =>
+          setLocationNotice(
+            localizeError(
+              err,
+              getSocialCopy(localeRef.current).failed,
+              localeRef.current,
+            ),
+          ),
+        );
+    },
+    [apiClient, showPolygonOnMap],
+  );
+
+  const scrollChatToEnd = useCallback((): void => {
+    // After layout, so the newest message has its final position.
+    setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: false }), 0);
+  }, []);
+
+  const handleChatError = useCallback(
+    async (err: unknown): Promise<boolean> => {
+      if (err instanceof ApiError && err.statusCode === 401) {
+        setChatStart(null);
+        await storage.clearToken();
+        dispatch({ type: 'SESSION_EXPIRED' });
+        return true;
+      }
+      if (err instanceof ApiError && err.code === 'TERMS_UPDATE_REQUIRED') {
+        setChatStart(null);
+        setTermsPromptDismissed(false);
+        const user = await apiClient.getMe().catch(() => null);
+        if (user) {
+          dispatch({ type: 'USER_UPDATED', user });
+        }
+        return true;
+      }
+      return false;
+    },
+    [apiClient, storage],
   );
 
   const handleTakeDraftPhoto = useCallback((): void => {
@@ -1107,10 +1423,65 @@ export function App(props: AppProps = {}): React.JSX.Element {
     [apiClient, handleSessionExpiredError],
   );
 
-  const handlePatchPolygonStatus = useCallback(
-    async (polygonId: string, status: PolygonStatus): Promise<void> => {
+  /** Votes from a feed card; resolves with the new tally or null. */
+  const handleFeedVote = useCallback(
+    async (
+      feature: PolygonFeature,
+      value: 1 | -1 | 0,
+    ): Promise<VoteResponse | null> => {
+      if (stateRef.current.currentUser === null) {
+        if (value !== 0) {
+          // Signs in first; the vote is then cast by the pending-intent effect.
+          dispatch({ type: 'CAST_VOTE', polygonId: feature.id, value });
+        }
+        return null;
+      }
       try {
-        const updated = await apiClient.patchPolygonStatus(polygonId, status);
+        const vote =
+          value === 0
+            ? await apiClient.deleteVote(feature.id)
+            : await apiClient.putVote(feature.id, value);
+        dispatch({ type: 'VOTE_UPDATED', vote });
+        return vote;
+      } catch (err: unknown) {
+        if (await handleSessionExpiredError(err)) {
+          return null;
+        }
+        throw err;
+      }
+    },
+    [apiClient, handleSessionExpiredError],
+  );
+
+  const handleSetAllowDirectMessages = useCallback(
+    async (allow: boolean): Promise<void> => {
+      try {
+        dispatch({
+          type: 'USER_UPDATED',
+          user: await apiClient.updatePreferences(allow),
+        });
+      } catch (err: unknown) {
+        if (await handleSessionExpiredError(err)) {
+          return;
+        }
+        throw err;
+      }
+    },
+    [apiClient, handleSessionExpiredError],
+  );
+
+  const handlePatchPolygonStatus = useCallback(
+    async (
+      polygonId: string,
+      status: PolygonStatus,
+      entitlementConfirmed?: boolean,
+    ): Promise<void> => {
+      try {
+        const updated = await apiClient.patchPolygonStatus(
+          polygonId,
+          status,
+          entitlementConfirmed,
+        );
         dispatch({ type: 'POLYGON_UPDATED', feature: updated });
       } catch (err: unknown) {
         if (await handleSessionExpiredError(err)) {
@@ -1676,6 +2047,15 @@ export function App(props: AppProps = {}): React.JSX.Element {
             onCancelDiscard={() => dispatch({ type: 'CANCEL_DISCARD_DRAFT' })}
             onConfirmDiscard={() => dispatch({ type: 'CONFIRM_DISCARD_DRAFT' })}
             onSubmit={() => dispatch({ type: 'SUBMIT_DRAFT' })}
+            canSubmitSpace={isDraftSpaceComplete(state.draftSpace)}
+            spaceSection={
+              <DraftSpaceSection
+                locale={state.locale}
+                value={state.draftSpace}
+                classification={classifyState}
+                onChange={(patch) => dispatch({ type: 'SET_DRAFT_SPACE', patch })}
+              />
+            }
           />
 
           <PolygonInspectorSheet
@@ -1717,9 +2097,110 @@ export function App(props: AppProps = {}): React.JSX.Element {
             onUnflagPolygon={handleUnflagPolygon}
             onClearPolygonFlags={handleClearPolygonFlags}
             onReportContent={(target) => setContentReportTarget(target)}
+            requestedTab={inspectorTabRequest}
+            onShareCommentInChat={(commentId) => {
+              if (selectedFeature !== null) {
+                setChatStart({
+                  attachment: selectedFeature,
+                  comment: { id: commentId },
+                });
+              }
+            }}
           />
+
+          {selectedFeature !== null && !drawingToolbar.visible ? (
+            <PolygonSpaceCard
+              locale={state.locale}
+              feature={selectedFeature}
+              isAdmin={mapControls.isAdmin}
+              isAuthenticated={mapControls.isAuthenticated}
+              onStatus={handlePatchPolygonStatus}
+              onSaveFlags={handleSavePolygonFlags}
+              onSetSpaceType={handleSetSpaceType}
+              onMessageAuthor={(feature) => setChatStart({ contact: feature })}
+              onShareInChat={(feature) => setChatStart({ attachment: feature })}
+            />
+          ) : null}
         </ScrollView>
       ) : null;
+
+    const mainTabBar = (
+      <View
+        testID="main-tab-bar"
+        accessibilityRole="tablist"
+        style={[
+          socialStyles.tabBar,
+          layout.isCompact ? socialStyles.tabBarBottom : null,
+        ]}
+      >
+        {(
+          [
+            {
+              id: 'map',
+              label: social.map,
+              selected: state.activeMainTab === 'map',
+              onPress: () => dispatch({ type: 'SET_MAIN_TAB', tab: 'map' }),
+            },
+            {
+              id: 'feed',
+              label: social.feed,
+              selected: state.activeMainTab === 'feed',
+              onPress: () => dispatch({ type: 'SET_MAIN_TAB', tab: 'feed' }),
+            },
+            {
+              id: 'chat',
+              label:
+                unreadChats > 0 ? `${social.chat} (${unreadChats})` : social.chat,
+              selected: false,
+              onPress: () => {
+                if (state.currentUser === null) {
+                  dispatch({ type: 'OPEN_AUTH_MODAL', view: 'login' });
+                } else {
+                  setChatStart({});
+                }
+              },
+            },
+          ] as const
+        ).map((tab) => (
+          <View
+            key={tab.id}
+            style={layout.isCompact ? socialStyles.tabBarItem : null}
+          >
+            <SocialButton
+              testID={`tab-${tab.id}`}
+              label={tab.label}
+              selected={tab.selected}
+              onPress={tab.onPress}
+            />
+          </View>
+        ))}
+      </View>
+    );
+
+    // What the land-use layer shows: the matched parts of a draft in step 2,
+    // otherwise the reference areas of the visible section.
+    const draftOverlay =
+      isDetailsStep && classifyState.status === 'done'
+        ? classifyState.result.overlay
+        : null;
+    const shownZones = draftOverlay ?? (zonesOn ? zones : null);
+    const zonesCredit =
+      shownZones !== null && shownZones.features.length > 0
+        ? social.zonesCredit(formatZoneCredits(shownZones.attributions))
+        : null;
+    const zonesNotice = !zonesOn
+      ? null
+      : !zonesZoomedIn
+        ? social.zonesZoomIn
+        : zones === null
+          ? null
+          : !zones.available
+            ? social.zonesUnavailable
+            : zones.truncated
+              ? social.zonesTruncated
+              : zones.features.length === 0
+                ? social.zonesNone
+                : null;
 
     screenContent = (
       <SafeAreaView
@@ -1781,7 +2262,39 @@ export function App(props: AppProps = {}): React.JSX.Element {
           onExportError={(message) => setLocationNotice(message)}
         />
 
+      {layout.isCompact ? null : mainTabBar}
+
       <View style={styles.mapStage}>
+        {feedOpened || state.activeMainTab === 'feed' ? (
+          // Kept mounted but hidden, so the list and its position survive a
+          // look at the map.
+          <View
+            style={[
+              styles.feedOverlay,
+              state.activeMainTab === 'feed' ? null : styles.hidden,
+            ]}
+          >
+            <FeedView
+              locale={state.locale}
+              active={state.activeMainTab === 'feed'}
+              filter={state.polygonFilter}
+              spaceFilter={state.spaceFilter}
+              viewerKey={userId ?? 'guest'}
+              mapBbox={state.viewport?.bbox ?? null}
+              load={loadFeedPage}
+              resolveUploadUrl={resolveUploadUrl}
+              onVote={handleFeedVote}
+              latestVote={latestVote}
+              onSetFilter={(filter) =>
+                dispatch({ type: 'SET_POLYGON_FILTER', filter })
+              }
+              onSetSpaceFilter={(filter) =>
+                dispatch({ type: 'SET_SPACE_FILTER', filter })
+              }
+              onShowOnMap={showPolygonOnMap}
+            />
+          </View>
+        ) : null}
         <View style={styles.mapCanvasFill}>
           <MapCanvas
             config={state.config}
@@ -1794,6 +2307,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
             selectedFeatureId={state.selectedFeatureId}
             polygonOpacity={state.polygonOpacity}
             highlightMineOnly={mapControls.highlightMineOnly}
+            spaceZones={shownZones?.features ?? null}
             cameraTarget={state.cameraTarget}
             northResetSeq={northResetSeq}
             onViewportChange={handleViewportChange}
@@ -1942,8 +2456,20 @@ export function App(props: AppProps = {}): React.JSX.Element {
                 />
                 <Text style={styles.legendLabel}>{tApp.legendFinished}</Text>
               </View>
+              <View style={styles.legendItem}>
+                <View style={styles.legendPrivateSwatch} />
+                <Text style={styles.legendLabel}>{social.groundPrivate}</Text>
+              </View>
             </View>
           )}
+          {zonesCredit !== null ? (
+            // Credit for the land-use data on screen (ODbL-1.0 § 4.3).
+            <View pointerEvents="none" style={styles.legendPill}>
+              <Text testID="space-zones-credit" style={styles.legendLabel}>
+                {zonesCredit}
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         {state.mode === 'browse' && !(layout.isCompact && hasActivePanel) ? (
@@ -2014,6 +2540,29 @@ export function App(props: AppProps = {}): React.JSX.Element {
                   dispatch({ type: 'SET_POLYGON_OPACITY', opacity })
                 }
               />
+              <View style={styles.spaceFilterPopover}>
+                <SpaceFilterRow
+                  locale={state.locale}
+                  value={state.spaceFilter}
+                  onChange={(filter) =>
+                    dispatch({ type: 'SET_SPACE_FILTER', filter })
+                  }
+                />
+                <SocialCheckbox
+                  testID="space-zones-toggle"
+                  label={social.zonesToggle}
+                  checked={zonesOn}
+                  onToggle={() => setZonesOn((on) => !on)}
+                />
+                {zonesOn ? (
+                  <Text style={socialStyles.hint}>
+                    {zonesNotice ?? social.zonesLegend}
+                    {zonesNotice === null && zonesCredit !== null
+                      ? ` ${zonesCredit}`
+                      : ''}
+                  </Text>
+                ) : null}
+              </View>
             </View>
           </>
         ) : null}
@@ -2110,6 +2659,8 @@ export function App(props: AppProps = {}): React.JSX.Element {
           </KeyboardAvoidingView>
         ) : null}
       </View>
+
+      {layout.isCompact ? mainTabBar : null}
 
       {moreMenuOpen ? (
         <>
@@ -2242,6 +2793,84 @@ export function App(props: AppProps = {}): React.JSX.Element {
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
+      ) : null}
+
+      {chatStart !== null && state.currentUser !== null ? (
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={[
+            styles.modalBackdropOverlay,
+            layout.isCompact ? styles.modalBackdropCompact : null,
+          ]}
+        >
+          <Pressable
+            accessible={false}
+            onPress={() => setChatStart(null)}
+            style={styles.modalBackdropScrim}
+          />
+          <View
+            style={[
+              styles.modalDialogWrapper,
+              { maxWidth: Math.max(layout.modalMaxWidth, layout.isCompact ? 0 : 520) },
+            ]}
+          >
+            <ScrollView
+              ref={chatScrollRef}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.modalScrollContent}
+            >
+              <DirectChatModal
+                locale={state.locale}
+                user={state.currentUser}
+                client={apiClient}
+                start={chatStart}
+                retentionDays={
+                  state.config.chatRetentionDays ??
+                  CHAT_LIMITS.DEFAULT_RETENTION_DAYS
+                }
+                resolveUploadUrl={resolveUploadUrl}
+                onUserUpdated={(user) => dispatch({ type: 'USER_UPDATED', user })}
+                onShowPolygon={handleShowPolygonById}
+                onReport={(messageId) =>
+                  setContentReportTarget({
+                    targetType: 'chat_message',
+                    targetId: messageId,
+                  })
+                }
+                onError={handleChatError}
+                onScrollToEnd={scrollChatToEnd}
+                onClose={() => setChatStart(null)}
+              />
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      ) : null}
+
+      {state.currentUser?.termsUpdateRequired === true &&
+      !termsPromptDismissed &&
+      !state.authModalOpen ? (
+        <View
+          style={[
+            styles.modalBackdropOverlay,
+            layout.isCompact ? styles.modalBackdropCompact : null,
+          ]}
+        >
+          <View
+            style={[
+              styles.modalDialogWrapper,
+              { maxWidth: layout.modalMaxWidth },
+            ]}
+          >
+            <TermsUpdateModal
+              locale={state.locale}
+              termsUrl={state.config.termsUrl ?? apiClient.getTermsUrl()}
+              privacyUrl={privacyPolicyUrl}
+              onAccept={() => apiClient.acceptTerms()}
+              onAccepted={(user) => dispatch({ type: 'USER_UPDATED', user })}
+              onLater={() => setTermsPromptDismissed(true)}
+            />
+          </View>
+        </View>
       ) : null}
 
       {contentReportTarget !== null ? (
@@ -2530,6 +3159,8 @@ export function App(props: AppProps = {}): React.JSX.Element {
                 onLogout={handleLogout}
                 onDeleteAccount={handleDeleteAccount}
                 onExportData={handleExportData}
+                allowDirectMessages={state.currentUser?.allowDirectMessages ?? false}
+                onSetAllowDirectMessages={handleSetAllowDirectMessages}
                 onOpenPersonalStats={() => {
                   dispatch({ type: 'CLOSE_AUTH_MODAL' });
                   setStatsModalTab('personal');
@@ -2653,6 +3284,26 @@ function createStyles(PALETTE: ThemePalette, isDark: boolean) {
     position: 'relative',
     backgroundColor: PALETTE.bgMapCanvas,
     overflow: 'hidden',
+  },
+  hidden: {
+    display: 'none',
+  },
+  feedOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 60,
+    elevation: 60,
+  },
+  spaceFilterPopover: {
+    marginTop: 8,
+    padding: 10,
+    borderRadius: 14,
+    backgroundColor: PALETTE.bgSurface,
+  },
+  legendPrivateSwatch: {
+    width: 14,
+    borderTopWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: PALETTE.inkSecondary,
   },
   mapCanvasFill: {
     flex: 1,

@@ -5,16 +5,26 @@ import { Readable } from 'node:stream';
 
 import {
   ApiError,
+  ClassifySpaceRequestSchema,
+  ClassifySpaceResponseSchema,
   CreatePolygonRequestSchema,
+  FEED_LIMITS,
   FlagPolygonRequestSchema,
   FlagPolygonResponseSchema,
   IMPORT_LIMITS,
   ImportPolygonsResponseSchema,
   POLYGON_ORIGINS,
   PatchPolygonRequestSchema,
+  PatchPolygonSpaceTypeRequestSchema,
   PatchPolygonStatusRequestSchema,
   PolygonFeatureSchema,
+  PolygonFeedQuerySchema,
+  PolygonFeedResponseSchema,
   PolygonListQuerySchema,
+  SPACE_CLASSIFICATION_THRESHOLDS,
+  SPACE_ZONE_LIMITS,
+  SpaceZoneCollectionSchema,
+  BboxQuerySchema,
   UuidParamSchema,
   checkBboxSpan,
   type PolygonCollectionResponse,
@@ -22,12 +32,19 @@ import {
   type PolygonOrigin,
 } from '@openunseal/shared';
 
-import { optionalAuth, requireAdmin, requireAuth } from '../auth/session.js';
+import {
+  optionalAuth,
+  requireAdmin,
+  requireAuth,
+  requireCurrentTerms,
+} from '../auth/session.js';
+import { CommentRepository } from '../comments/repository.js';
 import { recordTelemetryBestEffort } from '../db/telemetry.js';
 import {
   BKG_VG250_DATENQUELLEN_URL,
   getMunicipalitiesStatus,
 } from '../municipalities/vg250.js';
+import { PhotoRepository } from '../photos/repository.js';
 import {
   assertCompatibleImportLicenseParam,
   extractImportDataset,
@@ -38,6 +55,8 @@ import {
   type ExportCursor,
   type ImportAttributionMetadata,
 } from '../polygons/repository.js';
+import { SpaceClassifier } from '../polygons/spaceClassifier.js';
+import { listSpaceZones } from '../polygons/spaceZones.js';
 import {
   extractOptionalModerationReason,
   notifyAuthorOfModerationActionBestEffort,
@@ -50,6 +69,7 @@ export interface RegisterPolygonRoutesOptions {
   exportBatchSize?: number | undefined;
   exportStatementTimeoutMs?: number | undefined;
   exportStreamTimeoutMs?: number | undefined;
+  classifier?: SpaceClassifier | undefined;
 }
 
 const DEFAULT_EXPORT_BATCH_SIZE = 1_000;
@@ -142,6 +162,14 @@ export function registerPolygonRoutes(
     timeWindow: '1 minute',
   };
 
+  const classifier =
+    options.classifier ??
+    new SpaceClassifier({
+      overpassApiUrl: app.config.overpassApiUrl,
+      publicBaseUrl: app.config.publicBaseUrl,
+      logger: app.log,
+    });
+
   const exportBatchSize = options.exportBatchSize ?? DEFAULT_EXPORT_BATCH_SIZE;
   const exportStreamTimeoutMs =
     options.exportStreamTimeoutMs ?? DEFAULT_EXPORT_STREAM_TIMEOUT_MS;
@@ -166,6 +194,7 @@ export function registerPolygonRoutes(
         viewerUserId,
         limit: app.config.runtimeConfig.limits.bboxFeatureLimit,
         filter: query.filter,
+        spaceFilter: query.spaceFilter,
       });
 
       const response: PolygonCollectionResponse = {
@@ -462,7 +491,7 @@ export function registerPolygonRoutes(
       config: {
         rateLimit: createPolygonLimit,
       },
-      preHandler: requireAuth,
+      preHandler: [requireAuth, requireCurrentTerms],
     },
     async (request, reply) => {
       const auth = request.auth;
@@ -498,6 +527,12 @@ export function registerPolygonRoutes(
         minAreaM2: app.config.runtimeConfig.limits.minAreaM2,
         maxAreaM2: app.config.runtimeConfig.limits.maxAreaM2,
         requireJurisdiction: app.config.requireJurisdiction,
+        spaceType: body.spaceType,
+        openForPublicAccess: body.openForPublicAccess,
+        allowChatContact: body.allowChatContact,
+        helpWanted: body.helpWanted,
+        entitlementConfirmed: body.entitlementConfirmed,
+        ...(body.spaceType !== undefined ? { classifier } : {}),
       });
 
       const parsed = PolygonFeatureSchema.parse(created);
@@ -528,12 +563,27 @@ export function registerPolygonRoutes(
       }
 
       const { id } = UuidParamSchema.parse(request.params);
+      if (
+        typeof request.body === 'object' &&
+        request.body !== null &&
+        'spaceType' in request.body
+      ) {
+        throw new ApiError(
+          422,
+          'SPACE_TYPE_IMMUTABLE',
+          'Public or private ground can only be chosen when the area is created.',
+        );
+      }
       const body = PatchPolygonRequestSchema.parse(request.body);
       const updated = await repository.patch({
         polygonId: id,
         userId: auth.user.id,
         surfaceType: body.surfaceType,
         note: body.note,
+        openForPublicAccess: body.openForPublicAccess,
+        allowChatContact: body.allowChatContact,
+        helpWanted: body.helpWanted,
+        entitlementConfirmed: body.entitlementConfirmed,
       });
 
       return PolygonFeatureSchema.parse(updated);
@@ -753,7 +803,7 @@ export function registerPolygonRoutes(
       config: {
         rateLimit: mutatePolygonLimit,
       },
-      preHandler: requireAdmin,
+      preHandler: requireAuth,
     },
     async (request) => {
       const auth = request.auth!;
@@ -762,8 +812,10 @@ export function registerPolygonRoutes(
 
       const updated = await repository.setStatus({
         polygonId: id,
-        adminUserId: auth.user.id,
+        actorUserId: auth.user.id,
+        actorIsAdmin: auth.user.role === 'admin',
         status: body.status,
+        entitlementConfirmed: body.entitlementConfirmed,
       });
 
       const parsed = PolygonFeatureSchema.parse(updated);
@@ -772,6 +824,128 @@ export function registerPolygonRoutes(
         buildPublicPolygonWebhookData(parsed),
       );
       return parsed;
+    },
+  );
+
+  app.patch(
+    '/api/v1/polygons/:id/space-type',
+    { config: { rateLimit: mutatePolygonLimit }, preHandler: requireAdmin },
+    async (request) => {
+      const { id } = UuidParamSchema.parse(request.params);
+      const { spaceType } = PatchPolygonSpaceTypeRequestSchema.parse(request.body);
+      return PolygonFeatureSchema.parse(
+        await repository.setSpaceTypeAsAdmin({
+          polygonId: id,
+          adminUserId: request.auth!.user.id,
+          spaceType,
+        }),
+      );
+    },
+  );
+
+  app.post(
+    '/api/v1/polygons/classify-space',
+    {
+      config: {
+        rateLimit: app.rateLimitOverrides.classifySpace ?? {
+          max: 30,
+          timeWindow: '1 minute',
+        },
+      },
+      preHandler: requireAuth,
+    },
+    async (request, reply) => {
+      const { geometry } = ClassifySpaceRequestSchema.parse(request.body);
+      const result = await repository.classifyGeometry({
+        userId: request.auth!.user.id,
+        geometry,
+        minAreaM2: app.config.runtimeConfig.limits.minAreaM2,
+        maxAreaM2: app.config.runtimeConfig.limits.maxAreaM2,
+        requireJurisdiction: app.config.requireJurisdiction,
+        classifier,
+      });
+      return reply.header('Cache-Control', 'no-store').send(
+        ClassifySpaceResponseSchema.parse({
+          ...result,
+          thresholdRatio:
+            SPACE_CLASSIFICATION_THRESHOLDS.PRIVATE_PROPOSAL_MIN_RATIO,
+        }),
+      );
+    },
+  );
+
+  const photos = new PhotoRepository(app.pool, app.config.uploadsDir);
+  const comments = new CommentRepository(app.pool);
+
+  app.get(
+    '/api/v1/polygons/feed',
+    {
+      config: {
+        rateLimit: app.rateLimitOverrides.feed ?? {
+          max: 60,
+          timeWindow: '1 minute',
+        },
+      },
+      preHandler: optionalAuth,
+    },
+    async (request, reply) => {
+      applyOptionalAuthCacheHeaders(request, reply);
+      reply.header(
+        'Link',
+        `<https://creativecommons.org/licenses/by/4.0/>; rel="license"; title="photos, comments", <https://opendatacommons.org/licenses/odbl/1-0/>; rel="license"; title="areas", <${app.config.licensesUrl}>; rel="describedby"`,
+      );
+      const query = PolygonFeedQuerySchema.parse(request.query ?? {});
+      if (query.bbox) {
+        checkBboxSpan(query.bbox, FEED_LIMITS.MAX_BBOX_SPAN_DEG);
+      }
+      const viewerUserId = request.auth?.user.id ?? null;
+      const { entries, nextCursor } = await repository.listFeed({
+        viewerUserId,
+        limit: query.limit,
+        cursor: query.cursor,
+        filter: query.filter,
+        spaceFilter: query.spaceFilter,
+        citizenOnly: query.origin === 'citizen',
+        bbox: query.bbox,
+        ags: query.ags,
+      });
+      const ids = entries.map((entry) => entry.feature.id);
+      const [photosById, commentsById] = await Promise.all([
+        photos.listByPolygonIds(ids, viewerUserId),
+        comments.findTopCommentsByPolygonIds(ids, viewerUserId),
+      ]);
+      return PolygonFeedResponseSchema.parse({
+        items: entries.map((entry) => ({
+          ...entry,
+          photos: photosById.get(entry.feature.id) ?? [],
+          topComment: commentsById.get(entry.feature.id) ?? null,
+        })),
+        nextCursor,
+      });
+    },
+  );
+
+  // Land-use reference data, never ownership data. It is a derivative of the
+  // credited sources, so every response carries the licence and the credits.
+  app.get(
+    '/api/v1/space-zones',
+    {
+      config: {
+        rateLimit: app.rateLimitOverrides.spaceZones ?? {
+          max: 60,
+          timeWindow: '1 minute',
+        },
+      },
+    },
+    async (request, reply) => {
+      const bbox = BboxQuerySchema.parse(request.query);
+      checkBboxSpan(bbox, SPACE_ZONE_LIMITS.MAX_BBOX_SPAN_DEG);
+      reply.header('Cache-Control', 'public, max-age=300');
+      reply.header(
+        'Link',
+        `<https://opendatacommons.org/licenses/odbl/1-0/>; rel="license", <${app.config.licensesUrl}>; rel="describedby"`,
+      );
+      return SpaceZoneCollectionSchema.parse(await listSpaceZones(app.pool, bbox));
     },
   );
 

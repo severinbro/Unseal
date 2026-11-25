@@ -6,6 +6,12 @@ import {
   ApiError,
   ApiErrorEnvelopeSchema,
   AuthUserSchema,
+  ChatMessageSchema,
+  ChatMessagesResponseSchema,
+  ChatThreadListResponseSchema,
+  ChatThreadSchema,
+  ChatUnreadCountResponseSchema,
+  ClassifySpaceResponseSchema,
   CommentVoteResponseSchema,
   CreateBugReportResponseSchema,
   CreateContentReportResponseSchema,
@@ -19,6 +25,8 @@ import {
   PolygonCommentListResponseSchema,
   PolygonCommentSchema,
   PolygonFeatureSchema,
+  PolygonFeedResponseSchema,
+  SpaceZoneCollectionSchema,
   PolygonPhotoListResponseSchema,
   PolygonPhotoSchema,
   PublicStatsResponseSchema,
@@ -31,6 +39,16 @@ import {
   type AltchaChallengeResponse,
   type AuthUser,
   type BboxBounds,
+  type ChatMessage,
+  type ChatMessagesResponse,
+  type ChatThread,
+  type ClassifySpaceResponse,
+  type CreateChatMessageRequest,
+  type OpenDirectChatRequest,
+  type PolygonFeedResponse,
+  type SpaceZoneCollection,
+  type SpaceFilter,
+  type SpaceType,
   type CommentVoteResponse,
   type CreateBugReportRequest,
   type CreateBugReportResponse,
@@ -80,6 +98,7 @@ export { encodeUtf8Base64, sha256Hex, solveAltchaChallengeClient };
 
 export interface PolygonListFilters {
   readonly filter?: PolygonFilter | undefined;
+  readonly spaceFilter?: SpaceFilter | undefined;
 }
 
 export type FetchLike = typeof fetch;
@@ -335,6 +354,9 @@ export class PpgisApiClient {
     if (filters?.filter && filters.filter !== 'all') {
       query += `&filter=${encodeURIComponent(filters.filter)}`;
     }
+    if (filters?.spaceFilter && filters.spaceFilter !== 'all') {
+      query += `&spaceFilter=${encodeURIComponent(filters.spaceFilter)}`;
+    }
     const json = await this.requestJson({
       method: 'GET',
       path: `/api/v1/polygons?${query}`,
@@ -382,12 +404,13 @@ export class PpgisApiClient {
   public async patchPolygonStatus(
     id: string,
     status: PolygonStatus,
+    entitlementConfirmed?: boolean,
   ): Promise<PolygonFeature> {
     const encodedId = assertNonEmptyId(id);
     const json = await this.requestJson({
       method: 'PATCH',
       path: `/api/v1/polygons/${encodedId}/status`,
-      body: { status },
+      body: entitlementConfirmed ? { status, entitlementConfirmed: true } : { status },
       includeAuth: true,
     });
     return PolygonFeatureSchema.parse(json);
@@ -836,6 +859,184 @@ export class PpgisApiClient {
       includeAuth: true,
     });
     return AuthUserSchema.parse(json);
+  }
+
+  public async classifyPolygonSpace(
+    geometry: CreatePolygonRequest['geometry'],
+  ): Promise<ClassifySpaceResponse> {
+    return ClassifySpaceResponseSchema.parse(
+      await this.requestJson({
+        method: 'POST',
+        path: '/api/v1/polygons/classify-space',
+        body: { geometry },
+        includeAuth: true,
+      }),
+    );
+  }
+
+  public async setPolygonSpaceType(
+    id: string,
+    spaceType: SpaceType,
+  ): Promise<PolygonFeature> {
+    return PolygonFeatureSchema.parse(
+      await this.requestJson({
+        method: 'PATCH',
+        path: `/api/v1/polygons/${assertNonEmptyId(id)}/space-type`,
+        body: { spaceType },
+        includeAuth: true,
+      }),
+    );
+  }
+
+  /** Land-use reference data for a small map section (ODbL-1.0, credits included). */
+  public async listSpaceZones(bbox: BboxInput): Promise<SpaceZoneCollection> {
+    return SpaceZoneCollectionSchema.parse(
+      await this.requestJson({
+        method: 'GET',
+        path: `/api/v1/space-zones?bbox=${encodeURIComponent(formatBboxQueryParam(bbox))}`,
+      }),
+    );
+  }
+
+  public async listPolygonsFeed(options: {
+    cursor?: string | null;
+    filter?: PolygonFilter;
+    spaceFilter?: SpaceFilter;
+    /** A coarse map section, never a device position. */
+    bbox?: BboxInput | null;
+    ags?: string | null;
+  }): Promise<PolygonFeedResponse> {
+    const params = new URLSearchParams({ origin: 'citizen' });
+    if (options.cursor) {
+      params.set('cursor', options.cursor);
+    }
+    if (options.bbox) {
+      params.set('bbox', formatBboxQueryParam(options.bbox));
+    }
+    if (options.ags) {
+      params.set('ags', options.ags);
+    }
+    params.set('filter', options.filter ?? 'all');
+    params.set('spaceFilter', options.spaceFilter ?? 'all');
+    return PolygonFeedResponseSchema.parse(
+      await this.requestJson({
+        method: 'GET',
+        path: `/api/v1/polygons/feed?${params.toString()}`,
+        includeAuth: true,
+      }),
+    );
+  }
+
+  public async updatePreferences(allowDirectMessages: boolean): Promise<AuthUser> {
+    return AuthUserSchema.parse(
+      await this.requestJson({
+        method: 'PATCH',
+        path: '/api/v1/auth/me/preferences',
+        body: { allowDirectMessages },
+        includeAuth: true,
+      }),
+    );
+  }
+
+  public async acceptTerms(): Promise<AuthUser> {
+    return AuthUserSchema.parse(
+      await this.requestJson({
+        method: 'POST',
+        path: '/api/v1/auth/me/accept-terms',
+        body: { acceptedTerms: true, acceptedPrivacyPolicy: true },
+        includeAuth: true,
+      }),
+    );
+  }
+
+  public async openChat(target: OpenDirectChatRequest): Promise<ChatThread> {
+    return ChatThreadSchema.parse(
+      await this.requestJson({
+        method: 'POST',
+        path: '/api/v1/chats/open',
+        body: target,
+        includeAuth: true,
+      }),
+    );
+  }
+
+  public async listChats(): Promise<ChatThread[]> {
+    return ChatThreadListResponseSchema.parse(
+      await this.requestJson({
+        method: 'GET',
+        path: '/api/v1/chats',
+        includeAuth: true,
+      }),
+    ).threads;
+  }
+
+  public async getUnreadChatCount(): Promise<number> {
+    return ChatUnreadCountResponseSchema.parse(
+      await this.requestJson({
+        method: 'GET',
+        path: '/api/v1/chats/unread-count',
+        includeAuth: true,
+      }),
+    ).unreadCount;
+  }
+
+  public async listChatMessages(
+    threadId: string,
+    cursor: { before?: string; after?: string } = {},
+  ): Promise<ChatMessagesResponse> {
+    const query = cursor.after
+      ? `?after=${encodeURIComponent(cursor.after)}`
+      : cursor.before
+        ? `?before=${encodeURIComponent(cursor.before)}`
+        : '';
+    return ChatMessagesResponseSchema.parse(
+      await this.requestJson({
+        method: 'GET',
+        path: `/api/v1/chats/${assertNonEmptyId(threadId)}/messages${query}`,
+        includeAuth: true,
+      }),
+    );
+  }
+
+  public async sendChatMessage(
+    threadId: string,
+    input: CreateChatMessageRequest,
+  ): Promise<ChatMessage> {
+    return ChatMessageSchema.parse(
+      await this.requestJson({
+        method: 'POST',
+        path: `/api/v1/chats/${assertNonEmptyId(threadId)}/messages`,
+        body: input,
+        includeAuth: true,
+      }),
+    );
+  }
+
+  public async setChatBlocked(
+    threadId: string,
+    blocked: boolean,
+  ): Promise<ChatThread> {
+    return ChatThreadSchema.parse(
+      await this.requestJson({
+        method: 'PATCH',
+        path: `/api/v1/chats/${assertNonEmptyId(threadId)}/block`,
+        body: { blocked },
+        includeAuth: true,
+      }),
+    );
+  }
+
+  /** Deletes one own message, or all own messages of the conversation. */
+  public async deleteChatMessages(
+    threadId: string,
+    messageId?: string,
+  ): Promise<void> {
+    const base = `/api/v1/chats/${assertNonEmptyId(threadId)}/messages`;
+    await this.requestVoid({
+      method: 'DELETE',
+      path: messageId ? `${base}/${assertNonEmptyId(messageId)}` : base,
+      includeAuth: true,
+    });
   }
 
   public async getPublicStats(): Promise<PublicStatsResponse> {

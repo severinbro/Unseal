@@ -44,6 +44,7 @@ import {
 import { createSession, optionalAuth, requireAdmin, requireAuth } from './auth/session.js';
 import { rekeyCanonicalEmailHashes } from './auth/tombstones.js';
 import { runAdminCommand, type AdminCommandResult } from './cli/admin.js';
+import { ChatRepository } from './chat/repository.js';
 import { CommentRepository } from './comments/repository.js';
 import { type EnvConfig } from './config.js';
 import {
@@ -82,9 +83,11 @@ import {
   type LoadLandCoverResult,
 } from './polygons/landCover.js';
 import { PolygonRepository } from './polygons/repository.js';
+import { SpaceClassifier } from './polygons/spaceClassifier.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerAuthPageRoutes } from './routes/authPages.js';
 import { registerBugReportRoutes } from './routes/bugReports.js';
+import { registerChatRoutes } from './routes/chat.js';
 import { registerCommentRoutes } from './routes/comments.js';
 import { registerContentReportRoutes } from './routes/contentReports.js';
 import {
@@ -138,6 +141,14 @@ export interface RateLimitOverrides {
   geocode?: RateLimitWindowOverride;
   bugReport?: RateLimitWindowOverride;
   contentReport?: RateLimitWindowOverride;
+  classifySpace?: RateLimitWindowOverride;
+  feed?: RateLimitWindowOverride;
+  spaceZones?: RateLimitWindowOverride;
+  accountPreferences?: RateLimitWindowOverride;
+  openChat?: RateLimitWindowOverride;
+  sendChatMessage?: RateLimitWindowOverride;
+  chatBlock?: RateLimitWindowOverride;
+  chatRead?: RateLimitWindowOverride;
 }
 
 export interface BuildAppOptions {
@@ -151,6 +162,7 @@ export interface BuildAppOptions {
   mailer?: AuthMailer;
   dop20TileFetch?: Dop20TileRoutesOptions['fetchImpl'];
   geocodeFetch?: GeocodeRoutesOptions['fetchImpl'];
+  overpassFetch?: typeof fetch;
   webhookDispatcher?: WebhookDispatcher;
   webhookFetch?: typeof fetch;
   webhookLookup?: LookupAllFn;
@@ -445,6 +457,13 @@ export async function buildApp(
     ...(options.exportStreamTimeoutMs !== undefined
       ? { exportStreamTimeoutMs: options.exportStreamTimeoutMs }
       : {}),
+    classifier: new SpaceClassifier({
+      overpassApiUrl: config.overpassApiUrl,
+      publicBaseUrl: config.publicBaseUrl,
+      logger,
+      fetchImpl: options.overpassFetch,
+      minIntervalMs: options.overpassFetch !== undefined ? 0 : undefined,
+    }),
   });
   registerStatsRoutes(app, polygonRepository);
 
@@ -456,6 +475,8 @@ export async function buildApp(
 
   const voteRepository = new VoteRepository(pool);
   registerVoteRoutes(app, voteRepository);
+
+  registerChatRoutes(app, new ChatRepository(pool));
 
   return app;
 }

@@ -350,6 +350,76 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
 
     // Advance to Step 2 ('details') - automatically closes the polygon ring
     state = appReducer(state, { type: 'ADVANCE_TO_DETAILS' });
+    assert.equal(state.drawingStep, 'geometry');
+    assert.equal(state.authModalOpen, true);
+    assert.equal(state.authModalView, 'register');
+    assert.deepEqual(state.pendingIntent, { type: 'ADVANCE_TO_DETAILS' });
+
+    const authorStorage = createMemorySessionStorage();
+    const authorClient = new PpgisApiClient(baseUrl, authorStorage);
+    const regAuthor = await authorClient.register({
+      pseudonym: 'courtyard_author',
+      email: 'courtyard_author@example.org',
+      password: 'correct-horse-battery-staple',
+      acceptedPrivacyPolicy: true,
+      acceptedTerms: true,
+    });
+    assert.equal(regAuthor.status, 'verification_email_sent');
+    assert.equal(mailer.outbox.length, 1);
+    assert.equal(mailer.outbox[0]?.purpose, 'verify_email');
+
+    state = appReducer(state, {
+      type: 'REGISTRATION_VERIFICATION_SENT',
+      email: regAuthor.email,
+      pseudonym: regAuthor.pseudonym,
+    });
+    const verifyPendingModal = deriveAuthModalModel(state);
+    assert.equal(verifyPendingModal.view, 'verify_pending');
+    assert.equal(
+      verifyPendingModal.pendingVerificationEmail,
+      'courtyard_author@example.org',
+    );
+
+    // Login before confirming email fails with 403 AUTH_EMAIL_UNVERIFIED
+    await assert.rejects(
+      () =>
+        authorClient.login({
+          identifier: 'courtyard_author',
+          password: 'correct-horse-battery-staple',
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof ApiError);
+        assert.equal(err.statusCode, 403);
+        assert.equal(err.code, 'AUTH_EMAIL_UNVERIFIED');
+        return true;
+      },
+    );
+
+    // User clicks confirmation link on the hosted VPS page (GET + POST /auth/verify-email)
+    await confirmEmailViaHostedWebPage(baseUrl, mailer.outbox[0]!.actionUrl);
+
+    // Sign in and resume step 2
+    const authorSession = await authorClient.login({
+      identifier: 'courtyard_author',
+      password: 'correct-horse-battery-staple',
+    });
+    state = appReducer(state, {
+      type: 'AUTH_SUCCEEDED',
+      user: authorSession.user,
+    });
+    assert.equal(state.authModalOpen, false);
+    assert.equal(state.drawingStep, 'details');
+
+    const classification = await authorClient.classifyPolygonSpace({
+      type: 'Polygon',
+      coordinates: [[...COURTYARD_VERTICES, COURTYARD_VERTICES[0]!]],
+    });
+    assert.equal(classification.detectedSpaceType, 'unknown');
+    state = appReducer(state, {
+      type: 'SET_DRAFT_SPACE',
+      patch: { spaceType: 'public' },
+    });
+
     state = appReducer(state, {
       type: 'SET_DRAFT_META',
       surfaceType: 'asphalt',
@@ -402,65 +472,7 @@ describe('Full-stack HTTP E2E flow v2 (PpgisApiClient + appReducer + Fastify + P
     assert.equal(toolbar.draftPhotos.length, 1);
     assert.equal(toolbar.canSubmit, true);
 
-    // Submitting while unauthenticated queues draft + photo and opens email registration modal
     state = appReducer(state, { type: 'SUBMIT_DRAFT' });
-    assert.equal(state.authModalOpen, true);
-    assert.equal(state.authModalView, 'register');
-    assert.equal(state.pendingIntent?.type, 'SUBMIT_DRAFT');
-
-    const authorStorage = createMemorySessionStorage();
-    const authorClient = new PpgisApiClient(baseUrl, authorStorage);
-    const regAuthor = await authorClient.register({
-      pseudonym: 'courtyard_author',
-      email: 'courtyard_author@example.org',
-      password: 'correct-horse-battery-staple',
-      acceptedPrivacyPolicy: true,
-      acceptedTerms: true,
-    });
-    assert.equal(regAuthor.status, 'verification_email_sent');
-    assert.equal(mailer.outbox.length, 1);
-    assert.equal(mailer.outbox[0]?.purpose, 'verify_email');
-
-    state = appReducer(state, {
-      type: 'REGISTRATION_VERIFICATION_SENT',
-      email: regAuthor.email,
-      pseudonym: regAuthor.pseudonym,
-    });
-    const verifyPendingModal = deriveAuthModalModel(state);
-    assert.equal(verifyPendingModal.view, 'verify_pending');
-    assert.equal(
-      verifyPendingModal.pendingVerificationEmail,
-      'courtyard_author@example.org',
-    );
-
-    // Login before confirming email fails with 403 AUTH_EMAIL_UNVERIFIED
-    await assert.rejects(
-      () =>
-        authorClient.login({
-          identifier: 'courtyard_author',
-          password: 'correct-horse-battery-staple',
-        }),
-      (err: unknown) => {
-        assert.ok(err instanceof ApiError);
-        assert.equal(err.statusCode, 403);
-        assert.equal(err.code, 'AUTH_EMAIL_UNVERIFIED');
-        return true;
-      },
-    );
-
-    // User clicks confirmation link on the hosted VPS page (GET + POST /auth/verify-email)
-    await confirmEmailViaHostedWebPage(baseUrl, mailer.outbox[0]!.actionUrl);
-
-    // Sign in and resume queued SUBMIT_DRAFT + photo upload!
-    const authorSession = await authorClient.login({
-      identifier: 'courtyard_author',
-      password: 'correct-horse-battery-staple',
-    });
-    state = appReducer(state, {
-      type: 'AUTH_SUCCEEDED',
-      user: authorSession.user,
-    });
-    assert.equal(state.authModalOpen, false);
     assert.ok(
       state.pendingIntent && state.pendingIntent.type === 'SUBMIT_DRAFT',
     );

@@ -175,6 +175,9 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
       expiredSessions: 1,
       staleEmailTokens: 2,
       expiredPseudonymReservations: 1,
+      expiredChatMessages: 0,
+      emptyChatThreads: 0,
+      clearedContactCounters: 0,
     });
 
     const remainingUsers = await pool.query<{ pseudonym: string }>(
@@ -197,6 +200,9 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
       expiredSessions: 0,
       staleEmailTokens: 0,
       expiredPseudonymReservations: 0,
+      expiredChatMessages: 0,
+      emptyChatThreads: 0,
+      clearedContactCounters: 0,
     });
   });
 

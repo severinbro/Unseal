@@ -97,6 +97,8 @@ const SAMPLE_USER: AuthUser = {
   pseudonym: 'courtyard_mapper',
   email: 'mapper@example.org',
   role: 'user',
+  allowDirectMessages: false,
+  termsUpdateRequired: false,
   createdAt: '2026-11-12T10:00:00.000Z',
 };
 
@@ -186,6 +188,17 @@ function makePolygonFeature(
       isFlagged: overrides?.isFlagged ?? (overrides?.flagCount ?? 0) > 0,
       myFlag: overrides?.myFlag ?? false,
       isAuthor: overrides?.isAuthor ?? true,
+      spaceType: overrides?.spaceType ?? 'unknown',
+      spaceVerification: overrides?.spaceVerification ?? 'unverified',
+      openForPublicAccess: overrides?.openForPublicAccess ?? false,
+      canMessageAuthor: overrides?.canMessageAuthor ?? false,
+      detectedSpaceType: overrides?.detectedSpaceType ?? null,
+      privateOverlapRatio: overrides?.privateOverlapRatio ?? null,
+      spaceVerificationSource: overrides?.spaceVerificationSource ?? null,
+      allowChatContact: overrides?.allowChatContact ?? null,
+      helpWanted: overrides?.helpWanted ?? false,
+      helpWantedUntil: overrides?.helpWantedUntil ?? null,
+      entitlementConfirmed: overrides?.entitlementConfirmed ?? null,
       createdAt: overrides?.createdAt ?? '2026-11-12T10:05:00.000Z',
       updatedAt: overrides?.updatedAt ?? '2026-11-12T10:05:00.000Z',
     },
@@ -911,9 +924,15 @@ describe('appReducer and viewModels v2', () => {
     }
     assert.equal(deriveDrawingToolbarModel(state).canAdvanceToDetails, true);
 
+    // Guests are asked to sign in first; the draft resumes in step 2 afterwards
     state = appReducer(state, { type: 'ADVANCE_TO_DETAILS' });
     assert.equal(state.isRingClosed, true);
+    assert.equal(state.drawingStep, 'geometry');
+    assert.deepEqual(state.pendingIntent, { type: 'ADVANCE_TO_DETAILS' });
+    assert.equal(state.authModalOpen, true);
+    state = appReducer(state, { type: 'AUTH_SUCCEEDED', user: SAMPLE_USER });
     assert.equal(state.drawingStep, 'details');
+    assert.equal(state.pendingIntent, null);
 
     // Attach a draft photo in Step 2, step back to geometry, then return to details
     const sampleDraftPhoto = {
@@ -971,6 +990,9 @@ describe('appReducer and viewModels v2', () => {
 
     state = appReducer(state, { type: 'ADVANCE_TO_DETAILS' });
     assert.equal(state.drawingStep, 'details');
+
+    // The session may expire while details are being entered
+    state = appReducer(state, { type: 'SESSION_EXPIRED' });
 
     // Anonymous SUBMIT_DRAFT queues payload + draft photos and opens register modal
     state = appReducer(state, { type: 'SUBMIT_DRAFT' });

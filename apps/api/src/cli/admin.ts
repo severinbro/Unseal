@@ -18,6 +18,7 @@ import {
   type LandCoverCategory,
   type LandCoverSource,
   type PolygonOrigin,
+  type SpaceType,
 } from '@openunseal/shared';
 
 import {
@@ -50,8 +51,13 @@ import {
 import { createDbPool } from '../db/pool.js';
 import { createLogger } from '../logger.js';
 import { loadVg250Municipalities } from '../municipalities/vg250.js';
+import { deleteChatMessageAsOperator } from '../chat/repository.js';
 import { loadLandCoverFile } from '../polygons/landCover.js';
 import { PolygonRepository } from '../polygons/repository.js';
+import {
+  loadSpaceZonesFile,
+  type SpaceZoneSource,
+} from '../polygons/spaceZonesLoader.js';
 
 import type { FastifyBaseLogger } from 'fastify';
 import type pg from 'pg';
@@ -60,6 +66,9 @@ export type AdminCommandName =
   | 'ban-user'
   | 'delete-polygon'
   | 'delete-comment'
+  | 'delete-chat-message'
+  | 'load-space-zones'
+  | 'set-space-type'
   | 'redact-note'
   | 'grant-admin'
   | 'revoke-admin'
@@ -84,6 +93,12 @@ export interface AdminCommandResult {
   recomputedPolygonIds?: string[];
   polygonId?: string;
   commentId?: string;
+  chatMessageId?: string;
+  deletedChatMessage?: boolean;
+  spaceType?: SpaceType;
+  spaceZoneSource?: SpaceZoneSource;
+  importedSpaceZoneCount?: number;
+  skippedSpaceZoneCount?: number;
   deletedPolygon?: boolean;
   deletedComment?: boolean;
   redactedNote?: boolean;
@@ -100,6 +115,28 @@ export interface AdminCommandResult {
   polygonOrigin?: PolygonOrigin;
   updatedPolygonCount?: number;
   telemetryExport?: TelemetryExportReport;
+}
+
+/** Splits `--name=value` options, `--flag` switches and positional arguments. */
+function parseDatasetArgs(args: readonly string[]): {
+  positional: string[];
+  flags: Set<string>;
+  options: Record<string, string | undefined>;
+} {
+  const positional: string[] = [];
+  const flags = new Set<string>();
+  const options: Record<string, string | undefined> = {};
+  for (const arg of args) {
+    const match = /^--(license|attribution|source-url)=(.*)$/s.exec(arg);
+    if (match) {
+      options[match[1]!] = match[2]!;
+    } else if (arg === '--replace' || arg === '--waiver-confirmed') {
+      flags.add(arg.slice(2));
+    } else {
+      positional.push(arg);
+    }
+  }
+  return { positional, flags, options };
 }
 
 async function rollbackPreservingError(
@@ -307,14 +344,62 @@ export async function runAdminCommand(
     };
   }
 
+  if (command === 'load-space-zones') {
+    const { positional, flags, options: opts } = parseDatasetArgs(argv.slice(1));
+    const source = positional[0];
+    if (
+      positional.length !== 2 ||
+      (source !== 'alkis' && source !== 'osm_local') ||
+      opts.license === undefined
+    ) {
+      throw new ApiError(
+        422,
+        'VALIDATION_ERROR',
+        'Usage: load-space-zones <alkis|osm_local> <filePath> --license=<id> [--attribution=<text>] [--source-url=<url>] [--waiver-confirmed] [--replace]',
+      );
+    }
+    const loaded = await loadSpaceZonesFile(pool, positional[1]!, {
+      source,
+      license: opts.license,
+      attribution: opts.attribution,
+      sourceUrl: opts['source-url'],
+      waiverConfirmed: flags.has('waiver-confirmed'),
+      replaceSource: flags.has('replace'),
+    });
+    return {
+      command: 'load-space-zones',
+      spaceZoneSource: loaded.source,
+      importedSpaceZoneCount: loaded.importedCount,
+      skippedSpaceZoneCount: loaded.skippedCount,
+    };
+  }
+
+  if (command === 'set-space-type') {
+    const polygonId = parseValidatedPolygonId(argv[1]);
+    const spaceType = argv[2];
+    if (argv.length !== 3 || (spaceType !== 'public' && spaceType !== 'private')) {
+      throw new ApiError(
+        422,
+        'VALIDATION_ERROR',
+        'Usage: set-space-type <polygonId> <public|private>',
+      );
+    }
+    await new PolygonRepository(pool).setSpaceTypeAsAdmin({
+      polygonId,
+      adminUserId: null,
+      spaceType,
+    });
+    return { command: 'set-space-type', polygonId, spaceType };
+  }
+
   if (command === 'load-landcover') {
-    const replaceSource = argv.includes('--replace');
-    const positional = argv.slice(1).filter((arg) => arg !== '--replace');
+    const { positional, flags, options: opts } = parseDatasetArgs(argv.slice(1));
+    const replaceSource = flags.has('replace');
     if (positional.length < 2 || positional.length > 3) {
       throw new ApiError(
         422,
         'VALIDATION_ERROR',
-        'Usage: load-landcover <osm|alkis> <filePath> [defaultCategory] [--replace]',
+        'Usage: load-landcover <osm|alkis> <filePath> [defaultCategory] [--replace] [--license=<id> --attribution=<text> --source-url=<url> --waiver-confirmed]',
       );
     }
 
@@ -346,6 +431,14 @@ export async function runAdminCommand(
       source,
       defaultCategory,
       replaceSource,
+      ...(opts.license !== undefined
+        ? {
+            license: opts.license,
+            attribution: opts.attribution,
+            sourceUrl: opts['source-url'],
+            waiverConfirmed: flags.has('waiver-confirmed'),
+          }
+        : {}),
     });
     return {
       command: 'load-landcover',
@@ -717,6 +810,34 @@ export async function runAdminCommand(
     };
   }
 
+  // Removal of a direct message reported by a participant (DSA Art. 16/17)
+  if (command === 'delete-chat-message') {
+    const parsedId = UuidParamSchema.safeParse(argv[1]);
+    if (!parsedId.success) {
+      throw new ApiError(
+        422,
+        'VALIDATION_ERROR',
+        'Usage: delete-chat-message <messageId> [reason]',
+      );
+    }
+    const chatMessageId = parsedId.data.id;
+    const reason = argv.slice(2).join(' ').trim() || undefined;
+    const deleted = await deleteChatMessageAsOperator(pool, chatMessageId);
+    await sendAdminModerationNoticeBestEffort(options, {
+      to: deleted.senderEmail,
+      pseudonym: deleted.senderPseudonym,
+      action: 'chat_message_deleted',
+      targetId: chatMessageId,
+      reason,
+    });
+    return {
+      command: 'delete-chat-message',
+      chatMessageId,
+      ...(reason ? { reason } : {}),
+      deletedChatMessage: true,
+    };
+  }
+
   // GDPR Art. 15/20: operator-side data export (e.g. for requests received by email)
   if (command === 'export-user') {
     if (argv.length !== 2) {
@@ -1018,7 +1139,7 @@ export async function runAdminCommand(
   throw new ApiError(
     422,
     'VALIDATION_ERROR',
-    'Unsupported admin command. Supported commands: grant-admin <user>, revoke-admin <user>, load-vg250 [source], load-landcover <osm|alkis> <filePath> [defaultCategory] [--replace], prune-stale-polygons [retentionDays], ban-user <pseudonym> [reason], lift-ban <pseudonym> [email], delete-polygon <polygonId>, delete-comment <commentId>, redact-note <polygonId>, export-user <user>, set-email <user> <newEmail>, rename-user <user> <newPseudonym>, set-polygon-origin <origin> <--user|--before|--polygon|--all>, export-telemetry [--since YYYY-MM-DD] [--until YYYY-MM-DD].',
+    'Unsupported admin command. Supported commands: grant-admin <user>, revoke-admin <user>, load-vg250 [source], load-landcover <osm|alkis> <filePath> [defaultCategory] [--replace] [--license=<id> ...], load-space-zones <alkis|osm_local> <filePath> --license=<id> [...], set-space-type <polygonId> <public|private>, prune-stale-polygons [retentionDays], ban-user <pseudonym> [reason], lift-ban <pseudonym> [email], delete-polygon <polygonId>, delete-comment <commentId>, delete-chat-message <messageId> [reason], redact-note <polygonId>, export-user <user>, set-email <user> <newEmail>, rename-user <user> <newPseudonym>, set-polygon-origin <origin> <--user|--before|--polygon|--all>, export-telemetry [--since YYYY-MM-DD] [--until YYYY-MM-DD].',
   );
 }
 

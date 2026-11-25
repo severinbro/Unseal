@@ -82,6 +82,14 @@ export const GEOMETRY_LIMITS = {
   MAX_NOTE_LENGTH: 500,
 } as const;
 
+/** `[[west, south], [east, north]]` camera bounds around Germany. */
+export const GERMANY_MAX_BOUNDS = [
+  [4.8, 46.6],
+  [16.0, 55.6],
+] as const;
+
+export const GERMANY_MIN_ZOOM = 5.2;
+
 export const POLYGON_FLAG_REASONS = [
   'implausible',
   'already_unsealed',
@@ -95,6 +103,7 @@ export const CONTENT_REPORT_TARGET_TYPES = [
   'polygon',
   'photo',
   'comment',
+  'chat_message',
 ] as const;
 
 export type ContentReportTargetType =
@@ -111,11 +120,118 @@ export const CONTENT_REPORT_REASONS = [
 
 export type ContentReportReason = (typeof CONTENT_REPORT_REASONS)[number];
 
+export const SPACE_TYPES = ['public', 'private'] as const;
+
+export type SpaceType = (typeof SPACE_TYPES)[number];
+
+/** Stored values also include 'unknown' for ground that was never classified. */
+export const STORED_SPACE_TYPES = ['public', 'private', 'unknown'] as const;
+
+export type StoredSpaceType = (typeof STORED_SPACE_TYPES)[number];
+
+/** 'unknown' selects areas that predate the classification. */
+export const SPACE_FILTERS = ['all', 'private', 'public', 'unknown'] as const;
+
+export type SpaceFilter = (typeof SPACE_FILTERS)[number];
+
+export const SPACE_VERIFICATION_STATUSES = [
+  'gis_verified',
+  'user_override',
+  'admin_override',
+  'unverified',
+] as const;
+
+export type SpaceVerification = (typeof SPACE_VERIFICATION_STATUSES)[number];
+
+export const SPACE_VERIFICATION_SOURCES = [
+  'alkis',
+  'osm_local',
+  'osm_overpass',
+] as const;
+
+export type SpaceVerificationSource =
+  (typeof SPACE_VERIFICATION_SOURCES)[number];
+
+export const SPACE_REFERENCE_TIERS = [
+  'explicit_private',
+  'public',
+  'landuse_private',
+] as const;
+
+export type SpaceReferenceTier = (typeof SPACE_REFERENCE_TIERS)[number];
+
+export const SPACE_CLASSIFICATION_THRESHOLDS = {
+  PRIVATE_PROPOSAL_MIN_RATIO: 0.75,
+  PUBLIC_MIN_RATIO: 0.15,
+  LOCAL_SHORT_CIRCUIT_COVERAGE: 0.85,
+} as const;
+
+/** Bump when terms or licence scope change; older acceptances must be renewed. */
+export const CURRENT_TERMS_VERSION = 2;
+
+export const FEED_LIMITS = {
+  DEFAULT_LIMIT: 15,
+  MAX_LIMIT: 40,
+  MAX_AGE_DAYS: 180,
+  /** Largest map section the feed can be narrowed to. */
+  MAX_BBOX_SPAN_DEG: 3,
+  /** A narrowed feed never covers less than this, so it stays "nearby". */
+  MIN_NEAR_SPAN_DEG: 0.3,
+  /** Sections are widened to this grid before they are sent (data minimisation). */
+  BBOX_GRID_DEG: 0.05,
+} as const;
+
+/** What put an area into the feed at its position. */
+export const FEED_ACTIVITIES = ['created', 'in_progress', 'finished'] as const;
+
+export type FeedActivity = (typeof FEED_ACTIVITIES)[number];
+
+/** A public call for help on private ground ends by itself after this time. */
+export const HELP_WANTED_DAYS = 90;
+
+export const SPACE_ZONE_LIMITS = {
+  MIN_ZOOM: 15,
+  MAX_BBOX_SPAN_DEG: 0.06,
+  MAX_FEATURES: 1_500,
+} as const;
+
+export const SPACE_ZONE_KINDS = ['private', 'public'] as const;
+
+export type SpaceZoneKind = (typeof SPACE_ZONE_KINDS)[number];
+
+export const FEED_ORIGIN_FILTERS = ['all', 'citizen'] as const;
+
+export type FeedOriginFilter = (typeof FEED_ORIGIN_FILTERS)[number];
+
+export const CHAT_LIMITS = {
+  MAX_MESSAGE_LENGTH: 2_000,
+  MESSAGES_PAGE_LIMIT: 50,
+  PREVIEW_MAX_LENGTH: 140,
+  COMMENT_EXCERPT_LENGTH: 240,
+  DEFAULT_RETENTION_DAYS: 365,
+  EMPTY_THREAD_RETENTION_DAYS: 7,
+  /** An unanswered first message is erased after this time. */
+  REQUEST_RETENTION_DAYS: 30,
+  /** New people one account may try to contact per calendar day. */
+  MAX_CONTACT_ATTEMPTS_PER_DAY: 20,
+} as const;
+
+/**
+ * Until the recipient answers, a conversation is a request: the person who
+ * started it may send one message only.
+ */
+export const CHAT_REQUEST_STATES = ['none', 'incoming', 'outgoing'] as const;
+
+export type ChatRequestState = (typeof CHAT_REQUEST_STATES)[number];
+
 export const POLYGON_FILTERS = [
   'all',
   'new',
+  'in_progress',
+  'finished',
   'established',
   'needs_review',
+  'help_wanted',
 ] as const;
 
 export type PolygonFilter = (typeof POLYGON_FILTERS)[number];

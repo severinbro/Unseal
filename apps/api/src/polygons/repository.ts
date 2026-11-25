@@ -7,17 +7,24 @@ import path from 'node:path';
 import {
   AUTHOR_ACTIVITY,
   ApiError,
+  FEED_LIMITS,
   GEOMETRY_LIMITS,
+  HELP_WANTED_DAYS,
   IMPORT_LIMITS,
   LAND_COVER_MAX_OVERLAP_RATIO,
+  PHOTO_LIMITS,
   POLYGON_ORIGINS,
   POLYGON_STATUSES,
+  STORED_SPACE_TYPES,
   SURFACE_TYPES,
+  SPACE_VERIFICATION_SOURCES,
+  SPACE_VERIFICATION_STATUSES,
   TRUST_AND_MODERATION_LIMITS,
   computeMunicipalityNormalizedScore,
   type BboxBounds,
   type CreatePolygonRequest,
   type ExportPolygonFeature,
+  type FeedActivity,
   type FlagPolygonResponse,
   type ImportPolygonsResponse,
   type LandCoverCategory,
@@ -28,15 +35,32 @@ import {
   type PolygonOrigin,
   type PolygonStatus,
   type PublicStatsResponse,
+  type SpaceBreakdown,
+  type SpaceFilter,
+  type SpaceType,
+  type SpaceVerification,
+  type SpaceVerificationSource,
+  type SpaceZoneCollection,
+  type StoredSpaceType,
   type SurfaceType,
 } from '@openunseal/shared';
 
 import { lockUserForWrite } from '../db/integrity.js';
+import { decodeTimeCursor, encodeTimeCursor } from '../util/timeCursor.js';
 import {
   recordTelemetryBestEffort,
   recordTelemetryCounter,
 } from '../db/telemetry.js';
 import type { ExtractedImportDataset } from './gpkgReader.js';
+import {
+  type SpaceClassification,
+  type SpaceClassifier,
+} from './spaceClassifier.js';
+import {
+  OSM_ZONE_ATTRIBUTION,
+  listZoneAttributions,
+  overlayToFeatures,
+} from './spaceZones.js';
 
 import type pg from 'pg';
 
@@ -55,6 +79,50 @@ export interface CreatePolygonParams {
   minAreaM2?: number | undefined;
   maxAreaM2?: number | undefined;
   requireJurisdiction?: 'when_seeded' | 'strict' | 'off' | undefined;
+  spaceType?: SpaceType | undefined;
+  openForPublicAccess?: boolean | undefined;
+  allowChatContact?: boolean | undefined;
+  helpWanted?: boolean | undefined;
+  entitlementConfirmed?: boolean | undefined;
+  classifier?: SpaceClassifier | undefined;
+}
+
+export type ClassifyGeometryParams = Pick<
+  CreatePolygonParams,
+  'userId' | 'geometry' | 'minAreaM2' | 'maxAreaM2' | 'requireJurisdiction'
+> & { classifier: SpaceClassifier };
+
+interface PreparedCandidate {
+  finalGeoJson: string;
+  areaM2: number;
+  wasAutoClipped: boolean;
+  clippedAreaM2: number;
+  matchedMuniId: number | null;
+}
+
+export interface SetPolygonSpaceTypeParams {
+  polygonId: string;
+  adminUserId: string | null;
+  spaceType: SpaceType;
+}
+
+export interface FeedParams {
+  viewerUserId: string | null;
+  limit: number;
+  cursor?: string | undefined;
+  filter: PolygonFilter;
+  spaceFilter: SpaceFilter;
+  citizenOnly: boolean;
+  /** Narrows the feed to a map section. */
+  bbox?: BboxBounds | undefined;
+  /** Narrows the feed to one municipality (AGS). */
+  ags?: string | undefined;
+}
+
+export interface FeedEntry {
+  feature: PolygonFeature;
+  activity: FeedActivity;
+  activityAt: string;
 }
 
 export interface ListPolygonsByBboxParams {
@@ -62,6 +130,7 @@ export interface ListPolygonsByBboxParams {
   viewerUserId: string | null;
   limit?: number | undefined;
   filter?: PolygonFilter | undefined;
+  spaceFilter?: SpaceFilter | undefined;
 }
 
 export interface FlagPolygonParams {
@@ -99,12 +168,18 @@ export interface PatchPolygonParams {
   userId: string;
   surfaceType?: SurfaceType | undefined;
   note?: string | null | undefined;
+  openForPublicAccess?: boolean | undefined;
+  allowChatContact?: boolean | undefined;
+  helpWanted?: boolean | undefined;
+  entitlementConfirmed?: boolean | undefined;
 }
 
 export interface SetPolygonStatusParams {
   polygonId: string;
-  adminUserId: string;
+  actorUserId: string;
+  actorIsAdmin: boolean;
   status: PolygonStatus;
+  entitlementConfirmed?: boolean | undefined;
 }
 
 export interface ImportAttributionMetadata {
@@ -173,6 +248,18 @@ interface PolygonQueryRow {
   score: number;
   my_vote: number;
   is_author: boolean;
+  space_type: string;
+  space_verification: string;
+  open_for_public_access: boolean;
+  can_message_author: boolean;
+  is_privileged_viewer: boolean;
+  detected_space_type: string;
+  private_overlap_ratio: number | null;
+  space_verification_source: string | null;
+  allow_chat_contact: boolean;
+  help_wanted: boolean;
+  help_wanted_until: Date | null;
+  entitlement_confirmed: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -197,6 +284,7 @@ interface ExportPolygonRow {
   upvotes: number;
   downvotes: number;
   score: number;
+  space_type: string;
   created_at: Date;
   updated_at: Date;
   cursor_created_at: string;
@@ -220,6 +308,10 @@ interface LockedPolygonRow {
   user_id: string | null;
   surface_type: string;
   note: string | null;
+  space_type: string;
+  open_for_public_access: boolean;
+  allow_chat_contact: boolean;
+  help_wanted_active: boolean;
 }
 
 const DEFAULT_EXPORT_BATCH_SIZE = 1_000;
@@ -248,6 +340,93 @@ function coercePolygonOrigin(raw: string): PolygonOrigin {
   return (POLYGON_ORIGINS as readonly string[]).includes(raw)
     ? (raw as PolygonOrigin)
     : 'citizen';
+}
+
+function oneOf<T extends string>(
+  allowed: readonly T[],
+  raw: string | null,
+  fallback: T,
+): T {
+  return raw !== null && (allowed as readonly string[]).includes(raw)
+    ? (raw as T)
+    : fallback;
+}
+
+/** Consequential statements about private ground need an explicit confirmation. */
+function assertEntitlement(
+  wantsOwnerFlags: boolean,
+  entitlementConfirmed: boolean | undefined,
+): void {
+  if (wantsOwnerFlags && entitlementConfirmed !== true) {
+    throw new ApiError(
+      422,
+      'ENTITLEMENT_REQUIRED',
+      'Please confirm that you own this parcel or are entitled to make this statement.',
+    );
+  }
+}
+
+/** A call for help only counts on private ground that is not unsealed yet. */
+const HELP_WANTED_SQL = `(
+    p.space_type = 'private'
+    AND p.status <> 'finished'
+    AND p.help_wanted_until IS NOT NULL
+    AND p.help_wanted_until > NOW()
+  )`;
+
+const FILTER_SQL = (filterParam: string, spaceParam: string): string => `(
+    ${filterParam}::text = 'all'
+    OR (${filterParam}::text = 'new' AND p.created_at > NOW() - INTERVAL '7 days')
+    OR (${filterParam}::text = 'established' AND p.created_at <= NOW() - INTERVAL '7 days')
+    OR (${filterParam}::text = 'in_progress' AND p.status = 'in_progress')
+    OR (${filterParam}::text = 'finished' AND p.status = 'finished')
+    OR (${filterParam}::text = 'help_wanted' AND ${HELP_WANTED_SQL})
+    OR (${filterParam}::text = 'needs_review' AND (
+      p.space_verification = 'user_override'
+      OR (p.status = 'proposed' AND p.score = 0 AND p.upvotes = 0 AND p.downvotes = 0)
+    ))
+  )
+  AND (${spaceParam}::text = 'all' OR p.space_type = ${spaceParam}::text)`;
+
+/**
+ * `can_message_author` is computed per viewer so that neither the account-wide
+ * opt-in nor the per-parcel opt-in becomes public information.
+ */
+function buildSpaceColumnsSql(viewerParam: string): string {
+  return `p.space_type,
+       p.space_verification,
+       p.open_for_public_access,
+       p.detected_space_type,
+       p.private_overlap_ratio,
+       p.space_verification_source,
+       p.allow_chat_contact,
+       ${HELP_WANTED_SQL} AS help_wanted,
+       p.help_wanted_until,
+       (p.entitlement_confirmed_at IS NOT NULL) AS entitlement_confirmed,
+       COALESCE(
+         ${viewerParam}::uuid IS NOT NULL AND (
+           p.user_id = ${viewerParam}::uuid
+           OR EXISTS (
+             SELECT 1 FROM users u_priv
+             WHERE u_priv.id = ${viewerParam}::uuid AND u_priv.role = 'admin'
+           )
+         ),
+         FALSE
+       ) AS is_privileged_viewer,
+       COALESCE(
+         ${viewerParam}::uuid IS NOT NULL
+         AND u.id IS NOT NULL
+         AND u.id <> ${viewerParam}::uuid
+         AND u.email_verified_at IS NOT NULL
+         AND (u.allow_direct_messages OR (p.space_type = 'private' AND p.allow_chat_contact))
+         AND NOT EXISTS (
+           SELECT 1 FROM chat_threads ct
+           WHERE ct.user_low_id = LEAST(u.id, ${viewerParam}::uuid)
+             AND ct.user_high_id = GREATEST(u.id, ${viewerParam}::uuid)
+             AND (ct.blocked_by_low OR ct.blocked_by_high)
+         ),
+         FALSE
+       ) AS can_message_author,`;
 }
 
 function classifyPolygonRejectionDimension(err: unknown): string | null {
@@ -387,6 +566,39 @@ function mapRowToPolygonFeature(row: PolygonQueryRow): PolygonFeature {
       score: row.score,
       myVote: coerceVoteValue(row.my_vote),
       isAuthor: Boolean(row.is_author),
+      spaceType: oneOf<StoredSpaceType>(STORED_SPACE_TYPES, row.space_type, 'unknown'),
+      spaceVerification: oneOf<SpaceVerification>(
+        SPACE_VERIFICATION_STATUSES,
+        row.space_verification,
+        'unverified',
+      ),
+      openForPublicAccess: Boolean(row.open_for_public_access),
+      helpWanted: Boolean(row.help_wanted),
+      canMessageAuthor: Boolean(row.can_message_author),
+      detectedSpaceType: row.is_privileged_viewer
+        ? oneOf<StoredSpaceType>(STORED_SPACE_TYPES, row.detected_space_type, 'unknown')
+        : null,
+      privateOverlapRatio: row.is_privileged_viewer
+        ? row.private_overlap_ratio
+        : null,
+      spaceVerificationSource:
+        row.is_privileged_viewer && row.space_verification_source !== null
+          ? oneOf<SpaceVerificationSource>(
+              SPACE_VERIFICATION_SOURCES,
+              row.space_verification_source,
+              'osm_local',
+            )
+          : null,
+      allowChatContact: row.is_privileged_viewer
+        ? Boolean(row.allow_chat_contact)
+        : null,
+      helpWantedUntil:
+        row.is_privileged_viewer && row.help_wanted && row.help_wanted_until
+          ? row.help_wanted_until.toISOString()
+          : null,
+      entitlementConfirmed: row.is_privileged_viewer
+        ? Boolean(row.entitlement_confirmed)
+        : null,
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
     },
@@ -429,6 +641,7 @@ function mapExportRowToExportFeature(row: ExportPolygonRow): ExportPolygonFeatur
       upvotes: row.upvotes,
       downvotes: row.downvotes,
       score: row.score,
+      spaceType: oneOf<StoredSpaceType>(STORED_SPACE_TYPES, row.space_type, 'unknown'),
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
     },
@@ -505,6 +718,19 @@ async function querySinglePolygonById(
   viewerUserId: string | null,
   trust: PolygonTrustConfig,
 ): Promise<PolygonFeature | null> {
+  return (await queryPolygonsByIds(db, [polygonId], viewerUserId, trust))[0] ?? null;
+}
+
+/** One query for any number of areas; the order of the result is unspecified. */
+async function queryPolygonsByIds(
+  db: pg.Pool | pg.PoolClient,
+  polygonIds: readonly string[],
+  viewerUserId: string | null,
+  trust: PolygonTrustConfig,
+): Promise<PolygonFeature[]> {
+  if (polygonIds.length === 0) {
+    return [];
+  }
   const res = await db.query<PolygonQueryRow>(
     `SELECT
        p.id,
@@ -556,6 +782,7 @@ async function querySinglePolygonById(
          WHEN $2::uuid IS NOT NULL AND p.user_id = $2::uuid THEN TRUE
          ELSE FALSE
        END AS is_author,
+       ${buildSpaceColumnsSql('$2')}
        p.created_at,
        p.updated_at
      FROM polygons p
@@ -565,13 +792,10 @@ async function querySinglePolygonById(
        ON v.polygon_id = p.id
       AND $2::uuid IS NOT NULL
       AND v.user_id = $2::uuid
-     WHERE p.id = $1
-     LIMIT 1`,
-    [polygonId, viewerUserId, trust.minAccountDays, trust.minCleanPolygons],
+     WHERE p.id = ANY($1::uuid[])`,
+    [polygonIds, viewerUserId, trust.minAccountDays, trust.minCleanPolygons],
   );
-
-  const row = res.rows[0];
-  return row ? mapRowToPolygonFeature(row) : null;
+  return res.rows.map((row) => mapRowToPolygonFeature(row));
 }
 
 export class PolygonRepository {
@@ -596,58 +820,21 @@ export class PolygonRepository {
     };
   }
 
-  public async create(params: CreatePolygonParams): Promise<PolygonFeature> {
+  /** Validates, clips and locates a candidate; `enforceCluster` is for real submissions. */
+  private async prepareCandidate(
+    client: pg.PoolClient,
+    params: Pick<
+      CreatePolygonParams,
+      'userId' | 'geometry' | 'minAreaM2' | 'maxAreaM2' | 'requireJurisdiction'
+    >,
+    enforceCluster: boolean,
+  ): Promise<PreparedCandidate> {
     const minAreaM2 = params.minAreaM2 ?? GEOMETRY_LIMITS.MIN_AREA_M2;
     const maxAreaM2 = params.maxAreaM2 ?? GEOMETRY_LIMITS.MAX_AREA_M2;
     const requireJurisdiction = params.requireJurisdiction ?? 'when_seeded';
-    const origin: PolygonOrigin = params.origin ?? 'citizen';
-    const normalizedNote = normalizeNote(params.note);
     const geoJsonInput = JSON.stringify(params.geometry);
     let wasAutoClipped = false;
     let clippedAreaM2 = 0;
-
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-
-      // Global lock order: lock users row BEFORE touching polygons or polygon_creations
-      await lockUserForWrite(client, params.userId);
-      await client.query(
-        `UPDATE users u
-         SET trusted_at = COALESCE(u.trusted_at, NOW())
-         WHERE u.id = $1
-           AND u.trusted_at IS NULL
-           AND (
-             u.role = 'admin'
-             OR (
-               u.created_at <= NOW() - make_interval(days => $2::int)
-               AND (
-                 SELECT COUNT(*)
-                 FROM polygons p_clean
-                 WHERE p_clean.user_id = u.id
-                   AND p_clean.score > 0
-               ) >= $3::int
-             )
-           )`,
-        [params.userId, this.trust.minAccountDays, this.trust.minCleanPolygons],
-      );
-
-      const quotaRes = await client.query<{ count: number }>(
-        `SELECT COUNT(*)::int AS count
-         FROM polygon_creations
-         WHERE user_id = $1
-           AND created_at > NOW() - INTERVAL '24 hours'`,
-        [params.userId],
-      );
-      const recentCount = quotaRes.rows[0]?.count ?? 0;
-      if (recentCount >= params.maxDailyPolygonsPerUser) {
-        throw new ApiError(
-          429,
-          'RATE_LIMITED',
-          `Daily limit of ${params.maxDailyPolygonsPerUser} polygon proposals per 24 hours reached.`,
-          { maxDailyPolygonsPerUser: params.maxDailyPolygonsPerUser },
-        );
-      }
 
       let validationRow: GeometryValidationRow | undefined;
       try {
@@ -1030,8 +1217,9 @@ export class PolygonRepository {
       const userClusterCount = clusterRes.rows[0]?.user_cluster_count ?? 0;
       const globalClusterCount = clusterRes.rows[0]?.global_cluster_count ?? 0;
       if (
-        userClusterCount >= GEOMETRY_LIMITS.CLUSTER_MAX_PER_USER ||
-        globalClusterCount >= GEOMETRY_LIMITS.CLUSTER_MAX_GLOBAL
+        enforceCluster &&
+        (userClusterCount >= GEOMETRY_LIMITS.CLUSTER_MAX_PER_USER ||
+          globalClusterCount >= GEOMETRY_LIMITS.CLUSTER_MAX_GLOBAL)
       ) {
         throw new ApiError(
           429,
@@ -1124,6 +1312,169 @@ export class PolygonRepository {
         }
       }
 
+      return {
+        finalGeoJson,
+        areaM2,
+        wasAutoClipped,
+        clippedAreaM2,
+        matchedMuniId,
+      };
+  }
+
+  private async withRollback<T>(
+    run: (client: pg.PoolClient) => Promise<T>,
+  ): Promise<T> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await run(client);
+      await client.query('ROLLBACK');
+      return result;
+    } catch (err: unknown) {
+      await rollbackPreservingError(client, err);
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  public async classifyGeometry(
+    params: ClassifyGeometryParams,
+  ): Promise<
+    SpaceClassification & {
+      wasAutoClipped: boolean;
+      overlay: SpaceZoneCollection | null;
+    }
+  > {
+    const prepared = await this.withRollback((client) =>
+      this.prepareCandidate(client, params, false),
+    );
+    const upstream = await params.classifier.prefetch(params.geometry);
+    const { classification, overlay } = await params.classifier.classifyWithOverlay(
+      this.pool,
+      prepared.finalGeoJson,
+      upstream,
+    );
+    const features =
+      classification.detectedSpaceType === 'unknown'
+        ? []
+        : overlayToFeatures(overlay);
+    return {
+      ...classification,
+      wasAutoClipped: prepared.wasAutoClipped,
+      overlay:
+        features.length === 0
+          ? null
+          : {
+              type: 'FeatureCollection',
+              features,
+              // The shown parts derive from these sources (ODbL-1.0 § 4.3).
+              attributions: [
+                ...(classification.source === 'osm_overpass'
+                  ? [OSM_ZONE_ATTRIBUTION]
+                  : []),
+                ...(await listZoneAttributions(this.pool, prepared.finalGeoJson, {
+                  includeLandCover: true,
+                })),
+              ],
+              available: true,
+              truncated: false,
+            },
+    };
+  }
+
+  public async create(params: CreatePolygonParams): Promise<PolygonFeature> {
+    const origin: PolygonOrigin = params.origin ?? 'citizen';
+    const normalizedNote = normalizeNote(params.note);
+    let wasAutoClipped = false;
+    let clippedAreaM2 = 0;
+
+    // Network access happens before BEGIN, and only for geometry that is valid.
+    let upstreamFeatures: Awaited<ReturnType<SpaceClassifier['prefetch']>> = null;
+    if (params.classifier?.hasUpstream) {
+      await this.withRollback((client) =>
+        this.prepareCandidate(client, params, false),
+      );
+      upstreamFeatures = await params.classifier.prefetch(params.geometry);
+    }
+
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Global lock order: lock users row BEFORE touching polygons or polygon_creations
+      await lockUserForWrite(client, params.userId);
+      await client.query(
+        `UPDATE users u
+         SET trusted_at = COALESCE(u.trusted_at, NOW())
+         WHERE u.id = $1
+           AND u.trusted_at IS NULL
+           AND (
+             u.role = 'admin'
+             OR (
+               u.created_at <= NOW() - make_interval(days => $2::int)
+               AND (
+                 SELECT COUNT(*)
+                 FROM polygons p_clean
+                 WHERE p_clean.user_id = u.id
+                   AND p_clean.score > 0
+               ) >= $3::int
+             )
+           )`,
+        [params.userId, this.trust.minAccountDays, this.trust.minCleanPolygons],
+      );
+
+      const quotaRes = await client.query<{ count: number }>(
+        `SELECT COUNT(*)::int AS count
+         FROM polygon_creations
+         WHERE user_id = $1
+           AND created_at > NOW() - INTERVAL '24 hours'`,
+        [params.userId],
+      );
+      const recentCount = quotaRes.rows[0]?.count ?? 0;
+      if (recentCount >= params.maxDailyPolygonsPerUser) {
+        throw new ApiError(
+          429,
+          'RATE_LIMITED',
+          `Daily limit of ${params.maxDailyPolygonsPerUser} polygon proposals per 24 hours reached.`,
+          { maxDailyPolygonsPerUser: params.maxDailyPolygonsPerUser },
+        );
+      }
+
+      const {
+        finalGeoJson,
+        areaM2,
+        wasAutoClipped: clippedFlag,
+        clippedAreaM2: clippedArea,
+        matchedMuniId,
+      } = await this.prepareCandidate(client, params, true);
+      wasAutoClipped = clippedFlag;
+      clippedAreaM2 = clippedArea;
+
+      const classification: SpaceClassification | null =
+        params.classifier !== undefined
+          ? await params.classifier.classify(client, finalGeoJson, upstreamFeatures)
+          : null;
+      const spaceType: StoredSpaceType =
+        params.spaceType ?? 'unknown';
+      const spaceVerification: SpaceVerification =
+        classification === null ||
+        params.spaceType === undefined ||
+        classification.detectedSpaceType === 'unknown'
+          ? 'unverified'
+          : params.spaceType === classification.proposedSpaceType
+            ? 'gis_verified'
+            : 'user_override';
+      const openForPublicAccess =
+        spaceType === 'private' && params.openForPublicAccess === true;
+      const allowChatContact =
+        spaceType === 'private' && params.allowChatContact === true;
+      const helpWanted = spaceType === 'private' && params.helpWanted === true;
+      assertEntitlement(
+        openForPublicAccess || allowChatContact || helpWanted,
+        params.entitlementConfirmed,
+      );
+
       const insertRes = await client.query<{ id: string }>(
         `WITH prepared AS (
            SELECT ST_ForcePolygonCCW(ST_SetSRID(ST_GeomFromGeoJSON($2), 4326)) AS geom
@@ -1137,7 +1488,16 @@ export class PolygonRepository {
            municipality_id,
            origin,
            was_auto_clipped,
-           clipped_area_m2
+           clipped_area_m2,
+           space_type,
+           detected_space_type,
+           private_overlap_ratio,
+           space_verification,
+           space_verification_source,
+           open_for_public_access,
+           allow_chat_contact,
+           entitlement_confirmed_at,
+           help_wanted_until
          )
          SELECT
            $1,
@@ -1148,7 +1508,16 @@ export class PolygonRepository {
            $6,
            $7,
            $8,
-           $9
+           $9,
+           $10,
+           $11,
+           $12,
+           $13,
+           $14,
+           $15,
+           $16,
+           CASE WHEN $17::boolean THEN NOW() ELSE NULL END,
+           CASE WHEN $18::boolean THEN NOW() + make_interval(days => $19::int) ELSE NULL END
          FROM prepared
          RETURNING id`,
         [
@@ -1161,6 +1530,16 @@ export class PolygonRepository {
           origin,
           wasAutoClipped,
           clippedAreaM2,
+          spaceType,
+          classification?.detectedSpaceType ?? 'unknown',
+          classification?.privateOverlapRatio ?? null,
+          spaceVerification,
+          classification?.source ?? null,
+          openForPublicAccess,
+          allowChatContact,
+          openForPublicAccess || allowChatContact || helpWanted,
+          helpWanted,
+          HELP_WANTED_DAYS,
         ],
       );
 
@@ -1298,6 +1677,7 @@ export class PolygonRepository {
              WHEN $5::uuid IS NOT NULL AND p.user_id = $5::uuid THEN TRUE
              ELSE FALSE
            END AS is_author,
+           ${buildSpaceColumnsSql('$5')}
            p.created_at,
            p.updated_at
          FROM polygons p
@@ -1311,12 +1691,7 @@ export class PolygonRepository {
            p.geom,
            ST_MakeEnvelope($1, $2, $3, $4, 4326)
          )
-           AND (
-             $9::text = 'all'
-             OR ($9::text = 'new' AND p.created_at > NOW() - INTERVAL '7 days')
-             OR ($9::text = 'established' AND p.created_at <= NOW() - INTERVAL '7 days')
-             OR ($9::text = 'needs_review' AND p.status = 'proposed' AND p.score = 0 AND p.upvotes = 0 AND p.downvotes = 0)
-           )
+           AND ${FILTER_SQL('$9', '$10')}
          ORDER BY p.score DESC, p.created_at DESC, p.id ASC
          LIMIT $6
        ),
@@ -1362,6 +1737,18 @@ export class PolygonRepository {
          bp.score,
          bp.my_vote,
          bp.is_author,
+         bp.space_type,
+         bp.space_verification,
+         bp.open_for_public_access,
+         bp.detected_space_type,
+         bp.private_overlap_ratio,
+         bp.space_verification_source,
+         bp.allow_chat_contact,
+         bp.help_wanted,
+         bp.help_wanted_until,
+         bp.entitlement_confirmed,
+         bp.is_privileged_viewer,
+         bp.can_message_author,
          bp.created_at,
          bp.updated_at
        FROM bbox_polys bp
@@ -1377,6 +1764,7 @@ export class PolygonRepository {
         this.trust.minAccountDays,
         this.trust.minCleanPolygons,
         filter,
+        params.spaceFilter ?? 'all',
       ],
     );
 
@@ -1435,7 +1823,9 @@ export class PolygonRepository {
       await lockUserForWrite(client, params.userId);
 
       const lockRes = await client.query<LockedPolygonRow>(
-        `SELECT id, user_id, surface_type, note
+        `SELECT id, user_id, surface_type, note, space_type,
+                open_for_public_access, allow_chat_contact,
+                (help_wanted_until IS NOT NULL AND help_wanted_until > NOW()) AS help_wanted_active
          FROM polygons
          WHERE id = $1
          FOR UPDATE`,
@@ -1457,14 +1847,48 @@ export class PolygonRepository {
       const nextNote =
         params.note === undefined ? existing.note : normalizeNote(params.note);
 
+      const isPrivate = existing.space_type === 'private';
+      const nextOpen =
+        isPrivate && (params.openForPublicAccess ?? existing.open_for_public_access);
+      const nextContact =
+        isPrivate && (params.allowChatContact ?? existing.allow_chat_contact);
+      // true renews the 90 days, false ends the call, undefined leaves it alone.
+      const helpChange =
+        params.helpWanted === undefined ? null : isPrivate && params.helpWanted;
+      const enablesOwnerFlag =
+        (nextOpen && !existing.open_for_public_access) ||
+        (nextContact && !existing.allow_chat_contact) ||
+        (helpChange === true && !existing.help_wanted_active);
+      assertEntitlement(enablesOwnerFlag, params.entitlementConfirmed);
+
       await client.query(
         `UPDATE polygons
          SET
            surface_type = $2,
            note = $3,
+           open_for_public_access = $4,
+           allow_chat_contact = $5,
+           entitlement_confirmed_at = CASE
+             WHEN $6::boolean THEN NOW()
+             ELSE entitlement_confirmed_at
+           END,
+           help_wanted_until = CASE
+             WHEN $7::boolean IS NULL THEN help_wanted_until
+             WHEN $7::boolean THEN NOW() + make_interval(days => $8::int)
+             ELSE NULL
+           END,
            updated_at = NOW()
          WHERE id = $1`,
-        [params.polygonId, nextSurfaceType, nextNote],
+        [
+          params.polygonId,
+          nextSurfaceType,
+          nextNote,
+          nextOpen,
+          nextContact,
+          enablesOwnerFlag,
+          helpChange,
+          HELP_WANTED_DAYS,
+        ],
       );
 
       const updated = await querySinglePolygonById(
@@ -1491,14 +1915,56 @@ export class PolygonRepository {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      await lockUserForWrite(client, params.adminUserId);
+      await lockUserForWrite(client, params.actorUserId);
 
-      const lockRes = await client.query<{ id: string }>(
-        'SELECT id FROM polygons WHERE id = $1 FOR UPDATE',
+      const lockRes = await client.query<{
+        user_id: string | null;
+        space_type: string;
+        entitled: boolean;
+      }>(
+        `SELECT user_id, space_type, entitlement_confirmed_at IS NOT NULL AS entitled
+         FROM polygons WHERE id = $1 FOR UPDATE`,
         [params.polygonId],
       );
-      if (lockRes.rowCount === 0) {
+      let confirmsEntitlement = false;
+      const existing = lockRes.rows[0];
+      if (!existing) {
         throw new ApiError(404, 'NOT_FOUND', 'Polygon not found.');
+      }
+      if (!params.actorIsAdmin) {
+        if (existing.space_type !== 'private') {
+          throw new ApiError(
+            403,
+            'FORBIDDEN_ADMIN_ONLY',
+            'Administrator privileges are required for this action.',
+          );
+        }
+        if (existing.user_id === null || existing.user_id !== params.actorUserId) {
+          throw new ApiError(
+            403,
+            'FORBIDDEN_NOT_AUTHOR',
+            'Only the author may change the status of a private area.',
+          );
+        }
+        if (params.status !== 'proposed') {
+          // Reporting progress is a statement about somebody's ground.
+          confirmsEntitlement = !existing.entitled;
+          assertEntitlement(confirmsEntitlement, params.entitlementConfirmed);
+          const photoRes = await client.query(
+            `SELECT 1 FROM polygon_photos
+             WHERE polygon_id = $1
+               AND NOT (credibility_score <= $2 AND fake_votes > real_votes)
+             LIMIT 1`,
+            [params.polygonId, PHOTO_LIMITS.FAKE_BLUR_SCORE_THRESHOLD],
+          );
+          if (photoRes.rowCount === 0) {
+            throw new ApiError(
+              422,
+              'PHOTO_REQUIRED_FOR_STATUS',
+              'At least one credible photo is required for this status.',
+            );
+          }
+        }
       }
 
       await client.query(
@@ -1513,15 +1979,29 @@ export class PolygonRepository {
              WHEN $2 = 'finished' THEN $3::uuid
              ELSE NULL
            END,
+           -- Progress moves the area up in the feed; a reset puts it back.
+           feed_at = CASE
+             WHEN $2 = 'proposed' THEN created_at
+             WHEN status IS DISTINCT FROM $2 THEN NOW()
+             ELSE feed_at
+           END,
+           help_wanted_until = CASE
+             WHEN $2 = 'finished' THEN NULL
+             ELSE help_wanted_until
+           END,
+           entitlement_confirmed_at = CASE
+             WHEN $4::boolean THEN NOW()
+             ELSE entitlement_confirmed_at
+           END,
            updated_at = NOW()
          WHERE id = $1`,
-        [params.polygonId, params.status, params.adminUserId],
+        [params.polygonId, params.status, params.actorUserId, confirmsEntitlement],
       );
 
       const updated = await querySinglePolygonById(
         client,
         params.polygonId,
-        params.adminUserId,
+        params.actorUserId,
         this.trust,
       );
       if (!updated) {
@@ -1536,6 +2016,144 @@ export class PolygonRepository {
     } finally {
       client.release();
     }
+  }
+
+  public async setSpaceTypeAsAdmin(
+    params: SetPolygonSpaceTypeParams,
+  ): Promise<PolygonFeature> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      if (params.adminUserId !== null) {
+        await lockUserForWrite(client, params.adminUserId);
+      }
+      const updatedRes = await client.query(
+        `UPDATE polygons p
+         SET space_type = $2,
+             space_verification = 'admin_override',
+             open_for_public_access = $2 = 'private' AND open_for_public_access,
+             allow_chat_contact = $2 = 'private' AND allow_chat_contact,
+             help_wanted_until = CASE WHEN $2 = 'private' THEN help_wanted_until ELSE NULL END,
+             feed_at = CASE WHEN reset.applies THEN p.created_at ELSE p.feed_at END,
+             status = CASE WHEN reset.applies THEN 'proposed' ELSE p.status END,
+             finished_at = CASE WHEN reset.applies THEN NULL ELSE p.finished_at END,
+             finished_by = CASE WHEN reset.applies THEN NULL ELSE p.finished_by END,
+             updated_at = NOW()
+         FROM (
+           SELECT q.id, (
+             q.space_type = 'private' AND $2 = 'public'
+             AND NOT EXISTS (
+               SELECT 1 FROM users fu WHERE fu.id = q.finished_by AND fu.role = 'admin'
+             )
+           ) AS applies
+           FROM polygons q WHERE q.id = $1 FOR UPDATE
+         ) reset
+         WHERE p.id = reset.id`,
+        [params.polygonId, params.spaceType],
+      );
+      if (updatedRes.rowCount === 0) {
+        throw new ApiError(404, 'NOT_FOUND', 'Polygon not found.');
+      }
+      const updated = await querySinglePolygonById(
+        client,
+        params.polygonId,
+        params.adminUserId,
+        this.trust,
+      );
+      if (!updated) {
+        throw new ApiError(404, 'NOT_FOUND', 'Polygon not found.');
+      }
+      await client.query('COMMIT');
+      return updated;
+    } catch (err: unknown) {
+      await rollbackPreservingError(client, err);
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Latest activity first, limited to recent entries (see FEED_LIMITS). A page
+   * costs two queries however many entries it holds.
+   */
+  public async listFeed(
+    params: FeedParams,
+  ): Promise<{ entries: FeedEntry[]; nextCursor: string | null }> {
+    const cursor =
+      params.cursor === undefined ? null : decodeTimeCursor(params.cursor);
+    const res = await this.pool.query<{
+      id: string;
+      cursor_ts: string;
+      feed_at: Date;
+      created_at: Date;
+      status: string;
+    }>(
+      `SELECT p.id, p.feed_at::text AS cursor_ts, p.feed_at, p.created_at, p.status
+       FROM polygons p
+       WHERE p.feed_at > NOW() - make_interval(days => $1::int)
+         AND ($2::timestamptz IS NULL OR (p.feed_at, p.id) < ($2::timestamptz, $3::uuid))
+         AND ${FILTER_SQL('$4', '$5')}
+         AND (NOT $6::boolean OR p.origin = 'citizen')
+         AND (
+           $8::float8 IS NULL
+           OR p.geom && ST_MakeEnvelope($8::float8, $9::float8, $10::float8, $11::float8, 4326)
+         )
+         AND (
+           $12::text IS NULL
+           OR p.municipality_id IN (SELECT m.id FROM municipalities m WHERE m.ags = $12::text)
+         )
+       ORDER BY p.feed_at DESC, p.id DESC
+       LIMIT $7`,
+      [
+        FEED_LIMITS.MAX_AGE_DAYS,
+        cursor?.timestamp ?? null,
+        cursor?.id ?? null,
+        params.filter,
+        params.spaceFilter,
+        params.citizenOnly,
+        params.limit + 1,
+        params.bbox?.minLng ?? null,
+        params.bbox?.minLat ?? null,
+        params.bbox?.maxLng ?? null,
+        params.bbox?.maxLat ?? null,
+        params.ags ?? null,
+      ],
+    );
+    const page = res.rows.slice(0, params.limit);
+    const byId = new Map(
+      (
+        await queryPolygonsByIds(
+          this.pool,
+          page.map((row) => row.id),
+          params.viewerUserId,
+          this.trust,
+        )
+      ).map((feature) => [feature.id, feature]),
+    );
+    const entries: FeedEntry[] = [];
+    for (const row of page) {
+      const feature = byId.get(row.id);
+      if (feature) {
+        const status = coercePolygonStatus(row.status);
+        entries.push({
+          feature,
+          activity:
+            status === 'proposed' || row.feed_at.getTime() <= row.created_at.getTime()
+              ? 'created'
+              : status,
+          activityAt: row.feed_at.toISOString(),
+        });
+      }
+    }
+    const last = page[page.length - 1];
+    return {
+      entries,
+      nextCursor:
+        res.rows.length > params.limit && last
+          ? encodeTimeCursor(last.cursor_ts, last.id)
+          : null,
+    };
   }
 
   public async flagPolygon(
@@ -1948,7 +2566,9 @@ export class PolygonRepository {
                  area_m2,
                  municipality_id,
                  origin,
-                 import_attribution_id
+                 import_attribution_id,
+                 space_type,
+                 space_verification
                )
                SELECT
                  $1,
@@ -1963,7 +2583,9 @@ export class PolygonRepository {
                    LIMIT 1
                  ),
                  $6,
-                 $7
+                 $7,
+                 COALESCE($8::text, 'unknown'),
+                 CASE WHEN $8::text IS NULL THEN 'unverified' ELSE 'admin_override' END
                FROM prepared`,
               [
                 params.adminUserId,
@@ -1973,6 +2595,7 @@ export class PolygonRepository {
                 part.area_m2,
                 origin,
                 importAttributionId,
+                candidate.spaceType ?? null,
               ],
             );
             importedCount += 1;
@@ -2056,6 +2679,7 @@ export class PolygonRepository {
            ia.waiver_confirmed
          FROM import_attributions ia
          INNER JOIN polygons p ON p.import_attribution_id = ia.id
+         WHERE ia.purpose = 'polygon_import'
          ORDER BY ia.license ASC, ia.attribution_text ASC`,
       );
       await client.query('COMMIT');
@@ -2192,6 +2816,7 @@ export class PolygonRepository {
                p.upvotes,
                p.downvotes,
                p.score,
+               p.space_type,
                p.created_at,
                p.updated_at,
                p.created_at::text AS cursor_created_at
@@ -2222,6 +2847,7 @@ export class PolygonRepository {
                p.upvotes,
                p.downvotes,
                p.score,
+               p.space_type,
                p.created_at,
                p.updated_at,
                p.created_at::text AS cursor_created_at
@@ -2276,6 +2902,45 @@ export class PolygonRepository {
     } finally {
       client.release();
     }
+  }
+
+  private async querySpaceBreakdown(
+    userId: string | null,
+  ): Promise<SpaceBreakdown> {
+    const res = await this.pool.query<{
+      space_type: string;
+      total: number;
+      proposed: number;
+      in_progress: number;
+      finished: number;
+      area: number;
+      unsealed: number;
+    }>(
+      `SELECT space_type,
+              COUNT(*)::int AS total,
+              (COUNT(*) FILTER (WHERE status = 'proposed'))::int AS proposed,
+              (COUNT(*) FILTER (WHERE status = 'in_progress'))::int AS in_progress,
+              (COUNT(*) FILTER (WHERE status = 'finished'))::int AS finished,
+              COALESCE(SUM(area_m2), 0)::float8 AS area,
+              COALESCE(SUM(area_m2) FILTER (WHERE status = 'finished'), 0)::float8 AS unsealed
+       FROM polygons
+       WHERE space_type <> 'unknown' AND ($1::uuid IS NULL OR user_id = $1::uuid)
+       GROUP BY space_type`,
+      [userId],
+    );
+    const round = (value: number): number => Math.round(value * 100) / 100;
+    const item = (type: SpaceType): SpaceBreakdown['public'] => {
+      const row = res.rows.find((r) => r.space_type === type);
+      return {
+        totalPolygons: row?.total ?? 0,
+        proposedCount: row?.proposed ?? 0,
+        inProgressCount: row?.in_progress ?? 0,
+        finishedCount: row?.finished ?? 0,
+        totalAreaM2: round(row?.area ?? 0),
+        unsealedAreaM2: round(row?.unsealed ?? 0),
+      };
+    };
+    return { public: item('public'), private: item('private') };
   }
 
   public async getPublicStats(): Promise<PublicStatsResponse> {
@@ -2366,6 +3031,7 @@ export class PolygonRepository {
           areaM2: roundArea(row?.other_area_m2),
         },
       },
+      spaceBreakdown: await this.querySpaceBreakdown(null),
     };
   }
 
@@ -2406,6 +3072,7 @@ export class PolygonRepository {
       totalAreaM2: roundArea(row?.total_area_m2),
       unsealedAreaM2: roundArea(row?.unsealed_area_m2),
       ratedPolygonsCount: toCount(row?.rated_polygons_count),
+      spaceBreakdown: await this.querySpaceBreakdown(userId),
     };
   }
 }
