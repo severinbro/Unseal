@@ -16,6 +16,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
@@ -36,7 +37,7 @@ import { useTheme } from '../theme/themeContext';
 import { ChatGlyph, FeedGlyph, MapGlyph, UserGlyph } from './NavGlyphs';
 import { withWebTooltip } from './webTooltip';
 import {
-  DISPLAY_FONT_FAMILY,
+  MONO_FONT_FAMILY,
   RADII,
   TABULAR_NUMS_STYLE,
   type ThemePalette,
@@ -1088,9 +1089,13 @@ export function MapControlsBar({
   const social = getSocialCopy(locale);
   const appName = branding?.appName?.trim() || DEFAULT_APP_NAME;
 
+  const showNavLabels =
+    !isCompact && (viewportWidth === undefined || viewportWidth >= 920);
+
   const navIconButton = (
     id: 'map' | 'feed' | 'chat',
     label: string,
+    shortLabel: string,
     Glyph: typeof MapGlyph,
     selected: boolean,
     onPress: () => void,
@@ -1109,6 +1114,7 @@ export function MapControlsBar({
         onPress={onPress}
         style={({ pressed }) => [
           styles.navIconButton,
+          showNavLabels ? styles.navIconButtonLabeled : null,
           isCompact ? styles.navIconButtonCompact : null,
           selected ? styles.navIconButtonActive : null,
           pressed ? styles.buttonPressed : null,
@@ -1116,8 +1122,19 @@ export function MapControlsBar({
       >
         <Glyph
           color={selected ? palette.inkOnAccent : palette.inkPrimary}
-          size={isCompact ? 19 : 20}
+          size={isCompact ? 18 : 18}
         />
+        {showNavLabels ? (
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.navIconText,
+              selected ? styles.navIconTextActive : null,
+            ]}
+          >
+            {shortLabel}
+          </Text>
+        ) : null}
         {badge > 0 ? (
           <View testID={`tab-${id}-badge`} style={styles.navIconBadge}>
             <Text style={styles.navIconBadgeLabel}>
@@ -1174,9 +1191,9 @@ export function MapControlsBar({
                       ? '14.5px'
                       : isCompact
                         ? '15.5px'
-                        : '18px',
-                    fontWeight: 700,
-                    letterSpacing: '-0.35px',
+                        : '17.5px',
+                    fontWeight: 800,
+                    letterSpacing: '-0.4px',
                     lineHeight: '20px',
                     color: palette.inkPrimary,
                     whiteSpace: 'nowrap',
@@ -1184,7 +1201,8 @@ export function MapControlsBar({
                     textOverflow: 'ellipsis',
                     minWidth: 0,
                     flexShrink: 1,
-                    fontFamily: DISPLAY_FONT_FAMILY,
+                    fontFamily:
+                      'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
                   },
                 },
                 appName,
@@ -1238,12 +1256,14 @@ export function MapControlsBar({
             {navIconButton(
               'map',
               social.map,
+              social.map,
               MapGlyph,
               activeMainTab === 'map',
               () => onSelectMainTab('map'),
             )}
             {navIconButton(
               'feed',
+              social.feed,
               social.feed,
               FeedGlyph,
               activeMainTab === 'feed',
@@ -1254,6 +1274,7 @@ export function MapControlsBar({
               unreadChats > 0
                 ? social.chatUnread(unreadChats)
                 : social.chat,
+              social.chat,
               ChatGlyph,
               false,
               onOpenChat,
@@ -1547,8 +1568,8 @@ export function NavbarOverflowMenu({
         Platform.OS === 'web'
           ? {
               boxShadow: isDark
-                ? '0 8px 28px rgba(0, 0, 0, 0.55)'
-                : '0 8px 24px rgba(18, 32, 25, 0.18)',
+                ? '0 5px 0 rgba(0, 0, 0, 0.5)'
+                : '0 5px 0 rgba(17, 31, 24, 0.16)',
             }
           : styles.nativePopoverShadow,
       ]}
@@ -1807,12 +1828,12 @@ export function FloatingFilterStrip({
   const { palette, isDark } = useTheme();
   const styles = useMemo(() => createStyles(palette), [palette]);
   const t = getTranslations(controls.locale).controls;
-  const chipElevation =
+  const railShadow =
     Platform.OS === 'web'
       ? {
           boxShadow: isDark
-            ? '0 2px 10px rgba(0, 0, 0, 0.42)'
-            : '0 2px 8px rgba(18, 32, 25, 0.14)',
+            ? '0 3px 0 rgba(0, 0, 0, 0.45)'
+            : '0 3px 0 rgba(17, 31, 24, 0.14)',
         }
       : styles.nativeChipShadow;
 
@@ -1826,195 +1847,25 @@ export function FloatingFilterStrip({
         compact ? styles.filterStripContentCompact : null,
       ]}
     >
-      <View
-        accessibilityRole="radiogroup"
-        accessibilityLabel={t.filterGroupA11y}
-        style={[
-          styles.filterRadioGroupRow,
-          compact ? styles.filterStripContentCompact : null,
-        ]}
-      >
-        <Pressable
-          testID="filter-polygon-all"
-          accessibilityRole="radio"
-          accessibilityLabel={t.filterAllA11y}
-          accessibilityState={{
-            checked: controls.polygonFilter === 'all',
-            selected: controls.polygonFilter === 'all',
-          }}
-          onPress={() => onSetPolygonFilter?.('all')}
-          style={({ pressed }) => [
-            styles.floatingFilterChip,
-            chipElevation,
-            compact ? styles.filterChipCompact : null,
-            controls.polygonFilter === 'all' ? styles.filterChipActive : null,
-            pressed ? styles.buttonPressed : null,
-          ]}
+      <View style={[styles.filterRailTray, railShadow]}>
+        <View
+          accessibilityRole="radiogroup"
+          accessibilityLabel={t.filterGroupA11y}
+          style={styles.filterRadioGroupRow}
         >
-          <Text
-            numberOfLines={1}
-            style={[
-              styles.filterChipLabel,
-              compact ? styles.filterChipLabelCompact : null,
-              controls.polygonFilter === 'all'
-                ? styles.filterChipLabelActive
-                : null,
-            ]}
-          >
-            {t.filterAll}
-          </Text>
-        </Pressable>
-
-        <Pressable
-          testID="filter-polygon-new"
-          accessibilityRole="radio"
-          accessibilityLabel={t.filterNewA11y}
-          accessibilityState={{
-            checked: controls.polygonFilter === 'new',
-            selected: controls.polygonFilter === 'new',
-          }}
-          onPress={() => onSetPolygonFilter?.('new')}
-          style={({ pressed }) => [
-            styles.floatingFilterChip,
-            chipElevation,
-            compact ? styles.filterChipCompact : null,
-            controls.polygonFilter === 'new' ? styles.filterChipActive : null,
-            pressed ? styles.buttonPressed : null,
-          ]}
-        >
-          <Text
-            numberOfLines={1}
-            style={[
-              styles.filterChipLabel,
-              compact ? styles.filterChipLabelCompact : null,
-              controls.polygonFilter === 'new'
-                ? styles.filterChipLabelActive
-                : null,
-            ]}
-          >
-            {compact ? t.filterNewCompact : t.filterNewFull}
-          </Text>
-        </Pressable>
-
-        <Pressable
-          testID="filter-polygon-established"
-          accessibilityRole="radio"
-          accessibilityLabel={t.filterEstablishedA11y}
-          accessibilityState={{
-            checked: controls.polygonFilter === 'established',
-            selected: controls.polygonFilter === 'established',
-          }}
-          onPress={() => onSetPolygonFilter?.('established')}
-          style={({ pressed }) => [
-            styles.floatingFilterChip,
-            chipElevation,
-            compact ? styles.filterChipCompact : null,
-            controls.polygonFilter === 'established'
-              ? styles.filterChipActive
-              : null,
-            pressed ? styles.buttonPressed : null,
-          ]}
-        >
-          <Text
-            numberOfLines={1}
-            style={[
-              styles.filterChipLabel,
-              compact ? styles.filterChipLabelCompact : null,
-              controls.polygonFilter === 'established'
-                ? styles.filterChipLabelActive
-                : null,
-            ]}
-          >
-            {compact ? t.filterEstablishedCompact : t.filterEstablishedFull}
-          </Text>
-        </Pressable>
-
-        <Pressable
-          testID="filter-polygon-needs-review"
-          accessibilityRole="radio"
-          accessibilityLabel={t.filterNeedsReviewA11y}
-          accessibilityState={{
-            checked: controls.polygonFilter === 'needs_review',
-            selected: controls.polygonFilter === 'needs_review',
-          }}
-          onPress={() => onSetPolygonFilter?.('needs_review')}
-          style={({ pressed }) => [
-            styles.floatingFilterChip,
-            chipElevation,
-            compact ? styles.filterChipCompact : null,
-            controls.polygonFilter === 'needs_review'
-              ? styles.filterChipWarningActive
-              : null,
-            pressed ? styles.buttonPressed : null,
-          ]}
-        >
-          <Text
-            numberOfLines={1}
-            style={[
-              styles.filterChipLabel,
-              compact ? styles.filterChipLabelCompact : null,
-              controls.polygonFilter === 'needs_review'
-                ? styles.filterChipWarningLabelActive
-                : null,
-            ]}
-          >
-            {compact ? t.filterNeedsReviewCompact : t.filterNeedsReviewFull}
-          </Text>
-        </Pressable>
-
-        {/* The same filters the feed offers, so a choice made there stays visible here. */}
-        {(['in_progress', 'finished', 'help_wanted'] as const).map((value) => {
-          const label = getSocialCopy(controls.locale).filters[value];
-          const selected = controls.polygonFilter === value;
-          return (
-            <Pressable
-              key={value}
-              testID={`filter-polygon-${value.replace('_', '-')}`}
-              accessibilityRole="radio"
-              accessibilityLabel={label}
-              accessibilityState={{ checked: selected, selected }}
-              aria-checked={selected}
-              onPress={() => onSetPolygonFilter?.(value)}
-              style={({ pressed }) => [
-                styles.floatingFilterChip,
-                chipElevation,
-                compact ? styles.filterChipCompact : null,
-                selected ? styles.filterChipActive : null,
-                pressed ? styles.buttonPressed : null,
-              ]}
-            >
-              <Text
-                numberOfLines={1}
-                style={[
-                  styles.filterChipLabel,
-                  compact ? styles.filterChipLabelCompact : null,
-                  selected ? styles.filterChipLabelActive : null,
-                ]}
-              >
-                {label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      {controls.isAuthenticated && onToggleHighlightMine ? (
-        <>
-          <View style={styles.filterOrthogonalDivider} />
           <Pressable
-            testID="highlight-mine-toggle"
-            accessibilityRole="switch"
-            accessibilityLabel={t.highlightMineA11y}
+            testID="filter-polygon-all"
+            accessibilityRole="radio"
+            accessibilityLabel={t.filterAllA11y}
             accessibilityState={{
-              checked: controls.highlightMineOnly,
-              selected: controls.highlightMineOnly,
+              checked: controls.polygonFilter === 'all',
+              selected: controls.polygonFilter === 'all',
             }}
-            onPress={onToggleHighlightMine}
+            onPress={() => onSetPolygonFilter?.('all')}
             style={({ pressed }) => [
               styles.floatingFilterChip,
-              chipElevation,
               compact ? styles.filterChipCompact : null,
-              controls.highlightMineOnly ? styles.filterChipActive : null,
+              controls.polygonFilter === 'all' ? styles.filterChipActive : null,
               pressed ? styles.buttonPressed : null,
             ]}
           >
@@ -2023,16 +1874,179 @@ export function FloatingFilterStrip({
               style={[
                 styles.filterChipLabel,
                 compact ? styles.filterChipLabelCompact : null,
-                controls.highlightMineOnly
+                controls.polygonFilter === 'all'
                   ? styles.filterChipLabelActive
                   : null,
               ]}
             >
-              {compact ? t.highlightMineCompact : t.highlightMineFull}
+              {t.filterAll}
             </Text>
           </Pressable>
-        </>
-      ) : null}
+
+          <Pressable
+            testID="filter-polygon-new"
+            accessibilityRole="radio"
+            accessibilityLabel={t.filterNewA11y}
+            accessibilityState={{
+              checked: controls.polygonFilter === 'new',
+              selected: controls.polygonFilter === 'new',
+            }}
+            onPress={() => onSetPolygonFilter?.('new')}
+            style={({ pressed }) => [
+              styles.floatingFilterChip,
+              compact ? styles.filterChipCompact : null,
+              controls.polygonFilter === 'new' ? styles.filterChipActive : null,
+              pressed ? styles.buttonPressed : null,
+            ]}
+          >
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.filterChipLabel,
+                compact ? styles.filterChipLabelCompact : null,
+                controls.polygonFilter === 'new'
+                  ? styles.filterChipLabelActive
+                  : null,
+              ]}
+            >
+              {compact ? t.filterNewCompact : t.filterNewFull}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            testID="filter-polygon-established"
+            accessibilityRole="radio"
+            accessibilityLabel={t.filterEstablishedA11y}
+            accessibilityState={{
+              checked: controls.polygonFilter === 'established',
+              selected: controls.polygonFilter === 'established',
+            }}
+            onPress={() => onSetPolygonFilter?.('established')}
+            style={({ pressed }) => [
+              styles.floatingFilterChip,
+              compact ? styles.filterChipCompact : null,
+              controls.polygonFilter === 'established'
+                ? styles.filterChipActive
+                : null,
+              pressed ? styles.buttonPressed : null,
+            ]}
+          >
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.filterChipLabel,
+                compact ? styles.filterChipLabelCompact : null,
+                controls.polygonFilter === 'established'
+                  ? styles.filterChipLabelActive
+                  : null,
+              ]}
+            >
+              {compact ? t.filterEstablishedCompact : t.filterEstablishedFull}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            testID="filter-polygon-needs-review"
+            accessibilityRole="radio"
+            accessibilityLabel={t.filterNeedsReviewA11y}
+            accessibilityState={{
+              checked: controls.polygonFilter === 'needs_review',
+              selected: controls.polygonFilter === 'needs_review',
+            }}
+            onPress={() => onSetPolygonFilter?.('needs_review')}
+            style={({ pressed }) => [
+              styles.floatingFilterChip,
+              compact ? styles.filterChipCompact : null,
+              controls.polygonFilter === 'needs_review'
+                ? styles.filterChipWarningActive
+                : null,
+              pressed ? styles.buttonPressed : null,
+            ]}
+          >
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.filterChipLabel,
+                compact ? styles.filterChipLabelCompact : null,
+                controls.polygonFilter === 'needs_review'
+                  ? styles.filterChipWarningLabelActive
+                  : null,
+              ]}
+            >
+              {compact ? t.filterNeedsReviewCompact : t.filterNeedsReviewFull}
+            </Text>
+          </Pressable>
+
+          {/* The same filters the feed offers, so a choice made there stays visible here. */}
+          {(['in_progress', 'finished', 'help_wanted'] as const).map((value) => {
+            const label = getSocialCopy(controls.locale).filters[value];
+            const selected = controls.polygonFilter === value;
+            return (
+              <Pressable
+                key={value}
+                testID={`filter-polygon-${value.replace('_', '-')}`}
+                accessibilityRole="radio"
+                accessibilityLabel={label}
+                accessibilityState={{ checked: selected, selected }}
+                aria-checked={selected}
+                onPress={() => onSetPolygonFilter?.(value)}
+                style={({ pressed }) => [
+                  styles.floatingFilterChip,
+                  compact ? styles.filterChipCompact : null,
+                  selected ? styles.filterChipActive : null,
+                  pressed ? styles.buttonPressed : null,
+                ]}
+              >
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.filterChipLabel,
+                    compact ? styles.filterChipLabelCompact : null,
+                    selected ? styles.filterChipLabelActive : null,
+                  ]}
+                >
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {controls.isAuthenticated && onToggleHighlightMine ? (
+          <>
+            <View style={styles.filterOrthogonalDivider} />
+            <Pressable
+              testID="highlight-mine-toggle"
+              accessibilityRole="switch"
+              accessibilityLabel={t.highlightMineA11y}
+              accessibilityState={{
+                checked: controls.highlightMineOnly,
+                selected: controls.highlightMineOnly,
+              }}
+              onPress={onToggleHighlightMine}
+              style={({ pressed }) => [
+                styles.floatingFilterChip,
+                compact ? styles.filterChipCompact : null,
+                controls.highlightMineOnly ? styles.filterChipActive : null,
+                pressed ? styles.buttonPressed : null,
+              ]}
+            >
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.filterChipLabel,
+                  compact ? styles.filterChipLabelCompact : null,
+                  controls.highlightMineOnly
+                    ? styles.filterChipLabelActive
+                    : null,
+                ]}
+              >
+                {compact ? t.highlightMineCompact : t.highlightMineFull}
+              </Text>
+            </Pressable>
+          </>
+        ) : null}
+      </View>
     </ScrollView>
   );
 }
@@ -2074,8 +2088,8 @@ export function MapLayersPopover({
         Platform.OS === 'web'
           ? {
               boxShadow: isDark
-                ? '0 8px 28px rgba(0, 0, 0, 0.55)'
-                : '0 8px 24px rgba(18, 32, 25, 0.18)',
+                ? '0 5px 0 rgba(0, 0, 0, 0.5)'
+                : '0 5px 0 rgba(17, 31, 24, 0.16)',
             }
           : styles.nativePopoverShadow,
       ]}
@@ -2172,8 +2186,11 @@ export function ProposeFabButton({
 }: ProposeFabButtonProps): React.JSX.Element {
   const { palette, isDark } = useTheme();
   const styles = useMemo(() => createStyles(palette), [palette]);
+  const { width: viewportWidth } = useWindowDimensions();
+  const showSlabLabel = viewportWidth >= 520;
   const t = getTranslations(controls.locale).controls;
   const tooltip = controls.drawDisabledReason ?? t.proposeFull;
+  const cleanLabel = t.proposeFull.replace(/^\+\s*/, '');
 
   const fabNode = (
     <Pressable
@@ -2185,18 +2202,33 @@ export function ProposeFabButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.proposeFab,
+        showSlabLabel ? styles.proposeFabSplitSlab : null,
         !controls.canStartDraw ? styles.primaryButtonDisabled : null,
-        pressed && controls.canStartDraw ? styles.primaryButtonPressed : null,
+        pressed && controls.canStartDraw ? styles.proposeKeycapPressed : null,
         Platform.OS === 'web'
           ? {
               boxShadow: isDark
-                ? '0 6px 20px rgba(0, 0, 0, 0.55)'
-                : '0 6px 18px rgba(16, 77, 49, 0.34)',
+                ? '0 3px 0 rgba(0, 0, 0, 0.5)'
+                : '0 3px 0 rgba(14, 68, 43, 0.28)',
             }
           : styles.nativeFabShadow,
       ]}
     >
-      <PlusGlyph color={palette.inkOnAccent} size={22} />
+      <View
+        style={[
+          styles.proposeKeycapGlyphWell,
+          showSlabLabel ? styles.proposeKeycapGlyphWellSplit : null,
+        ]}
+      >
+        <PlusGlyph color={palette.inkOnAccent} size={20} />
+      </View>
+      {showSlabLabel ? (
+        <View style={styles.proposeKeycapLabelChamber}>
+          <Text numberOfLines={1} style={styles.proposeKeycapLabel}>
+            {cleanLabel}
+          </Text>
+        </View>
+      ) : null}
     </Pressable>
   );
 
@@ -2207,8 +2239,8 @@ function createStyles(PALETTE: ThemePalette) {
   return StyleSheet.create({
   barShell: {
     backgroundColor: PALETTE.bgSurface,
-    borderBottomWidth: 1,
-    borderBottomColor: PALETTE.borderSubtle,
+    borderBottomWidth: 2,
+    borderBottomColor: PALETTE.borderStrong,
     paddingHorizontal: 14,
     paddingVertical: 6,
   },
@@ -2246,17 +2278,18 @@ function createStyles(PALETTE: ThemePalette) {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 9,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 7,
-    borderRadius: RADII.pill,
-    borderWidth: 1,
+    borderRadius: RADII.md,
+    borderWidth: 1.5,
+    borderTopWidth: 2.5,
     borderColor: PALETTE.borderStrong,
     backgroundColor: PALETTE.bgSubtle,
   },
   navbarSearchPlaceholder: {
     flex: 1,
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
     color: PALETTE.inkSecondary,
   },
   filterSectionDesktop: {
@@ -2275,62 +2308,73 @@ function createStyles(PALETTE: ThemePalette) {
   filterStripContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    paddingBottom: 3,
+  },
+  filterRailTray: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 3,
+    gap: 3,
+    borderRadius: RADII.md,
+    borderWidth: 1.5,
+    borderBottomWidth: 3.5,
+    borderColor: PALETTE.borderStrong,
+    backgroundColor: PALETTE.bgFloatingPill,
   },
   filterRadioGroupRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 3,
   },
   filterOrthogonalDivider: {
-    width: 1,
+    width: 1.5,
     height: 22,
     backgroundColor: PALETTE.borderStrong,
-    marginHorizontal: 2,
+    marginHorizontal: 3,
   },
   filterStripContentCompact: {
-    gap: 5,
+    paddingBottom: 3,
   },
   filterChip: {
     minHeight: MIN_TOUCH_TARGET_DP,
     minWidth: MIN_TOUCH_TARGET_DP,
     paddingHorizontal: 11,
     paddingVertical: 7,
-    borderRadius: RADII.pill,
-    borderWidth: 1,
+    borderRadius: RADII.sm,
+    borderWidth: 1.5,
     borderColor: PALETTE.borderStrong,
     backgroundColor: PALETTE.bgSubtle,
     alignItems: 'center',
     justifyContent: 'center',
   },
   filterChipCompact: {
-    minHeight: 38,
-    paddingHorizontal: 10,
+    minHeight: 36,
+    paddingHorizontal: 9,
     paddingVertical: 5,
   },
   filterChipActive: {
-    backgroundColor: PALETTE.bgTinted,
-    borderColor: PALETTE.accentPrimary,
+    backgroundColor: PALETTE.accentPrimary,
+    borderColor: PALETTE.accentPrimaryStrong,
   },
   filterChipWarningActive: {
     backgroundColor: PALETTE.neutralBg,
-    borderColor: PALETTE.neutralDot,
+    borderColor: PALETTE.neutralBorder,
   },
   filterChipLabel: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
     color: PALETTE.inkSecondary,
   },
   filterChipLabelCompact: {
     fontSize: 11.5,
   },
   filterChipLabelActive: {
-    color: PALETTE.positiveText,
-    fontWeight: '700',
+    color: PALETTE.inkOnAccent,
+    fontWeight: '800',
   },
   filterChipWarningLabelActive: {
     color: PALETTE.neutralText,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   opacityPill: {
     minHeight: MIN_TOUCH_TARGET_DP,
@@ -2339,8 +2383,8 @@ function createStyles(PALETTE: ThemePalette) {
     gap: 8,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: RADII.pill,
-    borderWidth: 1,
+    borderRadius: RADII.md,
+    borderWidth: 1.5,
     borderColor: PALETTE.borderStrong,
     backgroundColor: PALETTE.bgSubtle,
     flexShrink: 0,
@@ -2544,17 +2588,16 @@ function createStyles(PALETTE: ThemePalette) {
     gap: 4,
   },
   title: {
-    fontFamily: DISPLAY_FONT_FAMILY,
-    fontSize: 19.5,
-    fontWeight: '700',
-    letterSpacing: -0.25,
+    fontSize: 17.5,
+    fontWeight: '800',
+    letterSpacing: -0.35,
     color: PALETTE.inkPrimary,
     flexShrink: 1,
     minWidth: 0,
   },
   titleCompact: {
-    fontSize: 16.5,
-    letterSpacing: -0.2,
+    fontSize: 15.5,
+    letterSpacing: -0.25,
   },
   titleVeryNarrow: {
     fontSize: 14.5,
@@ -2563,11 +2606,12 @@ function createStyles(PALETTE: ThemePalette) {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    paddingHorizontal: 8,
+    paddingHorizontal: 7,
     paddingVertical: 3,
-    borderRadius: RADII.pill,
+    borderRadius: RADII.xs,
     backgroundColor: PALETTE.bgTinted,
-    borderWidth: 1,
+    borderWidth: 1.5,
+    borderBottomWidth: 2.5,
     borderColor: PALETTE.positiveBorder,
     flexShrink: 0,
   },
@@ -2579,13 +2623,14 @@ function createStyles(PALETTE: ThemePalette) {
   countBadgeDot: {
     width: 6,
     height: 6,
-    borderRadius: 3,
+    borderRadius: 1.5,
     backgroundColor: PALETTE.accentPrimary,
   },
   countBadgeLabel: {
     ...TABULAR_NUMS_STYLE,
+    fontFamily: MONO_FONT_FAMILY,
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '800',
     color: PALETTE.positiveText,
   },
   subtitle: {
@@ -2601,8 +2646,9 @@ function createStyles(PALETTE: ThemePalette) {
     minWidth: MIN_TOUCH_TARGET_DP,
     paddingHorizontal: 10,
     paddingVertical: 8,
-    borderRadius: RADII.pill,
-    borderWidth: 1,
+    borderRadius: RADII.md,
+    borderWidth: 1.5,
+    borderBottomWidth: 3,
     borderColor: PALETTE.borderStrong,
     backgroundColor: PALETTE.bgSurface,
     alignItems: 'center',
@@ -2626,6 +2672,7 @@ function createStyles(PALETTE: ThemePalette) {
     borderColor: PALETTE.accentPrimary,
   },
   helpButtonLabel: {
+    fontFamily: MONO_FONT_FAMILY,
     fontSize: 14,
     fontWeight: '800',
     color: PALETTE.inkPrimary,
@@ -2637,10 +2684,11 @@ function createStyles(PALETTE: ThemePalette) {
     alignItems: 'center',
     justifyContent: 'center',
     gap: 3,
-    paddingHorizontal: 10,
+    paddingHorizontal: 9,
     paddingVertical: 8,
-    borderRadius: RADII.pill,
-    borderWidth: 1,
+    borderRadius: RADII.md,
+    borderWidth: 1.5,
+    borderBottomWidth: 3,
     borderColor: PALETTE.borderStrong,
     backgroundColor: PALETTE.bgSurface,
     flexShrink: 0,
@@ -2660,6 +2708,7 @@ function createStyles(PALETTE: ThemePalette) {
     gap: 1.5,
   },
   localeCodeLabel: {
+    fontFamily: MONO_FONT_FAMILY,
     fontSize: 11,
     letterSpacing: 0.2,
   },
@@ -2687,10 +2736,11 @@ function createStyles(PALETTE: ThemePalette) {
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingHorizontal: 12,
+    paddingHorizontal: 11,
     paddingVertical: 8,
-    borderRadius: RADII.pill,
-    borderWidth: 1,
+    borderRadius: RADII.md,
+    borderWidth: 1.5,
+    borderBottomWidth: 3,
     borderColor: PALETTE.borderStrong,
     backgroundColor: PALETTE.bgSubtle,
     overflow: 'hidden',
@@ -2722,30 +2772,51 @@ function createStyles(PALETTE: ThemePalette) {
   navIconGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    padding: 3,
+    gap: 3,
+    borderRadius: RADII.md,
+    borderWidth: 1.5,
+    borderColor: PALETTE.borderStrong,
+    backgroundColor: PALETTE.bgRecessed,
     flexShrink: 0,
   },
   navIconGroupCompact: {
-    gap: 4,
+    padding: 2,
+    gap: 2,
   },
   navIconButton: {
-    width: MIN_TOUCH_TARGET_DP,
-    height: MIN_TOUCH_TARGET_DP,
-    borderRadius: RADII.pill,
-    borderWidth: 1,
-    borderColor: PALETTE.borderStrong,
-    backgroundColor: PALETTE.bgSurface,
+    minWidth: 38,
+    height: 38,
+    borderRadius: RADII.sm,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
+  navIconButtonLabeled: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 11,
+  },
   navIconButtonCompact: {
-    width: 36,
-    height: 36,
+    minWidth: 34,
+    height: 34,
   },
   navIconButtonActive: {
     backgroundColor: PALETTE.accentPrimary,
-    borderColor: PALETTE.accentPrimary,
+    borderColor: PALETTE.accentPrimaryStrong,
+    borderBottomWidth: 2.5,
+  },
+  navIconText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: PALETTE.inkPrimary,
+  },
+  navIconTextActive: {
+    color: PALETTE.inkOnAccent,
+    fontWeight: '800',
   },
   navIconBadge: {
     position: 'absolute',
@@ -2754,14 +2825,14 @@ function createStyles(PALETTE: ThemePalette) {
     minWidth: 17,
     height: 17,
     paddingHorizontal: 4,
-    borderRadius: 9,
+    borderRadius: RADII.xs,
     backgroundColor: PALETTE.dangerDot,
     alignItems: 'center',
     justifyContent: 'center',
   },
   navIconBadgeLabel: {
     fontSize: 10.5,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#FFFFFF',
   },
   accountChipMediumHeader: {
@@ -2775,7 +2846,7 @@ function createStyles(PALETTE: ThemePalette) {
   accountStatusDot: {
     width: 7,
     height: 7,
-    borderRadius: 4,
+    borderRadius: 1.5,
     flexShrink: 0,
   },
   accountStatusDotGuest: {
@@ -2786,7 +2857,7 @@ function createStyles(PALETTE: ThemePalette) {
   },
   accountChipLabel: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
     color: PALETTE.inkPrimary,
     flexShrink: 1,
     minWidth: 0,
@@ -2800,7 +2871,7 @@ function createStyles(PALETTE: ThemePalette) {
   },
   accountChipLabelActive: {
     color: PALETTE.positiveText,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   controlsRow: {
     flexDirection: 'row',
@@ -2841,7 +2912,8 @@ function createStyles(PALETTE: ThemePalette) {
   },
   primaryButton: {
     backgroundColor: PALETTE.accentPrimary,
-    borderWidth: 1,
+    borderWidth: 1.5,
+    borderBottomWidth: 3.5,
     borderColor: PALETTE.accentPrimaryStrong,
   },
   primaryButtonPressed: {
@@ -2854,11 +2926,12 @@ function createStyles(PALETTE: ThemePalette) {
   primaryButtonLabel: {
     color: PALETTE.inkOnAccent,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   secondaryButton: {
     backgroundColor: PALETTE.bgSurface,
-    borderWidth: 1,
+    borderWidth: 1.5,
+    borderBottomWidth: 3.5,
     borderColor: PALETTE.borderStrong,
   },
   secondaryButtonSelected: {
@@ -2868,26 +2941,28 @@ function createStyles(PALETTE: ThemePalette) {
   secondaryButtonLabel: {
     color: PALETTE.inkPrimary,
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   secondaryButtonLabelSelected: {
     color: PALETTE.inkOnAccent,
   },
   adminImportButton: {
     backgroundColor: PALETTE.finishedBg,
-    borderWidth: 1,
+    borderWidth: 1.5,
+    borderBottomWidth: 3,
     borderColor: PALETTE.finishedBorder,
   },
   adminImportLabel: {
     color: PALETTE.finishedText,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   compactButtonLabel: {
     fontSize: 12,
   },
   buttonPressed: {
     backgroundColor: PALETTE.bgRecessed,
+    transform: [{ translateY: 1 }],
   },
   buttonDisabled: {
     opacity: 0.65,
@@ -2967,14 +3042,14 @@ function createStyles(PALETTE: ThemePalette) {
     flexGrow: 0,
   },
   floatingFilterChip: {
-    minHeight: 38,
+    minHeight: 36,
     minWidth: MIN_TOUCH_TARGET_DP,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: RADII.pill,
-    borderWidth: 1,
-    borderColor: PALETTE.borderStrong,
-    backgroundColor: PALETTE.bgFloatingPill,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+    borderRadius: RADII.sm,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2989,8 +3064,9 @@ function createStyles(PALETTE: ThemePalette) {
     minWidth: 220,
     maxWidth: '100%',
     padding: 12,
-    borderRadius: RADII.lg,
-    borderWidth: 1,
+    borderRadius: RADII.md,
+    borderWidth: 1.5,
+    borderBottomWidth: 4,
     borderColor: PALETTE.borderStrong,
     backgroundColor: PALETTE.bgSurface,
     gap: 10,
@@ -3010,8 +3086,8 @@ function createStyles(PALETTE: ThemePalette) {
     gap: 2,
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: RADII.sm,
-    borderWidth: 1,
+    borderRadius: RADII.xs,
+    borderWidth: 1.5,
     borderColor: PALETTE.borderStrong,
     backgroundColor: PALETTE.bgSubtle,
     flexShrink: 0,
@@ -3035,8 +3111,8 @@ function createStyles(PALETTE: ThemePalette) {
   },
   menuSectionLabel: {
     fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.4,
+    fontWeight: '800',
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
     color: PALETTE.inkMuted,
     paddingHorizontal: 6,
@@ -3049,7 +3125,7 @@ function createStyles(PALETTE: ThemePalette) {
     gap: 10,
     paddingHorizontal: 10,
     paddingVertical: 7,
-    borderRadius: RADII.md,
+    borderRadius: RADII.sm,
   },
   menuItemPressed: {
     backgroundColor: PALETTE.bgRecessed,
@@ -3057,7 +3133,7 @@ function createStyles(PALETTE: ThemePalette) {
   menuItemLabel: {
     flex: 1,
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
     color: PALETTE.inkPrimary,
   },
   basemapSegmentGroup: {
@@ -3065,8 +3141,8 @@ function createStyles(PALETTE: ThemePalette) {
     padding: 3,
     borderRadius: RADII.md,
     backgroundColor: PALETTE.bgRecessed,
-    borderWidth: 1,
-    borderColor: PALETTE.borderSubtle,
+    borderWidth: 1.5,
+    borderColor: PALETTE.borderStrong,
     gap: 3,
   },
   basemapSegmentOption: {
@@ -3078,28 +3154,59 @@ function createStyles(PALETTE: ThemePalette) {
     justifyContent: 'center',
   },
   basemapSegmentOptionActive: {
-    backgroundColor: PALETTE.bgSurface,
-    borderWidth: 1,
-    borderColor: PALETTE.borderAccent,
+    backgroundColor: PALETTE.accentPrimary,
+    borderWidth: 1.5,
+    borderColor: PALETTE.accentPrimaryStrong,
   },
   basemapSegmentLabel: {
     fontSize: 12.5,
-    fontWeight: '600',
+    fontWeight: '700',
     color: PALETTE.inkSecondary,
   },
   basemapSegmentLabelActive: {
-    color: PALETTE.accentPrimary,
-    fontWeight: '700',
+    color: PALETTE.inkOnAccent,
+    fontWeight: '800',
   },
   proposeFab: {
-    width: 48,
-    height: 48,
-    borderRadius: RADII.pill,
+    minHeight: 48,
+    minWidth: 48,
+    borderRadius: RADII.md,
     backgroundColor: PALETTE.accentPrimary,
-    borderWidth: 1,
+    borderWidth: 1.5,
+    borderBottomWidth: 4.5,
     borderColor: PALETTE.accentPrimaryStrong,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    overflow: 'hidden',
+  },
+  proposeFabSplitSlab: {
+    paddingRight: 2,
+  },
+  proposeKeycapGlyphWell: {
+    width: 46,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: PALETTE.accentPrimaryStrong,
+  },
+  proposeKeycapGlyphWellSplit: {
+    borderRightWidth: 1.5,
+    borderRightColor: 'rgba(255, 255, 255, 0.22)',
+  },
+  proposeKeycapLabelChamber: {
+    paddingHorizontal: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  proposeKeycapLabel: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    letterSpacing: -0.15,
+    color: PALETTE.inkOnAccent,
+  },
+  proposeKeycapPressed: {
+    transform: [{ translateY: 2 }],
+    borderBottomWidth: 2.5,
+    backgroundColor: PALETTE.accentPrimaryStrong,
   },
   nativeFabShadow: {
     shadowColor: '#000000',

@@ -432,23 +432,24 @@ function createStyles(PALETTE: ThemePalette, isDark: boolean) {
     floatingButton: {
       width: BUTTON_SIZE_DP,
       height: BUTTON_SIZE_DP,
-      borderRadius: RADII.pill,
+      borderRadius: RADII.md,
       backgroundColor: PALETTE.bgSurface,
-      borderWidth: 1,
+      borderWidth: 1.5,
+      borderBottomWidth: 4,
       borderColor: PALETTE.borderStrong,
       alignItems: 'center',
       justifyContent: 'center',
       ...(Platform.OS === 'web'
         ? {
             boxShadow: isDark
-              ? '0 3px 12px rgba(0, 0, 0, 0.45)'
-              : '0 3px 10px rgba(18, 32, 25, 0.18)',
+              ? '0 3px 0 rgba(0, 0, 0, 0.48)'
+              : '0 3px 0 rgba(17, 31, 24, 0.16)',
           }
         : {
             shadowColor: isDark ? '#000000' : '#122019',
             shadowOffset: { width: 0, height: 2 },
             shadowOpacity: isDark ? 0.42 : 0.2,
-            shadowRadius: 5,
+            shadowRadius: 3,
             elevation: 5,
           }),
     },
@@ -465,6 +466,8 @@ function createStyles(PALETTE: ThemePalette, isDark: boolean) {
     floatingButtonPressed: {
       backgroundColor: PALETTE.bgTinted,
       borderColor: PALETTE.accentPrimary,
+      transform: [{ translateY: 1.5 }],
+      borderBottomWidth: 2,
     },
     floatingButtonActive: {
       backgroundColor: PALETTE.bgTinted,

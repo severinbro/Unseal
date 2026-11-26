@@ -20,7 +20,6 @@ import { DEFAULT_LOCALE, getTranslations, type Locale } from '../i18n/translatio
 import { MIN_TOUCH_TARGET_DP } from '../state/viewModels';
 import { useTheme } from '../theme/themeContext';
 import {
-  DISPLAY_FONT_FAMILY,
   MONO_FONT_FAMILY,
   RADII,
   type ThemePalette,
@@ -1148,7 +1147,8 @@ function createStyles(
       width: tileSize,
       height: tileSize,
       borderRadius: Math.round(tileSize * (14 / 64)),
-      borderWidth: 1.5,
+      borderWidth: 2,
+      borderBottomWidth: 5,
       borderColor: PALETTE.borderStrong,
       overflow: 'hidden',
       alignItems: 'center',
@@ -1157,15 +1157,15 @@ function createStyles(
       ...(Platform.OS === 'web'
         ? {
             boxShadow: isDark
-              ? '0 16px 38px rgba(0, 0, 0, 0.55)'
-              : '0 16px 36px rgba(18, 32, 25, 0.14)',
+              ? '0 6px 0 rgba(0, 0, 0, 0.5)'
+              : '0 6px 0 rgba(17, 31, 24, 0.16)',
           }
         : {
             shadowColor: isDark ? '#000000' : '#122019',
-            shadowOffset: { width: 0, height: 10 },
+            shadowOffset: { width: 0, height: 6 },
             shadowOpacity: isDark ? 0.45 : 0.16,
-            shadowRadius: 18,
-            elevation: 10,
+            shadowRadius: 4,
+            elevation: 8,
           }),
     },
     svgStack: {
@@ -1261,10 +1261,9 @@ function createStyles(
       maxWidth: 360,
     },
     brandTitle: {
-      fontFamily: DISPLAY_FONT_FAMILY,
-      fontSize: isShortViewport ? 24 : isCompact ? 32 : 38,
-      fontWeight: '700',
-      letterSpacing: isShortViewport ? 0.3 : 0.6,
+      fontSize: isShortViewport ? 22 : isCompact ? 30 : 36,
+      fontWeight: '800',
+      letterSpacing: isShortViewport ? 0.8 : 1.4,
       color: PALETTE.inkPrimary,
       textAlign: 'center',
     },
@@ -1291,22 +1290,23 @@ function createStyles(
       maxWidth: '100%',
       paddingHorizontal: 13,
       paddingVertical: isShortViewport ? 4 : 6,
-      borderRadius: RADII.pill,
+      borderRadius: RADII.sm,
       backgroundColor: PALETTE.bgTinted,
-      borderWidth: 1,
-      borderColor: PALETTE.borderAccent,
+      borderWidth: 1.5,
+      borderBottomWidth: 2.5,
+      borderColor: PALETTE.positiveBorder,
     },
     taglineDot: {
       width: 7,
       height: 7,
       flexShrink: 0,
-      borderRadius: 4,
+      borderRadius: 1.5,
       backgroundColor: PALETTE.positiveDot,
     },
     taglineText: {
       fontFamily: Platform.OS === 'web' ? undefined : MONO_FONT_FAMILY,
       fontSize: 12,
-      fontWeight: '600',
+      fontWeight: '700',
       color: PALETTE.positiveText,
       textAlign: 'center',
       flexShrink: 1,
@@ -1320,36 +1320,39 @@ function createStyles(
     progressTrack: {
       width: PROGRESS_TRACK_WIDTH,
       height: 3,
-      borderRadius: 2,
+      borderRadius: 1,
       backgroundColor: PALETTE.borderSubtle,
       overflow: 'hidden',
     },
     progressFill: {
       width: '100%',
       height: '100%',
-      borderRadius: 2,
+      borderRadius: 1,
       backgroundColor: PALETTE.accentPrimary,
     },
     skipButton: {
       minHeight: MIN_TOUCH_TARGET_DP,
-      minWidth: 124,
+      minWidth: 132,
       paddingHorizontal: 20,
       paddingVertical: 10,
-      borderRadius: RADII.pill,
+      borderRadius: RADII.md,
       backgroundColor: PALETTE.bgSurface,
-      borderWidth: 1,
+      borderWidth: 1.5,
+      borderBottomWidth: 3.5,
       borderColor: PALETTE.borderStrong,
       alignItems: 'center',
       justifyContent: 'center',
     },
     skipButtonPressed: {
       backgroundColor: PALETTE.bgTinted,
-      borderColor: PALETTE.borderAccent,
+      borderColor: PALETTE.accentPrimary,
+      transform: [{ translateY: 1.5 }],
+      borderBottomWidth: 2,
     },
     skipButtonLabel: {
       fontSize: 13.5,
-      fontWeight: '700',
-      color: PALETTE.inkSecondary,
+      fontWeight: '800',
+      color: PALETTE.inkPrimary,
     },
   });
 }
