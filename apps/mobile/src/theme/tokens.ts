@@ -156,92 +156,92 @@ export interface ThemePalette {
 }
 
 export const LIGHT_PALETTE: ThemePalette = {
-  // Mineral sage & stone-paper daylight surfaces
-  bgGround: '#EFF3F0',
+  // Kiez-Herbarium: botanical press-paper & archival postcard mounts
+  bgGround: '#F4F4F0',
   bgSurface: '#FFFFFF',
-  bgSubtle: '#F5F8F6',
-  bgRecessed: '#E8EEEA',
-  bgTinted: '#E6F2EC',
-  bgScrim: 'rgba(14, 25, 19, 0.54)',
-  bgMapCanvas: '#DFE7E2',
-  bgFloatingPill: 'rgba(255, 255, 255, 0.94)',
+  bgSubtle: '#EFEFE9',
+  bgRecessed: '#E6E6DE',
+  bgTinted: '#E7EFE9',
+  bgScrim: 'rgba(18, 19, 22, 0.54)',
+  bgMapCanvas: '#E4E7DF',
+  bgFloatingPill: 'rgba(255, 255, 255, 0.95)',
 
-  // High-contrast surveyor ink (all >= 4.5:1 on light surfaces)
-  inkPrimary: '#122019',
-  inkSecondary: '#36493F',
-  inkMuted: '#4E6258',
+  // High-contrast archival carbon ink (all >= 7.0:1 on light surfaces)
+  inkPrimary: '#121316',
+  inkSecondary: '#363940',
+  inkMuted: '#4E5158',
   inkOnAccent: '#FFFFFF',
 
-  // Primary permeable botanical emerald
-  accentPrimary: '#176642',
-  accentPrimaryStrong: '#104D31',
-  accentDisabled: '#93AFA1',
+  // Rainwater Cobalt primary action & focus accent (>= 6.7:1 with #FFFFFF)
+  accentPrimary: '#1D4ED8',
+  accentPrimaryStrong: '#1E40AF',
+  accentDisabled: '#93A5CF',
 
-  // Borders (hairline & structural)
-  borderSubtle: '#CFDAD3',
-  borderStrong: '#AEC0B5',
-  borderAccent: '#8CC0A6',
+  // Archival specimen card & mount rules
+  borderSubtle: '#CECFCA',
+  borderStrong: '#B1B3AA',
+  borderAccent: '#93B4F5',
 
-  // Semantic & Community Score feedback
-  positiveBg: '#E4F3EC',
-  positiveBorder: '#9BCBB2',
-  positiveText: '#115234',
-  positiveDot: '#1F7A4C',
+  // Botanical Meadow, Warm Ochre & Semantic Stamps
+  positiveBg: '#E5F2EA',
+  positiveBorder: '#9CCBB0',
+  positiveText: '#145A2E',
+  positiveDot: '#146C34',
 
   neutralBg: '#FBF1DF',
-  neutralBorder: '#DEC18E',
-  neutralText: '#6A4006',
-  neutralDot: '#C87D1A',
+  neutralBorder: '#DFC08A',
+  neutralText: '#783604',
+  neutralDot: '#B45309',
 
   dangerBg: '#FCEBEC',
   dangerBorder: '#DF9FA3',
-  dangerSolid: '#AC2127',
+  dangerSolid: '#B91C1C',
   dangerText: '#8A1C21',
   dangerDot: '#C44536',
 
-  infoBg: '#E9F1F8',
-  infoBorder: '#B9CFE4',
-  infoText: '#194064',
+  infoBg: '#E6EEFC',
+  infoBorder: '#ADC4F5',
+  infoText: '#1E3A8A',
 
-  inProgressBg: '#DBEAFE',
-  inProgressBorder: '#93C5FD',
-  inProgressSolid: '#1D4ED8',
-  inProgressText: '#1E40AF',
-  inProgressDot: '#2563EB',
+  inProgressBg: '#E0F2FE',
+  inProgressBorder: '#7DD3FC',
+  inProgressSolid: '#0369A1',
+  inProgressText: '#0C4A6E',
+  inProgressDot: '#0284C7',
 
-  finishedBg: '#CCFBF1',
-  finishedBorder: '#5EEAD4',
-  finishedSolid: '#0D9488',
-  finishedText: '#0F766E',
-  finishedDot: '#0D9488',
+  finishedBg: '#DCFCE7',
+  finishedBorder: '#86EFAC',
+  finishedSolid: '#15803D',
+  finishedText: '#14532D',
+  finishedDot: '#16A34A',
 } as const;
 
 export const DARK_PALETTE: ThemePalette = {
-  // Nocturnal mineral-sage & botanical slate surfaces
-  bgGround: '#0F1613',
-  bgSurface: '#16201B',
-  bgSubtle: '#1D2923',
-  bgRecessed: '#121A16',
-  bgTinted: '#193126',
-  bgScrim: 'rgba(4, 9, 7, 0.72)',
-  bgMapCanvas: '#0C1210',
-  bgFloatingPill: 'rgba(22, 32, 27, 0.94)',
+  // Nocturnal Herbarium Cabinet surfaces
+  bgGround: '#111210',
+  bgSurface: '#181A17',
+  bgSubtle: '#20231E',
+  bgRecessed: '#141613',
+  bgTinted: '#1C2621',
+  bgScrim: 'rgba(6, 7, 6, 0.74)',
+  bgMapCanvas: '#0E100E',
+  bgFloatingPill: 'rgba(24, 26, 23, 0.94)',
 
-  // High-contrast light ink (all >= 5.9:1 on dark surfaces)
-  inkPrimary: '#ECF3EF',
-  inkSecondary: '#B7C7BE',
-  inkMuted: '#93A89D',
-  inkOnAccent: '#062115',
+  // High-contrast light parchment ink (all >= 5.8:1 on dark surfaces)
+  inkPrimary: '#F2F2EC',
+  inkSecondary: '#C5C7BE',
+  inkMuted: '#9EA297',
+  inkOnAccent: '#071120',
 
-  // Luminous botanical emerald (all >= 6.1:1 with inkOnAccent & >= 6.9:1 on dark surfaces)
-  accentPrimary: '#34C785',
-  accentPrimaryStrong: '#28B073',
-  accentDisabled: '#587769',
+  // Luminous Rainwater Cobalt (all >= 6.5:1 with inkOnAccent & on dark surfaces)
+  accentPrimary: '#60A5FA',
+  accentPrimaryStrong: '#5299F7',
+  accentDisabled: '#4B5E78',
 
   // Borders (hairline & structural)
-  borderSubtle: '#26352D',
-  borderStrong: '#394D42',
-  borderAccent: '#2D6E51',
+  borderSubtle: '#2C3029',
+  borderStrong: '#41463D',
+  borderAccent: '#3B639C',
 
   // Semantic & Community Score feedback
   positiveBg: '#132E22',
@@ -449,7 +449,17 @@ export const RADII = {
   pill: 999,
 } as const;
 
-export const MONO_FONT_FAMILY = 'monospace';
+const IS_REACT_NATIVE =
+  (globalThis as { navigator?: { product?: string } }).navigator?.product ===
+  'ReactNative';
+
+export const DISPLAY_FONT_FAMILY = IS_REACT_NATIVE
+  ? 'serif'
+  : "Georgia, 'Iowan Old Style', 'Palatino Linotype', 'URW Palladio L', serif";
+
+export const MONO_FONT_FAMILY = IS_REACT_NATIVE
+  ? 'monospace'
+  : "ui-monospace, 'Cascadia Mono', 'JetBrains Mono', 'IBM Plex Mono', Menlo, Consolas, monospace";
 
 export const TABULAR_NUMS_STYLE: TextStyle = {
   fontVariant: ['tabular-nums'],

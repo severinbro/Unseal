@@ -32,7 +32,7 @@ import {
 } from '../state/viewModels';
 import { useTheme } from '../theme/themeContext';
 import { SocialCheckbox } from './SocialUi';
-import { RADII, type ThemePalette } from '../theme/tokens';
+import { DISPLAY_FONT_FAMILY, RADII, type ThemePalette } from '../theme/tokens';
 
 const SIMPLE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -898,9 +898,10 @@ function createStyles(PALETTE: ThemePalette) {
     gap: 8,
   },
   modalTitle: {
-    fontSize: 17,
+    fontFamily: DISPLAY_FONT_FAMILY,
+    fontSize: 19,
     fontWeight: '700',
-    letterSpacing: -0.25,
+    letterSpacing: -0.2,
     color: PALETTE.inkPrimary,
     flexShrink: 1,
     ...(Platform.OS === 'web'

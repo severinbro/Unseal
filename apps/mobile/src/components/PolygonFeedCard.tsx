@@ -22,7 +22,12 @@ import { formatRelativeTime } from '../state/feedScope';
 import { computeSilhouetteSegments } from '../state/silhouette';
 import { formatInspectorDate } from '../state/viewModels';
 import { useTheme } from '../theme/themeContext';
-import { RADII, type ThemePalette } from '../theme/tokens';
+import {
+  MONO_FONT_FAMILY,
+  RADII,
+  TABULAR_NUMS_STYLE,
+  type ThemePalette,
+} from '../theme/tokens';
 import {
   PolygonCardTitle,
   PolygonCreatorCard,
@@ -57,10 +62,14 @@ function toneColor(
 function Silhouette(props: {
   ring: readonly (readonly [number, number])[];
   color: string;
+  width?: number;
+  height?: number;
 }): React.JSX.Element {
+  const w = props.width ?? 132;
+  const h = props.height ?? 96;
   return (
-    <View style={local.silhouette} accessible={false}>
-      {computeSilhouetteSegments(props.ring, 132, 96).map((s, i) => (
+    <View style={{ width: w, height: h, alignSelf: 'center' }} accessible={false}>
+      {computeSilhouetteSegments(props.ring, w, h).map((s, i) => (
         <View
           key={i}
           style={{
@@ -80,9 +89,9 @@ function Silhouette(props: {
 }
 
 /**
- * An area as a feed entry. It is assembled from the same parts as the sheet
- * on the map (title, votes, note, contributor), in the same order, with its
- * place on the map, the photos and the top comment laid open.
+ * An area as a Kiez-Herbarium postcard entry. Assembled from the same parts as
+ * the sheet on the map (title, votes, note, contributor), paired with a dashed
+ * polygon silhouette stamp, its place on the map, photos, and quoted top comment.
  */
 export function PolygonFeedCard(props: {
   item: PolygonFeedItem;
@@ -105,6 +114,7 @@ export function PolygonFeedCard(props: {
   const p = item.feature.properties;
   const tone = toneColor(item, palette);
   const photos = item.photos.filter((photo) => !photo.isFlaggedFake);
+  const ring = item.feature.geometry.coordinates[0] ?? [];
   const name = (pseudonym: string): string =>
     pseudonym === 'deleted' ? social.deleted : pseudonym;
 
@@ -143,7 +153,6 @@ export function PolygonFeedCard(props: {
       style={[
         styles.sheet,
         local.card,
-        { borderLeftColor: tone },
         {
           opacity: appear,
           transform: [
@@ -157,9 +166,14 @@ export function PolygonFeedCard(props: {
         },
       ]}
     >
-      <View style={local.activityRow}>
+      <View
+        style={[
+          local.activityRow,
+          { borderBottomColor: palette.borderSubtle },
+        ]}
+      >
         <View style={[local.activityDot, { backgroundColor: tone }]} />
-        <Text style={[local.activityLabel, { color: palette.inkPrimary }]}>
+        <Text style={[local.activityLabel, { color: palette.inkSecondary }]}>
           {social.activity[item.activity]}
         </Text>
         <Text
@@ -170,23 +184,46 @@ export function PolygonFeedCard(props: {
         </Text>
       </View>
 
-      <View style={styles.headerRow}>
-        <View style={styles.headerTitleGroup}>
-          <PolygonCardTitle feature={item.feature} locale={locale} />
+      <View style={local.postcardTopSplit}>
+        <View
+          accessible={false}
+          style={[
+            local.stampBox,
+            {
+              backgroundColor: palette.bgGround,
+              borderColor: palette.borderStrong,
+            },
+          ]}
+        >
+          <Silhouette ring={ring} color={tone} width={68} height={46} />
+          <Text style={[local.stampCaption, { color: palette.inkMuted }]}>
+            {Math.round(p.areaM2)} m²
+          </Text>
         </View>
-        <View style={styles.headerControls}>
-          <Pressable
-            testID={`feed-show-${item.feature.id}`}
-            accessibilityRole="button"
-            accessibilityLabel={social.showOnMap}
-            onPress={() => props.onShowOnMap('overview')}
-            style={({ pressed }) => [
-              styles.closeButton,
-              pressed ? local.pressed : null,
-            ]}
-          >
-            <Text style={styles.closeButtonLabel}>{social.showOnMap}</Text>
-          </Pressable>
+
+        <View style={local.postcardLeadCol}>
+          <View style={styles.headerRow}>
+            <View style={styles.headerTitleGroup}>
+              <PolygonCardTitle feature={item.feature} locale={locale} />
+            </View>
+            <View style={styles.headerControls}>
+              <Pressable
+                testID={`feed-show-${item.feature.id}`}
+                accessibilityRole="button"
+                accessibilityLabel={social.showOnMap}
+                onPress={() => props.onShowOnMap('overview')}
+                style={({ pressed }) => [
+                  styles.closeButton,
+                  { borderRadius: RADII.pill },
+                  pressed ? local.pressed : null,
+                ]}
+              >
+                <Text style={styles.closeButtonLabel}>{social.showOnMap}</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <SpaceBadges locale={locale} feature={item.feature} />
         </View>
       </View>
 
@@ -197,8 +234,6 @@ export function PolygonFeedCard(props: {
         onVotePress={props.onVote}
       />
 
-      <SpaceBadges locale={locale} feature={item.feature} />
-
       <Pressable
         testID={`feed-map-${item.feature.id}`}
         accessibilityRole="button"
@@ -206,7 +241,10 @@ export function PolygonFeedCard(props: {
         onPress={() => props.onShowOnMap('overview')}
         style={({ pressed }) => [
           local.mapBox,
-          { backgroundColor: palette.bgSubtle },
+          {
+            backgroundColor: palette.bgSubtle,
+            borderColor: palette.borderSubtle,
+          },
           pressed ? local.pressed : null,
         ]}
       >
@@ -216,9 +254,7 @@ export function PolygonFeedCard(props: {
           dashed={p.spaceType === 'private'}
           config={props.mapConfig}
           colorScheme={isDark ? 'dark' : 'light'}
-          fallback={
-            <Silhouette ring={item.feature.geometry.coordinates[0] ?? []} color={tone} />
-          }
+          fallback={<Silhouette ring={ring} color={tone} />}
         />
       </Pressable>
 
@@ -268,7 +304,7 @@ export function PolygonFeedCard(props: {
               {social.commentBy(name(item.topComment.authorPseudonym))}
             </Text>
           </View>
-          <Text style={styles.commentBodyText}>{item.topComment.body}</Text>
+          <Text style={styles.commentBodyText}>„{item.topComment.body}“</Text>
         </View>
       ) : null}
 
@@ -357,16 +393,60 @@ export function FeedCardSkeleton(): React.JSX.Element {
 
 const local = StyleSheet.create({
   card: {
-    borderLeftWidth: 4,
     ...(Platform.OS === 'web'
-      ? { boxShadow: '0 2px 10px rgba(18, 32, 25, 0.08)' }
+      ? { boxShadow: '0 2px 10px rgba(18, 19, 22, 0.06)' }
       : { elevation: 2 }),
   },
   pressed: { opacity: 0.7 },
-  activityRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  activityDot: { width: 9, height: 9, borderRadius: 5 },
-  activityLabel: { fontSize: 12.5, fontWeight: '700', flexShrink: 1 },
-  activityTime: { fontSize: 12.5, marginLeft: 'auto' },
+  activityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+  },
+  activityDot: { width: 8, height: 8, borderRadius: 4 },
+  activityLabel: {
+    fontFamily: MONO_FONT_FAMILY,
+    fontSize: 11.5,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  activityTime: {
+    ...TABULAR_NUMS_STYLE,
+    fontFamily: MONO_FONT_FAMILY,
+    fontSize: 11.5,
+    marginLeft: 'auto',
+  },
+  postcardTopSplit: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  stampBox: {
+    width: 88,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderRadius: RADII.md,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    flexShrink: 0,
+  },
+  stampCaption: {
+    ...TABULAR_NUMS_STYLE,
+    fontFamily: MONO_FONT_FAMILY,
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  postcardLeadCol: {
+    flex: 1,
+    minWidth: 190,
+    gap: 8,
+  },
   photoStrip: { gap: 8, flexGrow: 1 },
   photoFrame: {
     width: 232,
@@ -384,13 +464,13 @@ const local = StyleSheet.create({
     paddingVertical: 4,
     fontSize: 11,
     color: '#FFFFFF',
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    backgroundColor: 'rgba(18, 19, 22, 0.58)',
   },
   mapBox: {
     height: MAP_PREVIEW_HEIGHT,
     justifyContent: 'center',
     borderRadius: RADII.md,
+    borderWidth: 1,
     overflow: 'hidden',
   },
-  silhouette: { width: 132, height: 96, alignSelf: 'center' },
 });

@@ -25,7 +25,7 @@ import {
 } from '../i18n/translations';
 import { MIN_TOUCH_TARGET_DP } from '../state/viewModels';
 import { useTheme } from '../theme/themeContext';
-import { RADII, type ThemePalette } from '../theme/tokens';
+import { DISPLAY_FONT_FAMILY, RADII, type ThemePalette } from '../theme/tokens';
 import { AndroidGlyph, triggerApkDownload } from './MapControlsBar';
 
 const DEFAULT_CANONICAL_SOURCE_CODE_URL =
@@ -500,9 +500,10 @@ function createStyles(PALETTE: ThemePalette) {
     gap: 2,
   },
   title: {
-    fontSize: 17,
+    fontFamily: DISPLAY_FONT_FAMILY,
+    fontSize: 19,
     fontWeight: '700',
-    letterSpacing: -0.3,
+    letterSpacing: -0.2,
     color: PALETTE.inkPrimary,
   },
   subtitle: {

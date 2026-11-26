@@ -214,7 +214,10 @@ export function FeedFilterBar(props: {
       >
         <Text
           numberOfLines={1}
-          style={[styles.segmentLabel, isSelected ? styles.accentText : null]}
+          style={[
+            styles.segmentLabel,
+            isSelected ? styles.segmentLabelSelected : null,
+          ]}
         >
           {label}
         </Text>
@@ -301,7 +304,14 @@ export function FeedFilterBar(props: {
 
 function createStyles(p: ThemePalette, isDark: boolean) {
   return StyleSheet.create({
-    bar: { gap: 8 },
+    bar: {
+      gap: 10,
+      padding: 13,
+      borderRadius: RADII.lg,
+      borderWidth: 1,
+      borderColor: p.borderSubtle,
+      backgroundColor: p.bgSurface,
+    },
     controls: {
       flexDirection: 'row',
       flexWrap: 'wrap',
@@ -316,7 +326,7 @@ function createStyles(p: ThemePalette, isDark: boolean) {
       borderRadius: RADII.pill,
       borderWidth: 1,
       borderColor: p.borderSubtle,
-      backgroundColor: p.bgRecessed,
+      backgroundColor: p.bgGround,
     },
     segment: {
       justifyContent: 'center',
@@ -325,8 +335,15 @@ function createStyles(p: ThemePalette, isDark: boolean) {
       borderWidth: 1,
       borderColor: 'transparent',
     },
-    segmentSelected: { backgroundColor: p.bgSurface, borderColor: p.borderAccent },
+    segmentSelected: {
+      backgroundColor: p.inkPrimary,
+      borderColor: p.inkPrimary,
+    },
     segmentLabel: { fontSize: 13, fontWeight: '600', color: p.inkSecondary },
+    segmentLabelSelected: {
+      color: p.bgSurface,
+      fontWeight: '700',
+    },
     trigger: {
       minHeight: MIN_TOUCH_TARGET_DP,
       maxWidth: '100%',
@@ -337,9 +354,12 @@ function createStyles(p: ThemePalette, isDark: boolean) {
       borderRadius: RADII.pill,
       borderWidth: 1,
       borderColor: p.borderSubtle,
-      backgroundColor: p.bgSurface,
+      backgroundColor: p.bgGround,
     },
-    triggerActive: { borderColor: p.accentPrimary },
+    triggerActive: {
+      borderColor: p.accentPrimary,
+      backgroundColor: p.infoBg,
+    },
     triggerText: { flexShrink: 1 },
     triggerLabel: { fontSize: 13, color: p.inkMuted },
     triggerValue: { fontSize: 13, fontWeight: '600', color: p.inkPrimary },
@@ -365,7 +385,7 @@ function createStyles(p: ThemePalette, isDark: boolean) {
         ? {
             boxShadow: isDark
               ? '0 8px 28px rgba(0, 0, 0, 0.55)'
-              : '0 8px 24px rgba(18, 32, 25, 0.18)',
+              : '0 8px 24px rgba(18, 19, 22, 0.14)',
           }
         : { elevation: 10 }),
     },
@@ -386,6 +406,9 @@ function createStyles(p: ThemePalette, isDark: boolean) {
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: 12,
+      paddingTop: 4,
+      borderTopWidth: 1,
+      borderTopColor: p.borderSubtle,
     },
     caption: { flexShrink: 1, fontSize: 12, lineHeight: 17, color: p.inkMuted },
     resetLabel: { fontSize: 12.5, fontWeight: '600', color: p.accentPrimary },

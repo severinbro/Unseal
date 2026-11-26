@@ -20,6 +20,7 @@ import { DEFAULT_LOCALE, getTranslations, type Locale } from '../i18n/translatio
 import { MIN_TOUCH_TARGET_DP } from '../state/viewModels';
 import { useTheme } from '../theme/themeContext';
 import {
+  DISPLAY_FONT_FAMILY,
   MONO_FONT_FAMILY,
   RADII,
   type ThemePalette,
@@ -1260,9 +1261,10 @@ function createStyles(
       maxWidth: 360,
     },
     brandTitle: {
-      fontSize: isShortViewport ? 22 : isCompact ? 30 : 36,
-      fontWeight: '800',
-      letterSpacing: isShortViewport ? 0.8 : 1.4,
+      fontFamily: DISPLAY_FONT_FAMILY,
+      fontSize: isShortViewport ? 24 : isCompact ? 32 : 38,
+      fontWeight: '700',
+      letterSpacing: isShortViewport ? 0.3 : 0.6,
       color: PALETTE.inkPrimary,
       textAlign: 'center',
     },

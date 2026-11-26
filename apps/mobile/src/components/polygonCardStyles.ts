@@ -5,6 +5,7 @@ import { Platform, StyleSheet } from 'react-native';
 
 import { MIN_TOUCH_TARGET_DP } from '../state/viewModels';
 import {
+  DISPLAY_FONT_FAMILY,
   MONO_FONT_FAMILY,
   RADII,
   TABULAR_NUMS_STYLE,
@@ -20,12 +21,12 @@ export function createPolygonCardStyles(PALETTE: ThemePalette) {
   sheet: {
     width: '100%',
     maxWidth: '100%',
-    padding: 14,
+    padding: 15,
     borderRadius: RADII.lg,
     backgroundColor: PALETTE.bgSurface,
     borderWidth: 1,
     borderColor: PALETTE.borderSubtle,
-    gap: 10,
+    gap: 11,
   },
   sheetCompact: {
     borderWidth: 0,
@@ -51,7 +52,7 @@ export function createPolygonCardStyles(PALETTE: ThemePalette) {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 7,
   },
   materialSwatch: {
     width: 12,
@@ -59,7 +60,8 @@ export function createPolygonCardStyles(PALETTE: ThemePalette) {
     borderRadius: 3,
   },
   sheetTitle: {
-    fontSize: 16,
+    fontFamily: DISPLAY_FONT_FAMILY,
+    fontSize: 18.5,
     fontWeight: '700',
     letterSpacing: -0.2,
     color: PALETTE.inkPrimary,
@@ -900,13 +902,17 @@ export function createPolygonCardStyles(PALETTE: ThemePalette) {
     justifyContent: 'center',
   },
   voteButton: {
-    backgroundColor: PALETTE.bgSurface,
+    borderRadius: RADII.pill,
+    backgroundColor: PALETTE.bgGround,
     borderWidth: 1,
     borderColor: PALETTE.borderStrong,
   },
   upvoteButtonActive: {
-    backgroundColor: PALETTE.accentPrimary,
-    borderColor: PALETTE.accentPrimaryStrong,
+    backgroundColor: PALETTE.positiveBg,
+    borderColor: PALETTE.positiveDot,
+  },
+  upvoteButtonLabelActive: {
+    color: PALETTE.positiveText,
   },
   downvoteButtonActive: {
     backgroundColor: PALETTE.dangerSolid,
@@ -914,6 +920,7 @@ export function createPolygonCardStyles(PALETTE: ThemePalette) {
   },
   voteButtonLabel: {
     ...TABULAR_NUMS_STYLE,
+    fontFamily: MONO_FONT_FAMILY,
     fontSize: 13,
     fontWeight: '700',
     color: PALETTE.inkPrimary,

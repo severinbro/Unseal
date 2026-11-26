@@ -57,7 +57,7 @@ export const WEB_CRAFT_CSS = `
   --bg-ground: ${LIGHT_PALETTE.bgGround};
   --bg-surface: ${LIGHT_PALETTE.bgSurface};
   --bg-subtle: ${LIGHT_PALETTE.bgSubtle};
-  --bg-attrib: rgba(255, 255, 255, 0.9);
+  --bg-attrib: rgba(244, 244, 240, 0.93);
   --text-ink: ${LIGHT_PALETTE.inkPrimary};
   --text-secondary: ${LIGHT_PALETTE.inkSecondary};
   --text-muted: ${LIGHT_PALETTE.inkMuted};
@@ -65,7 +65,7 @@ export const WEB_CRAFT_CSS = `
   --accent-primary: ${LIGHT_PALETTE.accentPrimary};
   --border-subtle: ${LIGHT_PALETTE.borderSubtle};
   --border-strong: ${LIGHT_PALETTE.borderStrong};
-  --ctrl-shadow: 0 2px 6px rgba(18, 32, 25, 0.08);
+  --ctrl-shadow: 0 2px 8px rgba(18, 19, 22, 0.07);
 }
 
 :root[data-theme="dark"] {
@@ -73,7 +73,7 @@ export const WEB_CRAFT_CSS = `
   --bg-ground: ${DARK_PALETTE.bgGround};
   --bg-surface: ${DARK_PALETTE.bgSurface};
   --bg-subtle: ${DARK_PALETTE.bgSubtle};
-  --bg-attrib: rgba(22, 32, 27, 0.92);
+  --bg-attrib: rgba(24, 26, 23, 0.93);
   --text-ink: ${DARK_PALETTE.inkPrimary};
   --text-secondary: ${DARK_PALETTE.inkSecondary};
   --text-muted: ${DARK_PALETTE.inkMuted};
@@ -81,7 +81,7 @@ export const WEB_CRAFT_CSS = `
   --accent-primary: ${DARK_PALETTE.accentPrimary};
   --border-subtle: ${DARK_PALETTE.borderSubtle};
   --border-strong: ${DARK_PALETTE.borderStrong};
-  --ctrl-shadow: 0 3px 10px rgba(0, 0, 0, 0.42);
+  --ctrl-shadow: 0 3px 10px rgba(0, 0, 0, 0.44);
 }
 
 html, body, #root {

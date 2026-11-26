@@ -32,6 +32,7 @@ import {
 } from '../state/viewModels';
 import { useTheme } from '../theme/themeContext';
 import {
+  DISPLAY_FONT_FAMILY,
   RADII,
   TABULAR_NUMS_STYLE,
   getSurfaceSwatches,
@@ -752,10 +753,11 @@ function createStyles(PALETTE: ThemePalette) {
       gap: 6,
     },
     title: {
-      fontSize: 20,
+      fontFamily: DISPLAY_FONT_FAMILY,
+      fontSize: 21,
       fontWeight: '700',
       color: PALETTE.inkPrimary,
-      letterSpacing: -0.3,
+      letterSpacing: -0.2,
       flexShrink: 1,
     },
     titleCompact: {

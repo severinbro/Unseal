@@ -185,10 +185,10 @@ export function PolygonVotePanel(props: {
             <Text
               style={[
                 styles.voteButtonLabel,
-                properties.myVote === 1 ? styles.voteButtonLabelActive : null,
+                properties.myVote === 1 ? styles.upvoteButtonLabelActive : null,
               ]}
             >
-              +1 ({properties.upvotes})
+              {properties.myVote === 1 ? '★ ' : ''}+1 ({properties.upvotes})
             </Text>
           </Pressable>
 

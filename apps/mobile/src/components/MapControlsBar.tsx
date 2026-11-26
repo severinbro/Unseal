@@ -36,6 +36,7 @@ import { useTheme } from '../theme/themeContext';
 import { ChatGlyph, FeedGlyph, MapGlyph, UserGlyph } from './NavGlyphs';
 import { withWebTooltip } from './webTooltip';
 import {
+  DISPLAY_FONT_FAMILY,
   RADII,
   TABULAR_NUMS_STYLE,
   type ThemePalette,
@@ -1183,8 +1184,7 @@ export function MapControlsBar({
                     textOverflow: 'ellipsis',
                     minWidth: 0,
                     flexShrink: 1,
-                    fontFamily:
-                      'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                    fontFamily: DISPLAY_FONT_FAMILY,
                   },
                 },
                 appName,
@@ -2544,16 +2544,17 @@ function createStyles(PALETTE: ThemePalette) {
     gap: 4,
   },
   title: {
-    fontSize: 18,
+    fontFamily: DISPLAY_FONT_FAMILY,
+    fontSize: 19.5,
     fontWeight: '700',
-    letterSpacing: -0.35,
+    letterSpacing: -0.25,
     color: PALETTE.inkPrimary,
     flexShrink: 1,
     minWidth: 0,
   },
   titleCompact: {
-    fontSize: 15.5,
-    letterSpacing: -0.35,
+    fontSize: 16.5,
+    letterSpacing: -0.2,
   },
   titleVeryNarrow: {
     fontSize: 14.5,

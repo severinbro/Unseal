@@ -6,7 +6,11 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { MIN_TOUCH_TARGET_DP } from '../state/viewModels';
 import { useTheme } from '../theme/themeContext';
-import { RADII, type ThemePalette } from '../theme/tokens';
+import {
+  DISPLAY_FONT_FAMILY,
+  RADII,
+  type ThemePalette,
+} from '../theme/tokens';
 
 export function useSocialStyles() {
   const { palette } = useTheme();
@@ -83,14 +87,14 @@ export function SocialCheckbox(props: {
 function createSocialStyles(p: ThemePalette) {
   return StyleSheet.create({
     card: {
-      padding: 14,
+      padding: 15,
       gap: 10,
       borderRadius: RADII.lg,
       backgroundColor: p.bgSurface,
       borderWidth: 1,
       borderColor: p.borderSubtle,
     },
-    section: { gap: 8 },
+    section: { gap: 9 },
     grow: { flex: 1 },
     divider: {
       alignSelf: 'stretch',
@@ -103,31 +107,60 @@ function createSocialStyles(p: ThemePalette) {
       paddingTop: 4,
     },
     notice: {
-      padding: 10,
+      padding: 11,
       borderRadius: RADII.md,
       backgroundColor: p.bgTinted,
+      borderWidth: 1,
+      borderColor: p.positiveBorder,
       gap: 8,
     },
-    row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
+    row: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, alignItems: 'center' },
     spread: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
       gap: 8,
     },
-    title: { fontSize: 16, fontWeight: '700', color: p.inkPrimary },
-    subtitle: { fontSize: 14, fontWeight: '600', color: p.inkPrimary },
-    body: { fontSize: 14, lineHeight: 20, color: p.inkPrimary },
-    hint: { fontSize: 12, lineHeight: 17, color: p.inkMuted },
+    title: {
+      fontFamily: DISPLAY_FONT_FAMILY,
+      fontSize: 18.5,
+      fontWeight: '700',
+      color: p.inkPrimary,
+    },
+    subtitle: {
+      fontFamily: DISPLAY_FONT_FAMILY,
+      fontSize: 15.5,
+      fontWeight: '700',
+      color: p.inkPrimary,
+    },
+    body: { fontSize: 14.5, lineHeight: 21, color: p.inkPrimary },
+    hint: { fontSize: 12.5, lineHeight: 18, color: p.inkMuted },
     error: { fontSize: 13, lineHeight: 18, color: p.dangerText },
     badge: {
-      paddingHorizontal: 8,
+      paddingHorizontal: 9,
       paddingVertical: 3,
-      borderRadius: RADII.md,
+      borderRadius: RADII.pill,
       borderWidth: 1,
       borderColor: p.borderSubtle,
+      backgroundColor: p.bgGround,
       fontSize: 12,
+      fontWeight: '600',
       color: p.inkPrimary,
+    },
+    badgePublic: {
+      backgroundColor: p.positiveBg,
+      borderColor: p.positiveBorder,
+      color: p.positiveText,
+    },
+    badgePrivate: {
+      backgroundColor: p.neutralBg,
+      borderColor: p.neutralBorder,
+      color: p.neutralText,
+    },
+    badgeAccess: {
+      backgroundColor: p.infoBg,
+      borderColor: p.infoBorder,
+      color: p.infoText,
     },
     badgeGroup: { flexDirection: 'row', alignItems: 'center', gap: 5 },
     layerSection: {
@@ -162,24 +195,24 @@ function createSocialStyles(p: ThemePalette) {
       borderRadius: RADII.pill,
       backgroundColor: p.accentPrimary,
       ...(Platform.OS === 'web'
-        ? { boxShadow: '0 4px 16px rgba(0, 0, 0, 0.28)' }
+        ? { boxShadow: '0 4px 16px rgba(18, 19, 22, 0.24)' }
         : { elevation: 6 }),
     },
     newEntriesLabel: { fontSize: 14, fontWeight: '700', color: p.inkOnAccent },
     button: {
       minHeight: MIN_TOUCH_TARGET_DP,
-      paddingHorizontal: 14,
+      paddingHorizontal: 15,
       justifyContent: 'center',
       alignItems: 'center',
-      borderRadius: RADII.md,
+      borderRadius: RADII.pill,
       borderWidth: 1,
-      borderColor: p.borderSubtle,
+      borderColor: p.borderStrong,
       backgroundColor: p.bgSurface,
     },
     buttonActive: { backgroundColor: p.accentPrimary, borderColor: p.accentPrimary },
     buttonDisabled: { opacity: 0.5 },
-    buttonLabel: { fontSize: 14, fontWeight: '600', color: p.inkPrimary },
-    buttonLabelActive: { color: p.inkOnAccent },
+    buttonLabel: { fontSize: 13.5, fontWeight: '600', color: p.inkPrimary },
+    buttonLabelActive: { color: p.inkOnAccent, fontWeight: '700' },
     checkboxRow: {
       minHeight: MIN_TOUCH_TARGET_DP,
       flexDirection: 'row',
@@ -200,10 +233,12 @@ function createSocialStyles(p: ThemePalette) {
     checkboxLabel: { flex: 1, fontSize: 14, lineHeight: 19, color: p.inkPrimary },
     input: {
       minHeight: MIN_TOUCH_TARGET_DP,
-      padding: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
       borderRadius: RADII.md,
       borderWidth: 1,
-      borderColor: p.borderSubtle,
+      borderColor: p.borderStrong,
+      backgroundColor: p.bgSurface,
       color: p.inkPrimary,
       fontSize: 15,
     },
@@ -216,23 +251,28 @@ function createSocialStyles(p: ThemePalette) {
     },
     bubble: {
       maxWidth: '88%',
-      padding: 10,
+      padding: 12,
       gap: 6,
-      borderRadius: RADII.md,
+      borderRadius: RADII.lg,
       borderWidth: 1,
       borderColor: p.borderSubtle,
+      backgroundColor: p.bgSurface,
     },
-    bubbleOwn: { alignSelf: 'flex-end', backgroundColor: p.bgTinted },
-    bubbleOther: { alignSelf: 'flex-start' },
+    bubbleOwn: {
+      alignSelf: 'flex-end',
+      backgroundColor: p.positiveBg,
+      borderColor: p.positiveBorder,
+    },
+    bubbleOther: { alignSelf: 'flex-start', backgroundColor: p.bgSurface },
     link: { fontSize: 13, fontWeight: '600', color: p.accentPrimary },
-    fill: { flex: 1, backgroundColor: p.bgTinted },
-    // A reading column: on wide screens the cards do not stretch edge to edge.
+    fill: { flex: 1, backgroundColor: p.bgGround },
+    // Herbarium postcard column: comfortable field-guide reading width on press-paper ground.
     feedContent: {
-      padding: 12,
-      gap: 12,
+      padding: 14,
+      gap: 14,
       paddingBottom: 96,
       width: '100%',
-      maxWidth: 760,
+      maxWidth: 820,
       alignSelf: 'center',
     },
   });
