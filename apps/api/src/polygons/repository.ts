@@ -7,6 +7,7 @@ import path from 'node:path';
 import {
   AUTHOR_ACTIVITY,
   ApiError,
+  CLUSTER_LIMITS,
   FEED_LIMITS,
   GEOMETRY_LIMITS,
   HELP_WANTED_DAYS,
@@ -29,6 +30,7 @@ import {
   type ImportPolygonsResponse,
   type LandCoverCategory,
   type PersonalStatsResponse,
+  type PolygonClusterResponse,
   type PolygonFeature,
   type PolygonFilter,
   type PolygonFlagReason,
@@ -61,6 +63,12 @@ import {
   listZoneAttributions,
   overlayToFeatures,
 } from './spaceZones.js';
+import {
+  computeMercatorSpacingMeters,
+  mergeClusterCells,
+  resolveClusterMode,
+  resolveClusterZoomBucket,
+} from './clusters.js';
 
 import type pg from 'pg';
 
@@ -131,6 +139,15 @@ export interface ListPolygonsByBboxParams {
   limit?: number | undefined;
   filter?: PolygonFilter | undefined;
   spaceFilter?: SpaceFilter | undefined;
+}
+
+export interface ListPolygonClustersParams {
+  bbox: BboxBounds;
+  zoom: number;
+  viewerUserId: string | null;
+  filter?: PolygonFilter | undefined;
+  spaceFilter?: SpaceFilter | undefined;
+  mineOnly?: boolean | undefined;
 }
 
 export interface FlagPolygonParams {
@@ -2153,6 +2170,126 @@ export class PolygonRepository {
         res.rows.length > params.limit && last
           ? encodeTimeCursor(last.cursor_ts, last.id)
           : null,
+    };
+  }
+
+  public async listClusters(
+    params: ListPolygonClustersParams,
+  ): Promise<PolygonClusterResponse> {
+    const mode = resolveClusterMode(params.zoom);
+    const mineOnly = params.mineOnly === true;
+    if (mineOnly && params.viewerUserId === null) {
+      return {
+        mode,
+        totalCount: 0,
+        clusters: [],
+      };
+    }
+
+    const filter: PolygonFilter = params.filter ?? 'all';
+    const spaceFilter: SpaceFilter = params.spaceFilter ?? 'all';
+    const zoomBucket = resolveClusterZoomBucket(params.zoom);
+    const spacingPx =
+      mode === 'bubble'
+        ? CLUSTER_LIMITS.BUBBLE_SPACING_PX
+        : CLUSTER_LIMITS.CITY_DOT_SPACING_PX;
+    const mergeRadiusM = computeMercatorSpacingMeters(zoomBucket, spacingPx);
+    const fineCellM = Math.max(1, mergeRadiusM / 2);
+
+    const res = await this.pool.query<{
+      cell_count: number;
+      sum_merc_x: number;
+      sum_merc_y: number;
+      sum_lng: number;
+      sum_lat: number;
+      min_lng: number;
+      min_lat: number;
+      max_lng: number;
+      max_lat: number;
+      sample_polygon_id: string | null;
+      sample_status: string | null;
+      sample_score: number | null;
+      sample_is_author: boolean;
+    }>(
+      `WITH pts AS (
+         SELECT
+           p.id,
+           p.status,
+           p.score,
+           ($7::uuid IS NOT NULL AND p.user_id = $7::uuid) AS is_author,
+           ST_PointOnSurface(p.geom) AS pt4326,
+           ST_Transform(ST_PointOnSurface(p.geom), 3857) AS pt3857,
+           p.geom
+         FROM polygons p
+         WHERE ST_Intersects(
+           p.geom,
+           ST_MakeEnvelope($1, $2, $3, $4, 4326)
+         )
+           AND ${FILTER_SQL('$5', '$6')}
+           AND (NOT $8::boolean OR ($7::uuid IS NOT NULL AND p.user_id = $7::uuid))
+       )
+       SELECT
+         COUNT(*)::int AS cell_count,
+         SUM(ST_X(pt3857))::float8 AS sum_merc_x,
+         SUM(ST_Y(pt3857))::float8 AS sum_merc_y,
+         SUM(ST_X(pt4326))::float8 AS sum_lng,
+         SUM(ST_Y(pt4326))::float8 AS sum_lat,
+         MIN(ST_XMin(geom))::float8 AS min_lng,
+         MIN(ST_YMin(geom))::float8 AS min_lat,
+         MAX(ST_XMax(geom))::float8 AS max_lng,
+         MAX(ST_YMax(geom))::float8 AS max_lat,
+         (ARRAY_AGG(id::text))[1] AS sample_polygon_id,
+         (ARRAY_AGG(status))[1] AS sample_status,
+         (ARRAY_AGG(score))[1]::int AS sample_score,
+         BOOL_OR(is_author) AS sample_is_author
+       FROM pts
+       GROUP BY FLOOR(ST_X(pt3857) / $9::float8), FLOOR(ST_Y(pt3857) / $9::float8)`,
+      [
+        params.bbox.minLng,
+        params.bbox.minLat,
+        params.bbox.maxLng,
+        params.bbox.maxLat,
+        filter,
+        spaceFilter,
+        params.viewerUserId,
+        mineOnly,
+        fineCellM,
+      ],
+    );
+
+    let totalCount = 0;
+    const cells = res.rows.map((row) => {
+      const count = Number(row.cell_count);
+      totalCount += count;
+      return {
+        count,
+        sumMercX: Number(row.sum_merc_x),
+        sumMercY: Number(row.sum_merc_y),
+        sumLng: Number(row.sum_lng),
+        sumLat: Number(row.sum_lat),
+        minLng: Number(row.min_lng),
+        minLat: Number(row.min_lat),
+        maxLng: Number(row.max_lng),
+        maxLat: Number(row.max_lat),
+        samplePolygonId: row.sample_polygon_id,
+        sampleStatus:
+          row.sample_status !== null
+            ? coercePolygonStatus(row.sample_status)
+            : null,
+        sampleScore:
+          row.sample_score !== null ? Number(row.sample_score) : null,
+        sampleIsAuthor: Boolean(row.sample_is_author),
+      };
+    });
+
+    return {
+      mode,
+      totalCount,
+      clusters: mergeClusterCells(cells, {
+        mergeRadiusM,
+        mode,
+        maxClusters: CLUSTER_LIMITS.MAX_CLUSTERS,
+      }),
     };
   }
 

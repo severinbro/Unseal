@@ -216,8 +216,12 @@ export interface DrawingToolbarModel {
 }
 
 export function computeVisibleProposalCount(
-  state: Pick<AppState, 'features' | 'currentUser' | 'highlightMineOnly'>,
+  state: Pick<AppState, 'features' | 'currentUser' | 'highlightMineOnly'> &
+    Partial<Pick<AppState, 'clusterMode' | 'clustersTotalCount'>>,
 ): number {
+  if (state.clusterMode === true) {
+    return state.clustersTotalCount ?? 0;
+  }
   if (state.currentUser !== null && state.highlightMineOnly) {
     let mineCount = 0;
     for (const feature of state.features) {

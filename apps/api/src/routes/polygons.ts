@@ -17,6 +17,8 @@ import {
   PatchPolygonRequestSchema,
   PatchPolygonSpaceTypeRequestSchema,
   PatchPolygonStatusRequestSchema,
+  PolygonClusterQuerySchema,
+  PolygonClusterResponseSchema,
   PolygonFeatureSchema,
   PolygonFeedQuerySchema,
   PolygonFeedResponseSchema,
@@ -206,6 +208,29 @@ export function registerPolygonRoutes(
         },
       };
       return response;
+    },
+  );
+
+  app.get(
+    '/api/v1/polygons/clusters',
+    {
+      preHandler: optionalAuth,
+    },
+    async (request, reply) => {
+      applyOptionalAuthCacheHeaders(request, reply);
+      const query = PolygonClusterQuerySchema.parse(request.query);
+      const viewerUserId = request.auth?.user.id ?? null;
+
+      const result = await repository.listClusters({
+        bbox: query.bbox,
+        zoom: query.zoom,
+        viewerUserId,
+        filter: query.filter,
+        spaceFilter: query.spaceFilter,
+        mineOnly: query.mineOnly,
+      });
+
+      return PolygonClusterResponseSchema.parse(result);
     },
   );
 

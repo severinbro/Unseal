@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { type PolygonFeature, type RuntimeConfig } from '@openunseal/shared';
+import { type PolygonClusterItem, type PolygonFeature, type RuntimeConfig } from '@openunseal/shared';
 import {
   expression as styleExpression,
   featureFilter,
@@ -14,6 +14,8 @@ import {
 } from '@maplibre/maplibre-gl-style-spec';
 
 import {
+  buildClusterGeoJson,
+  buildClusterLayerSpecs,
   buildDraftGeoJson,
   buildDraftLayerSpecs,
   buildOrthophotoLayerSpec,
@@ -22,17 +24,22 @@ import {
   buildProposalGeoJson,
   buildWebCustomAttributions,
   clampPolygonOpacity,
+  computeClusterDrilldownTarget,
   DEFAULT_DARK_OSM_STYLE_URL,
   DEFAULT_POLYGON_OPACITY,
   dedupeFeatureIdsPreservingOrder,
+  detectBasemapTextFont,
   DRAFT_SOURCE_ID,
   extractRenderedFeatureRawIds,
+  formatClusterCountLabel,
+  INTERACTIVE_CLUSTER_LAYER_IDS,
   INTERACTIVE_PROPOSAL_LAYER_IDS,
   isBuiltinDop20Orthophoto,
   isOpenFreeMapDarkStyleUrl,
   ORTHOPHOTO_LAYER_ID,
   ORTHOPHOTO_SOURCE_ID,
   PROPOSALS_CENTROID_SOURCE_ID,
+  PROPOSALS_CLUSTER_SOURCE_ID,
   PROPOSALS_POLYGON_SOURCE_ID,
   resolveBasemapStyleUrl,
   shouldReportOrthophotoTileError,
@@ -1044,5 +1051,99 @@ describe('styleBuilder and MapCanvas contract', () => {
       wideGermanyAttrs.join(' '),
       /https:\/\/openunseal\.example\.org\/auth\/licenses\?theme=light/,
     );
+  });
+
+  it('builds spec-valid cluster bubble and city-dot layers and computes drilldown targets', () => {
+    assert.equal(formatClusterCountLabel(0), '0');
+    assert.equal(formatClusterCountLabel(42), '42');
+    assert.equal(formatClusterCountLabel(1240), '1.2k');
+    assert.equal(formatClusterCountLabel(2000), '2k');
+    assert.equal(formatClusterCountLabel(12400), '12k');
+
+    assert.deepEqual(
+      detectBasemapTextFont({
+        layers: [
+          { type: 'symbol', layout: { 'text-font': ['Open Sans Regular'] } },
+          { type: 'symbol', layout: { 'text-font': ['Noto Sans Bold'] } },
+        ],
+      }),
+      ['Noto Sans Bold'],
+    );
+    assert.deepEqual(detectBasemapTextFont(null), [
+      'Noto Sans Bold',
+      'Noto Sans Regular',
+    ]);
+
+    const sampleClusters: PolygonClusterItem[] = [
+      {
+        id: 'cluster-1',
+        kind: 'bubble',
+        count: 37,
+        lng: 8.27,
+        lat: 50.0,
+        bbox: [8.2, 49.96, 8.34, 50.04],
+        polygonId: null,
+        status: null,
+        score: null,
+        isAuthor: false,
+      },
+      {
+        id: FEATURE_A_ID,
+        kind: 'dot',
+        count: 1,
+        lng: 9.99,
+        lat: 53.55,
+        bbox: [9.989, 53.549, 9.991, 53.551],
+        polygonId: FEATURE_A_ID,
+        status: 'proposed',
+        score: 5,
+        isAuthor: true,
+      },
+    ];
+
+    const geojson = buildClusterGeoJson(sampleClusters);
+    assert.equal(geojson.features.length, 2);
+    assert.equal(geojson.features[0]?.properties.countLabel, '37');
+    assert.equal(geojson.features[1]?.properties.kind, 'dot');
+    assert.deepEqual(INTERACTIVE_CLUSTER_LAYER_IDS, [
+      'proposals-cluster-bubble',
+      'proposals-cluster-count',
+      'proposals-overview-dot',
+    ]);
+
+    for (const colorScheme of ['light', 'dark'] as const) {
+      for (const highlightMineOnly of [false, true]) {
+        const clusterLayers = buildClusterLayerSpecs(
+          colorScheme,
+          highlightMineOnly,
+          ['Noto Sans Regular'],
+        );
+        const testStyle = {
+          version: 8,
+          glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+          sources: {
+            [PROPOSALS_CLUSTER_SOURCE_ID]: {
+              type: 'geojson',
+              data: geojson,
+            },
+          },
+          layers: clusterLayers,
+        } as unknown as StyleSpecification;
+        assert.deepEqual(
+          validateStyleMin(testStyle),
+          [],
+          `Expected cluster layers (${colorScheme}, mine=${highlightMineOnly}) to validate`,
+        );
+      }
+    }
+
+    const bubbleTarget = computeClusterDrilldownTarget(sampleClusters[0]!, 6.5);
+    assert.ok(bubbleTarget.bounds !== undefined);
+    assert.ok(bubbleTarget.bounds.minLng < 8.2);
+    assert.ok(bubbleTarget.bounds.maxLng > 8.34);
+
+    const dotTarget = computeClusterDrilldownTarget(sampleClusters[1]!, 12.2);
+    assert.equal(dotTarget.bounds, undefined);
+    assert.equal(dotTarget.zoom, 16);
   });
 });

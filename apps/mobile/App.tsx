@@ -28,6 +28,7 @@ import {
   type PatchPolygonRequest,
   type PersonalStatsResponse,
   type PhotoVoteResponse,
+  type PolygonClusterItem,
   type PolygonComment,
   type PolygonCommentListResponse,
   type PolygonFeature,
@@ -140,6 +141,7 @@ import {
   buildOrthophotoSourceSpec,
   buildPolygonLayerSpecs,
   buildProposalGeoJson,
+  computeClusterDrilldownTarget,
   dedupeFeatureIdsPreservingOrder,
   resolveBasemapStyleUrl,
   type MapCanvasProps,
@@ -537,7 +539,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
     if (
       state.configStatus !== 'ready' ||
       state.viewport === null ||
-      state.spanTooWide ||
+      state.clusterMode ||
       state.activeMainTab !== 'map'
     ) {
       return;
@@ -577,8 +579,65 @@ export function App(props: AppProps = {}): React.JSX.Element {
     storage,
     state.configStatus,
     state.viewport,
-    state.spanTooWide,
+    state.clusterMode,
     state.polygonFilter,
+    state.activeMainTab,
+    state.viewportRefreshSeq,
+  ]);
+
+  useEffect(() => {
+    if (
+      state.configStatus !== 'ready' ||
+      state.viewport === null ||
+      !state.clusterMode ||
+      state.activeMainTab !== 'map'
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    const { bbox, zoom } = state.viewport;
+    const filter = state.polygonFilter;
+    const mineOnly = state.currentUser !== null && state.highlightMineOnly;
+
+    void (async () => {
+      try {
+        const result = await apiClient.listPolygonClusters(bbox, {
+          zoom,
+          filter,
+          mineOnly,
+        });
+        if (!cancelled) {
+          dispatch({
+            type: 'VIEWPORT_CLUSTERS_LOADED',
+            clusters: result.clusters,
+            totalCount: result.totalCount,
+          });
+        }
+      } catch (err: unknown) {
+        if (
+          !cancelled &&
+          err instanceof ApiError &&
+          err.statusCode === 401
+        ) {
+          await storage.clearToken();
+          dispatch({ type: 'SESSION_EXPIRED' });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    apiClient,
+    storage,
+    state.configStatus,
+    state.viewport,
+    state.clusterMode,
+    state.polygonFilter,
+    state.currentUser,
+    state.highlightMineOnly,
     state.activeMainTab,
     state.viewportRefreshSeq,
   ]);
@@ -1173,6 +1232,28 @@ export function App(props: AppProps = {}): React.JSX.Element {
         );
     },
     [apiClient, showPolygonOnMap],
+  );
+
+  const handleClusterPress = useCallback(
+    (cluster: PolygonClusterItem): void => {
+      setLayersPopoverOpen(false);
+      if (cluster.kind === 'dot' && cluster.polygonId !== null) {
+        handleShowPolygonById(cluster.polygonId);
+        return;
+      }
+      const target = computeClusterDrilldownTarget(
+        cluster,
+        stateRef.current.viewport?.zoom ?? 6,
+      );
+      dispatch({
+        type: 'SET_CAMERA_TARGET',
+        lng: target.lng,
+        lat: target.lat,
+        ...(target.zoom !== undefined ? { zoom: target.zoom } : {}),
+        ...(target.bounds !== undefined ? { bounds: target.bounds } : {}),
+      });
+    },
+    [handleShowPolygonById],
   );
 
   const handleChatError = useCallback(
@@ -2268,6 +2349,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
             mode={state.mode}
             basemapMode={state.basemapMode}
             features={state.features}
+            clusters={state.clusters}
             draftVertices={state.draftVertices}
             isRingClosed={state.isRingClosed}
             selectedFeatureId={state.selectedFeatureId}
@@ -2280,6 +2362,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
             onBearingChange={handleBearingChange}
             onMapTap={handleMapTap}
             onFeaturePress={handleFeaturePress}
+            onClusterPress={handleClusterPress}
             onTileError={handleTileError}
             onZoomDividerOffsetChange={setZoomDividerBottomPx}
           />

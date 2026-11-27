@@ -21,6 +21,7 @@ import {
   ImportPolygonsResponseSchema,
   PersonalStatsResponseSchema,
   PhotoVoteResponseSchema,
+  PolygonClusterResponseSchema,
   PolygonCollectionResponseSchema,
   PolygonCommentListResponseSchema,
   PolygonCommentSchema,
@@ -67,6 +68,7 @@ import {
   type PatchPolygonRequest,
   type PersonalStatsResponse,
   type PhotoVoteResponse,
+  type PolygonClusterResponse,
   type PolygonCollectionResponse,
   type PolygonComment,
   type PolygonCommentListResponse,
@@ -358,6 +360,29 @@ export class PpgisApiClient {
       includeAuth: true,
     });
     return PolygonCollectionResponseSchema.parse(json);
+  }
+
+  public async listPolygonClusters(
+    bbox: BboxInput,
+    options: PolygonListFilters & { zoom: number; mineOnly?: boolean },
+  ): Promise<PolygonClusterResponse> {
+    const bboxParam = encodeURIComponent(formatBboxQueryParam(bbox));
+    let query = `bbox=${bboxParam}&zoom=${encodeURIComponent(String(options.zoom))}`;
+    if (options.filter && options.filter !== 'all') {
+      query += `&filter=${encodeURIComponent(options.filter)}`;
+    }
+    if (options.spaceFilter && options.spaceFilter !== 'all') {
+      query += `&spaceFilter=${encodeURIComponent(options.spaceFilter)}`;
+    }
+    if (options.mineOnly === true) {
+      query += '&mineOnly=true';
+    }
+    const json = await this.requestJson({
+      method: 'GET',
+      path: `/api/v1/polygons/clusters?${query}`,
+      includeAuth: true,
+    });
+    return PolygonClusterResponseSchema.parse(json);
   }
 
   public async getPolygon(id: string): Promise<PolygonFeature> {
