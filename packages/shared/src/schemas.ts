@@ -1441,3 +1441,41 @@ export const BlockChatThreadRequestSchema = z
   .strict();
 
 export type BlockChatThreadRequest = z.infer<typeof BlockChatThreadRequestSchema>;
+
+export const PolygonClusterQuerySchema = z.object({
+  bbox: BboxStringSchema,
+  zoom: z.coerce.number().finite().min(0).max(22),
+  filter: z.enum(POLYGON_FILTERS).optional().default('all'),
+  spaceFilter: z.enum(SPACE_FILTERS).optional().default('all'),
+  mineOnly: OptionalBooleanQueryParamSchema,
+});
+
+export type PolygonClusterQuery = z.output<typeof PolygonClusterQuerySchema>;
+
+export const PolygonClusterItemSchema = z.object({
+  id: z.string().min(1),
+  kind: z.enum(['bubble', 'dot']),
+  count: z.number().int().positive(),
+  lng: z.number().finite().min(-180).max(180),
+  lat: z.number().finite().min(-90).max(90),
+  bbox: z.tuple([
+    z.number().finite(),
+    z.number().finite(),
+    z.number().finite(),
+    z.number().finite(),
+  ]),
+  polygonId: z.string().uuid().nullable().optional().default(null),
+  status: z.enum(POLYGON_STATUSES).nullable().optional().default(null),
+  score: z.number().int().nullable().optional().default(null),
+  isAuthor: z.boolean().optional().default(false),
+});
+
+export type PolygonClusterItem = z.output<typeof PolygonClusterItemSchema>;
+
+export const PolygonClusterResponseSchema = z.object({
+  mode: z.enum(['bubble', 'dot']),
+  totalCount: z.number().int().nonnegative(),
+  clusters: z.array(PolygonClusterItemSchema),
+});
+
+export type PolygonClusterResponse = z.output<typeof PolygonClusterResponseSchema>;

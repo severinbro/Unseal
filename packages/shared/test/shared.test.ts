@@ -10,6 +10,7 @@ import { ZodError } from 'zod';
 
 import {
   AUTH_LIMITS,
+  CLUSTER_LIMITS,
   AltchaChallengeResponseSchema,
   ApiError,
   ApiErrorEnvelopeSchema,
@@ -42,6 +43,8 @@ import {
   PatchPolygonRequestSchema,
   PatchPolygonStatusRequestSchema,
   PolygonCommentListResponseSchema,
+  PolygonClusterQuerySchema,
+  PolygonClusterResponseSchema,
   PolygonCommentSchema,
   PolygonListQuerySchema,
   PolygonPhotoSchema,
@@ -1438,5 +1441,59 @@ describe('Review Focus 3: BboxQuerySchema vs checkBboxSpan and remaining wire sc
     });
     assert.equal(parsedBranded.branding?.appName, 'Entsiegelung Musterstadt');
     assert.equal(parsedBranded.branding?.accentColor, '#005a9c');
+  });
+
+  it('validates CLUSTER_LIMITS, PolygonClusterQuerySchema, and PolygonClusterResponseSchema', () => {
+    assert.equal(CLUSTER_LIMITS.BUBBLE_MAX_ZOOM, 11.5);
+    assert.ok(CLUSTER_LIMITS.MAX_CLUSTERS >= 1000);
+
+    const parsedQuery = PolygonClusterQuerySchema.parse({
+      bbox: '5.5,47.2,15.2,55.0',
+      zoom: '6.5',
+      filter: 'in_progress',
+      spaceFilter: 'private',
+      mineOnly: 'true',
+    });
+    assert.deepEqual(parsedQuery.bbox, {
+      minLng: 5.5,
+      minLat: 47.2,
+      maxLng: 15.2,
+      maxLat: 55.0,
+    });
+    assert.equal(parsedQuery.zoom, 6.5);
+    assert.equal(parsedQuery.filter, 'in_progress');
+    assert.equal(parsedQuery.spaceFilter, 'private');
+    assert.equal(parsedQuery.mineOnly, true);
+
+    const defaultQuery = PolygonClusterQuerySchema.parse({
+      bbox: '8.1,49.9,8.4,50.1',
+      zoom: 12,
+    });
+    assert.equal(defaultQuery.filter, 'all');
+    assert.equal(defaultQuery.spaceFilter, 'all');
+    assert.equal(defaultQuery.mineOnly, false);
+
+    assert.throws(
+      () => PolygonClusterQuerySchema.parse({ bbox: '8.1,49.9,8.4,50.1', zoom: 99 }),
+      ZodError,
+    );
+
+    const parsedResp = PolygonClusterResponseSchema.parse({
+      mode: 'bubble',
+      totalCount: 42,
+      clusters: [
+        {
+          id: 'cluster-921000-6446000',
+          kind: 'bubble',
+          count: 42,
+          lng: 8.27,
+          lat: 50.0,
+          bbox: [8.2, 49.95, 8.34, 50.05],
+        },
+      ],
+    });
+    assert.equal(parsedResp.mode, 'bubble');
+    assert.equal(parsedResp.clusters[0]?.polygonId, null);
+    assert.equal(parsedResp.clusters[0]?.isAuthor, false);
   });
 });

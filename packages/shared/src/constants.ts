@@ -328,3 +328,15 @@ export const WEBHOOK_EVENT_TYPES = [
 ] as const;
 
 export type WebhookEventType = (typeof WEBHOOK_EVENT_TYPES)[number];
+
+export const CLUSTER_LIMITS = {
+  /** Below this zoom (beyond a whole-city view like Mainz), polygons are summarized into count bubbles. */
+  BUBBLE_MAX_ZOOM: 11.5,
+  MIN_ZOOM: 4,
+  MAX_ZOOM: 16,
+  MAX_CLUSTERS: 1_500,
+  /** Minimum screen-space spacing (px at 512px tiles) between count bubbles. */
+  BUBBLE_SPACING_PX: 56,
+  /** Tight screen-space spacing (px) in city-dot overview mode (zoom >= BUBBLE_MAX_ZOOM). */
+  CITY_DOT_SPACING_PX: 10,
+} as const;

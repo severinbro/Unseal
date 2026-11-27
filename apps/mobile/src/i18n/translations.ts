@@ -757,8 +757,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       proposeA11y: 'Entsiegelungsfläche auf der Karte einzeichnen',
       proposeCompact: '+ Vorschlag',
       proposeFull: '+ Fläche vorschlagen',
-      zoomInPrompt:
-        'Bitte näher heranzoomen, um Vorschläge zu sehen und einzutragen',
+      zoomInPrompt: 'Näher heranzoomen für Details und neue Vorschläge',
       filterGroupA11y: 'Flächenfilter (Einzelauswahl)',
       filterAll: 'Alle',
       filterAllA11y: 'Alle Flächen anzeigen',
@@ -1542,7 +1541,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       proposeA11y: 'Draw unsealing proposal polygon',
       proposeCompact: '+ Propose',
       proposeFull: '+ Propose Unsealing',
-      zoomInPrompt: 'Zoom in to view and add proposals',
+      zoomInPrompt: 'Zoom in for details and to add proposals',
       filterGroupA11y: 'Polygon filter (single choice)',
       filterAll: 'All',
       filterAllA11y: 'Show all polygons',

@@ -8,6 +8,7 @@ import {
   PolygonFeatureSchema,
   type ChatMessage,
   type ChatThread,
+  type PolygonClusterItem,
   type PolygonFeature,
   type PolygonFeedItem,
 } from '@openunseal/shared';
@@ -487,5 +488,70 @@ describe('social client state', () => {
       upsertThreadInList([t2, t1], updatedT1).map((t) => t.id),
       ['t1', 't2'],
     );
+  });
+
+  it('switches into cluster mode when zoomed out or spanTooWide and tracks cluster totals', async () => {
+    const { computeVisibleProposalCount } = await import('../src/state/viewModels');
+    const sampleCluster: PolygonClusterItem = {
+      id: 'cluster-920000-6446000',
+      kind: 'bubble',
+      count: 14,
+      lng: 8.27,
+      lat: 50.0,
+      bbox: [8.2, 49.95, 8.34, 50.05],
+      polygonId: null,
+      status: null,
+      score: null,
+      isAuthor: false,
+    };
+
+    // Zoomed out across Germany (< 11.5) -> clusterMode true, stale features cleared
+    let state: AppState = appReducer(
+      { ...initialAppState, features: [feature()] },
+      {
+        type: 'SET_VIEWPORT',
+        bbox: { minLng: 5.5, minLat: 47.2, maxLng: 15.1, maxLat: 55.0 },
+        zoom: 6.2,
+      },
+    );
+    assert.equal(state.spanTooWide, true);
+    assert.equal(state.clusterMode, true);
+    assert.equal(state.features.length, 0);
+
+    state = appReducer(state, {
+      type: 'VIEWPORT_CLUSTERS_LOADED',
+      clusters: [sampleCluster],
+      totalCount: 14,
+    });
+    assert.equal(state.clusters.length, 1);
+    assert.equal(computeVisibleProposalCount(state), 14);
+
+    // Whole city of Mainz on wide viewport (zoom >= 11.5, span > 0.15°) -> still clusterMode (dot mode)
+    state = appReducer(state, {
+      type: 'SET_VIEWPORT',
+      bbox: { minLng: 8.15, minLat: 49.94, maxLng: 8.38, maxLat: 50.06 },
+      zoom: 12.2,
+    });
+    assert.equal(state.spanTooWide, true);
+    assert.equal(state.clusterMode, true);
+
+    // Zoomed into neighborhood (zoom >= 11.5, span <= 0.15°) -> clusterMode false, clusters cleared
+    state = appReducer(state, {
+      type: 'SET_VIEWPORT',
+      bbox: { minLng: 8.25, minLat: 49.99, maxLng: 8.29, maxLat: 50.01 },
+      zoom: 15.5,
+    });
+    assert.equal(state.spanTooWide, false);
+    assert.equal(state.clusterMode, false);
+    assert.equal(state.clusters.length, 0);
+    assert.equal(computeVisibleProposalCount(state), 0);
+
+    // Stale cluster response arriving after zooming in is ignored
+    state = appReducer(state, {
+      type: 'VIEWPORT_CLUSTERS_LOADED',
+      clusters: [sampleCluster],
+      totalCount: 14,
+    });
+    assert.equal(state.clusters.length, 0);
   });
 });

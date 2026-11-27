@@ -6,6 +6,8 @@ import {
   computeExteriorRingCentroid,
   dedupeConsecutivePoints,
   formatDop20WebAttributionHtml,
+  type BboxBounds,
+  type PolygonClusterItem,
   type PolygonFeature,
   type PolygonStatus,
   type RuntimeConfig,
@@ -162,6 +164,11 @@ export const ORTHOPHOTO_SOURCE_ID = 'orthophoto-source';
 export const ORTHOPHOTO_LAYER_ID = 'orthophoto-raster-layer';
 export const PROPOSALS_POLYGON_SOURCE_ID = 'proposals-polygon-source';
 export const PROPOSALS_CENTROID_SOURCE_ID = 'proposals-centroid-source';
+export const PROPOSALS_CLUSTER_SOURCE_ID = 'proposals-cluster-source';
+export const PROPOSALS_OVERVIEW_DOT_LAYER_ID = 'proposals-overview-dot';
+export const PROPOSALS_CLUSTER_HALO_LAYER_ID = 'proposals-cluster-halo';
+export const PROPOSALS_CLUSTER_BUBBLE_LAYER_ID = 'proposals-cluster-bubble';
+export const PROPOSALS_CLUSTER_COUNT_LAYER_ID = 'proposals-cluster-count';
 export const DRAFT_SOURCE_ID = 'draft-source';
 export const GERMANY_MASK_SOURCE_ID = 'germany-mask-source';
 export const GERMANY_MASK_LAYER_ID = 'germany-mask-fill';
@@ -196,6 +203,15 @@ export const INTERACTIVE_PROPOSAL_LAYER_IDS = [
 
 export type InteractiveProposalLayerId =
   (typeof INTERACTIVE_PROPOSAL_LAYER_IDS)[number];
+
+export const INTERACTIVE_CLUSTER_LAYER_IDS = [
+  PROPOSALS_CLUSTER_BUBBLE_LAYER_ID,
+  PROPOSALS_CLUSTER_COUNT_LAYER_ID,
+  PROPOSALS_OVERVIEW_DOT_LAYER_ID,
+] as const;
+
+export type InteractiveClusterLayerId =
+  (typeof INTERACTIVE_CLUSTER_LAYER_IDS)[number];
 
 export interface OrthophotoRasterSourceSpec {
   type: 'raster';
@@ -520,6 +536,130 @@ export type PolygonLayerSpecsTuple = [
   ProposalOutlineLayerSpec,
   ProposalPrivateOutlineLayerSpec,
   ProposalCentroidLayerSpec,
+];
+
+export interface ClusterFeatureProperties {
+  id: string;
+  kind: 'bubble' | 'dot';
+  count: number;
+  countLabel: string;
+  minLng: number;
+  minLat: number;
+  maxLng: number;
+  maxLat: number;
+  polygonId: string | null;
+  status: PolygonStatus | null;
+  score: number | null;
+  isAuthor: boolean;
+}
+
+export type ProposalClusterFeature = Feature<Point, ClusterFeatureProperties> & {
+  id: string;
+};
+
+export interface ProposalClusterFeatureCollection {
+  type: 'FeatureCollection';
+  features: ProposalClusterFeature[];
+}
+
+export interface OverviewDotLayerSpec {
+  id: typeof PROPOSALS_OVERVIEW_DOT_LAYER_ID;
+  type: 'circle';
+  source: typeof PROPOSALS_CLUSTER_SOURCE_ID;
+  filter: ['==', ['get', 'kind'], 'dot'];
+  paint: {
+    'circle-color': unknown;
+    'circle-radius': number | ['case', NotAuthorBooleanExpression, number, number];
+    'circle-opacity': number | ['case', NotAuthorBooleanExpression, number, number];
+    'circle-stroke-color': string | ['case', NotAuthorBooleanExpression, string, string];
+    'circle-stroke-width': number;
+  };
+}
+
+export interface ClusterHaloLayerSpec {
+  id: typeof PROPOSALS_CLUSTER_HALO_LAYER_ID;
+  type: 'circle';
+  source: typeof PROPOSALS_CLUSTER_SOURCE_ID;
+  filter: ['==', ['get', 'kind'], 'bubble'];
+  paint: {
+    'circle-color': string;
+    'circle-opacity': number;
+    'circle-radius': [
+      'interpolate',
+      ['linear'],
+      ['get', 'count'],
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+    ];
+  };
+}
+
+export interface ClusterBubbleLayerSpec {
+  id: typeof PROPOSALS_CLUSTER_BUBBLE_LAYER_ID;
+  type: 'circle';
+  source: typeof PROPOSALS_CLUSTER_SOURCE_ID;
+  filter: ['==', ['get', 'kind'], 'bubble'];
+  paint: {
+    'circle-color': [
+      'step',
+      ['get', 'count'],
+      string,
+      number,
+      string,
+      number,
+      string,
+      number,
+      string,
+    ];
+    'circle-radius': ClusterHaloLayerSpec['paint']['circle-radius'];
+    'circle-opacity': number;
+    'circle-stroke-color': string;
+    'circle-stroke-width': number;
+  };
+}
+
+export interface ClusterCountLayerSpec {
+  id: typeof PROPOSALS_CLUSTER_COUNT_LAYER_ID;
+  type: 'symbol';
+  source: typeof PROPOSALS_CLUSTER_SOURCE_ID;
+  filter: ['==', ['get', 'kind'], 'bubble'];
+  layout: {
+    'text-field': ['get', 'countLabel'];
+    'text-font': string[];
+    'text-size': [
+      'interpolate',
+      ['linear'],
+      ['get', 'count'],
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+    ];
+    'text-allow-overlap': true;
+    'text-ignore-placement': true;
+  };
+  paint: {
+    'text-color': string;
+    'text-halo-color': string;
+    'text-halo-width': number;
+  };
+}
+
+export type ClusterLayerSpecsTuple = [
+  OverviewDotLayerSpec,
+  ClusterHaloLayerSpec,
+  ClusterBubbleLayerSpec,
+  ClusterCountLayerSpec,
 ];
 
 export interface DraftVertexProperties {
@@ -1120,6 +1260,284 @@ export function buildPolygonLayerSpecs(
   };
 
   return [fillLayer, outlineLayer, privateOutlineLayer, centroidLayer];
+}
+
+export function formatClusterCountLabel(count: number): string {
+  if (!Number.isFinite(count) || count <= 0) {
+    return '0';
+  }
+  const n = Math.round(count);
+  if (n < 1_000) {
+    return String(n);
+  }
+  if (n < 10_000) {
+    const tenths = Math.round(n / 100) / 10;
+    return Number.isInteger(tenths) ? `${tenths}k` : `${tenths.toFixed(1)}k`;
+  }
+  return `${Math.round(n / 1_000)}k`;
+}
+
+export function detectBasemapTextFont(
+  style?: {
+    layers?: readonly { type?: string; layout?: Record<string, unknown> }[];
+  } | null,
+): string[] {
+  const candidates: string[][] = [];
+  for (const layer of style?.layers ?? []) {
+    if (layer.type !== 'symbol' || !layer.layout) {
+      continue;
+    }
+    const raw = layer.layout['text-font'];
+    if (
+      Array.isArray(raw) &&
+      raw.length > 0 &&
+      raw.every((entry): entry is string => typeof entry === 'string')
+    ) {
+      candidates.push([...raw]);
+    }
+  }
+  const bold = candidates.find((fonts) =>
+    fonts.some((f) => /bold|semibold|medium/i.test(f)),
+  );
+  if (bold) {
+    return bold;
+  }
+  if (candidates[0]) {
+    return candidates[0];
+  }
+  return ['Noto Sans Bold', 'Noto Sans Regular'];
+}
+
+export function buildClusterGeoJson(
+  clusters: readonly PolygonClusterItem[],
+): ProposalClusterFeatureCollection {
+  const features: ProposalClusterFeature[] = clusters.map((cluster) => ({
+    type: 'Feature',
+    id: cluster.id,
+    geometry: {
+      type: 'Point',
+      coordinates: [cluster.lng, cluster.lat],
+    },
+    properties: {
+      id: cluster.id,
+      kind: cluster.kind,
+      count: cluster.count,
+      countLabel: formatClusterCountLabel(cluster.count),
+      minLng: cluster.bbox[0],
+      minLat: cluster.bbox[1],
+      maxLng: cluster.bbox[2],
+      maxLat: cluster.bbox[3],
+      polygonId: cluster.polygonId ?? null,
+      status: cluster.status ?? null,
+      score: cluster.score ?? null,
+      isAuthor: cluster.isAuthor ?? false,
+    },
+  }));
+  return {
+    type: 'FeatureCollection',
+    features,
+  };
+}
+
+export function buildClusterLayerSpecs(
+  colorScheme: ColorScheme = 'light',
+  highlightMineOnly: boolean = false,
+  textFont: readonly string[] = ['Noto Sans Bold', 'Noto Sans Regular'],
+): ClusterLayerSpecsTuple {
+  const isDark = colorScheme === 'dark';
+  const mutedColor = isDark ? '#64748b' : '#94a3b8';
+  const mutedStroke = isDark ? '#475569' : '#cbd5e1';
+  const normalStroke = isDark ? '#e2ece7' : '#ffffff';
+  const notAuthorExpr: NotAuthorBooleanExpression = [
+    '!',
+    ['boolean', ['get', 'isAuthor'], false],
+  ];
+
+  const dotColorBase = [
+    'case',
+    ['==', ['get', 'status'], 'finished'],
+    isDark ? '#14b8a6' : '#0d9488',
+    ['==', ['get', 'status'], 'in_progress'],
+    isDark ? '#3b82f6' : '#2563eb',
+    ['<', ['coalesce', ['get', 'score'], 0], 0],
+    isDark ? '#ef4444' : '#c44536',
+    ['>', ['coalesce', ['get', 'score'], 0], 0],
+    isDark ? '#10b981' : '#176642',
+    isDark ? '#f59e0b' : '#c87d1a',
+  ];
+
+  const overviewDotLayer: OverviewDotLayerSpec = {
+    id: PROPOSALS_OVERVIEW_DOT_LAYER_ID,
+    type: 'circle',
+    source: PROPOSALS_CLUSTER_SOURCE_ID,
+    filter: ['==', ['get', 'kind'], 'dot'],
+    paint: {
+      'circle-color': highlightMineOnly
+        ? [
+            'case',
+            notAuthorExpr,
+            mutedColor,
+            ...dotColorBase.slice(1),
+          ]
+        : dotColorBase,
+      'circle-radius': highlightMineOnly
+        ? ['case', notAuthorExpr, 4, 5]
+        : 5,
+      'circle-opacity': highlightMineOnly
+        ? ['case', notAuthorExpr, 0.55, 1]
+        : 1,
+      'circle-stroke-color': highlightMineOnly
+        ? ['case', notAuthorExpr, mutedStroke, normalStroke]
+        : normalStroke,
+      'circle-stroke-width': 1.5,
+    },
+  };
+
+  const clusterHaloLayer: ClusterHaloLayerSpec = {
+    id: PROPOSALS_CLUSTER_HALO_LAYER_ID,
+    type: 'circle',
+    source: PROPOSALS_CLUSTER_SOURCE_ID,
+    filter: ['==', ['get', 'kind'], 'bubble'],
+    paint: {
+      'circle-color': isDark ? '#34c785' : '#176642',
+      'circle-opacity': isDark ? 0.22 : 0.16,
+      'circle-radius': [
+        'interpolate',
+        ['linear'],
+        ['get', 'count'],
+        1,
+        18,
+        10,
+        22,
+        50,
+        27,
+        250,
+        32,
+        1000,
+        37,
+      ],
+    },
+  };
+
+  const clusterBubbleLayer: ClusterBubbleLayerSpec = {
+    id: PROPOSALS_CLUSTER_BUBBLE_LAYER_ID,
+    type: 'circle',
+    source: PROPOSALS_CLUSTER_SOURCE_ID,
+    filter: ['==', ['get', 'kind'], 'bubble'],
+    paint: {
+      'circle-color': isDark
+        ? [
+            'step',
+            ['get', 'count'],
+            '#10b981',
+            10,
+            '#34c785',
+            50,
+            '#6ee7b7',
+            250,
+            '#a7f3d0',
+          ]
+        : [
+            'step',
+            ['get', 'count'],
+            '#228b5b',
+            10,
+            '#176642',
+            50,
+            '#0e442b',
+            250,
+            '#092e1d',
+          ],
+      'circle-radius': [
+        'interpolate',
+        ['linear'],
+        ['get', 'count'],
+        1,
+        13,
+        10,
+        16.5,
+        50,
+        21,
+        250,
+        25.5,
+        1000,
+        30,
+      ],
+      'circle-opacity': 0.95,
+      'circle-stroke-color': isDark ? '#0c1210' : '#ffffff',
+      'circle-stroke-width': 2.2,
+    },
+  };
+
+  const clusterCountLayer: ClusterCountLayerSpec = {
+    id: PROPOSALS_CLUSTER_COUNT_LAYER_ID,
+    type: 'symbol',
+    source: PROPOSALS_CLUSTER_SOURCE_ID,
+    filter: ['==', ['get', 'kind'], 'bubble'],
+    layout: {
+      'text-field': ['get', 'countLabel'],
+      'text-font': [...textFont],
+      'text-size': [
+        'interpolate',
+        ['linear'],
+        ['get', 'count'],
+        1,
+        11.5,
+        50,
+        12.5,
+        500,
+        14,
+      ],
+      'text-allow-overlap': true,
+      'text-ignore-placement': true,
+    },
+    paint: {
+      'text-color': isDark ? '#062115' : '#ffffff',
+      'text-halo-color': isDark
+        ? 'rgba(167, 243, 208, 0.35)'
+        : 'rgba(9, 46, 29, 0.28)',
+      'text-halo-width': 0.5,
+    },
+  };
+
+  return [
+    overviewDotLayer,
+    clusterHaloLayer,
+    clusterBubbleLayer,
+    clusterCountLayer,
+  ];
+}
+
+export function computeClusterDrilldownTarget(
+  cluster: Pick<PolygonClusterItem, 'kind' | 'count' | 'lng' | 'lat' | 'bbox'>,
+  currentZoom: number,
+): { lng: number; lat: number; zoom?: number; bounds?: BboxBounds } {
+  const [minLng, minLat, maxLng, maxLat] = cluster.bbox;
+  const spanLng = Math.max(0, maxLng - minLng);
+  const spanLat = Math.max(0, maxLat - minLat);
+  if (
+    cluster.kind === 'dot' ||
+    cluster.count === 1 ||
+    Math.max(spanLng, spanLat) <= 0.004
+  ) {
+    return {
+      lng: cluster.lng,
+      lat: cluster.lat,
+      zoom: Math.max(currentZoom + 2.5, 16),
+    };
+  }
+  const padLng = Math.max(0.003, spanLng * 0.25);
+  const padLat = Math.max(0.003, spanLat * 0.25);
+  return {
+    lng: cluster.lng,
+    lat: cluster.lat,
+    bounds: {
+      minLng: Math.max(-180, minLng - padLng),
+      minLat: Math.max(-85, minLat - padLat),
+      maxLng: Math.min(180, maxLng + padLng),
+      maxLat: Math.min(85, maxLat + padLat),
+    },
+  };
 }
 
 export interface SpaceZoneFeatureLike {

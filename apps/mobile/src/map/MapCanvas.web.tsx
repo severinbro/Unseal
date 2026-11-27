@@ -16,6 +16,8 @@ import { StyleSheet, View } from 'react-native';
 
 import {
   applyDarkBasemapTuning,
+  buildClusterGeoJson,
+  buildClusterLayerSpecs,
   buildDraftGeoJson,
   buildDraftLayerSpecs,
   buildGermanyBorderOutlineGeoJson,
@@ -28,11 +30,13 @@ import {
   buildWebCustomAttributions,
   DEFAULT_POLYGON_OPACITY,
   dedupeFeatureIdsPreservingOrder,
+  detectBasemapTextFont,
   DRAFT_SOURCE_ID,
   extractRenderedFeatureRawIds,
   GERMANY_BORDER_SOURCE_ID,
   GERMANY_MASK_LAYER_ID,
   GERMANY_MASK_SOURCE_ID,
+  INTERACTIVE_CLUSTER_LAYER_IDS,
   INTERACTIVE_PROPOSAL_LAYER_IDS,
   isBuiltinDop20Orthophoto,
   isGermanyConfined,
@@ -40,6 +44,7 @@ import {
   ORTHOPHOTO_LAYER_ID,
   ORTHOPHOTO_SOURCE_ID,
   PROPOSALS_CENTROID_SOURCE_ID,
+  PROPOSALS_CLUSTER_SOURCE_ID,
   PROPOSALS_POLYGON_SOURCE_ID,
   SPACE_ZONES_SOURCE_ID,
   buildSpaceZoneLayerSpecs,
@@ -116,6 +121,7 @@ export function MapCanvas({
   mode,
   basemapMode,
   features,
+  clusters = [],
   draftVertices,
   isRingClosed,
   selectedFeatureId,
@@ -128,6 +134,7 @@ export function MapCanvas({
   onBearingChange,
   onMapTap,
   onFeaturePress,
+  onClusterPress,
   onTileError,
   onZoomDividerOffsetChange,
 }: MapCanvasProps): React.JSX.Element {
@@ -161,6 +168,8 @@ export function MapCanvas({
   basemapModeRef.current = basemapMode;
   const featuresRef = useRef(features);
   featuresRef.current = features;
+  const clustersRef = useRef(clusters);
+  clustersRef.current = clusters;
   const selectedFeatureIdRef = useRef(selectedFeatureId);
   selectedFeatureIdRef.current = selectedFeatureId;
   const polygonOpacityRef = useRef(polygonOpacity);
@@ -180,6 +189,8 @@ export function MapCanvas({
   onMapTapRef.current = onMapTap;
   const onFeaturePressRef = useRef(onFeaturePress);
   onFeaturePressRef.current = onFeaturePress;
+  const onClusterPressRef = useRef(onClusterPress);
+  onClusterPressRef.current = onClusterPress;
   const onTileErrorRef = useRef(onTileError);
   onTileErrorRef.current = onTileError;
   const onZoomDividerOffsetChangeRef = useRef(onZoomDividerOffsetChange);
@@ -346,6 +357,7 @@ export function MapCanvas({
         featuresRef.current,
         selectedFeatureIdRef.current,
       );
+      const clusterGeoJson = buildClusterGeoJson(clustersRef.current);
       const draftGeoJson = buildDraftGeoJson(
         draftVerticesRef.current,
         isRingClosedRef.current,
@@ -373,6 +385,17 @@ export function MapCanvas({
           ?.setData(proposalGeoJson.centroids);
       }
 
+      if (!map.getSource(PROPOSALS_CLUSTER_SOURCE_ID)) {
+        map.addSource(PROPOSALS_CLUSTER_SOURCE_ID, {
+          type: 'geojson',
+          data: clusterGeoJson as unknown as GeoJSON.FeatureCollection,
+        });
+      } else {
+        map
+          .getSource<GeoJSONSource>(PROPOSALS_CLUSTER_SOURCE_ID)
+          ?.setData(clusterGeoJson as unknown as GeoJSON.FeatureCollection);
+      }
+
       if (!map.getSource(DRAFT_SOURCE_ID)) {
         map.addSource(DRAFT_SOURCE_ID, {
           type: 'geojson',
@@ -390,6 +413,21 @@ export function MapCanvas({
       )) {
         if (!map.getLayer(proposalLayer.id)) {
           map.addLayer(proposalLayer);
+        }
+      }
+
+      const detectedFont = detectBasemapTextFont(
+        map.getStyle() as {
+          layers?: readonly { type?: string; layout?: Record<string, unknown> }[];
+        },
+      );
+      for (const clusterLayer of buildClusterLayerSpecs(
+        colorSchemeRef.current,
+        highlightMineOnlyRef.current,
+        detectedFont,
+      )) {
+        if (!map.getLayer(clusterLayer.id)) {
+          map.addLayer(clusterLayer as Parameters<MapLibreMap['addLayer']>[0]);
         }
       }
 
@@ -548,6 +586,31 @@ export function MapCanvas({
         return;
       }
 
+      if (clustersRef.current.length > 0) {
+        const activeClusterLayers = INTERACTIVE_CLUSTER_LAYER_IDS.filter((id) =>
+          Boolean(map.getLayer(id)),
+        );
+        if (activeClusterLayers.length > 0) {
+          const clusterHits = map.queryRenderedFeatures(
+            [
+              [event.point.x - TAP_HITBOX_HALF_PX, event.point.y - TAP_HITBOX_HALF_PX],
+              [event.point.x + TAP_HITBOX_HALF_PX, event.point.y + TAP_HITBOX_HALF_PX],
+            ],
+            { layers: [...activeClusterLayers] },
+          );
+          const hitId = extractRenderedFeatureRawIds(clusterHits)[0];
+          if (hitId) {
+            const matchedCluster = clustersRef.current.find(
+              (item) => item.id === hitId,
+            );
+            if (matchedCluster) {
+              onClusterPressRef.current?.(matchedCluster);
+              return;
+            }
+          }
+        }
+      }
+
       const activeProposalLayers = INTERACTIVE_PROPOSAL_LAYER_IDS.filter((id) =>
         Boolean(map.getLayer(id)),
       );
@@ -576,7 +639,10 @@ export function MapCanvas({
       }
     });
 
-    for (const layerId of INTERACTIVE_PROPOSAL_LAYER_IDS) {
+    for (const layerId of [
+      ...INTERACTIVE_PROPOSAL_LAYER_IDS,
+      ...INTERACTIVE_CLUSTER_LAYER_IDS,
+    ]) {
       map.on('mouseenter', layerId, () => {
         if (modeRef.current === 'browse') {
           map.getCanvas().style.cursor = 'pointer';
@@ -674,6 +740,17 @@ export function MapCanvas({
     if (!map || !styleReadyRef.current) {
       return;
     }
+    const clusterGeoJson = buildClusterGeoJson(clusters);
+    map
+      .getSource<GeoJSONSource>(PROPOSALS_CLUSTER_SOURCE_ID)
+      ?.setData(clusterGeoJson as unknown as GeoJSON.FeatureCollection);
+  }, [clusters]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleReadyRef.current) {
+      return;
+    }
     map
       .getSource<GeoJSONSource>(SPACE_ZONES_SOURCE_ID)
       ?.setData(
@@ -753,6 +830,49 @@ export function MapCanvas({
         centroidSpec.id,
         'circle-stroke-opacity',
         centroidSpec.paint['circle-stroke-opacity'],
+      );
+    }
+
+    const [dotSpec, haloSpec, bubbleSpec, countSpec] = buildClusterLayerSpecs(
+      colorScheme,
+      highlightMineOnly,
+    );
+    if (map.getLayer(dotSpec.id)) {
+      map.setPaintProperty(dotSpec.id, 'circle-color', dotSpec.paint['circle-color']);
+      map.setPaintProperty(dotSpec.id, 'circle-radius', dotSpec.paint['circle-radius']);
+      map.setPaintProperty(dotSpec.id, 'circle-opacity', dotSpec.paint['circle-opacity']);
+      map.setPaintProperty(
+        dotSpec.id,
+        'circle-stroke-color',
+        dotSpec.paint['circle-stroke-color'],
+      );
+    }
+    if (map.getLayer(haloSpec.id)) {
+      map.setPaintProperty(haloSpec.id, 'circle-color', haloSpec.paint['circle-color']);
+      map.setPaintProperty(
+        haloSpec.id,
+        'circle-opacity',
+        haloSpec.paint['circle-opacity'],
+      );
+    }
+    if (map.getLayer(bubbleSpec.id)) {
+      map.setPaintProperty(
+        bubbleSpec.id,
+        'circle-color',
+        bubbleSpec.paint['circle-color'],
+      );
+      map.setPaintProperty(
+        bubbleSpec.id,
+        'circle-stroke-color',
+        bubbleSpec.paint['circle-stroke-color'],
+      );
+    }
+    if (map.getLayer(countSpec.id)) {
+      map.setPaintProperty(countSpec.id, 'text-color', countSpec.paint['text-color']);
+      map.setPaintProperty(
+        countSpec.id,
+        'text-halo-color',
+        countSpec.paint['text-halo-color'],
       );
     }
 

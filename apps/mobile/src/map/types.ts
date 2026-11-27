@@ -3,6 +3,7 @@
 
 import type {
   BboxBounds,
+  PolygonClusterItem,
   PolygonFeature,
   RuntimeConfig,
   SpaceZoneCollection,
@@ -48,6 +49,7 @@ export interface MapCanvasProps {
   mode: InteractionMode;
   basemapMode: BasemapMode;
   features: PolygonFeature[];
+  clusters?: PolygonClusterItem[];
   draftVertices: [number, number][];
   isRingClosed: boolean;
   selectedFeatureId: string | null;
@@ -61,6 +63,7 @@ export interface MapCanvasProps {
   onBearingChange?: (bearingDeg: number) => void;
   onMapTap: (point: [number, number]) => void;
   onFeaturePress: (featureIds: string[]) => void;
+  onClusterPress?: (cluster: PolygonClusterItem) => void;
   onTileError: (reason: string) => void;
   onZoomDividerOffsetChange?: (bottomPx: number) => void;
 }

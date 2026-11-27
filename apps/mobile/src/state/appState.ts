@@ -3,6 +3,7 @@
 
 import {
   ApiError,
+  CLUSTER_LIMITS,
   checkBboxSpan,
   closeRingIfNeeded,
   computeExteriorRingCentroid,
@@ -18,6 +19,7 @@ import {
   type BboxBounds,
   type CreatePolygonRequest,
   type FlagPolygonResponse,
+  type PolygonClusterItem,
   type PolygonFeature,
   type PolygonFilter,
   type RuntimeConfig,
@@ -125,6 +127,9 @@ export interface AppState {
   tileWarning: string | null;
   viewport: ViewportState | null;
   spanTooWide: boolean;
+  clusterMode: boolean;
+  clusters: PolygonClusterItem[];
+  clustersTotalCount: number;
   viewportRefreshSeq: number;
   cameraTarget: CameraTarget | null;
   features: PolygonFeature[];
@@ -198,6 +203,11 @@ export type AppAction =
       features: PolygonFeature[];
       truncated: boolean;
     }
+  | {
+      type: 'VIEWPORT_CLUSTERS_LOADED';
+      clusters: PolygonClusterItem[];
+      totalCount: number;
+    }
   | { type: 'REFRESH_VIEWPORT_FEATURES' }
   | { type: 'START_DRAW' }
   | { type: 'ADD_VERTEX'; point: [number, number] }
@@ -265,6 +275,9 @@ export const initialAppState: AppState = {
   tileWarning: null,
   viewport: null,
   spanTooWide: false,
+  clusterMode: false,
+  clusters: [],
+  clustersTotalCount: 0,
   viewportRefreshSeq: 0,
   cameraTarget: null,
   features: [],
@@ -685,6 +698,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         overlapIndex: 0,
         selectedFeatureId: action.feature.id,
         pinnedFeature: action.feature,
+        clusters: [],
+        clustersTotalCount: 0,
         cameraTarget: {
           lng,
           lat,
@@ -751,6 +766,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const maxSpan =
         state.config?.limits.maxBboxSpanDeg ?? GEOMETRY_LIMITS.MAX_BBOX_SPAN_DEG;
       const spanTooWide = isBboxSpanTooWide(action.bbox, maxSpan);
+      const clusterMode =
+        spanTooWide || action.zoom < CLUSTER_LIMITS.BUBBLE_MAX_ZOOM;
       return {
         ...state,
         viewport: {
@@ -758,7 +775,34 @@ export function appReducer(state: AppState, action: AppAction): AppState {
           zoom: action.zoom,
         },
         spanTooWide,
-        ...(spanTooWide ? { truncated: false } : {}),
+        clusterMode,
+        ...(clusterMode
+          ? {
+              truncated: false,
+              ...(state.pinnedFeature === null
+                ? {
+                    features: [],
+                    selectedFeatureId: null,
+                    overlappingFeatureIds: [],
+                    overlapIndex: 0,
+                  }
+                : {}),
+            }
+          : {
+              clusters: [],
+              clustersTotalCount: 0,
+            }),
+      };
+    }
+
+    case 'VIEWPORT_CLUSTERS_LOADED': {
+      if (!state.clusterMode) {
+        return state;
+      }
+      return {
+        ...state,
+        clusters: action.clusters,
+        clustersTotalCount: action.totalCount,
       };
     }
 
@@ -1474,6 +1518,9 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         currentUser: null,
         pinnedFeature: null,
         highlightMineOnly: false,
+        ...(state.clusterMode && state.highlightMineOnly
+          ? { clusters: [], clustersTotalCount: 0 }
+          : {}),
         isSubmittingDraft: false,
         viewportRefreshSeq: state.viewportRefreshSeq + 1,
         authModalOpen: true,
@@ -1507,6 +1554,9 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         highlightMineOnly: false,
         viewportRefreshSeq: state.viewportRefreshSeq + 1,
         features: scrubbedFeatures,
+        ...(state.clusterMode && state.highlightMineOnly
+          ? { clusters: [], clustersTotalCount: 0 }
+          : {}),
         isSubmittingDraft: false,
         authModalOpen: false,
         authModalView: 'login',
@@ -1575,6 +1625,9 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         highlightMineOnly: false,
         viewportRefreshSeq: state.viewportRefreshSeq + 1,
         features: anonymizedFeatures,
+        ...(state.clusterMode && state.highlightMineOnly
+          ? { clusters: [], clustersTotalCount: 0 }
+          : {}),
         overlappingFeatureIds: nextOverlap,
         overlapIndex: nextOverlapIndex,
         selectedFeatureId: selectionPurged
