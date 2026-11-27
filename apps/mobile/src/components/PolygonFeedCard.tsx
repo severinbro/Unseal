@@ -20,9 +20,14 @@ import { MapPreview } from '../map/MapPreview';
 import { MAP_PREVIEW_HEIGHT } from '../map/MapPreview.types';
 import { formatRelativeTime } from '../state/feedScope';
 import { computeSilhouetteSegments } from '../state/silhouette';
-import { formatInspectorDate } from '../state/viewModels';
+import { formatInspectorDate, MIN_TOUCH_TARGET_DP } from '../state/viewModels';
 import { useTheme } from '../theme/themeContext';
-import { RADII, type ThemePalette } from '../theme/tokens';
+import {
+  MONO_FONT_FAMILY,
+  RADII,
+  TABULAR_NUMS_STYLE,
+  type ThemePalette,
+} from '../theme/tokens';
 import {
   PolygonCardTitle,
   PolygonCreatorCard,
@@ -57,10 +62,14 @@ function toneColor(
 function Silhouette(props: {
   ring: readonly (readonly [number, number])[];
   color: string;
+  width?: number;
+  height?: number;
 }): React.JSX.Element {
+  const w = props.width ?? 132;
+  const h = props.height ?? 96;
   return (
-    <View style={local.silhouette} accessible={false}>
-      {computeSilhouetteSegments(props.ring, 132, 96).map((s, i) => (
+    <View style={{ width: w, height: h, alignSelf: 'center' }} accessible={false}>
+      {computeSilhouetteSegments(props.ring, w, h).map((s, i) => (
         <View
           key={i}
           style={{
@@ -69,7 +78,7 @@ function Silhouette(props: {
             top: s.top,
             width: s.width,
             height: 2.5,
-            borderRadius: 2,
+            borderRadius: 1,
             backgroundColor: props.color,
             transform: [{ rotate: `${s.angleDeg}deg` }],
           }}
@@ -80,9 +89,11 @@ function Silhouette(props: {
 }
 
 /**
- * An area as a feed entry. It is assembled from the same parts as the sheet
- * on the map (title, votes, note, contributor), in the same order, with its
- * place on the map, the photos and the top comment laid open.
+ * An area as a 4-chamber Perforated Field-Ticket:
+ * 1. Flush recessed specimen header bar with tactile map-jump keycap
+ * 2. Full-bleed map stage with docked polygon silhouette scale stamp & activity tag
+ * 3. Body deck (ground stamps, photos, note, top comment, 3-cell vote rocker, creator)
+ * 4. Perforated tear-off index stub footer
  */
 export function PolygonFeedCard(props: {
   item: PolygonFeedItem;
@@ -105,6 +116,7 @@ export function PolygonFeedCard(props: {
   const p = item.feature.properties;
   const tone = toneColor(item, palette);
   const photos = item.photos.filter((photo) => !photo.isFlaggedFake);
+  const ring = item.feature.geometry.coordinates[0] ?? [];
   const name = (pseudonym: string): string =>
     pseudonym === 'deleted' ? social.deleted : pseudonym;
 
@@ -119,19 +131,36 @@ export function PolygonFeedCard(props: {
   }, [appear]);
 
   const when = item.activityAt ?? p.createdAt;
-  const tabButton = (
+  const showMunicipalityStub = Boolean(
+    props.canNarrowToMunicipality && p.municipalityAgs && p.municipalityName,
+  );
+
+  const stubButton = (
     tab: InspectorTab,
     label: string,
     testID: string,
+    hasRightDivider: boolean,
   ): React.JSX.Element => (
     <Pressable
       testID={testID}
       accessibilityRole="button"
       accessibilityLabel={`${label}: ${social.showOnMap}`}
       onPress={() => props.onShowOnMap(tab)}
-      style={({ pressed }) => [styles.tabButton, pressed ? local.pressed : null]}
+      style={({ pressed }) => [
+        local.stubButton,
+        hasRightDivider
+          ? {
+              borderRightWidth: 1.5,
+              borderRightColor: palette.borderStrong,
+            }
+          : null,
+        pressed ? { backgroundColor: palette.bgSubtle } : null,
+      ]}
     >
-      <Text numberOfLines={1} style={styles.tabButtonLabel}>
+      <Text
+        numberOfLines={1}
+        style={[local.stubButtonLabel, { color: palette.inkPrimary }]}
+      >
         {label}
       </Text>
     </Pressable>
@@ -142,8 +171,8 @@ export function PolygonFeedCard(props: {
       testID={`feed-card-${item.feature.id}`}
       style={[
         styles.sheet,
-        local.card,
-        { borderLeftColor: tone },
+        local.ticketShell,
+        isDark ? local.ticketShadowDark : local.ticketShadowLight,
         {
           opacity: appear,
           transform: [
@@ -157,56 +186,62 @@ export function PolygonFeedCard(props: {
         },
       ]}
     >
-      <View style={local.activityRow}>
-        <View style={[local.activityDot, { backgroundColor: tone }]} />
-        <Text style={[local.activityLabel, { color: palette.inkPrimary }]}>
-          {social.activity[item.activity]}
-        </Text>
-        <Text
-          style={[local.activityTime, { color: palette.inkMuted }]}
-          accessibilityLabel={formatInspectorDate(when, locale) ?? undefined}
-        >
-          {formatRelativeTime(when, locale, props.nowMs)}
-        </Text>
+      {/* Chamber 1: Flush Specimen Header Bar */}
+      <View
+        style={[
+          local.ticketHeaderBar,
+          {
+            backgroundColor: palette.bgSubtle,
+            borderBottomColor: palette.borderStrong,
+          },
+        ]}
+      >
+        <View style={styles.headerRow}>
+          <View style={styles.headerTitleGroup}>
+            <PolygonCardTitle feature={item.feature} locale={locale} />
+          </View>
+          <View style={styles.headerControls}>
+            <Pressable
+              testID={`feed-show-${item.feature.id}`}
+              accessibilityRole="button"
+              accessibilityLabel={social.showOnMap}
+              onPress={() => props.onShowOnMap('overview')}
+              style={({ pressed }) => [
+                local.mapJumpKeycap,
+                {
+                  backgroundColor: palette.bgSurface,
+                  borderColor: palette.borderStrong,
+                },
+                pressed ? local.keycapPressed : null,
+              ]}
+            >
+              <Text
+                style={[local.mapJumpGlyph, { color: palette.accentPrimary }]}
+              >
+                ↗
+              </Text>
+              <Text
+                style={[local.mapJumpLabel, { color: palette.inkPrimary }]}
+              >
+                {social.showOnMap}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
       </View>
 
-      <View style={styles.headerRow}>
-        <View style={styles.headerTitleGroup}>
-          <PolygonCardTitle feature={item.feature} locale={locale} />
-        </View>
-        <View style={styles.headerControls}>
-          <Pressable
-            testID={`feed-show-${item.feature.id}`}
-            accessibilityRole="button"
-            accessibilityLabel={social.showOnMap}
-            onPress={() => props.onShowOnMap('overview')}
-            style={({ pressed }) => [
-              styles.closeButton,
-              pressed ? local.pressed : null,
-            ]}
-          >
-            <Text style={styles.closeButtonLabel}>{social.showOnMap}</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      <PolygonVotePanel
-        feature={item.feature}
-        locale={locale}
-        busy={props.voteBusy}
-        onVotePress={props.onVote}
-      />
-
-      <SpaceBadges locale={locale} feature={item.feature} />
-
+      {/* Chamber 2: Full-Bleed Map Stage + Docked Cadastral HUD Stamps */}
       <Pressable
         testID={`feed-map-${item.feature.id}`}
         accessibilityRole="button"
         accessibilityLabel={social.mapPreviewA11y}
         onPress={() => props.onShowOnMap('overview')}
         style={({ pressed }) => [
-          local.mapBox,
-          { backgroundColor: palette.bgSubtle },
+          local.mapStageBox,
+          {
+            backgroundColor: palette.bgRecessed,
+            borderBottomColor: palette.borderStrong,
+          },
           pressed ? local.pressed : null,
         ]}
       >
@@ -216,93 +251,167 @@ export function PolygonFeedCard(props: {
           dashed={p.spaceType === 'private'}
           config={props.mapConfig}
           colorScheme={isDark ? 'dark' : 'light'}
-          fallback={
-            <Silhouette ring={item.feature.geometry.coordinates[0] ?? []} color={tone} />
-          }
+          fallback={<Silhouette ring={ring} color={tone} />}
         />
-      </Pressable>
 
-      {photos.length > 0 ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={photos.length > 1}
-          contentContainerStyle={local.photoStrip}
-          testID={`feed-photos-${item.feature.id}`}
+        {/* Top-left docked polygon silhouette + scale plate */}
+        <View
+          pointerEvents="none"
+          accessible={false}
+          style={[
+            local.hudSilhouettePlate,
+            {
+              backgroundColor: palette.bgFloatingPill,
+              borderColor: palette.borderStrong,
+            },
+          ]}
         >
-          {photos.map((photo) => (
-            <View
-              key={photo.id}
-              style={[
-                local.photoFrame,
-                photos.length === 1 ? local.photoFrameSingle : null,
-                { backgroundColor: palette.bgSubtle },
-              ]}
+          <Silhouette ring={ring} color={tone} width={52} height={34} />
+          <Text style={[local.stampCaption, { color: palette.inkPrimary }]}>
+            {Math.round(p.areaM2)} m²
+          </Text>
+        </View>
+
+        {/* Top-right docked activity & timestamp plate */}
+        <View pointerEvents="none" style={local.hudTopRightRow}>
+          <View
+            style={[
+              local.hudActivityPlate,
+              {
+                backgroundColor: palette.bgFloatingPill,
+                borderColor: palette.borderStrong,
+              },
+            ]}
+          >
+            <View style={[local.activitySquare, { backgroundColor: tone }]} />
+            <Text
+              numberOfLines={1}
+              style={[local.activityLabel, { color: palette.inkPrimary }]}
             >
-              <Image
-                source={{ uri: props.resolveUploadUrl(photo.thumbUrl) }}
-                style={local.photo}
-                resizeMode="cover"
-                accessibilityLabel={social.photoBy(name(photo.uploaderPseudonym))}
-              />
-              <Text numberOfLines={1} style={local.photoCredit}>
-                {social.photoBy(name(photo.uploaderPseudonym))}
-              </Text>
-            </View>
-          ))}
-        </ScrollView>
-      ) : null}
-
-      {p.note && p.note.trim().length > 0 ? (
-        <PolygonNoteCard note={p.note} locale={locale} />
-      ) : null}
-
-      {item.topComment ? (
-        <View style={[styles.commentCard, styles.commentCardTopRated]}>
-          <View style={styles.commentBadgesRow}>
-            <View style={styles.topCommentBadge}>
-              <Text style={styles.topCommentBadgeLabel}>{t.topCommentBadge}</Text>
-            </View>
-          </View>
-          <View style={styles.commentHeaderRow}>
-            <Text style={styles.commentAuthorLabel}>
-              {social.commentBy(name(item.topComment.authorPseudonym))}
+              {social.activity[item.activity]}
+            </Text>
+            <Text
+              style={[local.activityTime, { color: palette.inkSecondary }]}
+              accessibilityLabel={formatInspectorDate(when, locale) ?? undefined}
+            >
+              · {formatRelativeTime(when, locale, props.nowMs)}
             </Text>
           </View>
-          <Text style={styles.commentBodyText}>{item.topComment.body}</Text>
         </View>
-      ) : null}
+      </Pressable>
 
-      <PolygonCreatorCard feature={item.feature} locale={locale} />
+      {/* Chamber 3: Specimen Body Deck */}
+      <View style={local.ticketBody}>
+        <SpaceBadges locale={locale} feature={item.feature} />
 
-      <View style={styles.tabWell}>
-        {tabButton(
+        {photos.length > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={photos.length > 1}
+            contentContainerStyle={local.photoStrip}
+            testID={`feed-photos-${item.feature.id}`}
+          >
+            {photos.map((photo) => (
+              <View
+                key={photo.id}
+                style={[
+                  local.photoFrame,
+                  photos.length === 1 ? local.photoFrameSingle : null,
+                  {
+                    backgroundColor: palette.bgSubtle,
+                    borderColor: palette.borderStrong,
+                  },
+                ]}
+              >
+                <Image
+                  source={{ uri: props.resolveUploadUrl(photo.thumbUrl) }}
+                  style={local.photo}
+                  resizeMode="cover"
+                  accessibilityLabel={social.photoBy(name(photo.uploaderPseudonym))}
+                />
+                <Text numberOfLines={1} style={local.photoCredit}>
+                  {social.photoBy(name(photo.uploaderPseudonym))}
+                </Text>
+              </View>
+            ))}
+          </ScrollView>
+        ) : null}
+
+        {p.note && p.note.trim().length > 0 ? (
+          <PolygonNoteCard note={p.note} locale={locale} />
+        ) : null}
+
+        {item.topComment ? (
+          <View style={[styles.commentCard, styles.commentCardTopRated]}>
+            <View style={styles.commentBadgesRow}>
+              <View style={styles.topCommentBadge}>
+                <Text style={styles.topCommentBadgeLabel}>
+                  {t.topCommentBadge}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.commentHeaderRow}>
+              <Text style={styles.commentAuthorLabel}>
+                {social.commentBy(name(item.topComment.authorPseudonym))}
+              </Text>
+            </View>
+            <Text style={styles.commentBodyText}>„{item.topComment.body}“</Text>
+          </View>
+        ) : null}
+
+        <View style={local.bodySpacer} />
+
+        <PolygonVotePanel
+          feature={item.feature}
+          locale={locale}
+          busy={props.voteBusy}
+          onVotePress={props.onVote}
+        />
+
+        <PolygonCreatorCard feature={item.feature} locale={locale} />
+      </View>
+
+      {/* Chamber 4: Perforated Tear-Off Index Stubs */}
+      <View
+        style={[
+          local.stubFooterRow,
+          {
+            backgroundColor: palette.bgRecessed,
+            borderTopColor: palette.borderStrong,
+          },
+        ]}
+      >
+        {stubButton(
           'comments',
           t.tabComments(p.commentCount),
           `feed-comments-${item.feature.id}`,
+          true,
         )}
-        {tabButton(
+        {stubButton(
           'photos',
           t.tabPhotos(p.photoCount),
           `feed-open-photos-${item.feature.id}`,
+          showMunicipalityStub,
         )}
-        {props.canNarrowToMunicipality && p.municipalityAgs && p.municipalityName
-          ? (
-              <Pressable
-                testID={`feed-only-${item.feature.id}`}
-                accessibilityRole="button"
-                accessibilityLabel={social.onlyMunicipality(p.municipalityName)}
-                onPress={props.onOnlyMunicipality}
-                style={({ pressed }) => [
-                  styles.tabButton,
-                  pressed ? local.pressed : null,
-                ]}
-              >
-                <Text numberOfLines={1} style={styles.tabButtonLabel}>
-                  {social.scopeMunicipality(p.municipalityName)}
-                </Text>
-              </Pressable>
-            )
-          : null}
+        {showMunicipalityStub && p.municipalityName ? (
+          <Pressable
+            testID={`feed-only-${item.feature.id}`}
+            accessibilityRole="button"
+            accessibilityLabel={social.onlyMunicipality(p.municipalityName)}
+            onPress={props.onOnlyMunicipality}
+            style={({ pressed }) => [
+              local.stubButton,
+              pressed ? { backgroundColor: palette.bgSubtle } : null,
+            ]}
+          >
+            <Text
+              numberOfLines={1}
+              style={[local.stubButtonLabel, { color: palette.accentPrimary }]}
+            >
+              ⌖ {social.scopeMunicipality(p.municipalityName)}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
     </Animated.View>
   );
@@ -310,7 +419,7 @@ export function PolygonFeedCard(props: {
 
 /** Placeholder shown while the first entries load. */
 export function FeedCardSkeleton(): React.JSX.Element {
-  const { palette } = useTheme();
+  const { palette, isDark } = useTheme();
   const styles = useMemo(() => createPolygonCardStyles(palette), [palette]);
   const pulse = useRef(new Animated.Value(0.45)).current;
   useEffect(() => {
@@ -336,7 +445,7 @@ export function FeedCardSkeleton(): React.JSX.Element {
       style={{
         width,
         height,
-        borderRadius: RADII.md,
+        borderRadius: RADII.sm,
         backgroundColor: palette.bgRecessed,
       }}
     />
@@ -344,37 +453,152 @@ export function FeedCardSkeleton(): React.JSX.Element {
   return (
     <Animated.View
       accessible={false}
-      style={[styles.sheet, local.card, { opacity: pulse }]}
+      style={[
+        styles.sheet,
+        local.ticketShell,
+        isDark ? local.ticketShadowDark : local.ticketShadowLight,
+        { padding: 14, gap: 10, opacity: pulse },
+      ]}
     >
       {bar('45%', 14)}
       {bar('70%', 22)}
-      {bar('100%', 44)}
       {bar('100%', MAP_PREVIEW_HEIGHT)}
+      {bar('100%', 44)}
       {bar('60%', 16)}
     </Animated.View>
   );
 }
 
 const local = StyleSheet.create({
-  card: {
-    borderLeftWidth: 4,
-    ...(Platform.OS === 'web'
-      ? { boxShadow: '0 2px 10px rgba(18, 32, 25, 0.08)' }
-      : { elevation: 2 }),
+  ticketShell: {
+    flex: 1,
+    padding: 0,
+    gap: 0,
+    overflow: 'hidden',
+    borderBottomWidth: 4,
   },
-  pressed: { opacity: 0.7 },
-  activityRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  activityDot: { width: 9, height: 9, borderRadius: 5 },
-  activityLabel: { fontSize: 12.5, fontWeight: '700', flexShrink: 1 },
-  activityTime: { fontSize: 12.5, marginLeft: 'auto' },
+  ticketShadowLight: {
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0 3px 0 rgba(17, 31, 24, 0.12)' }
+      : { elevation: 3 }),
+  },
+  ticketShadowDark: {
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0 3px 0 rgba(0, 0, 0, 0.45)' }
+      : { elevation: 3 }),
+  },
+  ticketHeaderBar: {
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+    borderBottomWidth: 1.5,
+  },
+  mapJumpKeycap: {
+    minHeight: MIN_TOUCH_TARGET_DP,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: RADII.sm,
+    borderWidth: 1.5,
+    borderBottomWidth: 3,
+  },
+  mapJumpGlyph: {
+    fontFamily: MONO_FONT_FAMILY,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  mapJumpLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  keycapPressed: {
+    transform: [{ translateY: 1.5 }],
+    borderBottomWidth: 1.5,
+  },
+  pressed: { opacity: 0.85 },
+  mapStageBox: {
+    height: MAP_PREVIEW_HEIGHT,
+    justifyContent: 'center',
+    borderBottomWidth: 1.5,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  hudSilhouettePlate: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 7,
+    borderRadius: RADII.sm,
+    borderWidth: 1.5,
+    borderBottomWidth: 2.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  stampCaption: {
+    ...TABULAR_NUMS_STYLE,
+    fontFamily: MONO_FONT_FAMILY,
+    fontSize: 10.5,
+    fontWeight: '800',
+  },
+  hudTopRightRow: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    left: 86,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'flex-start',
+  },
+  hudActivityPlate: {
+    maxWidth: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: RADII.xs,
+    borderWidth: 1.5,
+    borderBottomWidth: 2.5,
+  },
+  activitySquare: {
+    width: 8,
+    height: 8,
+    borderRadius: 1.5,
+    flexShrink: 0,
+  },
+  activityLabel: {
+    fontFamily: MONO_FONT_FAMILY,
+    fontSize: 11,
+    fontWeight: '700',
+    flexShrink: 1,
+  },
+  activityTime: {
+    ...TABULAR_NUMS_STYLE,
+    fontFamily: MONO_FONT_FAMILY,
+    fontSize: 11,
+    fontWeight: '600',
+    flexShrink: 0,
+  },
+  ticketBody: {
+    flex: 1,
+    padding: 13,
+    gap: 10,
+  },
+  bodySpacer: {
+    flexGrow: 1,
+  },
   photoStrip: { gap: 8, flexGrow: 1 },
   photoFrame: {
     width: 232,
-    borderRadius: RADII.md,
+    borderRadius: RADII.sm,
+    borderWidth: 1.5,
     overflow: 'hidden',
   },
   photoFrameSingle: { width: '100%', flexGrow: 1 },
-  photo: { width: '100%', height: 168 },
+  photo: { width: '100%', height: 164 },
   photoCredit: {
     position: 'absolute',
     left: 0,
@@ -383,14 +607,28 @@ const local = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     fontSize: 11,
+    fontWeight: '600',
     color: '#FFFFFF',
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    backgroundColor: 'rgba(14, 25, 19, 0.72)',
   },
-  mapBox: {
-    height: MAP_PREVIEW_HEIGHT,
+  stubFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    borderTopWidth: 1.5,
+    borderStyle: 'dashed',
+  },
+  stubButton: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: MIN_TOUCH_TARGET_DP,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: RADII.md,
-    overflow: 'hidden',
   },
-  silhouette: { width: 132, height: 96, alignSelf: 'center' },
+  stubButtonLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    maxWidth: '100%',
+  },
 });

@@ -365,7 +365,16 @@ export function DrawingToolbar({
                           styles.materialSwatch,
                           { backgroundColor: swatch.color },
                         ]}
-                      />
+                      >
+                        <Text
+                          style={[
+                            styles.materialSwatchCode,
+                            { color: swatch.ink },
+                          ]}
+                        >
+                          {swatch.code}
+                        </Text>
+                      </View>
                       <Text
                         style={[
                           styles.surfaceOptionTitle,
@@ -547,12 +556,14 @@ function createStyles(PALETTE: ThemePalette) {
     padding: 14,
     borderRadius: RADII.lg,
     backgroundColor: PALETTE.bgSurface,
-    borderWidth: 1,
-    borderColor: PALETTE.borderSubtle,
+    borderWidth: 1.5,
+    borderBottomWidth: 3.5,
+    borderColor: PALETTE.borderStrong,
     gap: 10,
   },
   cardCompact: {
     borderWidth: 0,
+    borderBottomWidth: 0,
     borderRadius: 0,
     paddingHorizontal: 14,
     paddingTop: 6,
@@ -578,10 +589,11 @@ function createStyles(PALETTE: ThemePalette) {
   stepPill: {
     paddingHorizontal: 10,
     paddingVertical: 5,
-    borderRadius: RADII.pill,
+    borderRadius: RADII.sm,
     backgroundColor: PALETTE.bgSubtle,
-    borderWidth: 1,
-    borderColor: PALETTE.borderSubtle,
+    borderWidth: 1.5,
+    borderBottomWidth: 2.5,
+    borderColor: PALETTE.borderStrong,
   },
   stepPillActive: {
     backgroundColor: PALETTE.accentPrimary,
@@ -596,7 +608,7 @@ function createStyles(PALETTE: ThemePalette) {
   },
   stepPillLabel: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
     color: PALETTE.inkSecondary,
   },
   stepPillLabelActive: {
@@ -613,10 +625,11 @@ function createStyles(PALETTE: ThemePalette) {
   metricPill: {
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: RADII.sm,
+    borderRadius: RADII.xs,
     backgroundColor: PALETTE.bgSubtle,
-    borderWidth: 1,
-    borderColor: PALETTE.borderSubtle,
+    borderWidth: 1.5,
+    borderBottomWidth: 2.5,
+    borderColor: PALETTE.borderStrong,
   },
   metricPillReady: {
     backgroundColor: PALETTE.positiveBg,
@@ -626,7 +639,7 @@ function createStyles(PALETTE: ThemePalette) {
     ...TABULAR_NUMS_STYLE,
     fontFamily: MONO_FONT_FAMILY,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
     color: PALETTE.inkPrimary,
   },
   metricsStatus: {
@@ -645,8 +658,9 @@ function createStyles(PALETTE: ThemePalette) {
     paddingHorizontal: 11,
     paddingVertical: 8,
     borderRadius: RADII.md,
-    backgroundColor: PALETTE.bgSubtle,
-    borderWidth: 1,
+    backgroundColor: PALETTE.bgSurface,
+    borderWidth: 1.5,
+    borderBottomWidth: 3,
     borderColor: PALETTE.borderStrong,
     alignItems: 'center',
     justifyContent: 'center',
@@ -658,14 +672,14 @@ function createStyles(PALETTE: ThemePalette) {
   },
   ringLockedPill: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
     color: PALETTE.positiveText,
   },
   nearBoundNotice: {
     padding: 8,
     borderRadius: RADII.sm,
     backgroundColor: PALETTE.neutralBg,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: PALETTE.neutralBorder,
   },
   nearBoundText: {
@@ -677,7 +691,7 @@ function createStyles(PALETTE: ThemePalette) {
     padding: 8,
     borderRadius: RADII.sm,
     backgroundColor: PALETTE.infoBg,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: PALETTE.infoBorder,
     gap: 2,
   },
@@ -689,7 +703,7 @@ function createStyles(PALETTE: ThemePalette) {
     padding: 9,
     borderRadius: RADII.sm,
     backgroundColor: PALETTE.dangerBg,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: PALETTE.dangerBorder,
   },
   errorText: {
@@ -727,7 +741,7 @@ function createStyles(PALETTE: ThemePalette) {
   },
   sectionTitle: {
     fontSize: 12.5,
-    fontWeight: '700',
+    fontWeight: '800',
     color: PALETTE.inkPrimary,
   },
   surfaceGrid: {
@@ -743,7 +757,8 @@ function createStyles(PALETTE: ThemePalette) {
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: RADII.md,
-    borderWidth: 1,
+    borderWidth: 1.5,
+    borderBottomWidth: 3.5,
     borderColor: PALETTE.borderStrong,
     backgroundColor: PALETTE.bgSubtle,
     justifyContent: 'center',
@@ -762,13 +777,24 @@ function createStyles(PALETTE: ThemePalette) {
     gap: 7,
   },
   materialSwatch: {
-    width: 11,
-    height: 11,
-    borderRadius: 3,
+    minWidth: 26,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: RADII.xs,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  materialSwatchCode: {
+    fontFamily: MONO_FONT_FAMILY,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.4,
   },
   surfaceOptionTitle: {
     fontSize: 12.5,
-    fontWeight: '700',
+    fontWeight: '800',
     color: PALETTE.inkPrimary,
     flexShrink: 1,
   },
@@ -810,7 +836,7 @@ function createStyles(PALETTE: ThemePalette) {
     paddingHorizontal: 11,
     paddingVertical: 8,
     borderRadius: RADII.md,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: PALETTE.borderStrong,
     backgroundColor: PALETTE.bgSurface,
     fontSize: 13,
@@ -829,9 +855,9 @@ function createStyles(PALETTE: ThemePalette) {
   draftPhotoThumbCard: {
     width: 72,
     height: 72,
-    borderRadius: RADII.md,
+    borderRadius: RADII.sm,
     overflow: 'hidden',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: PALETTE.borderStrong,
     position: 'relative',
     backgroundColor: PALETTE.bgRecessed,
@@ -846,8 +872,8 @@ function createStyles(PALETTE: ThemePalette) {
     right: 3,
     width: 24,
     height: 24,
-    borderRadius: 12,
-    backgroundColor: 'rgba(18, 32, 25, 0.82)',
+    borderRadius: RADII.xs,
+    backgroundColor: 'rgba(18, 32, 25, 0.88)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -865,7 +891,7 @@ function createStyles(PALETTE: ThemePalette) {
     padding: 10,
     borderRadius: RADII.md,
     backgroundColor: PALETTE.neutralBg,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: PALETTE.neutralBorder,
     gap: 8,
   },
@@ -887,12 +913,16 @@ function createStyles(PALETTE: ThemePalette) {
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: RADII.md,
+    borderWidth: 1.5,
+    borderBottomWidth: 3.5,
+    borderColor: PALETTE.accentPrimaryStrong,
     alignItems: 'center',
     justifyContent: 'center',
   },
   secondaryButton: {
     backgroundColor: PALETTE.bgSurface,
-    borderWidth: 1,
+    borderWidth: 1.5,
+    borderBottomWidth: 3.5,
     borderColor: PALETTE.borderStrong,
   },
   disabledSecondaryButton: {
@@ -900,12 +930,13 @@ function createStyles(PALETTE: ThemePalette) {
   },
   secondaryButtonLabel: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
     color: PALETTE.inkPrimary,
   },
   submitButton: {
     backgroundColor: PALETTE.accentPrimary,
-    borderWidth: 1,
+    borderWidth: 1.5,
+    borderBottomWidth: 3.5,
     borderColor: PALETTE.accentPrimaryStrong,
   },
   submitButtonDisabled: {
@@ -914,10 +945,11 @@ function createStyles(PALETTE: ThemePalette) {
   },
   dangerButton: {
     backgroundColor: PALETTE.dangerSolid,
+    borderColor: PALETTE.dangerSolid,
   },
   primaryButtonLabel: {
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
     color: PALETTE.inkOnAccent,
   },
   });

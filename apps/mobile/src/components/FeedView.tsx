@@ -13,7 +13,16 @@ import {
   type VoteResponse,
 } from '@openunseal/shared';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, FlatList, Platform, Pressable, Text, View } from 'react-native';
+import {
+  AppState,
+  FlatList,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 
 import { getSocialCopy } from '../i18n/social';
 import { localizeError, type Locale } from '../i18n/translations';
@@ -314,6 +323,10 @@ export function FeedView(props: {
       .finally(() => setVotingId(null));
   };
 
+  const { width: viewportWidth } = useWindowDimensions();
+  const isDesktopBoard = viewportWidth >= 1060;
+  const columns = isDesktopBoard ? 2 : 1;
+
   // A first page full of new entries may hide even more of them.
   const newEntriesLabel = t.newEntries(
     newEntries.length,
@@ -322,89 +335,135 @@ export function FeedView(props: {
       newEntries.length === pending.items.length,
   );
 
-  return (
-    <View style={styles.fill} testID="feed-view">
-      <FlatList
-        ref={listRef}
-        data={items}
-        keyExtractor={(item) => item.feature.id}
-        contentContainerStyle={styles.feedContent}
-        onEndReachedThreshold={0.6}
-        scrollEventThrottle={100}
-        onScroll={(event) => {
-          scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
-        }}
-        onEndReached={() => {
-          if (cursor !== null && !loading && error === null) {
-            void fetchPage(cursor);
+  const filterBarNode = (vertical: boolean): React.JSX.Element => (
+    <View style={styles.section}>
+      <FeedFilterBar
+        locale={locale}
+        scope={scope}
+        filter={filter}
+        spaceFilter={spaceFilter}
+        canUseNear={nearBbox !== null}
+        caption={t.feedHint(FEED_LIMITS.MAX_AGE_DAYS)}
+        vertical={vertical}
+        onScopeAll={() => setScope({ kind: 'all' })}
+        onScopeNear={() => {
+          if (nearBbox !== null) {
+            setScope({ kind: 'near', bbox: nearBbox });
           }
         }}
-        ListHeaderComponent={
-          <View style={styles.section}>
-            <FeedFilterBar
-              locale={locale}
-              scope={scope}
-              filter={filter}
-              spaceFilter={spaceFilter}
-              canUseNear={nearBbox !== null}
-              caption={t.feedHint(FEED_LIMITS.MAX_AGE_DAYS)}
-              onScopeAll={() => setScope({ kind: 'all' })}
-              onScopeNear={() => {
-                if (nearBbox !== null) {
-                  setScope({ kind: 'near', bbox: nearBbox });
-                }
-              }}
-              onFilter={props.onSetFilter}
-              onSpaceFilter={setSpaceFilter}
-            />
-            {scope.kind === 'near' ? (
-              <Text style={styles.hint}>{t.scopeNearHint}</Text>
-            ) : null}
-          </View>
-        }
-        ListFooterComponent={
-          error ? (
-            <View style={styles.section}>
-              <Text style={styles.error}>{error}</Text>
-              <SocialButton label={t.retry} onPress={() => void fetchPage(cursor)} />
-            </View>
-          ) : loading && items.length === 0 ? (
-            <View style={styles.section} accessibilityLabel={t.loading}>
-              <FeedCardSkeleton />
-              <FeedCardSkeleton />
-            </View>
-          ) : loading ? (
-            <Text style={styles.hint}>{t.loading}</Text>
-          ) : items.length === 0 ? (
-            <Text style={styles.body}>{t.feedEmpty}</Text>
-          ) : cursor !== null ? (
-            <SocialButton label={t.loadMore} onPress={() => void fetchPage(cursor)} />
-          ) : null
-        }
-        renderItem={({ item }) => {
-          const p = item.feature.properties;
-          const ags = p.municipalityAgs;
-          const municipality = p.municipalityName;
-          return (
-            <PolygonFeedCard
-              item={item}
-              locale={locale}
-              nowMs={nowMs}
-              mapConfig={props.mapConfig}
-              voteBusy={votingId === item.feature.id}
-              canNarrowToMunicipality={scope.kind !== 'municipality'}
-              resolveUploadUrl={props.resolveUploadUrl}
-              onVote={(value) => vote(item.feature, value)}
-              onShowOnMap={(tab) => props.onShowOnMap(item.feature, tab)}
-              onOnlyMunicipality={() => {
-                if (ags && municipality) {
-                  setScope({ kind: 'municipality', ags, name: municipality });
-                }
-              }}
-            />
-          );
-        }}
+        onFilter={props.onSetFilter}
+        onSpaceFilter={setSpaceFilter}
       />
+      {scope.kind === 'near' ? (
+        <Text style={styles.hint}>{t.scopeNearHint}</Text>
+      ) : null}
+    </View>
+  );
+
+  return (
+    <View style={styles.fill} testID="feed-view">
+      <View
+        style={[
+          board.workspace,
+          isDesktopBoard ? board.workspaceSplit : null,
+        ]}
+      >
+        {isDesktopBoard ? (
+          <View style={board.leftCompassRail}>{filterBarNode(true)}</View>
+        ) : null}
+
+        <View style={board.gridPane}>
+          <FlatList
+            key={`feed-cols-${columns}`}
+            ref={listRef}
+            data={items}
+            numColumns={columns}
+            keyExtractor={(item) => item.feature.id}
+            columnWrapperStyle={columns > 1 ? board.columnWrapper : undefined}
+            contentContainerStyle={
+              isDesktopBoard ? board.desktopGridContent : styles.feedContent
+            }
+            onEndReachedThreshold={0.6}
+            scrollEventThrottle={100}
+            onScroll={(event) => {
+              scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+            }}
+            onEndReached={() => {
+              if (cursor !== null && !loading && error === null) {
+                void fetchPage(cursor);
+              }
+            }}
+            ListHeaderComponent={isDesktopBoard ? null : filterBarNode(false)}
+            ListFooterComponent={
+              error ? (
+                <View style={styles.section}>
+                  <Text style={styles.error}>{error}</Text>
+                  <SocialButton
+                    label={t.retry}
+                    onPress={() => void fetchPage(cursor)}
+                  />
+                </View>
+              ) : loading && items.length === 0 ? (
+                <View
+                  style={
+                    columns > 1 ? board.skeletonRowDesktop : styles.section
+                  }
+                  accessibilityLabel={t.loading}
+                >
+                  <View style={board.gridCell}>
+                    <FeedCardSkeleton />
+                  </View>
+                  <View style={board.gridCell}>
+                    <FeedCardSkeleton />
+                  </View>
+                </View>
+              ) : loading ? (
+                <Text style={styles.hint}>{t.loading}</Text>
+              ) : items.length === 0 ? (
+                <Text style={styles.body}>{t.feedEmpty}</Text>
+              ) : cursor !== null ? (
+                <SocialButton
+                  label={t.loadMore}
+                  onPress={() => void fetchPage(cursor)}
+                />
+              ) : null
+            }
+            renderItem={({ item }) => {
+              const p = item.feature.properties;
+              const ags = p.municipalityAgs;
+              const municipality = p.municipalityName;
+              const cardNode = (
+                <PolygonFeedCard
+                  item={item}
+                  locale={locale}
+                  nowMs={nowMs}
+                  mapConfig={props.mapConfig}
+                  voteBusy={votingId === item.feature.id}
+                  canNarrowToMunicipality={scope.kind !== 'municipality'}
+                  resolveUploadUrl={props.resolveUploadUrl}
+                  onVote={(value) => vote(item.feature, value)}
+                  onShowOnMap={(tab) => props.onShowOnMap(item.feature, tab)}
+                  onOnlyMunicipality={() => {
+                    if (ags && municipality) {
+                      setScope({
+                        kind: 'municipality',
+                        ags,
+                        name: municipality,
+                      });
+                    }
+                  }}
+                />
+              );
+              return columns > 1 ? (
+                <View style={board.gridCellHalf}>{cardNode}</View>
+              ) : (
+                cardNode
+              );
+            }}
+          />
+        </View>
+      </View>
+
       <View
         pointerEvents="box-none"
         accessibilityLiveRegion="polite"
@@ -425,3 +484,48 @@ export function FeedView(props: {
     </View>
   );
 }
+
+const board = StyleSheet.create({
+  workspace: {
+    flex: 1,
+    width: '100%',
+  },
+  workspaceSplit: {
+    flexDirection: 'row',
+    maxWidth: 1400,
+    alignSelf: 'center',
+  },
+  leftCompassRail: {
+    width: 322,
+    flexShrink: 0,
+    paddingLeft: 18,
+    paddingTop: 18,
+    paddingBottom: 24,
+  },
+  gridPane: {
+    flex: 1,
+    minWidth: 0,
+  },
+  desktopGridContent: {
+    padding: 18,
+    paddingBottom: 96,
+    gap: 16,
+  },
+  columnWrapper: {
+    gap: 16,
+    alignItems: 'stretch',
+  },
+  gridCell: {
+    flex: 1,
+    minWidth: 0,
+  },
+  gridCellHalf: {
+    flex: 1,
+    minWidth: 0,
+    maxWidth: '50%',
+  },
+  skeletonRowDesktop: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+});

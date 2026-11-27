@@ -226,10 +226,18 @@ export function SpaceBadges(props: {
       : p.spaceVerification === 'admin_override'
         ? t.adminSet
         : null;
+  const groundToneStyle =
+    p.spaceType === 'public'
+      ? styles.badgePublic
+      : p.spaceType === 'private'
+        ? styles.badgePrivate
+        : null;
   return (
     <View style={styles.row}>
       <View style={styles.badgeGroup}>
-        <Text style={styles.badge}>{groundLabel(p.spaceType, t)}</Text>
+        <Text style={[styles.badge, groundToneStyle]}>
+          {groundLabel(p.spaceType, t)}
+        </Text>
         {isVerified
           ? withWebTooltip(
               t.verified,
@@ -239,18 +247,20 @@ export function SpaceBadges(props: {
                 accessible
                 accessibilityLabel={t.verified}
               >
-                <VerifiedGlyph color={palette.accentPrimary} size={17} />
+                <VerifiedGlyph color={palette.positiveDot} size={17} />
               </View>,
             )
           : null}
       </View>
-      {deviation ? <Text style={styles.badge}>{deviation}</Text> : null}
+      {deviation ? (
+        <Text style={[styles.badge, styles.badgePrivate]}>{deviation}</Text>
+      ) : null}
       {p.openForPublicAccess ? (
-        <Text style={styles.badge}>{t.openAccessBadge}</Text>
+        <Text style={[styles.badge, styles.badgeAccess]}>{t.openAccessBadge}</Text>
       ) : null}
       {p.helpWanted ? (
-        <Text style={styles.badge} testID="badge-help-wanted">
-          {t.helpWantedBadge}
+        <Text style={[styles.badge, styles.badgePrivate]} testID="badge-help-wanted">
+          🌱 {t.helpWantedBadge}
         </Text>
       ) : null}
     </View>

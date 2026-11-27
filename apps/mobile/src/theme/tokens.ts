@@ -156,61 +156,61 @@ export interface ThemePalette {
 }
 
 export const LIGHT_PALETTE: ThemePalette = {
-  // Mineral sage & stone-paper daylight surfaces
+  // Architectural Chalk-Stone & Botanical Emerald surfaces
   bgGround: '#EFF3F0',
   bgSurface: '#FFFFFF',
-  bgSubtle: '#F5F8F6',
-  bgRecessed: '#E8EEEA',
-  bgTinted: '#E6F2EC',
-  bgScrim: 'rgba(14, 25, 19, 0.54)',
-  bgMapCanvas: '#DFE7E2',
-  bgFloatingPill: 'rgba(255, 255, 255, 0.94)',
+  bgSubtle: '#F4F7F5',
+  bgRecessed: '#E3EAE5',
+  bgTinted: '#E3F2EA',
+  bgScrim: 'rgba(14, 25, 19, 0.56)',
+  bgMapCanvas: '#DCE5DF',
+  bgFloatingPill: 'rgba(255, 255, 255, 0.96)',
 
-  // High-contrast surveyor ink (all >= 4.5:1 on light surfaces)
-  inkPrimary: '#122019',
-  inkSecondary: '#36493F',
-  inkMuted: '#4E6258',
+  // High-contrast structural surveyor ink (all >= 5.2:1 on light surfaces)
+  inkPrimary: '#111F18',
+  inkSecondary: '#2F4238',
+  inkMuted: '#4A5E53',
   inkOnAccent: '#FFFFFF',
 
-  // Primary permeable botanical emerald
+  // Primary Botanical Emerald
   accentPrimary: '#176642',
-  accentPrimaryStrong: '#104D31',
+  accentPrimaryStrong: '#0E442B',
   accentDisabled: '#93AFA1',
 
-  // Borders (hairline & structural)
-  borderSubtle: '#CFDAD3',
-  borderStrong: '#AEC0B5',
-  borderAccent: '#8CC0A6',
+  // Crisp architectural borders (keycap frames & lips)
+  borderSubtle: '#C5D3CB',
+  borderStrong: '#8CA396',
+  borderAccent: '#6EB091',
 
   // Semantic & Community Score feedback
-  positiveBg: '#E4F3EC',
-  positiveBorder: '#9BCBB2',
-  positiveText: '#115234',
-  positiveDot: '#1F7A4C',
+  positiveBg: '#E2F3EA',
+  positiveBorder: '#7FC0A0',
+  positiveText: '#0F5132',
+  positiveDot: '#176642',
 
-  neutralBg: '#FBF1DF',
-  neutralBorder: '#DEC18E',
+  neutralBg: '#FBF0DA',
+  neutralBorder: '#D4B070',
   neutralText: '#6A4006',
   neutralDot: '#C87D1A',
 
   dangerBg: '#FCEBEC',
-  dangerBorder: '#DF9FA3',
+  dangerBorder: '#D99196',
   dangerSolid: '#AC2127',
   dangerText: '#8A1C21',
   dangerDot: '#C44536',
 
-  infoBg: '#E9F1F8',
-  infoBorder: '#B9CFE4',
-  infoText: '#194064',
+  infoBg: '#E6F0FA',
+  infoBorder: '#9EC0E2',
+  infoText: '#163D61',
 
   inProgressBg: '#DBEAFE',
-  inProgressBorder: '#93C5FD',
+  inProgressBorder: '#7EB3F7',
   inProgressSolid: '#1D4ED8',
   inProgressText: '#1E40AF',
   inProgressDot: '#2563EB',
 
   finishedBg: '#CCFBF1',
-  finishedBorder: '#5EEAD4',
+  finishedBorder: '#4FD8C2',
   finishedSolid: '#0D9488',
   finishedText: '#0F766E',
   finishedDot: '#0D9488',
@@ -223,9 +223,9 @@ export const DARK_PALETTE: ThemePalette = {
   bgSubtle: '#1D2923',
   bgRecessed: '#121A16',
   bgTinted: '#193126',
-  bgScrim: 'rgba(4, 9, 7, 0.72)',
+  bgScrim: 'rgba(4, 9, 7, 0.74)',
   bgMapCanvas: '#0C1210',
-  bgFloatingPill: 'rgba(22, 32, 27, 0.94)',
+  bgFloatingPill: 'rgba(22, 32, 27, 0.96)',
 
   // High-contrast light ink (all >= 5.9:1 on dark surfaces)
   inkPrimary: '#ECF3EF',
@@ -235,12 +235,12 @@ export const DARK_PALETTE: ThemePalette = {
 
   // Luminous botanical emerald (all >= 6.1:1 with inkOnAccent & >= 6.9:1 on dark surfaces)
   accentPrimary: '#34C785',
-  accentPrimaryStrong: '#28B073',
+  accentPrimaryStrong: '#249B64',
   accentDisabled: '#587769',
 
-  // Borders (hairline & structural)
-  borderSubtle: '#26352D',
-  borderStrong: '#394D42',
+  // Crisp nocturnal keycap frames
+  borderSubtle: '#293A31',
+  borderStrong: '#435B4E',
   borderAccent: '#2D6E51',
 
   // Semantic & Community Score feedback
@@ -414,42 +414,48 @@ export function getPalette(
   return deriveBrandedPalette(colorScheme, branding);
 }
 
-export const SURFACE_SWATCHES: Record<
-  SurfaceType,
-  { readonly color: string; readonly code: string }
-> = {
-  asphalt: { color: '#333D3A', code: 'ASP' },
-  concrete: { color: '#707D78', code: 'CON' },
-  pavers: { color: '#8A5A36', code: 'PAV' },
-  other: { color: '#556650', code: 'MIX' },
+export interface SurfaceSwatch {
+  readonly color: string;
+  readonly ink: string;
+  readonly code: string;
+}
+
+export const SURFACE_SWATCHES: Record<SurfaceType, SurfaceSwatch> = {
+  asphalt: { color: '#2C3633', ink: '#FFFFFF', code: 'ASP' },
+  concrete: { color: '#515E59', ink: '#FFFFFF', code: 'CON' },
+  pavers: { color: '#7D4E2D', ink: '#FFFFFF', code: 'PAV' },
+  other: { color: '#4B5C47', ink: '#FFFFFF', code: 'MIX' },
 };
 
-export const DARK_SURFACE_SWATCHES: Record<
-  SurfaceType,
-  { readonly color: string; readonly code: string }
-> = {
-  asphalt: { color: '#4B5955', code: 'ASP' },
-  concrete: { color: '#8A9892', code: 'CON' },
-  pavers: { color: '#B4794C', code: 'PAV' },
-  other: { color: '#6E8368', code: 'MIX' },
+export const DARK_SURFACE_SWATCHES: Record<SurfaceType, SurfaceSwatch> = {
+  asphalt: { color: '#97A8A2', ink: '#0B1510', code: 'ASP' },
+  concrete: { color: '#B5C2BD', ink: '#0B1510', code: 'CON' },
+  pavers: { color: '#D69A6C', ink: '#0B1510', code: 'PAV' },
+  other: { color: '#9CB495', ink: '#0B1510', code: 'MIX' },
 };
 
 export function getSurfaceSwatches(
   colorScheme: ColorScheme = 'light',
-): Record<SurfaceType, { readonly color: string; readonly code: string }> {
+): Record<SurfaceType, SurfaceSwatch> {
   return colorScheme === 'dark' ? DARK_SURFACE_SWATCHES : SURFACE_SWATCHES;
 }
 
 export const RADII = {
-  xs: 4,
-  sm: 6,
-  md: 10,
-  lg: 14,
-  sheet: 20,
+  xs: 2,
+  sm: 3,
+  md: 5,
+  lg: 7,
+  sheet: 12,
   pill: 999,
 } as const;
 
-export const MONO_FONT_FAMILY = 'monospace';
+const IS_REACT_NATIVE =
+  (globalThis as { navigator?: { product?: string } }).navigator?.product ===
+  'ReactNative';
+
+export const MONO_FONT_FAMILY = IS_REACT_NATIVE
+  ? 'monospace'
+  : "ui-monospace, 'Cascadia Mono', 'JetBrains Mono', 'IBM Plex Mono', Menlo, Consolas, monospace";
 
 export const TABULAR_NUMS_STYLE: TextStyle = {
   fontVariant: ['tabular-nums'],

@@ -10,6 +10,7 @@ import {
   LIGHT_PALETTE,
   SURFACE_SWATCHES,
   type ColorScheme,
+  type SurfaceSwatch,
   type ThemePalette,
   type ThemePreference,
 } from './tokens';
@@ -18,10 +19,7 @@ export interface ThemeContextValue {
   readonly colorScheme: ColorScheme;
   readonly themePreference: ThemePreference;
   readonly palette: ThemePalette;
-  readonly surfaceSwatches: Record<
-    SurfaceType,
-    { readonly color: string; readonly code: string }
-  >;
+  readonly surfaceSwatches: Record<SurfaceType, SurfaceSwatch>;
   readonly isDark: boolean;
 }
 

@@ -54,7 +54,11 @@ export function PolygonCardTitle(props: {
     <View style={styles.materialTitleRow}>
       <View
         style={[styles.materialSwatch, { backgroundColor: swatch.color }]}
-      />
+      >
+        <Text style={[styles.materialSwatchCode, { color: swatch.ink }]}>
+          {swatch.code}
+        </Text>
+      </View>
       <Text style={styles.sheetTitle}>
         {surfaceCopy[properties.surfaceType].label}
       </Text>
@@ -111,7 +115,7 @@ export function PolygonCardTitle(props: {
   );
 }
 
-/** Net score and the two vote buttons, with the reason when voting is closed. */
+/** Interlocked 3-cell mechanical vote rocker: [ ▲ +1 | NET SCORE | ▼ −1 ]. */
 export function PolygonVotePanel(props: {
   feature: PolygonFeature;
   locale: Locale;
@@ -151,7 +155,36 @@ export function PolygonVotePanel(props: {
           : styles.scoreBadgeTextNeutral;
   return (
     <>
-      <View style={styles.votePanel}>
+      <View style={styles.voteRockerShell}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t.upvoteA11y(properties.upvotes)}
+          accessibilityState={{
+            selected: properties.myVote === 1,
+            disabled: isVoteDisabled,
+          }}
+          disabled={isVoteDisabled}
+          onPress={() => handleVotePress(1)}
+          style={({ pressed }) => [
+            styles.voteRockerCell,
+            styles.voteRockerLeft,
+            properties.myVote === 1 ? styles.upvoteButtonActive : null,
+            pressed && !isVoteDisabled ? styles.voteRockerPressed : null,
+            properties.isAuthor || isVotingClosedByStatus
+              ? styles.disabledButton
+              : null,
+          ]}
+        >
+          <Text
+            style={[
+              styles.voteButtonLabel,
+              properties.myVote === 1 ? styles.voteButtonLabelActive : null,
+            ]}
+          >
+            ▲ +1 ({properties.upvotes})
+          </Text>
+        </Pressable>
+
         <View style={[styles.scoreBadge, scoreToneStyle]}>
           <Text style={[styles.scoreBadgeValue, scoreTextToneStyle]}>
             {properties.score > 0
@@ -163,63 +196,34 @@ export function PolygonVotePanel(props: {
           </Text>
         </View>
 
-        <View style={styles.voteButtonsGroup}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t.upvoteA11y(properties.upvotes)}
-            accessibilityState={{
-              selected: properties.myVote === 1,
-              disabled: isVoteDisabled,
-            }}
-            disabled={isVoteDisabled}
-            onPress={() => handleVotePress(1)}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t.downvoteA11y(properties.downvotes)}
+          accessibilityState={{
+            selected: properties.myVote === -1,
+            disabled: isVoteDisabled,
+          }}
+          disabled={isVoteDisabled}
+          onPress={() => handleVotePress(-1)}
+          style={({ pressed }) => [
+            styles.voteRockerCell,
+            styles.voteRockerRight,
+            properties.myVote === -1 ? styles.downvoteButtonActive : null,
+            pressed && !isVoteDisabled ? styles.voteRockerPressed : null,
+            properties.isAuthor || isVotingClosedByStatus
+              ? styles.disabledButton
+              : null,
+          ]}
+        >
+          <Text
             style={[
-              styles.touchButton,
-              styles.voteButton,
-              properties.myVote === 1 ? styles.upvoteButtonActive : null,
-              properties.isAuthor || isVotingClosedByStatus
-                ? styles.disabledButton
-                : null,
+              styles.voteButtonLabel,
+              properties.myVote === -1 ? styles.voteButtonLabelActive : null,
             ]}
           >
-            <Text
-              style={[
-                styles.voteButtonLabel,
-                properties.myVote === 1 ? styles.voteButtonLabelActive : null,
-              ]}
-            >
-              +1 ({properties.upvotes})
-            </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t.downvoteA11y(properties.downvotes)}
-            accessibilityState={{
-              selected: properties.myVote === -1,
-              disabled: isVoteDisabled,
-            }}
-            disabled={isVoteDisabled}
-            onPress={() => handleVotePress(-1)}
-            style={[
-              styles.touchButton,
-              styles.voteButton,
-              properties.myVote === -1 ? styles.downvoteButtonActive : null,
-              properties.isAuthor || isVotingClosedByStatus
-                ? styles.disabledButton
-                : null,
-            ]}
-          >
-            <Text
-              style={[
-                styles.voteButtonLabel,
-                properties.myVote === -1 ? styles.voteButtonLabelActive : null,
-              ]}
-            >
-              −1 ({properties.downvotes})
-            </Text>
-          </Pressable>
-        </View>
+            ▼ −1 ({properties.downvotes})
+          </Text>
+        </Pressable>
       </View>
 
       {voteLockReason ? (

@@ -57,7 +57,7 @@ export const WEB_CRAFT_CSS = `
   --bg-ground: ${LIGHT_PALETTE.bgGround};
   --bg-surface: ${LIGHT_PALETTE.bgSurface};
   --bg-subtle: ${LIGHT_PALETTE.bgSubtle};
-  --bg-attrib: rgba(255, 255, 255, 0.9);
+  --bg-attrib: rgba(255, 255, 255, 0.94);
   --text-ink: ${LIGHT_PALETTE.inkPrimary};
   --text-secondary: ${LIGHT_PALETTE.inkSecondary};
   --text-muted: ${LIGHT_PALETTE.inkMuted};
@@ -65,7 +65,7 @@ export const WEB_CRAFT_CSS = `
   --accent-primary: ${LIGHT_PALETTE.accentPrimary};
   --border-subtle: ${LIGHT_PALETTE.borderSubtle};
   --border-strong: ${LIGHT_PALETTE.borderStrong};
-  --ctrl-shadow: 0 2px 6px rgba(18, 32, 25, 0.08);
+  --ctrl-shadow: 0 3px 0 ${LIGHT_PALETTE.borderStrong};
 }
 
 :root[data-theme="dark"] {
@@ -73,7 +73,7 @@ export const WEB_CRAFT_CSS = `
   --bg-ground: ${DARK_PALETTE.bgGround};
   --bg-surface: ${DARK_PALETTE.bgSurface};
   --bg-subtle: ${DARK_PALETTE.bgSubtle};
-  --bg-attrib: rgba(22, 32, 27, 0.92);
+  --bg-attrib: rgba(22, 32, 27, 0.94);
   --text-ink: ${DARK_PALETTE.inkPrimary};
   --text-secondary: ${DARK_PALETTE.inkSecondary};
   --text-muted: ${DARK_PALETTE.inkMuted};
@@ -81,7 +81,7 @@ export const WEB_CRAFT_CSS = `
   --accent-primary: ${DARK_PALETTE.accentPrimary};
   --border-subtle: ${DARK_PALETTE.borderSubtle};
   --border-strong: ${DARK_PALETTE.borderStrong};
-  --ctrl-shadow: 0 3px 10px rgba(0, 0, 0, 0.42);
+  --ctrl-shadow: 0 3px 0 #070C0A;
 }
 
 html, body, #root {
@@ -118,7 +118,7 @@ table, .tabular, [data-metric], [data-num] {
   scrollbar-color: var(--border-strong) transparent;
 }
 
-/* Calibrate MapLibre controls to match civic cartography chrome & >=36-44px touch targets */
+/* Calibrate MapLibre controls to match tactile paving-keycap geometry & >=40px targets */
 .maplibregl-ctrl-bottom-right {
   display: flex !important;
   flex-direction: column !important;
@@ -129,12 +129,12 @@ table, .tabular, [data-metric], [data-num] {
 
 .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group {
   float: none !important;
-  margin: 0 12px 10px 0 !important;
+  margin: 0 12px 12px 0 !important;
 }
 
 .maplibregl-ctrl-group {
-  border-radius: 10px !important;
-  border: 1px solid var(--border-subtle) !important;
+  border-radius: 5px !important;
+  border: 1.5px solid var(--border-strong) !important;
   box-shadow: var(--ctrl-shadow) !important;
   overflow: hidden;
   background: var(--bg-surface) !important;
@@ -146,7 +146,7 @@ table, .tabular, [data-metric], [data-num] {
 }
 
 .maplibregl-ctrl-group button + button {
-  border-top: 1px solid var(--border-subtle) !important;
+  border-top: 1.5px solid var(--border-subtle) !important;
 }
 
 :root[data-theme="dark"] .maplibregl-ctrl-group button:not(:disabled):hover {

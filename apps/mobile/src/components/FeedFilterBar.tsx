@@ -44,6 +44,7 @@ function FilterMenu<T extends string>(props: {
   /** The value that filters nothing. */
   neutral: T;
   options: readonly Option<T>[];
+  fullWidth?: boolean;
   onChange: (value: T) => void;
 }): React.JSX.Element {
   const { palette, isDark } = useTheme();
@@ -90,8 +91,9 @@ function FilterMenu<T extends string>(props: {
         onPress={open}
         style={({ pressed }) => [
           styles.trigger,
+          props.fullWidth ? styles.triggerFullWidth : null,
           isActive ? styles.triggerActive : null,
-          pressed ? styles.pressed : null,
+          pressed ? styles.keycapPressed : null,
         ]}
       >
         <Text numberOfLines={1} style={styles.triggerText}>
@@ -145,6 +147,7 @@ function FilterMenu<T extends string>(props: {
                     }}
                     style={({ pressed }) => [
                       styles.menuItem,
+                      isSelected ? styles.menuItemSelected : null,
                       pressed ? styles.menuItemPressed : null,
                     ]}
                   >
@@ -177,6 +180,8 @@ export function FeedFilterBar(props: {
   canUseNear: boolean;
   /** What the list contains and how it is ordered. */
   caption: string;
+  /** Stacks controls as a vertical Field-Compass rail on wide viewports. */
+  vertical?: boolean;
   onScopeAll: () => void;
   onScopeNear: () => void;
   onFilter: (filter: PolygonFilter) => void;
@@ -185,7 +190,7 @@ export function FeedFilterBar(props: {
   const { palette, isDark } = useTheme();
   const styles = useMemo(() => createStyles(palette, isDark), [palette, isDark]);
   const t = getSocialCopy(props.locale);
-  const { scope, filter, spaceFilter } = props;
+  const { scope, filter, spaceFilter, vertical = false } = props;
   const isFiltered =
     scope.kind !== 'all' || filter !== 'all' || spaceFilter !== 'all';
 
@@ -207,14 +212,18 @@ export function FeedFilterBar(props: {
         onPress={onPress}
         style={({ pressed }) => [
           styles.segment,
+          vertical ? styles.segmentFlex : null,
           isSelected ? styles.segmentSelected : null,
           disabled ? styles.disabled : null,
-          pressed ? styles.pressed : null,
+          pressed && !disabled ? styles.pressed : null,
         ]}
       >
         <Text
           numberOfLines={1}
-          style={[styles.segmentLabel, isSelected ? styles.accentText : null]}
+          style={[
+            styles.segmentLabel,
+            isSelected ? styles.segmentLabelSelected : null,
+          ]}
         >
           {label}
         </Text>
@@ -223,12 +232,22 @@ export function FeedFilterBar(props: {
   };
 
   return (
-    <View testID="feed-filter-bar" style={styles.bar}>
-      <View style={styles.controls}>
+    <View
+      testID="feed-filter-bar"
+      style={[styles.bar, vertical ? styles.barVertical : null]}
+    >
+      {vertical ? (
+        <View style={styles.railHeaderRow}>
+          <View style={styles.railHeaderSquare} />
+          <Text style={styles.railHeaderTitle}>{t.scopeLabel}</Text>
+        </View>
+      ) : null}
+
+      <View style={[styles.controls, vertical ? styles.controlsVertical : null]}>
         <View
           accessibilityRole="radiogroup"
           accessibilityLabel={t.scopeLabel}
-          style={styles.segments}
+          style={[styles.segments, vertical ? styles.segmentsVertical : null]}
         >
           {segment('all', t.scopeAll, false, props.onScopeAll)}
           {segment('near', t.scopeNear, !props.canUseNear, props.onScopeNear)}
@@ -241,12 +260,13 @@ export function FeedFilterBar(props: {
             onPress={props.onScopeAll}
             style={({ pressed }) => [
               styles.trigger,
+              vertical ? styles.triggerFullWidth : null,
               styles.triggerActive,
-              pressed ? styles.pressed : null,
+              pressed ? styles.keycapPressed : null,
             ]}
           >
             <Text numberOfLines={1} style={[styles.triggerValue, styles.accentText]}>
-              {t.scopeMunicipality(scope.name)}
+              ⌖ {t.scopeMunicipality(scope.name)}
             </Text>
             <Text style={styles.accentText}>✕</Text>
           </Pressable>
@@ -256,6 +276,7 @@ export function FeedFilterBar(props: {
           label={t.statusFilter}
           value={filter}
           neutral="all"
+          fullWidth={vertical}
           options={POLYGON_FILTERS.map((value) => ({
             value,
             label: t.filters[value],
@@ -268,6 +289,7 @@ export function FeedFilterBar(props: {
           label={t.groundFilter}
           value={spaceFilter}
           neutral="all"
+          fullWidth={vertical}
           options={SPACE_FILTERS.map((value) => ({
             value,
             label: value === 'all' ? t.filters.all : groundLabel(value, t),
@@ -276,22 +298,26 @@ export function FeedFilterBar(props: {
           onChange={props.onSpaceFilter}
         />
       </View>
-      <View style={styles.captionRow}>
+
+      <View style={[styles.captionRow, vertical ? styles.captionRowVertical : null]}>
         <Text style={styles.caption}>{props.caption}</Text>
         {isFiltered ? (
           <Pressable
             testID="feed-filter-reset"
             accessibilityRole="button"
             accessibilityLabel={t.resetFilters}
-            hitSlop={{ top: 14, bottom: 14, left: 12, right: 12 }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             onPress={() => {
               props.onScopeAll();
               props.onFilter('all');
               props.onSpaceFilter('all');
             }}
-            style={({ pressed }) => (pressed ? styles.pressed : null)}
+            style={({ pressed }) => [
+              styles.resetKeycap,
+              pressed ? styles.keycapPressed : null,
+            ]}
           >
-            <Text style={styles.resetLabel}>{t.resetFilters}</Text>
+            <Text style={styles.resetLabel}>↺ {t.resetFilters}</Text>
           </Pressable>
         ) : null}
       </View>
@@ -301,71 +327,141 @@ export function FeedFilterBar(props: {
 
 function createStyles(p: ThemePalette, isDark: boolean) {
   return StyleSheet.create({
-    bar: { gap: 8 },
+    bar: {
+      gap: 10,
+      padding: 13,
+      borderRadius: RADII.lg,
+      borderWidth: 1.5,
+      borderBottomWidth: 3.5,
+      borderColor: p.borderStrong,
+      backgroundColor: p.bgSurface,
+      ...(Platform.OS === 'web'
+        ? {
+            boxShadow: isDark
+              ? '0 3px 0 rgba(0, 0, 0, 0.42)'
+              : '0 3px 0 rgba(17, 31, 24, 0.1)',
+          }
+        : { elevation: 2 }),
+    },
+    barVertical: {
+      padding: 14,
+      gap: 12,
+    },
+    railHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 7,
+      paddingBottom: 8,
+      borderBottomWidth: 1.5,
+      borderBottomColor: p.borderSubtle,
+    },
+    railHeaderSquare: {
+      width: 8,
+      height: 8,
+      borderRadius: 1.5,
+      backgroundColor: p.accentPrimary,
+    },
+    railHeaderTitle: {
+      fontSize: 11.5,
+      fontWeight: '800',
+      letterSpacing: 0.5,
+      textTransform: 'uppercase',
+      color: p.inkSecondary,
+    },
     controls: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       alignItems: 'center',
       gap: 8,
     },
+    controlsVertical: {
+      flexDirection: 'column',
+      alignItems: 'stretch',
+      gap: 9,
+    },
     segments: {
       flexDirection: 'row',
       minHeight: MIN_TOUCH_TARGET_DP,
       padding: 3,
       gap: 3,
-      borderRadius: RADII.pill,
-      borderWidth: 1,
-      borderColor: p.borderSubtle,
+      borderRadius: RADII.md,
+      borderWidth: 1.5,
+      borderColor: p.borderStrong,
       backgroundColor: p.bgRecessed,
+    },
+    segmentsVertical: {
+      width: '100%',
     },
     segment: {
       justifyContent: 'center',
-      paddingHorizontal: 14,
-      borderRadius: RADII.pill,
-      borderWidth: 1,
+      alignItems: 'center',
+      paddingHorizontal: 13,
+      borderRadius: RADII.sm,
+      borderWidth: 1.5,
       borderColor: 'transparent',
     },
-    segmentSelected: { backgroundColor: p.bgSurface, borderColor: p.borderAccent },
-    segmentLabel: { fontSize: 13, fontWeight: '600', color: p.inkSecondary },
+    segmentFlex: {
+      flex: 1,
+      paddingHorizontal: 7,
+    },
+    segmentSelected: {
+      backgroundColor: p.accentPrimary,
+      borderColor: p.accentPrimaryStrong,
+      borderBottomWidth: 2.5,
+    },
+    segmentLabel: { fontSize: 12, fontWeight: '700', color: p.inkSecondary },
+    segmentLabelSelected: {
+      color: p.inkOnAccent,
+      fontWeight: '800',
+    },
     trigger: {
       minHeight: MIN_TOUCH_TARGET_DP,
       maxWidth: '100%',
       flexDirection: 'row',
       alignItems: 'center',
       gap: 9,
-      paddingHorizontal: 14,
-      borderRadius: RADII.pill,
-      borderWidth: 1,
-      borderColor: p.borderSubtle,
-      backgroundColor: p.bgSurface,
+      paddingHorizontal: 12,
+      borderRadius: RADII.md,
+      borderWidth: 1.5,
+      borderBottomWidth: 3,
+      borderColor: p.borderStrong,
+      backgroundColor: p.bgSubtle,
     },
-    triggerActive: { borderColor: p.accentPrimary },
+    triggerFullWidth: {
+      width: '100%',
+      justifyContent: 'space-between',
+    },
+    triggerActive: {
+      borderColor: p.accentPrimary,
+      backgroundColor: p.bgTinted,
+    },
     triggerText: { flexShrink: 1 },
-    triggerLabel: { fontSize: 13, color: p.inkMuted },
-    triggerValue: { fontSize: 13, fontWeight: '600', color: p.inkPrimary },
-    accentText: { color: p.accentPrimary, fontWeight: '700' },
+    triggerLabel: { fontSize: 12.5, fontWeight: '600', color: p.inkSecondary },
+    triggerValue: { fontSize: 13, fontWeight: '700', color: p.inkPrimary },
+    accentText: { color: p.positiveText, fontWeight: '800' },
     chevron: {
       width: 7,
       height: 7,
       marginTop: -3,
-      borderRightWidth: 1.8,
-      borderBottomWidth: 1.8,
-      borderColor: p.inkMuted,
+      borderRightWidth: 2,
+      borderBottomWidth: 2,
+      borderColor: p.inkSecondary,
       transform: [{ rotate: '45deg' }],
     },
     chevronOpen: { marginTop: 4, transform: [{ rotate: '225deg' }] },
     menu: {
       position: 'absolute',
-      paddingVertical: 6,
-      borderRadius: RADII.lg,
-      borderWidth: 1,
+      paddingVertical: 4,
+      borderRadius: RADII.md,
+      borderWidth: 1.5,
+      borderBottomWidth: 4,
       borderColor: p.borderStrong,
       backgroundColor: p.bgSurface,
       ...(Platform.OS === 'web'
         ? {
             boxShadow: isDark
-              ? '0 8px 28px rgba(0, 0, 0, 0.55)'
-              : '0 8px 24px rgba(18, 32, 25, 0.18)',
+              ? '0 5px 0 rgba(0, 0, 0, 0.5)'
+              : '0 5px 0 rgba(17, 31, 24, 0.16)',
           }
         : { elevation: 10 }),
     },
@@ -375,21 +471,50 @@ function createStyles(p: ThemePalette, isDark: boolean) {
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: 12,
-      paddingHorizontal: 16,
+      paddingHorizontal: 14,
+    },
+    menuItemSelected: {
+      backgroundColor: p.bgTinted,
     },
     menuItemPressed: { backgroundColor: p.bgRecessed },
-    menuItemLabel: { flexShrink: 1, fontSize: 14, color: p.inkPrimary },
-    menuItemLabelSelected: { fontWeight: '700', color: p.accentPrimary },
-    menuCheck: { fontSize: 14, fontWeight: '700', color: p.accentPrimary },
+    menuItemLabel: { flexShrink: 1, fontSize: 13.5, fontWeight: '600', color: p.inkPrimary },
+    menuItemLabelSelected: { fontWeight: '800', color: p.positiveText },
+    menuCheck: { fontSize: 14, fontWeight: '800', color: p.accentPrimary },
     captionRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: 12,
+      paddingTop: 8,
+      borderTopWidth: 1.5,
+      borderStyle: 'dashed',
+      borderTopColor: p.borderStrong,
+    },
+    captionRowVertical: {
+      flexDirection: 'column',
+      alignItems: 'stretch',
+      gap: 8,
     },
     caption: { flexShrink: 1, fontSize: 12, lineHeight: 17, color: p.inkMuted },
-    resetLabel: { fontSize: 12.5, fontWeight: '600', color: p.accentPrimary },
+    resetKeycap: {
+      minHeight: 36,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: RADII.sm,
+      borderWidth: 1.5,
+      borderBottomWidth: 2.5,
+      borderColor: p.borderStrong,
+      backgroundColor: p.bgSubtle,
+      alignItems: 'center',
+      justifyContent: 'center',
+      alignSelf: 'flex-start',
+    },
+    resetLabel: { fontSize: 12, fontWeight: '800', color: p.accentPrimary },
+    keycapPressed: {
+      transform: [{ translateY: 1.5 }],
+      borderBottomWidth: 1.5,
+    },
     disabled: { opacity: 0.5 },
-    pressed: { opacity: 0.7 },
+    pressed: { opacity: 0.75 },
   });
 }
