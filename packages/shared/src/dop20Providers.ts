@@ -148,15 +148,11 @@ export const GERMAN_STATE_DOP20_PROVIDERS: readonly StateDop20Provider[] = [
     layers: 'bebb_dop20c',
     licenseId: 'dl-de/by-2-0',
     licenseUrl: DOP20_LICENSE_URLS['dl-de/by-2-0'],
-    // Brandenburg (LGB) imagery is dl-de/by-2-0. Berlin publishes its own
-    // orthophotos under dl-de/zero-2-0 (Berlin data register / Geoportal Berlin);
-    // the joint service's GetCapabilities still shows the older by-2-0 wording
-    // for the Berlin part. The Berlin credit is kept and labelled with Berlin's
-    // actual license.
+    // Credit as the joint service's GetCapabilities prescribes it for both parts.
     attribution:
-      '© GeoBasis-DE / LGB, dl-de/by-2-0; © Geoportal Berlin, dl-de/zero-2-0',
+      '© GeoBasis-DE / LGB, dl-de/by-2-0; © Geoportal Berlin, dl-de/by-2-0',
     fullAttributionTemplate:
-      '© GeoBasis-DE / LGB ({year}), dl-de/by-2-0; © Geoportal Berlin ({year}), dl-de/zero-2-0 (Daten verändert)',
+      '© GeoBasis-DE / LGB ({year}), dl-de/by-2-0; © Geoportal Berlin ({year}), dl-de/by-2-0 (Daten verändert)',
     shortCreditTemplate: '© GeoBasis-DE / LGB & © Geoportal Berlin ({year})',
     modifiedNote: 'Daten verändert',
   },

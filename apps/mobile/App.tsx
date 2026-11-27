@@ -120,7 +120,6 @@ import { TermsUpdateModal } from './src/components/TermsUpdateModal';
 import { getSocialCopy } from './src/i18n/social';
 import { StatsModal, type StatsModalTab } from './src/components/StatsModal';
 import {
-  buildNativeAttributionText,
   getTranslations,
   localizeError,
   readPersistedLocale,
@@ -1912,7 +1911,6 @@ export function App(props: AppProps = {}): React.JSX.Element {
                     apiClient.getBaseUrl(),
                   )}
                   sourceCodeUrl="https://github.com/severinbro/Unseal"
-                  apkDownloadUrl={null}
                   abuseContact={null}
                   onClose={() => setAboutModalOpen(false)}
                 />
@@ -2508,45 +2506,6 @@ export function App(props: AppProps = {}): React.JSX.Element {
           </View>
         ) : null}
 
-        {Platform.OS !== 'web' ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={dict.controls.aboutButtonA11y}
-            onPress={() => setAboutModalOpen(true)}
-            style={[
-              styles.nativeAttributionPill,
-              hasActivePanel && layout.isCompact && isDrawingCollapsed
-                ? styles.nativeAttributionPillAboveCollapsed
-                : null,
-            ]}
-          >
-            <Text style={styles.nativeAttributionText}>
-              {buildNativeAttributionText({
-                locale: state.locale,
-                basemapMode: mapControls.basemapMode,
-                osmStyleUrl: state.config.osmStyleUrl,
-                activeStyleUrl: resolveBasemapStyleUrl(
-                  state.config,
-                  activeColorScheme,
-                ),
-                colorScheme: activeColorScheme,
-                orthophotoAttribution: state.config.orthophoto?.attribution,
-                orthophotoUrlTemplate: state.config.orthophoto?.urlTemplate,
-                viewportBbox: state.viewport
-                  ? [
-                      state.viewport.bbox.minLng,
-                      state.viewport.bbox.minLat,
-                      state.viewport.bbox.maxLng,
-                      state.viewport.bbox.maxLat,
-                    ]
-                  : null,
-                vg250AttributionEnabled: state.config.vg250AttributionEnabled,
-                vg250DataYear: state.config.vg250DataYear,
-              })}
-            </Text>
-          </Pressable>
-        ) : null}
-
         {hasActivePanel && layout.isDocked ? (
           <KeyboardAvoidingView
             pointerEvents="box-none"
@@ -2945,16 +2904,11 @@ export function App(props: AppProps = {}): React.JSX.Element {
                 termsUrl={termsUrl}
                 licensesUrl={licensesUrl}
                 sourceCodeUrl={sourceCodeUrl}
-                apkDownloadUrl={mapControls.apkDownloadUrl}
                 abuseContact={state.config.abuseContact}
                 onClose={() => setAboutModalOpen(false)}
                 onOpenInstallApp={() => {
                   setAboutModalOpen(false);
                   setInstallModalOpen(true);
-                }}
-                onDownloadError={(msg) => {
-                  setAboutModalOpen(false);
-                  setLocationNotice(msg);
                 }}
               />
             </ScrollView>
@@ -3039,13 +2993,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
                 visible={installModalOpen}
                 locale={state.locale}
                 compact={layout.isCompact}
-                apkDownloadUrl={mapControls.apkDownloadUrl}
-                apkSha256={mapControls.apkSha256}
                 onClose={() => setInstallModalOpen(false)}
-                onDownloadError={(msg) => {
-                  setInstallModalOpen(false);
-                  setLocationNotice(msg);
-                }}
               />
             </ScrollView>
           </View>
@@ -3320,27 +3268,6 @@ function createStyles(PALETTE: ThemePalette, isDark: boolean) {
     fontSize: 11,
     fontWeight: '600',
     color: PALETTE.inkPrimary,
-  },
-  nativeAttributionPill: {
-    position: 'absolute',
-    left: 12,
-    right: 44,
-    bottom: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: RADII.sm,
-    backgroundColor: PALETTE.bgFloatingPill,
-    borderWidth: 1,
-    borderColor: PALETTE.borderSubtle,
-    zIndex: 10,
-  },
-  nativeAttributionPillAboveCollapsed: {
-    bottom: 64,
-  },
-  nativeAttributionText: {
-    fontSize: 10,
-    lineHeight: 13.5,
-    color: PALETTE.inkSecondary,
   },
   bottomSheetShell: {
     position: 'absolute',

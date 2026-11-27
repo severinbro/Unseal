@@ -78,7 +78,7 @@ export async function processUploadedPhoto(
     throw new ApiError(
       415,
       'UNSUPPORTED_MEDIA_TYPE',
-      `Unsupported image format "${format ?? 'unknown'}". Allowed formats: JPEG, PNG, WebP, HEIC/AVIF.`,
+      `Unsupported image format "${format ?? 'unknown'}". Allowed formats: JPEG, PNG, WebP, AVIF.`,
     );
   }
 

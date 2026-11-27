@@ -10,7 +10,11 @@ import {
   UuidParamSchema,
 } from '@openunseal/shared';
 
-import { optionalAuth, requireAuth } from '../auth/session.js';
+import {
+  optionalAuth,
+  requireAuth,
+  requireCurrentTerms,
+} from '../auth/session.js';
 import { CommentRepository } from '../comments/repository.js';
 import {
   extractOptionalModerationReason,
@@ -57,7 +61,7 @@ export function registerCommentRoutes(
       config: {
         rateLimit: commentWriteLimit,
       },
-      preHandler: requireAuth,
+      preHandler: [requireAuth, requireCurrentTerms],
     },
     async (request, reply) => {
       const auth = request.auth!;

@@ -1462,7 +1462,7 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
       assert.match(termsRes.body, /§ 29 UrhG/);
       assert.match(termsRes.body, /Public License Fallback/);
       assert.match(termsRes.body, /Mindestalter von 16 Jahren/);
-      assert.match(termsRes.body, /§ 107 BGB/);
+      assert.match(termsRes.body, /unter 18 Jahren zusätzlich die Zustimmung der gesetzlichen Vertretung/);
       assert.match(termsRes.body, /Art\. 14, 16, 17 DSA/);
       assert.match(termsRes.body, /Art\. 17 DSA/);
       assert.match(termsRes.body, /CC BY 4\.0/);
@@ -1470,15 +1470,9 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
       assert.equal(licRes.statusCode, 200);
       assert.match(licRes.body, /AGPL-3\.0-or-later/);
       assert.match(licRes.body, /MPL-2\.0/);
-      assert.match(licRes.body, /MapLibre React Native \(MIT\)/);
-      assert.match(licRes.body, /MapLibre Native Android\/iOS \(BSD-2-Clause\)/);
-      assert.match(licRes.body, /MapLibre Android Plugins \(BSD-2-Clause\)/);
-      assert.match(licRes.body, /MapLibre Java Turf \(Apache-2\.0 \/ MIT\)/);
-      assert.match(licRes.body, /Glide \(BSD-2-Clause \/ MIT \/ Apache-2\.0\)/);
-      assert.match(licRes.body, /Bolts-Tasks \(BSD-3-Clause\)/);
-      assert.match(licRes.body, /Android-Image-Cropper \(Apache-2\.0\)/);
-      assert.match(licRes.body, /SmartLocation \(MIT\)/);
-      assert.match(licRes.body, /Google Play Services Location SDK/);
+      assert.match(licRes.body, /MapLibre GL JS \(BSD-3-Clause\)/);
+      assert.match(licRes.body, /React Native for Web \(MIT\)/);
+      assert.doesNotMatch(licRes.body, /Android|Google Play/);
       assert.match(licRes.body, /@node-rs\/argon2 \(MIT\)/);
       assert.match(licRes.body, /Nodemailer \(MIT-0\)/);
       assert.match(licRes.body, /PostGIS \(GPL-2\.0-or-later\)/);
@@ -1508,15 +1502,8 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
         /text\/plain/,
       );
       assert.match(noticesRes.body, /THIRD-PARTY SOFTWARE & GEODATA NOTICES/);
-      assert.match(
-        noticesRes.body,
-        /MapLibre Android Plugins & Gestures.*: BSD-2-Clause/,
-      );
-      assert.match(noticesRes.body, /Glide Image Loader.*BSD-2-Clause/);
-      assert.match(noticesRes.body, /Bolts-Tasks.*BSD-3-Clause/);
-      assert.match(noticesRes.body, /Apache Commons IO 2\.6/);
-      assert.match(noticesRes.body, /Apache Commons Codec 1\.10/);
-      assert.match(noticesRes.body, /The Public Suffix List/);
+      assert.match(noticesRes.body, /maplibre-gl@.* : BSD-3-Clause/);
+      assert.doesNotMatch(noticesRes.body, /NATIVE MOBILE SDK|Google Play Services/);
 
       assert.equal(exportRes.statusCode, 200);
       assert.equal(exportRes.headers['content-license'], 'ODbL-1.0');
@@ -1540,11 +1527,9 @@ describe('PPGIS-3 + V2 Auth: Email confirmation & password recovery links, hoste
         'https://opendatacommons.org/licenses/odbl/1-0/',
       );
       assert.equal(exportPayload.contributorRights, 'CC0-1.0');
-      assert.match(
-        exportPayload.upstreamConditions ?? '',
-        /CC BY 4\.0.*no-DRM|prohibiting Effective Technological Measures/,
-      );
-      assert.match(exportPayload.upstreamConditions ?? '', /dl-de\/by-2-0/);
+      // Basemap and aerial imagery are display-only, so the export claims no upstream terms for them.
+      assert.equal(exportPayload.upstreamConditions, undefined);
+      assert.doesNotMatch(exportPayload.attribution ?? '', /OpenStreetMap|orthophoto/i);
       assert.match(exportPayload.attribution ?? '', /ODbL-1\.0/);
       assert.match(exportPayload.attribution ?? '', /BKG.*dl-de\/by-2-0.*datenquellen_vg_nuts\.pdf/);
 

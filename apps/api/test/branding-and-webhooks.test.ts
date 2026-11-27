@@ -386,8 +386,8 @@ describe('Municipal white-label branding & outbound webhooks (Option 2 Phase 1)'
       assert.equal(privRes.statusCode, 200);
       assert.match(privRes.body, /<html lang="de">/);
       assert.match(privRes.body, /assets\.musterstadt\.de/);
-      assert.match(privRes.body, /Automatisierte Benachrichtigungen \(Webhooks, ohne Personenbezug\)/);
-      assert.match(privRes.body, /Outbound webhooks transmit exclusively public, non-PII polygon data/);
+      assert.match(privRes.body, /Automatisierte Benachrichtigungen \(Webhooks\)/);
+      assert.match(privRes.body, /Outbound webhooks transmit public polygon data only/);
 
       // Explicit ?theme=light and ?theme=dark override system prefers-color-scheme and persist across legal nav links
       const privLightRes = await brandedApp.inject({

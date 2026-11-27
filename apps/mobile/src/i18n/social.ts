@@ -35,7 +35,7 @@ const de = {
     'Ich bin Eigentümer/in oder von der berechtigten Person dazu ermächtigt.',
   privateHint:
     'Wer eine private Fläche einträgt, kann mit diesem Grundstück in Verbindung gebracht werden.',
-  verified: 'GIS-verifiziert',
+  verified: 'Passt zum GIS-Abgleich',
   override: 'Nutzer-Override',
   adminSet: 'Von Admin eingeordnet',
   openAccessBadge: 'Öffentlich zugänglich (Angabe der einreichenden Person)',
@@ -151,7 +151,7 @@ const de = {
   // Terms
   termsTitle: 'Aktualisierte Bedingungen',
   termsBody:
-    'Nutzungsbedingungen und Datenschutzerklärung wurden geändert: Angaben zu öffentlichem und privatem Grund (CC0 1.0), Fotos des eigenen Grundstücks, Direktnachrichten und der Feed sind neu. Ohne Zustimmung kannst du weiter lesen, exportieren und löschen, aber nichts Neues einreichen.',
+    'Nutzungsbedingungen und Datenschutzerklärung wurden geändert: Angaben zu öffentlichem und privatem Grund (CC0 1.0), Fotos des eigenen Grundstücks, Direktnachrichten und der Feed sind neu. Ohne Zustimmung kannst du weiter lesen, abstimmen, exportieren und löschen, aber nichts Neues einreichen.',
   termsRead: 'Nutzungsbedingungen lesen',
   privacyRead: 'Datenschutzerklärung lesen',
   termsAccept:
@@ -160,7 +160,7 @@ const de = {
   termsLater: 'Später',
   statsTitle: 'Öffentlicher Grund und Privatgrund',
   statsLine: (count: number, area: string, unsealed: string) =>
-    `${count} Flächen · ${area} · entsiegelt: ${unsealed}`,
+    `${count} Flächen · ${area} · als entsiegelt gemeldet: ${unsealed}`,
 };
 
 export type SocialCopy = typeof de;
@@ -194,7 +194,7 @@ const en: SocialCopy = {
   allowContact: 'Others may message me about this area',
   entitlement: 'I own this area or the entitled person authorised me.',
   privateHint: 'Entering a private area may link you to that parcel.',
-  verified: 'GIS-verified',
+  verified: 'Matches GIS check',
   override: 'User override',
   adminSet: 'Classified by admin',
   openAccessBadge: 'Open to the public (stated by the submitter)',
@@ -304,7 +304,7 @@ const en: SocialCopy = {
   choosePerson: 'Choose a conversation to send the reference.',
   termsTitle: 'Updated terms',
   termsBody:
-    'The terms and privacy policy changed: public/private ground statements (CC0 1.0), photos of your own premises, direct messages and the feed are new. Without accepting you can still read, export and delete, but not submit anything new.',
+    'The terms and privacy policy changed: public/private ground statements (CC0 1.0), photos of your own premises, direct messages and the feed are new. Without accepting you can still read, vote, export and delete, but not submit anything new.',
   termsRead: 'Read the terms',
   privacyRead: 'Read the privacy policy',
   termsAccept: 'I accept the terms and have read the privacy policy.',
@@ -312,7 +312,7 @@ const en: SocialCopy = {
   termsLater: 'Later',
   statsTitle: 'Public and private ground',
   statsLine: (count, area, unsealed) =>
-    `${count} areas · ${area} · unsealed: ${unsealed}`,
+    `${count} areas · ${area} · reported as unsealed: ${unsealed}`,
 };
 
 export function getSocialCopy(locale: Locale): SocialCopy {

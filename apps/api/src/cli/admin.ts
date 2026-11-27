@@ -55,6 +55,11 @@ import { deleteChatMessageAsOperator } from '../chat/repository.js';
 import { loadLandCoverFile } from '../polygons/landCover.js';
 import { PolygonRepository } from '../polygons/repository.js';
 import {
+  createWebhookDispatcher,
+  emitPolygonsDeleted,
+  type WebhookDispatcher,
+} from '../util/webhooks.js';
+import {
   loadSpaceZonesFile,
   type SpaceZoneSource,
 } from '../polygons/spaceZonesLoader.js';
@@ -231,6 +236,8 @@ export interface AdminCommandOptions {
   termsUrl?: string;
   impressumUrl?: string;
   abuseContact?: string | null;
+  /** Announces deletions to the configured webhook receiver. */
+  webhookDispatcher?: WebhookDispatcher;
 }
 
 const DEFAULT_ADMIN_MODERATION_REASON =
@@ -473,6 +480,9 @@ export async function runAdminCommand(
 
     const repo = new PolygonRepository(pool, options.uploadsDir);
     const pruned = await repo.pruneStaleUnratedPolygons(retentionDays);
+    if (options.webhookDispatcher) {
+      emitPolygonsDeleted(options.webhookDispatcher, pruned.deletedIds, false);
+    }
     return {
       command: 'prune-stale-polygons',
       deletedPolygonCount: pruned.deletedCount,
@@ -513,6 +523,9 @@ export async function runAdminCommand(
         });
         deletedPhotoFiles = banResult.deletedPhotoFiles;
         await client.query('COMMIT');
+        if (options.webhookDispatcher) {
+          emitPolygonsDeleted(options.webhookDispatcher, banResult.deletedPolygonIds, true);
+        }
 
         if (options.uploadsDir && deletedPhotoFiles.length > 0) {
           await unlinkUploadFiles(options.uploadsDir, deletedPhotoFiles);
@@ -634,6 +647,10 @@ export async function runAdminCommand(
           .unlink(path.join(options.uploadsDir, pf.thumb_name))
           .catch(() => undefined);
       }
+    }
+
+    if (options.webhookDispatcher) {
+      emitPolygonsDeleted(options.webhookDispatcher, [polygonId], true);
     }
 
     await sendAdminModerationNoticeBestEffort(options, {
@@ -1149,9 +1166,18 @@ const isDirectExecution =
 
 if (isDirectExecution) {
   const config = loadEnvConfig();
-  const logger = createLogger();
+  // Log to stderr so a redirected export (`> export.json`) stays valid JSON.
+  const logger = createLogger({ stream: process.stderr });
   const pool = createDbPool(config.databaseUrl);
   const mailer = createSmtpMailer(config, logger);
+  const webhookDispatcher = createWebhookDispatcher({
+    config: config.webhook,
+    instance: {
+      appName: config.branding.appName,
+      publicBaseUrl: config.publicBaseUrl,
+    },
+    logger,
+  });
 
   runAdminCommand(pool, process.argv.slice(2), {
     uploadsDir: config.uploadsDir,
@@ -1162,8 +1188,10 @@ if (isDirectExecution) {
     termsUrl: config.termsUrl,
     impressumUrl: config.impressumUrl,
     abuseContact: config.abuseContact ?? config.operatorEmail,
+    webhookDispatcher,
   })
     .then(async (result) => {
+      await webhookDispatcher.flush();
       if (result.userExport) {
         // Print the export itself to stdout (redirect to a file); never into the log stream.
         process.stdout.write(`${JSON.stringify(result.userExport, null, 2)}\n`);

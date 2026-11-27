@@ -166,8 +166,9 @@ function extractFallbackCopyrightCredit(pkgDir, pkgName, readmeFiles) {
         : typeof pkgJson.author?.name === 'string'
           ? pkgJson.author.name.trim()
           : '';
-    if (author.length > 0) {
-      return `Copyright (c) ${author}`;
+    // An `author` field names the packager; it is not a copyright notice.
+    if (author.length > 0 && !pkgName.startsWith('@img/sharp-libvips')) {
+      return `Author (package.json): ${author}`;
     }
   }
 
@@ -368,7 +369,7 @@ function main() {
   lines.push(hr);
   lines.push('');
   lines.push('This document records the third-party software packages, reproduced runtime');
-  lines.push('copyright/license notices (direct and transitive), native mobile SDKs,');
+  lines.push('copyright/license notices (direct and transitive),');
   lines.push('runtime container components, and default geodata sources used by OpenUnseal.');
   lines.push('Regenerate from package-lock.json and node_modules via:');
   lines.push('  npm run licenses:generate');
@@ -567,268 +568,21 @@ function main() {
   }
   lines.push('');
 
-  // Section 4: Native Mobile SDKs (Expo Prebuild Android / iOS)
-  const mlrnGradleProps = path.join(
-    REPO_ROOT,
-    'node_modules/@maplibre/maplibre-react-native/android/gradle.properties',
-  );
-  let androidMapLibreVer = '11.12.1';
-  let androidMapLibrePluginVer = '3.0.2';
-  let androidMapLibreTurfVer = '6.0.1';
-  let androidOkHttpVer = '4.9.0';
-  if (fs.existsSync(mlrnGradleProps)) {
-    const propsText = fs.readFileSync(mlrnGradleProps, 'utf8');
-    const verMatch = /org\.maplibre\.reactnative\.nativeVersion=([^\r\n]+)/.exec(propsText);
-    if (verMatch?.[1]) {
-      androidMapLibreVer = verMatch[1].trim();
-    }
-    const pluginMatch = /org\.maplibre\.reactnative\.pluginVersion=([^\r\n]+)/.exec(propsText);
-    if (pluginMatch?.[1]) {
-      androidMapLibrePluginVer = pluginMatch[1].trim();
-    }
-    const turfMatch = /org\.maplibre\.reactnative\.turfVersion=([^\r\n]+)/.exec(propsText);
-    if (turfMatch?.[1]) {
-      androidMapLibreTurfVer = turfMatch[1].trim();
-    }
-    const okhttpMatch = /org\.maplibre\.reactnative\.okhttpVersion=([^\r\n]+)/.exec(propsText);
-    if (okhttpMatch?.[1]) {
-      androidOkHttpVer = okhttpMatch[1].trim();
-    }
-  }
-  const mlrnPodspec = path.join(
-    REPO_ROOT,
-    'node_modules/@maplibre/maplibre-react-native/maplibre-react-native.podspec',
-  );
-  let iosMapLibreVer = '6.17.1';
-  if (fs.existsSync(mlrnPodspec)) {
-    const podText = fs.readFileSync(mlrnPodspec, 'utf8');
-    const match = /\$MLRN_NATIVE_VERSION\s*\|\|=\s*"([^"]+)"/.exec(podText);
-    if (match?.[1]) {
-      iosMapLibreVer = match[1].trim();
-    }
-  }
-
+  // Section 4: Docker & Runtime Stack Components
   lines.push(hr);
-  lines.push('4. NATIVE MOBILE SDK DEPENDENCIES (ANDROID / iOS PREBUILD)');
-  lines.push(hr);
-  lines.push('');
-  lines.push('When building native Android/iOS packages via `npx expo prebuild`, the following');
-  lines.push('native SDKs and transitive C++/JNI/JVM libraries are linked in addition to the npm packages above:');
-  lines.push('');
-  lines.push(`  - MapLibre Native Android SDK (org.maplibre.gl:android-sdk-opengl:${androidMapLibreVer}) : BSD-2-Clause`);
-  lines.push(`  - MapLibre Android Plugins & Gestures (org.maplibre.gl:android-plugin-localization-v9, android-plugin-annotation-v9, android-plugin-markerview-v9:${androidMapLibrePluginVer}; maplibre-android-gestures:0.0.4) : BSD-2-Clause`);
-  lines.push(`  - MapLibre Java Turf & GeoJSON (org.maplibre.gl:android-sdk-turf:${androidMapLibreTurfVer}, android-sdk-geojson:${androidMapLibreTurfVer}) : Apache-2.0 per the published Maven POM; MIT per the upstream repository LICENSE (both notices reproduced below)`);
-  lines.push(`  - MapLibre Native iOS Distribution (maplibre-gl-native-distribution ${iosMapLibreVer}) : BSD-2-Clause`);
-  lines.push('  - Glide Image Loader (com.github.bumptech.glide:glide, gifdecoder, disklrucache, annotations:4.16.0, via expo-image-loader) : BSD-2-Clause AND MIT AND Apache-2.0');
-  lines.push('  - Android-Image-Cropper (com.github.CanHub:Android-Image-Cropper:4.3.1, via expo-image-picker) : Apache-2.0');
-  lines.push('  - SmartLocation (io.nlopez.smartlocation:library:3.3.3, via expo-location) : MIT');
-  lines.push('  - Google Play Services Location & Basement/Tasks (com.google.android.gms:play-services-location:21.0.1, play-services-base, play-services-basement, play-services-tasks, via expo-location) : Proprietary (Android Software Development Kit License / Google APIs Terms of Service; compatible with MPL-2.0 Section 3.3)');
-  lines.push('  - React Native Android / iOS & Hermes Runtime (com.facebook.react:react-android, hermes-android; Yoga) : MIT');
-  lines.push('  - Fresco Image Pipeline (com.facebook.fresco:fresco, fbcore, imagepipeline-*:3.2.0) : MIT');
-  lines.push('  - Bolts-Tasks (com.parse.bolts:bolts-tasks:1.4.0, via Fresco) : BSD-3-Clause');
-  lines.push('  - React Native C++ / JNI Support Libraries:');
-  lines.push('      * fbjni (com.facebook.fbjni:fbjni:0.6.0), SoLoader (com.facebook.soloader:soloader:0.12.1), RCT-Folly : Apache-2.0');
-  lines.push('      * SocketRocket (iOS), glog (Google Logging) & double-conversion (V8) : BSD-3-Clause');
-  lines.push('      * fmt (fmtlib) : MIT');
-  lines.push('      * Boost C++ Headers : BSL-1.0');
-  lines.push('      * Android NDK C++ Runtime (libc++_shared.so) : Apache-2.0 WITH LLVM-exception');
-  lines.push('  - Apache Commons IO (commons-io:commons-io:2.6, via expo-constants / expo-document-picker) & Apache Commons Codec (commons-codec:commons-codec:1.10, via expo-file-system) : Apache-2.0');
-  lines.push('  - Kotlin Standard Library & Coroutines (org.jetbrains.kotlin:kotlin-stdlib, org.jetbrains.kotlinx:kotlinx-coroutines-*) : Apache-2.0');
-  lines.push(`  - AndroidX, Gson (2.10.1), Timber (5.0.1) & OkHttp (com.squareup.okhttp3:okhttp:${androidOkHttpVer} / 4.9.2, okhttp-urlconnection:${androidOkHttpVer}, okio) : Apache-2.0 (OkHttp embeds Mozilla Public Suffix List data under MPL-2.0)`);
-  lines.push('');
-  lines.push('--- MapLibre Native (BSD-2-Clause) & MapLibre Android Plugins / Gestures (BSD-2-Clause) ---');
-  lines.push('BSD 2-Clause License');
-  lines.push('');
-  lines.push('Copyright (c) 2021 MapLibre contributors');
-  lines.push('Copyright (c) 2018-2021 MapTiler.com');
-  lines.push('Copyright (c) 2014-2020 Mapbox');
-  lines.push('Copyright (c) 2019, Mapbox (MapLibre Android Plugins)');
-  lines.push('Copyright (c) 2018, Mapbox; Copyright (c) 2024, MapLibre contributors (MapLibre Android Gestures)');
-  lines.push('');
-  lines.push('Redistribution and use in source and binary forms, with or without');
-  lines.push('modification, are permitted provided that the following conditions are met:');
-  lines.push('');
-  lines.push('1. Redistributions of source code must retain the above copyright notice, this');
-  lines.push('   list of conditions and the following disclaimer.');
-  lines.push('');
-  lines.push('2. Redistributions in binary form must reproduce the above copyright notice,');
-  lines.push('   this list of conditions and the following disclaimer in the documentation');
-  lines.push('   and/or other materials provided with the distribution.');
-  lines.push('');
-  lines.push('THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"');
-  lines.push('AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE');
-  lines.push('IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE');
-  lines.push('DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE');
-  lines.push('FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL');
-  lines.push('DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR');
-  lines.push('SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER');
-  lines.push('CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,');
-  lines.push('OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE');
-  lines.push('OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.');
-  lines.push('');
-  lines.push('--- Glide (com.github.bumptech.glide:glide:4.16.0, BSD-2-Clause / MIT / Apache-2.0) ---');
-  lines.push('License for everything not in third_party and not otherwise marked:');
-  lines.push('');
-  lines.push('Copyright 2014 Google, Inc. All rights reserved.');
-  lines.push('');
-  lines.push('Redistribution and use in source and binary forms, with or without modification, are');
-  lines.push('permitted provided that the following conditions are met:');
-  lines.push('');
-  lines.push('   1. Redistributions of source code must retain the above copyright notice, this list of');
-  lines.push('      conditions and the following disclaimer.');
-  lines.push('');
-  lines.push('   2. Redistributions in binary form must reproduce the above copyright notice, this list');
-  lines.push('      of conditions and the following disclaimer in the documentation and/or other materials');
-  lines.push('      provided with the distribution.');
-  lines.push('');
-  lines.push('THIS SOFTWARE IS PROVIDED BY GOOGLE, INC. ``AS IS\'\' AND ANY EXPRESS OR IMPLIED');
-  lines.push('WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND');
-  lines.push('FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL GOOGLE, INC. OR');
-  lines.push('CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR');
-  lines.push('CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR');
-  lines.push('SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON');
-  lines.push('ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING');
-  lines.push('NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF');
-  lines.push('ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.');
-  lines.push('');
-  lines.push('Third-party components bundled in Glide:');
-  lines.push('  - DiskLruCache: Copyright 2012 Jake Wharton; Copyright 2011 The Android Open Source Project (Apache-2.0)');
-  lines.push('  - GifDecoder: Copyright (c) 2013 Xcellent Creations, Inc. (MIT)');
-  lines.push('');
-  lines.push('--- Bolts-Tasks, SocketRocket, glog & double-conversion (BSD-3-Clause) ---');
-  lines.push('Copyright (c) 2013-present, Facebook, Inc. All rights reserved. (com.parse.bolts:bolts-tasks)');
-  lines.push('Copyright 2012 Square Inc.; Portions Copyright (c) 2016-present, Facebook, Inc. All rights reserved. (SocketRocket, iOS)');
-  lines.push('Copyright (c) 2008, Google Inc. All rights reserved. (glog)');
-  lines.push('Copyright 2006-2011, the V8 project authors. All rights reserved. (double-conversion)');
-  lines.push('');
-  lines.push('Redistribution and use in source and binary forms, with or without modification,');
-  lines.push('are permitted provided that the following conditions are met:');
-  lines.push('');
-  lines.push('1. Redistributions of source code must retain the above copyright notice, this');
-  lines.push('   list of conditions and the following disclaimer.');
-  lines.push('2. Redistributions in binary form must reproduce the above copyright notice,');
-  lines.push('   this list of conditions and the following disclaimer in the documentation');
-  lines.push('   and/or other materials provided with the distribution.');
-  lines.push('3. Neither the name of the copyright holder nor the names of its contributors');
-  lines.push('   may be used to endorse or promote products derived from this software without');
-  lines.push('   specific prior written permission.');
-  lines.push('');
-  lines.push('THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND');
-  lines.push('ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED');
-  lines.push('WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE');
-  lines.push('DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR');
-  lines.push('ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES');
-  lines.push('(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;');
-  lines.push('LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON');
-  lines.push('ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT');
-  lines.push('(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS');
-  lines.push('SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.');
-  lines.push('');
-  lines.push('--- Android-Image-Cropper, MapLibre Java Turf, OkHttp, Commons, Meta JNI & AndroidX (Apache-2.0) ---');
-  lines.push('Copyright (c) 2020-2024 CanHub / Arthur Teplitzki (Android-Image-Cropper)');
-  lines.push('Copyright (c) MapLibre contributors / Mapbox (MapLibre Java Turf & GeoJSON, as declared in the Maven POM)');
-  lines.push('Copyright (c) Square, Inc. (OkHttp, Okio) / Jake Wharton (Timber)');
-  lines.push('Copyright (c) Google Inc. (Gson) / JetBrains s.r.o. (Kotlin Standard Library & Coroutines)');
-  lines.push('Copyright (c) Meta Platforms, Inc. and affiliates. (fbjni, SoLoader, RCT-Folly)');
-  lines.push('Copyright (c) The Android Open Source Project (AndroidX)');
-  lines.push('Copyright (c) The LLVM Project (libc++_shared, Apache-2.0 WITH LLVM-exception)');
-  lines.push('');
-  lines.push('Licensed under the Apache License, Version 2.0 (the "License");');
-  lines.push('you may not use these files except in compliance with the License.');
-  lines.push('You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0');
-  lines.push('Unless required by applicable law or agreed to in writing, software distributed under the');
-  lines.push('License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND.');
-  lines.push('');
-  lines.push('[NOTICE - Apache Commons IO 2.6 (commons-io:commons-io:2.6)]');
-  lines.push('Apache Commons IO');
-  lines.push('Copyright 2002-2017 The Apache Software Foundation');
-  lines.push('This product includes software developed at The Apache Software Foundation (http://www.apache.org/).');
-  lines.push('');
-  lines.push('[NOTICE - Apache Commons Codec 1.10 (commons-codec:commons-codec:1.10)]');
-  lines.push('Apache Commons Codec');
-  lines.push('Copyright 2002-2014 The Apache Software Foundation');
-  lines.push('This product includes software developed at The Apache Software Foundation (http://www.apache.org/).');
-  lines.push('src/test/org/apache/commons/codec/language/DoubleMetaphoneTest.java contains test data from');
-  lines.push('http://aspell.net/test/orig/batch0.tab - Copyright (C) 2002 Kevin Atkinson (kevina@gnu.org).');
-  lines.push('The content of package org.apache.commons.codec.language.bm has been translated from the');
-  lines.push('original php source code available at http://stevemorse.org/phoneticinfo.htm with permission');
-  lines.push('from the original authors. Original source copyright: Copyright (c) 2008 Alexander Beider & Stephen P. Morse.');
-  lines.push('');
-  lines.push('[NOTICE - OkHttp Embedded Public Suffix List (okhttp3/internal/publicsuffix/NOTICE)]');
-  lines.push('Note that publicsuffixes.gz is compiled from The Public Suffix List:');
-  lines.push('https://publicsuffix.org/list/public_suffix_list.dat');
-  lines.push('It is subject to the terms of the Mozilla Public License, v. 2.0: https://mozilla.org/MPL/2.0/');
-  lines.push('');
-  lines.push('--- SmartLocation, MapLibre Java Turf / GeoJSON, Yoga, React Native / Hermes & fmt (MIT) ---');
-  lines.push('Copyright (c) 2013-2017 Nacho Lopez (mrmans0n) (io.nlopez.smartlocation)');
-  lines.push('Copyright (c) 2018 Mapbox (MapLibre Java Turf & GeoJSON, upstream repository LICENSE)');
-  lines.push('Copyright (c) Meta Platforms, Inc. and affiliates. (React Native, Hermes, Yoga)');
-  lines.push('Copyright (c) 2012 - present, Victor Zverovich and {fmt} contributors (fmt)');
-  lines.push('');
-  lines.push('Permission is hereby granted, free of charge, to any person obtaining a copy of this');
-  lines.push('software and associated documentation files (the "Software"), to deal in the Software');
-  lines.push('without restriction, including without limitation the rights to use, copy, modify, merge,');
-  lines.push('publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons');
-  lines.push('to whom the Software is furnished to do so, subject to the following conditions:');
-  lines.push('');
-  lines.push('The above copyright notice and this permission notice shall be included in all copies or');
-  lines.push('substantial portions of the Software.');
-  lines.push('');
-  lines.push('THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,');
-  lines.push('INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR');
-  lines.push('PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE');
-  lines.push('FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR');
-  lines.push('OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER');
-  lines.push('DEALINGS IN THE SOFTWARE.');
-  lines.push('');
-  lines.push('--- Boost C++ Libraries (BSL-1.0, React Native C++ headers) ---');
-  lines.push('Boost Software License - Version 1.0 - August 17th, 2003');
-  lines.push('');
-  lines.push('Permission is hereby granted, free of charge, to any person or organization');
-  lines.push('obtaining a copy of the software and accompanying documentation covered by');
-  lines.push('this license (the "Software") to use, reproduce, display, distribute,');
-  lines.push('execute, and transmit the Software, and to prepare derivative works of the');
-  lines.push('Software, and to permit third-parties to whom the Software is furnished to');
-  lines.push('do so, all subject to the following:');
-  lines.push('');
-  lines.push('The copyright notices in the Software and this entire statement, including');
-  lines.push('the above license grant, this restriction and the following disclaimer,');
-  lines.push('must be included in all copies of the Software, in whole or in part, and');
-  lines.push('all derivative works of the Software, unless such copies or derivative');
-  lines.push('works are solely in the form of machine-executable object code generated by');
-  lines.push('a source language processor.');
-  lines.push('');
-  lines.push('THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR');
-  lines.push('IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,');
-  lines.push('FITNESS FOR A PARTICULAR PURPOSE, TITLE AND NON-INFRINGEMENT. IN NO EVENT');
-  lines.push('SHALL THE COPYRIGHT HOLDERS OR ANYONE DISTRIBUTING THE SOFTWARE BE LIABLE');
-  lines.push('FOR ANY DAMAGES OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT OR OTHERWISE,');
-  lines.push('ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER');
-  lines.push('DEALINGS IN THE SOFTWARE.');
-  lines.push('');
-  lines.push('--- Google Play Services Location (com.google.android.gms:play-services-location) ---');
-  lines.push('Copyright (c) Google LLC. Distributed under the Android Software Development Kit License');
-  lines.push('Agreement / Google APIs Terms of Service (https://developers.google.com/terms).');
-  lines.push('Linked solely into the MPL-2.0 Android client package via expo-location (MPL-2.0 § 3.3);');
-  lines.push('includes third-party open-source components documented in the AAR res/raw/third_party_licenses');
-  lines.push('(Apache-2.0 / BSD / MIT / ICU / UTF-8 / JSR-305 / Protobuf).');
-  lines.push('');
-
-  // Section 5: Docker & Runtime Stack Components
-  lines.push(hr);
-  lines.push('5. DOCKER & RUNTIME INFRASTRUCTURE COMPONENTS');
+  lines.push('4. DOCKER & RUNTIME INFRASTRUCTURE COMPONENTS');
   lines.push(hr);
   lines.push('');
   lines.push('  - Node.js 24 (node:24-bookworm-slim) : MIT (plus Debian Bookworm base OS packages)');
-  lines.push('  - PostgreSQL 16 (postgis/postgis:16-3.4-alpine) : PostgreSQL License');
+  lines.push('  - PostgreSQL 16 (postgis/postgis:16-3.4-alpine) : PostgreSQL License (plus Alpine Linux base OS packages)');
   lines.push('  - PostGIS 3.4 : GPL-2.0-or-later (bundles GEOS LGPL-2.1-or-later, GDAL MIT, PROJ MIT)');
-  lines.push('  - Caddy 2 (caddy:2-alpine, VPS reverse proxy) : Apache-2.0');
+  lines.push('  - Caddy 2 (caddy:2-alpine, VPS reverse proxy) : Apache-2.0 (plus Alpine Linux base OS packages)');
   lines.push('  - Mailpit (axllent/mailpit:v1.21, local development only) : MIT');
   lines.push('');
 
-  // Section 6: Default Geodata & Map Sources
+  // Section 5: Default Geodata & Map Sources
   lines.push(hr);
-  lines.push('6. DEFAULT GEODATA & EXTERNAL MAP SOURCES');
+  lines.push('5. DEFAULT GEODATA & EXTERNAL MAP SOURCES');
   lines.push(hr);
   lines.push('');
   lines.push('  - OpenStreetMap Map Data & Nominatim Geocoding : ODbL-1.0 (© OpenStreetMap contributors, https://www.openstreetmap.org/copyright)');
@@ -850,8 +604,7 @@ function main() {
   lines.push('      * BW  (Baden-Württemberg)      : dl-de/by-2-0   | LGL-BW (<Jahr>) Datenlizenz Deutschland - Namensnennung - Version 2.0, www.lgl-bw.de');
   lines.push('      * BY  (Bayern)                 : CC BY 4.0      | Datenquelle: Bayerische Vermessungsverwaltung - www.geodaten.bayern.de (<Jahr>)');
   lines.push('      * SL  (Saarland)               : dl-de/by-2-0   | © GeoBasis DE/LVGL-SL (<Jahr>)');
-  lines.push('      * BE/BB (Berlin / Brandenburg) : dl-de/by-2-0   | © GeoBasis-DE / LGB (<Jahr>), dl-de/by-2-0; © Geoportal Berlin (<Jahr>), dl-de/zero-2-0');
-  lines.push('                                       (Berlin publishes its own orthophotos under dl-de/zero-2-0; the Berlin credit is kept voluntarily)');
+  lines.push('      * BE/BB (Berlin / Brandenburg) : dl-de/by-2-0   | © GeoBasis-DE / LGB (<Jahr>), dl-de/by-2-0; © Geoportal Berlin (<Jahr>), dl-de/by-2-0');
   lines.push('      * HH  (Hamburg, TIME=2026)     : dl-de/by-2-0   | © Freie und Hansestadt Hamburg, Landesbetrieb Geoinformation und Vermessung (LGV) (<Jahr>)');
   lines.push('                                       (pinned to LGV OpenData aerial vintage TIME=2026; excludes 2023 Maxar satellite vintage)');
   lines.push('      * NI  (Niedersachsen)          : CC BY 4.0      | LGLN (<Jahr>) Creative Commons Namensnennung - 4.0 International (CC BY 4.0)');
@@ -867,18 +620,16 @@ function main() {
   lines.push('        - CC BY 4.0      : https://creativecommons.org/licenses/by/4.0/');
   lines.push('  - User-Contributed & Exported Platform Content:');
   lines.push('      * Compiled Polygon Dataset Export (/api/v1/polygons/export.geojson) : ODbL-1.0 (https://opendatacommons.org/licenses/odbl/1-0/)');
-  lines.push('        concurrently subject to applicable upstream CC BY 4.0 (incl. §§ 2(a)(5)(B) & 3(b) no-DRM; ODbL-1.0 § 4.7(b) parallel-DRM');
-  lines.push('        does not override upstream CC BY 4.0) and dl-de/by-2-0 attribution obligations on German State DOP20/DOP10 and BKG VG250');
-  lines.push('        municipality attributes (?includeMunicipality=false omits VG250 attributes; OSM-specific agency waivers apply solely to OSM).');
+  lines.push('        (proposals and their ratings only; BKG VG250 municipality attributes under dl-de/by-2-0, omit with ?includeMunicipality=false).');
   lines.push('      * Contributor Rights Waiver on Own Polygon Input & Notes            : CC0-1.0 + Section 3 Public License Fallback (https://creativecommons.org/publicdomain/zero/1.0/)');
   lines.push('      * Admin Bulk Imports (.geojson / .gpkg)                             : Mandatory explicit license declaration: CC0-1.0 / PDDL-1.0 / dl-de/zero-2-0 /');
   lines.push('        Public Domain / attributed ODbL-1.0, or waiver-confirmed CC BY 4.0 / dl-de/by-2-0 with persisted attribution.');
   lines.push('      * Uploaded Ground-Truth Photos & Discussion Comments                : CC BY 4.0 (attributed to contributor pseudonym)');
   lines.push('');
 
-  // Section 7: Complete inventory of all npm lockfile packages
+  // Section 6: Complete inventory of all npm lockfile packages
   lines.push(hr);
-  lines.push('7. COMPLETE NPM DEPENDENCY LICENSE INVENTORY (FROM package-lock.json)');
+  lines.push('6. COMPLETE NPM DEPENDENCY LICENSE INVENTORY (FROM package-lock.json)');
   lines.push(hr);
   lines.push('');
 

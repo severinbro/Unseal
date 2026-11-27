@@ -76,8 +76,6 @@ const SAMPLE_CONFIG_NO_ORTHO: RuntimeConfig = {
   licensesUrl: 'https://maps.example.org/auth/licenses',
   sourceCodeUrl: 'https://github.com/severinbro/Unseal',
   bugReportContact: 'bugs@example.org',
-  apkDownloadUrl: null,
-  apkSha256: null,
   authCaptchaRequired: false,
 };
 
@@ -1146,7 +1144,7 @@ describe('appReducer and viewModels v2', () => {
       'https://maps.example.org/auth/privacy',
     );
 
-    // Relative DOP20 urlTemplate and relative apkDownloadUrl resolve against origin
+    // Relative DOP20 urlTemplate resolves against origin
     const relativeConfigClient = new PpgisApiClient(
       'https://maps.example.org/api/v1/',
       mem,
@@ -1161,7 +1159,6 @@ describe('appReducer and viewModels v2', () => {
               bounds: [5.8, 47.2, 15.1, 55.1],
               maxZoom: 20,
             },
-            apkDownloadUrl: '/downloads/openunseal.apk',
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         ),
@@ -1170,10 +1167,6 @@ describe('appReducer and viewModels v2', () => {
     assert.equal(
       resolvedCfg.orthophoto?.urlTemplate,
       'https://maps.example.org/api/v1/tiles/dop20/{z}/{x}/{y}.png',
-    );
-    assert.equal(
-      resolvedCfg.apkDownloadUrl,
-      'https://maps.example.org/downloads/openunseal.apk',
     );
   });
 

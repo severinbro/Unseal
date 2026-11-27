@@ -28,7 +28,11 @@ import { createMemoryMailer } from '../src/auth/mailer.js';
 import { loadEnvConfig } from '../src/config.js';
 import { purgeExpiredPersonalData } from '../src/db/retention.js';
 import { resetTestDb, setupTestDb } from '../src/db/testHarness.js';
-import { createLogger, toLoggablePath } from '../src/logger.js';
+import {
+  createLogger,
+  serializeErrorWithoutAddresses,
+  toLoggablePath,
+} from '../src/logger.js';
 import { decide, roundedOverpassBbox } from '../src/polygons/spaceClassifier.js';
 import { buildPublicPolygonWebhookData } from '../src/util/webhooks.js';
 
@@ -565,6 +569,16 @@ describe('Public/private ground, feed and direct messages', () => {
       surfaceType: 'asphalt',
     });
     assert.equal(blocked.code, 'TERMS_UPDATE_REQUIRED');
+    // Photos and comments fall under the new terms too; voting does not.
+    const target = await create(await user('neighbour'), 3);
+    assert.equal(
+      (await call('POST', `/api/v1/polygons/${target.id}/comments`, u, { body: 'Hallo' })).code,
+      'TERMS_UPDATE_REQUIRED',
+    );
+    assert.equal(
+      (await call('PUT', `/api/v1/polygons/${target.id}/vote`, u, { value: 1 })).status,
+      200,
+    );
     const me = await call<{ termsUpdateRequired: boolean }>('GET', '/api/v1/auth/me', u);
     assert.equal(me.body.termsUpdateRequired, true);
     assert.equal((await call('GET', '/api/v1/auth/me/export', u)).status, 200);
@@ -580,6 +594,77 @@ describe('Public/private ground, feed and direct messages', () => {
     );
     assert.equal(accepted.body.termsUpdateRequired, false);
     await create(u, 0);
+  });
+
+  it('keeps addresses out of logged errors and creation times only as long as the quota needs them', async () => {
+    const mailError = Object.assign(
+      new Error('550 <anna@example.org>: Recipient address rejected'),
+      { rejected: ['anna@example.org'], response: '550 anna@example.org rejected' },
+    );
+    const logged = JSON.stringify(serializeErrorWithoutAddresses(mailError));
+    assert.ok(!logged.includes('anna@example.org'), logged);
+    assert.match(logged, /550 <\[email\]>/);
+
+    const author = await user('quota');
+    await create(author, 0);
+    await pool.query(
+      `INSERT INTO polygon_creations (user_id, created_at) VALUES ($1, NOW() - INTERVAL '3 days')`,
+      [author.id],
+    );
+    await purgeExpiredPersonalData(pool, { pseudonymReservationDays: 365 });
+    const left = await pool.query<{ n: number }>(
+      'SELECT COUNT(*)::int AS n FROM polygon_creations WHERE user_id = $1',
+      [author.id],
+    );
+    assert.equal(left.rows[0]?.n, 1);
+  });
+
+  it('withdraws owner statements and announces removed areas when an account is deleted', async () => {
+    const owner = await user('leaving');
+    const kept = await create(owner, 0, {
+      spaceType: 'private',
+      helpWanted: true,
+      openForPublicAccess: true,
+      allowChatContact: true,
+      entitlementConfirmed: true,
+    });
+    assert.equal(kept.properties.helpWanted, true);
+    assert.equal((await call('DELETE', '/api/v1/auth/me', owner)).status, 204);
+    // The area stays, but nobody is left who could withdraw these statements.
+    const flags = await pool.query<{
+      open_for_public_access: boolean;
+      allow_chat_contact: boolean;
+      help_wanted_until: Date | null;
+      entitlement_confirmed_at: Date | null;
+    }>(
+      `SELECT open_for_public_access, allow_chat_contact, help_wanted_until, entitlement_confirmed_at
+       FROM polygons WHERE id = $1`,
+      [kept.id],
+    );
+    assert.deepEqual(flags.rows[0], {
+      open_for_public_access: false,
+      allow_chat_contact: false,
+      help_wanted_until: null,
+      entitlement_confirmed_at: null,
+    });
+    const shown = (await call<PolygonFeature>('GET', `/api/v1/polygons/${kept.id}`)).body
+      .properties;
+    assert.equal(shown.helpWanted, false);
+
+    const purging = await user('purging');
+    const gone = await create(purging, 1);
+    const events: Array<{ event: string; data: Record<string, unknown> }> = [];
+    app.webhookDispatcher.emit = (event, data) => {
+      events.push({ event, data });
+    };
+    assert.equal(
+      (await call('DELETE', '/api/v1/auth/me?purgeContent=true', purging)).status,
+      204,
+    );
+    assert.deepEqual(
+      events.map((e) => [e.event, e.data.id, e.data.deletedByAdmin]),
+      [['polygon.deleted', gone.id, false]],
+    );
   });
 
   it('publishes a call for help only with confirmation, keeps it out of open data and lets it lapse', async () => {

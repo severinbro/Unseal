@@ -39,9 +39,7 @@ export function computeNorthArrowRotationDeg(bearingDeg: number): number {
 }
 
 /**
- * Platform-neutral MapLibre canvas props contract shared by concrete platform
- * suffix adapters resolved via Metro and TypeScript `moduleSuffixes`:
- * - `./MapCanvas.native` (`@maplibre/maplibre-react-native` on Android and iOS)
+ * MapLibre canvas props contract, implemented by
  * - `./MapCanvas.web` (`maplibre-gl` + `maplibre-gl/dist/maplibre-gl.css` on Web)
  */
 export interface MapCanvasProps {

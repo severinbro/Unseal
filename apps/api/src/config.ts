@@ -69,7 +69,6 @@ export interface EnvConfig {
   corsOrigin: string;
   publicBaseUrl: string;
   uploadsDir: string;
-  apkFilePath: string;
   smtp: SmtpConfig;
   autoSeedVg250: boolean;
   osmStyleUrl: string;
@@ -90,11 +89,6 @@ export interface EnvConfig {
   termsUrl: string;
   licensesUrl: string;
   sourceCodeUrl: string;
-  apkMode: 'auto' | 'explicit' | 'disabled';
-  apkDefaultUrl: string;
-  apkExplicitSha256: string | null;
-  apkDownloadUrl: string | null;
-  apkSha256: string | null;
   authCaptchaEnabled: boolean;
   authCaptchaSecret: string;
   authCaptchaMaxNumber: number;
@@ -173,7 +167,6 @@ function resolveDefaultDarkStyleUrl(lightStyleUrl: string): string {
 }
 const DISABLED_SETTING_RE = /^(?:none|off|false|disabled|0)$/i;
 const STRICT_NUMBER_RE = /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$/;
-const SHA256_HEX_RE = /^[0-9a-f]{64}$/i;
 const MAX_BRAND_LOGO_BYTES = 2 * 1024 * 1024;
 const VALID_WEBHOOK_EVENTS = new Set<string>(WEBHOOK_EVENT_TYPES);
 
@@ -373,74 +366,6 @@ function parseWebhookEvents(raw: string | undefined): WebhookEventType[] {
   return result;
 }
 
-export function resolveCandidateApkPaths(apkFilePath: string): string[] {
-  const defaultDevApkPath = path.join(
-    path.resolve(process.cwd(), 'uploads'),
-    'openunseal.apk',
-  );
-  if (apkFilePath === defaultDevApkPath) {
-    return [
-      apkFilePath,
-      path.resolve(process.cwd(), 'downloads', 'openunseal.apk'),
-      path.resolve(
-        process.cwd(),
-        'apps/mobile/android/app/build/outputs/apk/release/app-release.apk',
-      ),
-      path.resolve(
-        process.cwd(),
-        '../mobile/android/app/build/outputs/apk/release/app-release.apk',
-      ),
-    ];
-  }
-  return [apkFilePath];
-}
-
-export function findExistingApkInfo(
-  apkFilePath: string,
-): { filePath: string; size: number; sha256: string } | null {
-  for (const candidate of resolveCandidateApkPaths(apkFilePath)) {
-    try {
-      const stat = fs.statSync(candidate);
-      if (stat.isFile() && stat.size > 0) {
-        const hash = crypto
-          .createHash('sha256')
-          .update(fs.readFileSync(candidate))
-          .digest('hex');
-        return { filePath: candidate, size: stat.size, sha256: hash };
-      }
-    } catch {
-      // Try next candidate path
-    }
-  }
-  return null;
-}
-
-export function resolveRuntimeApkAvailability(config: Pick<
-  EnvConfig,
-  'apkMode' | 'apkDefaultUrl' | 'apkFilePath' | 'apkExplicitSha256' | 'apkDownloadUrl'
->): { apkDownloadUrl: string | null; apkSha256: string | null } {
-  if (config.apkMode === 'disabled') {
-    return { apkDownloadUrl: null, apkSha256: null };
-  }
-  if (config.apkMode === 'explicit') {
-    const localApk = config.apkExplicitSha256
-      ? null
-      : findExistingApkInfo(config.apkFilePath);
-    return {
-      apkDownloadUrl: config.apkDownloadUrl,
-      apkSha256: config.apkExplicitSha256 ?? localApk?.sha256 ?? null,
-    };
-  }
-  const existing = findExistingApkInfo(config.apkFilePath);
-  if (!existing) {
-    return { apkDownloadUrl: null, apkSha256: null };
-  }
-  return {
-    apkDownloadUrl: config.apkDefaultUrl,
-    apkSha256: config.apkExplicitSha256 ?? existing.sha256,
-  };
-}
-
 function parseFiniteNumber(raw: string | undefined, fallback: number, name: string): number {
   const trimmed = raw?.trim();
   if (!trimmed) {
@@ -558,9 +483,6 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
   const uploadsDir = env.UPLOADS_DIR?.trim()
     ? path.resolve(env.UPLOADS_DIR.trim())
     : path.resolve(process.cwd(), 'uploads');
-  const apkFilePath = env.APK_FILE_PATH?.trim()
-    ? path.resolve(env.APK_FILE_PATH.trim())
-    : path.join(uploadsDir, 'openunseal.apk');
 
   const smtpHostRaw = env.SMTP_HOST?.trim() ?? '';
   const smtpPort = parseIntSetting(env.SMTP_PORT, 587, 'SMTP_PORT');
@@ -684,38 +606,6 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     env.LICENSES_URL?.trim() || `${publicBaseUrl}/auth/licenses`;
   const sourceCodeUrl =
     env.SOURCE_CODE_URL?.trim() || DEFAULT_SOURCE_CODE_URL;
-
-  const rawApkDownloadUrl = env.APK_DOWNLOAD_URL?.trim() ?? '';
-  const defaultApkPath = '/downloads/openunseal.apk';
-  const apkDefaultUrl = hasExplicitPublicBaseUrl
-    ? `${publicBaseUrl}${defaultApkPath}`
-    : defaultApkPath;
-  const rawApkSha256 = env.APK_SHA256?.trim() ?? '';
-  if (rawApkSha256.length > 0 && !SHA256_HEX_RE.test(rawApkSha256)) {
-    throw new Error(
-      'APK_SHA256 must be a 64-character hexadecimal SHA-256 digest.',
-    );
-  }
-  const apkExplicitSha256 =
-    rawApkSha256.length > 0 ? rawApkSha256.toLowerCase() : null;
-
-  const apkMode: 'auto' | 'explicit' | 'disabled' = DISABLED_SETTING_RE.test(
-    rawApkDownloadUrl,
-  )
-    ? 'disabled'
-    : rawApkDownloadUrl.length > 0
-      ? 'explicit'
-      : 'auto';
-
-  const resolvedApk = resolveRuntimeApkAvailability({
-    apkMode,
-    apkDefaultUrl,
-    apkFilePath,
-    apkExplicitSha256,
-    apkDownloadUrl: apkMode === 'explicit' ? rawApkDownloadUrl : apkDefaultUrl,
-  });
-  const apkDownloadUrl = resolvedApk.apkDownloadUrl;
-  const apkSha256 = resolvedApk.apkSha256;
 
   const authCaptchaEnabled = parseBooleanSetting(
     env.AUTH_CAPTCHA_ENABLED,
@@ -875,7 +765,7 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
   };
   const resolvedBranding = resolveRuntimeBranding({ branding });
 
-  // Outbound webhooks (optional; transmits exclusively public non-PII polygon data).
+  // Outbound webhooks (optional; transmits public polygon data only).
   const rawWebhookUrl = env.WEBHOOK_URL?.trim() ?? '';
   let webhook: WebhookConfig | null = null;
   if (rawWebhookUrl.length > 0 && !DISABLED_SETTING_RE.test(rawWebhookUrl)) {
@@ -963,8 +853,6 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     licensesUrl,
     sourceCodeUrl,
     bugReportContact: bugReportEmail,
-    apkDownloadUrl,
-    apkSha256,
     authCaptchaRequired: authCaptchaEnabled,
     branding: resolvedBranding,
   });
@@ -977,7 +865,6 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     corsOrigin,
     publicBaseUrl,
     uploadsDir,
-    apkFilePath,
     smtp,
     autoSeedVg250,
     osmStyleUrl: runtimeConfig.osmStyleUrl,
@@ -998,11 +885,6 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     termsUrl,
     licensesUrl,
     sourceCodeUrl,
-    apkMode,
-    apkDefaultUrl,
-    apkExplicitSha256,
-    apkDownloadUrl: runtimeConfig.apkDownloadUrl,
-    apkSha256: runtimeConfig.apkSha256,
     authCaptchaEnabled,
     authCaptchaSecret,
     authCaptchaMaxNumber,

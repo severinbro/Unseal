@@ -23,7 +23,6 @@ import {
 import {
   BUILTIN_DISCLAIMER_DE,
   DEFAULT_LOCALE,
-  buildNativeAttributionText,
   getTranslations,
   localizeDisclaimerText,
   localizeError,
@@ -46,12 +45,6 @@ import {
   requestCurrentCoordinates,
   type WebNavigatorLike,
 } from '../src/location/locateMe.web';
-import {
-  NATIVE_LOCATION_ACCURACY,
-  requestCurrentCoordinates as requestNativeCoordinates,
-  type NativeLocationModuleLike,
-  type NativeLocationWatchOptionsLike,
-} from '../src/location/locateMe.native';
 import {
   appReducer,
   initialAppState,
@@ -127,8 +120,6 @@ const SAMPLE_CONFIG: RuntimeConfig = {
   licensesUrl: 'https://maps.example.org/auth/licenses',
   sourceCodeUrl: 'https://github.com/severinbro/Unseal',
   bugReportContact: 'bugs@example.org',
-  apkDownloadUrl: 'https://maps.example.org/downloads/openunseal.apk',
-  apkSha256: null,
   authCaptchaRequired: false,
 };
 
@@ -536,214 +527,6 @@ describe('locateMe.web requestCurrentCoordinates adapter', () => {
   });
 });
 
-describe('locateMe.native requestCurrentCoordinates adapter', () => {
-  it('returns fresh cached fix immediately, rejects negative CoreLocation accuracy, and disables Android settings dialog spam', async () => {
-    const now = 1_700_000_000_000;
-    let watchCalled = false;
-
-    const cachedNative: NativeLocationModuleLike = {
-      async requestForegroundPermissionsAsync() {
-        return { granted: true };
-      },
-      async hasServicesEnabledAsync() {
-        return true;
-      },
-      async getLastKnownPositionAsync() {
-        return {
-          coords: { longitude: 8.2739, latitude: 49.9989, accuracy: 22 },
-          timestamp: now - 12_000,
-        };
-      },
-      async watchPositionAsync() {
-        watchCalled = true;
-        return { remove() {} };
-      },
-      async getCurrentPositionAsync() {
-        throw new Error('should not be called');
-      },
-    };
-
-    const fastResult = await requestNativeCoordinates(
-      undefined,
-      undefined,
-      'de',
-      50,
-      undefined,
-      cachedNative,
-      { now: () => now },
-    );
-    assert.equal(watchCalled, false);
-    assert.deepEqual(fastResult, {
-      ok: true,
-      lng: 8.2739,
-      lat: 49.9989,
-      accuracyMeters: 22,
-    });
-
-    // Rejects invalid CoreLocation accuracy (-1), pans immediately on warm cache, refines via watchPositionAsync, and cleans up
-    const watchedOptions: NativeLocationWatchOptionsLike[] = [];
-    let removedCount = 0;
-    const interimFixes: Array<Extract<LocateMeResult, { ok: true }>> = [];
-
-    const streamingNative: NativeLocationModuleLike = {
-      async requestForegroundPermissionsAsync() {
-        return { granted: true };
-      },
-      async hasServicesEnabledAsync() {
-        return true;
-      },
-      async getLastKnownPositionAsync(opts) {
-        if ((opts?.maxAge ?? 0) <= 60_000) {
-          // Invalid CoreLocation reading must be ignored
-          return {
-            coords: { longitude: 0, latitude: 0, accuracy: -1 },
-            timestamp: now - 1_000,
-          };
-        }
-        return {
-          coords: { longitude: 8.27, latitude: 49.99, accuracy: 320 },
-          timestamp: now - 180_000,
-        };
-      },
-      async watchPositionAsync(options, callback) {
-        watchedOptions.push(options);
-        if (options.accuracy === NATIVE_LOCATION_ACCURACY.High) {
-          setTimeout(() => {
-            callback({
-              coords: { longitude: 8.2741, latitude: 49.9991, accuracy: 11 },
-              timestamp: now,
-            });
-          }, 15);
-        }
-        return {
-          remove() {
-            removedCount += 1;
-          },
-        };
-      },
-      async getCurrentPositionAsync() {
-        throw new Error('watchPositionAsync should be used');
-      },
-    };
-
-    const refined = await requestNativeCoordinates(
-      undefined,
-      undefined,
-      'de',
-      80,
-      (fix) => interimFixes.push(fix),
-      streamingNative,
-      { warmTimeoutMs: 200, coldHardTimeoutMs: 400, now: () => now },
-    );
-
-    assert.equal(watchedOptions.length, 2);
-    for (const opt of watchedOptions) {
-      assert.equal(opt.mayShowUserSettingsDialog, false);
-    }
-    assert.equal(removedCount, 2);
-    assert.ok(interimFixes.length >= 1);
-    assert.equal(interimFixes[0]?.accuracyMeters, 320);
-    assert.deepEqual(refined, {
-      ok: true,
-      lng: 8.2741,
-      lat: 49.9991,
-      accuracyMeters: 11,
-    });
-  });
-
-  it('keeps cold High GNSS stream alive past warmTimeoutMs when no network/cached fix exists, and hard-caps hung providers without hanging', async () => {
-    const now = 1_700_000_000_000;
-    let coldRemoved = 0;
-
-    const coldGnssNative: NativeLocationModuleLike = {
-      async requestForegroundPermissionsAsync() {
-        return { granted: true };
-      },
-      async hasServicesEnabledAsync() {
-        return true;
-      },
-      async getLastKnownPositionAsync() {
-        return null;
-      },
-      async watchPositionAsync(options, callback) {
-        if (options.accuracy === NATIVE_LOCATION_ACCURACY.High) {
-          // Arrives AFTER warmTimeoutMs (30ms), before coldHardTimeoutMs (200ms)
-          setTimeout(() => {
-            callback({
-              coords: { longitude: 9.9937, latitude: 53.5511, accuracy: 16 },
-              timestamp: now,
-            });
-          }, 55);
-        }
-        return {
-          remove() {
-            coldRemoved += 1;
-          },
-        };
-      },
-      async getCurrentPositionAsync() {
-        throw new Error('unexpected single-shot fallback');
-      },
-    };
-
-    const coldFix = await requestNativeCoordinates(
-      undefined,
-      undefined,
-      'de',
-      40,
-      undefined,
-      coldGnssNative,
-      { warmTimeoutMs: 25, coldHardTimeoutMs: 250, now: () => now },
-    );
-    assert.equal(coldRemoved, 2);
-    assert.deepEqual(coldFix, {
-      ok: true,
-      lng: 9.9937,
-      lat: 53.5511,
-      accuracyMeters: 16,
-    });
-
-    // Completely hung native provider terminates deterministically at coldHardTimeoutMs and removes subscriptions
-    let hungRemoved = 0;
-    const hungNative: NativeLocationModuleLike = {
-      async requestForegroundPermissionsAsync() {
-        return { granted: true };
-      },
-      async hasServicesEnabledAsync() {
-        return true;
-      },
-      async getLastKnownPositionAsync() {
-        return null;
-      },
-      async watchPositionAsync() {
-        return {
-          remove() {
-            hungRemoved += 1;
-          },
-        };
-      },
-      async getCurrentPositionAsync() {
-        return new Promise(() => {});
-      },
-    };
-
-    const hungResult = await requestNativeCoordinates(
-      undefined,
-      undefined,
-      'en',
-      20,
-      undefined,
-      hungNative,
-      { warmTimeoutMs: 20, coldHardTimeoutMs: 45, now: () => now },
-    );
-    assert.equal(hungRemoved, 2);
-    assert.equal(hungResult.ok, false);
-    if (!hungResult.ok) {
-      assert.match(hungResult.reason, /Unable to determine your current GPS position/i);
-    }
-  });
-});
-
 describe('UI sheet, banner, and GPS camera state transitions', () => {
   it('enforces >= 44 dp minimum touch target constant and drives banner/inspector/modal states', () => {
     assert.ok(MIN_TOUCH_TARGET_DP >= 44);
@@ -947,23 +730,17 @@ describe('German default localization and DE <-> EN switching', () => {
     const controlsDe = deriveMapControlsModel(state);
     assert.equal(controlsDe.locale, 'de');
     assert.equal(controlsDe.accountLabel, 'Anmelden');
-    assert.equal(controlsDe.apkDownloadUrl, 'https://maps.example.org/downloads/openunseal.apk');
     assert.match(controlsDe.zoomInPromptText, /heranzoomen/);
     assert.equal(getTranslations('de').inspector.statusInProgressBadge, '⟳ Wird entsiegelt');
     assert.equal(getTranslations('en').inspector.statusInProgressBadge, '⟳ In progress');
-    assert.equal(getTranslations('en').controls.apkDownloadFull, 'Download Android APK');
-    assert.equal(getTranslations('de').controls.apkDownloadFull, 'Android-APK herunterladen');
-    assert.equal(getTranslations('de').about.apkDownloadButton, 'Android-APK herunterladen');
-    assert.equal(getTranslations('de').controls.installAppFull, 'App installieren (PWA & Android)');
-    assert.equal(getTranslations('en').controls.installAppFull, 'Install App (PWA & Android)');
+    assert.equal(getTranslations('de').controls.installAppFull, 'App installieren (PWA)');
+    assert.equal(getTranslations('en').controls.installAppFull, 'Install App (PWA)');
     assert.equal(getTranslations('de').about.installAppButton, 'App installieren');
     assert.equal(getTranslations('en').about.installAppButton, 'Install App');
     assert.equal(getTranslations('de').installApp.androidPwaSteps.length, 3);
     assert.equal(getTranslations('de').installApp.iosPwaSteps.length, 3);
     assert.equal(getTranslations('en').installApp.androidPwaSteps.length, 3);
     assert.equal(getTranslations('en').installApp.iosPwaSteps.length, 3);
-    assert.equal(getTranslations('de').installApp.apkDownloadButton, 'Android-APK herunterladen');
-    assert.equal(getTranslations('en').installApp.apkDownloadButton, 'Download Android APK');
     assert.equal(getTranslations('de').controls.polygonOpacityLabel, 'Deckkraft');
     assert.equal(getTranslations('en').controls.polygonOpacityLabel, 'Opacity');
     assert.equal(getTranslations('de').controls.filterNeedsReviewCompact, 'Prüfen');
@@ -1652,86 +1429,8 @@ describe('German default localization and DE <-> EN switching', () => {
   });
 });
 
-describe('Dynamic native attribution text & offline bundled license plugin', () => {
-  it('uses vg250DataYear or current UTC year, respects custom osmStyleUrl, omits VG250 when disabled, and includes orthophoto attribution', async () => {
-    const currentYear = String(new Date().getUTCFullYear());
-
-    const defaultDe = buildNativeAttributionText({
-      locale: 'de',
-      basemapMode: 'osm',
-      osmStyleUrl: 'https://tiles.openfreemap.org/styles/liberty',
-      vg250AttributionEnabled: true,
-    });
-    assert.match(defaultDe, /OpenFreeMap/);
-    assert.match(
-      defaultDe,
-      new RegExp(`© BKG \\(${currentYear}\\)`),
-    );
-    assert.match(defaultDe, /Datenquellen/);
-    assert.match(defaultDe, /Daten verändert/);
-
-    const customSeedYearDe = buildNativeAttributionText({
-      locale: 'de',
-      basemapMode: 'osm',
-      vg250AttributionEnabled: true,
-      vg250DataYear: 2024,
-    });
-    assert.match(customSeedYearDe, /© BKG \(2024\)/);
-
-    const customNoVg250 = buildNativeAttributionText({
-      locale: 'en',
-      basemapMode: 'osm',
-      osmStyleUrl: 'https://tiles.custom.example/style.json',
-      vg250AttributionEnabled: false,
-    });
-    assert.equal(customNoVg250.includes('OpenFreeMap'), false);
-    assert.match(customNoVg250, /Basemap: tiles\.custom\.example/);
-    assert.equal(customNoVg250.includes('BKG'), false);
-    assert.equal(customNoVg250.includes('VG250'), false);
-
-    const orthoCustom = buildNativeAttributionText({
-      locale: 'de',
-      basemapMode: 'orthophoto',
-      osmStyleUrl: 'https://tiles.custom.example/style.json',
-      orthophotoAttribution: '© Stadt Musterstadt DOP20',
-      vg250AttributionEnabled: false,
-    });
-    assert.match(orthoCustom, /© Stadt Musterstadt DOP20/);
-    assert.match(orthoCustom, /Basemap: tiles\.custom\.example/);
-    assert.equal(orthoCustom.includes('OpenFreeMap'), false);
-    assert.equal(orthoCustom.includes('BKG'), false);
-
-    const orthoDefault = buildNativeAttributionText({
-      locale: 'en',
-      basemapMode: 'orthophoto',
-      osmStyleUrl: 'https://tiles.openfreemap.org/styles/liberty',
-      orthophotoAttribution: null,
-      vg250AttributionEnabled: true,
-    });
-    assert.match(orthoDefault, /DOP20\/DOP10/);
-    assert.match(orthoDefault, /OpenFreeMap/);
-    assert.match(
-      orthoDefault,
-      new RegExp(`© BKG \\(${currentYear}\\)`),
-    );
-
-    // Dynamic viewport-scoped DOP20 + dark mode CARTO attribution on native
-    const orthoMainzDark = buildNativeAttributionText({
-      locale: 'de',
-      basemapMode: 'orthophoto',
-      colorScheme: 'dark',
-      osmStyleUrl: 'https://tiles.openfreemap.org/styles/liberty',
-      orthophotoAttribution: '© GeoBasis-DE / Bundesländer',
-      orthophotoUrlTemplate: 'https://openunseal.example.org/api/v1/tiles/dop20/{z}/{x}/{y}.jpg',
-      viewportBbox: [8.22, 49.97, 8.32, 50.03],
-      vg250AttributionEnabled: true,
-      vg250DataYear: 2025,
-    });
-    assert.match(orthoMainzDark, /LVermGeoRP/);
-    assert.match(orthoMainzDark, /HVBG/);
-    assert.match(orthoMainzDark, /© CARTO \(modified\)/);
-    assert.match(orthoMainzDark, /© BKG \(2025\)/);
-
+describe('Web viewport storage and branding', () => {
+  it('keeps the web viewport in sessionStorage and purges the legacy localStorage key', async () => {
     // TDDDG compliance: default Web viewport storage uses sessionStorage (not localStorage) and cleans legacy key
     const sessionBacking = new Map<string, string>();
     const localBacking = new Map<string, string>([
@@ -1780,72 +1479,6 @@ describe('Dynamic native attribution text & offline bundled license plugin', () 
       } else {
         (globalThis as { window?: unknown }).window = prevWindow;
       }
-    }
-  });
-
-  it('registers withBundledLicenses.cjs in app.json and copies MPL-2.0 LICENSE + THIRD_PARTY_NOTICES.txt into native prebuild assets', () => {
-    const mobileRoot = path.resolve(
-      path.dirname(fileURLToPath(import.meta.url)),
-      '..',
-    );
-    const appJson = JSON.parse(
-      fs.readFileSync(path.join(mobileRoot, 'app.json'), 'utf8'),
-    ) as { expo?: { plugins?: unknown[] } };
-    assert.equal(
-      Array.isArray(appJson.expo?.plugins) &&
-        appJson.expo.plugins.includes('./plugins/withBundledLicenses.cjs'),
-      true,
-    );
-
-    const req = createRequire(import.meta.url);
-    const withBundledLicenses = req(
-      path.join(mobileRoot, 'plugins', 'withBundledLicenses.cjs'),
-    ) as {
-      copyBundledLicensesToNativeDir: (
-        projectRoot: string,
-        targetDir: string,
-      ) => string[];
-    };
-    const tmpTarget = fs.mkdtempSync(
-      path.join(os.tmpdir(), 'openunseal-bundled-licenses-'),
-    );
-    try {
-      const copied = withBundledLicenses.copyBundledLicensesToNativeDir(
-        mobileRoot,
-        tmpTarget,
-      );
-      assert.equal(copied.length, 2);
-      const mplText = fs.readFileSync(
-        path.join(tmpTarget, 'LICENSE-MPL-2.0.txt'),
-        'utf8',
-      );
-      const noticesText = fs.readFileSync(
-        path.join(tmpTarget, 'THIRD_PARTY_NOTICES.txt'),
-        'utf8',
-      );
-      assert.equal(
-        mplText.startsWith('Mozilla Public License Version 2.0'),
-        true,
-      );
-      assert.match(noticesText, /MapLibre Native \(BSD-2-Clause\)/);
-      assert.match(
-        noticesText,
-        /MapLibre Android Plugins & Gestures.*: BSD-2-Clause/,
-      );
-      assert.match(noticesText, /Copyright \(c\) 2014-2020 Mapbox/);
-      assert.match(noticesText, /play-services-location/);
-      assert.match(noticesText, /Android-Image-Cropper/);
-      assert.match(noticesText, /Glide Image Loader.*BSD-2-Clause/);
-      assert.match(noticesText, /Bolts-Tasks.*BSD-3-Clause/);
-      assert.match(noticesText, /Apache Commons IO 2\.6/);
-      assert.match(noticesText, /Apache Commons Codec 1\.10/);
-      assert.match(noticesText, /The Public Suffix List/);
-      assert.match(noticesText, /SmartLocation/);
-      assert.match(noticesText, /MapLibre Android Plugins/);
-      assert.match(noticesText, /©GeoBasis-DE \/ LVermGeoRP/);
-      assert.match(noticesText, /CARTO Dark Matter, modified in dark mode/);
-    } finally {
-      fs.rmSync(tmpTarget, { recursive: true, force: true });
     }
   });
 

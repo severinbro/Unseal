@@ -53,6 +53,7 @@ import {
   normalizeRateLimitSubnet,
 } from '../util/rateLimit.js';
 import { BoundedSemaphore } from '../util/semaphore.js';
+import { emitPolygonsDeleted } from '../util/webhooks.js';
 
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import type pg from 'pg';
@@ -1290,6 +1291,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       const { purgeContent } = DeleteAccountQuerySchema.parse(request.query ?? {});
       const client = await app.pool.connect();
       let deletedPhotoFiles: string[] = [];
+      let deletedPolygonIds: string[] = [];
       try {
         await client.query('BEGIN');
         const result = await deleteOrBanUserAccount(client, {
@@ -1299,6 +1301,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
           tombstoneSecret: app.config.tombstoneSecret,
         });
         deletedPhotoFiles = result.deletedPhotoFiles;
+        deletedPolygonIds = result.deletedPolygonIds;
         await client.query('COMMIT');
       } catch (err: unknown) {
         await rollbackQuietly(client, request.log);
@@ -1307,6 +1310,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
         client.release();
       }
       await unlinkUploadFiles(app.config.uploadsDir, deletedPhotoFiles);
+      emitPolygonsDeleted(app.webhookDispatcher, deletedPolygonIds, false);
       return reply.status(204).send();
     },
   );

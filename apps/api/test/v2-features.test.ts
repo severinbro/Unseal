@@ -939,7 +939,7 @@ describe('V2 Features: Municipality-bounded score normalization, admin "finished
         exportPayload.attribution ?? '',
         /Full license and source notices:.*\/auth\/licenses/,
       );
-      assert.match(exportPayload.upstreamConditions ?? '', /CC BY 4\.0/);
+      assert.equal(exportPayload.upstreamConditions, undefined);
       assert.ok(
         (exportPayload.features ?? []).some(
           (f) => f.properties.municipalityName === 'Hamburg',

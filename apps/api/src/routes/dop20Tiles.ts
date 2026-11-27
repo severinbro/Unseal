@@ -58,8 +58,8 @@ function buildDop20UserAgent(
     (part): part is string => typeof part === 'string' && part.length > 0,
   );
   return details.length > 0
-    ? `OpenUnseal-PPGIS/0.2 (${details.join('; ')})`
-    : 'OpenUnseal-PPGIS/0.2';
+    ? `OpenUnseal-PPGIS/1.0 (${details.join('; ')})`
+    : 'OpenUnseal-PPGIS/1.0';
 }
 
 let cachedTransparentTilePng: Buffer | null = null;

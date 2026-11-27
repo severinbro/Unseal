@@ -94,10 +94,6 @@ export async function triggerGeoJsonExportDownload(
   await triggerFileDownload(exportUrl, 'entsiegelung-proposals.geojson');
 }
 
-export async function triggerApkDownload(apkUrl: string): Promise<void> {
-  await triggerFileDownload(apkUrl, 'openunseal.apk');
-}
-
 export interface MapControlsBarProps {
   controls: MapControlsModel;
   proposalCount: number;
@@ -133,7 +129,7 @@ export interface MapControlsBarProps {
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const OPENUNSEAL_HEADER_LOGO = require('../../assets/header-logo.png') as number;
 
-export function AndroidGlyph({
+export function InstallAppGlyph({
   color,
   size = 20,
 }: {
@@ -1506,10 +1502,7 @@ export function NavbarOverflowMenu({
   const locale = controls.locale;
   const t = getTranslations(locale).controls;
 
-  const hasApkDownloadUrl =
-    controls.apkDownloadUrl !== null && controls.apkDownloadUrl.length > 0;
-  const showInstallButton =
-    Platform.OS === 'web' && (onOpenInstallApp !== undefined || hasApkDownloadUrl);
+  const showInstallButton = onOpenInstallApp !== undefined;
 
   const handleExportPress = (): void => {
     onClose();
@@ -1523,17 +1516,7 @@ export function NavbarOverflowMenu({
 
   const handleInstallPress = (): void => {
     onClose();
-    if (onOpenInstallApp) {
-      onOpenInstallApp();
-      return;
-    }
-    if (!controls.apkDownloadUrl) {
-      return;
-    }
-    void triggerApkDownload(controls.apkDownloadUrl).catch((err: unknown) => {
-      const detail = localizeError(err, t.apkDownloadErrorFallback, locale);
-      onExportError(detail);
-    });
+    onOpenInstallApp?.();
   };
 
   return (
@@ -1701,27 +1684,23 @@ export function NavbarOverflowMenu({
           <Text style={styles.menuSectionLabel}>{t.menuSectionHelp}</Text>
           {showInstallButton ? (
             <Pressable
-              testID="download-apk-button"
+              testID="install-app-button"
               accessibilityRole="menuitem"
-              accessibilityLabel={
-                onOpenInstallApp ? t.installAppFull : t.apkDownloadFull
-              }
-              accessibilityHint={
-                onOpenInstallApp ? t.installAppA11y : t.apkDownloadA11y
-              }
+              accessibilityLabel={t.installAppFull}
+              accessibilityHint={t.installAppA11y}
               onPress={handleInstallPress}
               style={({ pressed }) => [
                 styles.menuItemRow,
                 pressed ? styles.menuItemPressed : null,
               ]}
             >
-              <AndroidGlyph
+              <InstallAppGlyph
                 color={palette.accentPrimary}
                 eyeColor={palette.bgSurface}
                 size={18}
               />
               <Text style={styles.menuItemLabel}>
-                {onOpenInstallApp ? t.installAppFull : t.apkDownloadFull}
+                {t.installAppFull}
               </Text>
             </Pressable>
           ) : null}

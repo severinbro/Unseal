@@ -211,9 +211,21 @@ export function signWebhookPayload(
   return `sha256=${digest}`;
 }
 
+/** Tells receivers to drop their copy, whichever way the polygons were removed. */
+export function emitPolygonsDeleted(
+  dispatcher: WebhookDispatcher,
+  ids: readonly string[],
+  deletedByAdmin: boolean,
+): void {
+  const deletedAt = new Date().toISOString();
+  for (const id of ids) {
+    dispatcher.emit('polygon.deleted', { id, deletedByAdmin, deletedAt });
+  }
+}
+
 /**
- * Extracts strictly public, zero-PII polygon metadata matching the public ODbL-1.0 export
- * so outbound webhooks never transmit personal data (no pseudonyms, emails, user IDs, or IPs).
+ * Public polygon data as in the GeoJSON export: no pseudonyms, emails, user IDs or IPs.
+ * The free-text note is passed on as the author wrote it.
  */
 export function buildPublicPolygonWebhookData(
   feature: PolygonFeature,

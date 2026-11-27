@@ -324,10 +324,6 @@ export class PpgisApiClient {
             urlTemplate: this.resolveUploadUrl(parsed.orthophoto.urlTemplate),
           }
         : parsed.orthophoto;
-    const resolvedApkDownloadUrl =
-      parsed.apkDownloadUrl !== null && parsed.apkDownloadUrl.startsWith('/')
-        ? this.resolveUploadUrl(parsed.apkDownloadUrl)
-        : parsed.apkDownloadUrl;
     const resolvedBranding =
       parsed.branding &&
       parsed.branding.logoUrl !== null &&
@@ -340,7 +336,6 @@ export class PpgisApiClient {
     return {
       ...parsed,
       orthophoto: resolvedOrthophoto,
-      apkDownloadUrl: resolvedApkDownloadUrl,
       ...(resolvedBranding !== undefined ? { branding: resolvedBranding } : {}),
     };
   }

@@ -7,17 +7,17 @@ This guide walks through deploying **OpenUnseal** on a Linux VPS using a single 
 All backend services run inside isolated Docker networks defined in [`docker-compose.vps.yml`](../docker-compose.vps.yml):
 
 1. **`postgis` (`postgis/postgis:16-3.4-alpine` on `db_internal`):**
-   - Stores both the spatial GIS tables (`polygons`, German BKG VG250 `municipalities`, `polygon_photos`) and the user/authentication tables (`users`, `sessions`, `email_tokens`, `votes`, `photo_votes`, `reserved_pseudonyms`, `reserved_emails`).
+   - Stores both the spatial GIS tables (`polygons`, German BKG VG250 `municipalities`, `polygon_photos`) and the user/authentication tables (`users`, `sessions`, `email_tokens`, `votes`, `polygon_photo_votes`, `reserved_pseudonyms`, `reserved_emails`, `chat_threads`, `chat_messages`).
    - Air-gapped on an `internal: true` Docker network with **zero host ports exposed**.
 2. **`api` (`apps/api/Dockerfile` on `db_internal` + `edge_net`):**
-   - Runs numbered SQL migrations (`001_initial_schema.sql` through `013_direct_messaging.sql`) automatically on boot and re-keys canonical email hashes with `TOMBSTONE_SECRET`.
-   - Runs an hourly privacy retention job (unconfirmed sign-ups after 48 h, expired sessions, stale email links, expired pseudonym reservations).
+   - Runs numbered SQL migrations (`001_initial_schema.sql` through `014_requests_help_feed.sql`) automatically on boot and re-keys canonical email hashes with `TOMBSTONE_SECRET`.
+   - Runs an hourly privacy retention job (unconfirmed sign-ups after 48 h, expired sessions, stale email links, expired pseudonym reservations, expired direct messages and lapsed help requests).
    - Logs only request id, method, URL path, status and timing - no client IPs, headers or query strings. Container logs are rotated (3 × 10 MB per service).
    - Automatically downloads and seeds Germany's **BKG VG250 OpenData municipality boundaries** (`vg250_gem`, `~11,000` municipalities) on first startup when `AUTO_SEED_VG250=true`.
    - Hosts the **clickable web pages** for email confirmation (`GET/POST /auth/verify-email?token=...`), password recovery (`GET/POST /auth/reset-password?token=...`), and legal/GDPR pages (`/auth/impressum`, `/auth/privacy`, `/auth/terms`, `/auth/licenses`).
-   - Processes uploaded site photos (`<= 3 m` EXIF GPS polygon tolerance check -> `"GPS verified"`, followed by 100% EXIF stripping and WebP conversion) onto the persistent `uploads_data` Docker volume (`/uploads/*`), and optionally serves `/downloads/openunseal.apk`.
+   - Processes uploaded site photos (`<= 3 m` EXIF GPS polygon tolerance check -> `"GPS verified"`, followed by 100% EXIF stripping and WebP conversion) onto the persistent `uploads_data` Docker volume (`/uploads/*`).
 3. **`caddy` (`caddy:2-alpine` on `edge_net`):**
-   - Terminates HTTPS (`80`/`443`) with automatic Let's Encrypt certificates, discards per-request client IP access logs (`output discard`), proxies `/api/*`, `/auth/*`, `/uploads/*`, and `/downloads/*` to `api:3000`, and serves the static Expo Web app from `./dist-web`.
+   - Terminates HTTPS (`80`/`443`) with automatic Let's Encrypt certificates, discards per-request client IP access logs (`output discard`), proxies `/api/*`, `/auth/*` and `/uploads/*` to `api:3000`, and serves the static web app (PWA) from `./dist-web`.
 
 ---
 
@@ -48,20 +48,14 @@ Edit `.env.vps` and fill in:
 - `CORS_ORIGIN` - `https://<your-domain>`
 - `OPERATOR_NAME`, `OPERATOR_ADDRESS`, `OPERATOR_EMAIL`, `ABUSE_CONTACT`, `BUG_REPORT_TO` - legal operator contact details rendered on `/auth/impressum`, `/auth/privacy`, `/auth/terms`, and used as bug-report recipient / Nominatim contact (and `SOURCE_CODE_URL` for your AGPLv3/MPL-2.0 repository fork if applicable)
 
-### 3. (Optional) Export the Static Web Frontend
+### 3. Export the Static Web Frontend
 
-If you want visitors opening `https://<your-domain>/` in a desktop/mobile browser to get the full interactive web app alongside native Android/iOS users:
+The web app (installable as a PWA) is the only client, so export it before starting the stack:
 
 ```bash
 # Can be run either on your workstation (and rsynced to ./dist-web) or directly on the VPS if Node 24 is installed:
 npm ci
 EXPO_PUBLIC_API_BASE_URL="https://openunseal.example.org" npm --workspace apps/mobile run export:web
-```
-
-If you only want the VPS to serve the mobile app backend + email verification/recovery pages, simply create an empty directory so the read-only mount exists:
-
-```bash
-mkdir -p dist-web
 ```
 
 ### 4. Start the Stack
@@ -91,7 +85,7 @@ curl -I https://openunseal.example.org/auth/licenses
 ## Promoting Your Admin Account
 
 Only `admin` accounts can:
-- Set a polygon status to **`⟳ Wird entsiegelt` (`in_progress`)** or **`✓ Entsiegelt` (`finished`)** (or reopen it to `proposed`), and
+- Set the status of public-ground proposals to **`⟳ Wird entsiegelt` (`in_progress`)** or **`✓ Entsiegelt` (`finished`)** (or reopen them to `proposed`); authors of private-ground proposals can report progress themselves with a photo and an entitlement confirmation, and
 - Bulk-import `.geojson` or `.gpkg` polygon datasets.
 
 1. Register your normal account inside the app and click the confirmation link sent to your email.
@@ -119,28 +113,6 @@ docker compose --env-file .env.vps -f docker-compose.vps.yml exec api \
 docker compose --env-file .env.vps -f docker-compose.vps.yml exec api \
   node apps/api/dist/cli/admin.js load-vg250 /path/to/vg250_gem.geojson
 ```
-
----
-
-## Pointing the Android / iOS App at Your VPS
-
-When building the Android APK/AAB or iOS build for production devices, pass `EXPO_PUBLIC_API_BASE_URL` pointing to your HTTPS VPS domain, and configure release signing in the generated `android/app/build.gradle` + keystore environment variables (see **Section 3** of [`docs/installation.md`](./installation.md#3-android-release-signing--manifest-hardening) for the exact `build.gradle` and `AndroidManifest.xml` steps after `expo prebuild`):
-
-```bash
-cd apps/mobile
-EXPO_PUBLIC_API_BASE_URL="https://openunseal.example.org" npx expo prebuild
-cd ../..
-
-# Generate a release keystore once (back it up safely outside git!):
-# keytool -genkeypair -v -storetype PKCS12 -keystore openunseal-release.keystore -alias openunseal-upload -keyalg RSA -keysize 4096 -validity 10000
-
-cp .env.apk.example .env.apk
-chmod 600 .env.apk
-# Edit .env.apk with EXPO_PUBLIC_API_BASE_URL and OPENUNSEAL_UPLOAD_* keystore credentials
-source .env.apk && (cd apps/mobile/android && ./gradlew assembleRelease --no-daemon)
-```
-
-If you distribute the signed APK via the VPS (`/downloads/openunseal.apk`), place it at `<UPLOADS_DIR>/openunseal.apk` (or mount it to `APK_FILE_PATH`). The API automatically detects the file and advertises both `apkDownloadUrl` and its SHA-256 checksum (`apkSha256`) on `/api/v1/config`.
 
 ---
 
@@ -214,7 +186,7 @@ WEBHOOK_TIMEOUT_MS=5000
 WEBHOOK_ALLOW_PRIVATE_NETWORKS=false
 ```
 
-- **Zero-PII payload:** Webhook bodies contain exclusively public polygon fields (`id`, `geometry`, `surfaceType`, `note`, `status`, `origin`, `areaM2`, `municipality`, `votes`, `createdAt`, `updatedAt`, or `{ id, deletedByAdmin, deletedAt }` for `polygon.deleted`) - **no** user pseudonyms, email addresses, user IDs, or IP addresses.
+- **Public payload:** Webhook bodies contain only public polygon fields (`id`, `geometry`, `surfaceType`, `spaceType`, `note`, `status`, `origin`, `areaM2`, `wasAutoClipped`, `clippedAreaM2`, `municipalityAgs`, `municipalityName`, `upvotes`, `downvotes`, `score`, `createdAt`, `updatedAt`, `finishedAt`, or `{ id, deletedByAdmin, deletedAt }` for `polygon.deleted`) - **no** user pseudonyms, email addresses, user IDs, or IP addresses. `note` is free text written by the author. `polygon.deleted` is sent for every removal (author, admin, account deletion, automatic pruning) so receivers can drop their copy.
 - **Signature verification:** When `WEBHOOK_SECRET` is configured, each `POST` includes `X-OpenUnseal-Timestamp` (Unix seconds), `X-OpenUnseal-Event`, `X-OpenUnseal-Delivery` (UUID), and `X-OpenUnseal-Signature-256: sha256=<hex>`, computed as `HMAC-SHA256(WEBHOOK_SECRET, "${timestamp}.${rawBody}")`.
 - **Non-blocking delivery:** Deliveries run asynchronously with a single retry on network/5xx failure so API mutations never fail or slow down if a downstream system is offline.
 
@@ -227,10 +199,11 @@ The code keeps data collection small, but running a public instance makes you th
 - [ ] **Legal notice & controller:** fill in `OPERATOR_NAME`, `OPERATOR_ADDRESS`, `OPERATOR_EMAIL` and a privacy contact (`ABUSE_CONTACT`); check `/auth/impressum` and `/auth/privacy`.
 - [ ] **Processing agreements (Art. 28):** sign data processing agreements with your VPS host and your SMTP provider, and name them in `PRIVACY_HOSTING_PROVIDER` / `PRIVACY_EMAIL_PROVIDER`.
 - [ ] **Third parties:** if you change `OSM_STYLE_URL`, `OSM_DARK_STYLE_URL`, or `ORTHOPHOTO_URL_TEMPLATE`, `/auth/privacy` names the new hosts automatically - check that provider's own privacy terms and whether it transfers data outside the EU/EEA.
-- [ ] **Record of processing activities (Art. 30):** document the processing described on `/auth/privacy` (accounts, contributions, direct messages, abuse prevention, logs, bug reports).
+- [ ] **Record of processing activities (Art. 30):** document the processing described on `/auth/privacy` (accounts, contributions, direct messages, abuse prevention, logs, bug and content reports, address search, webhooks).
 - [ ] **Direct messages:** decide with legal advice whether your instance provides a telecommunications service (§ 3 Nr. 24 TKG, § 3(2) TDDDG) and record the result; add messages to the record of processing and assess whether a DPIA (Art. 35) is needed. Message text is stored unencrypted in the database and in backups, and reported messages are sent by email.
+- [ ] **Private ground:** statements about private parcels (public access, help wanted) rest on a self-declared entitlement and can concern third parties; include them when you assess whether a DPIA is needed.
 - [ ] **Overpass:** if you set `OVERPASS_API_URL`, check the endpoint's terms and where it is hosted.
-- [ ] **Terms update:** this release raises the terms version; existing accounts must accept again before contributing.
+- [ ] **Terms update:** version 1.1.0 raises the terms version; existing accounts must accept again before contributing.
 - [ ] **Security (Art. 32):** set `TOMBSTONE_SECRET` and a strong `POSTGRES_PASSWORD`; keep the VPS patched; encrypt backups.
 - [ ] **Retention:** set `BACKUP_RETENTION_DAYS` and delete bug-report emails once handled.
 - [ ] **Data subject requests:** users can download (*Konto → Meine Daten herunterladen*) and delete their data themselves; for requests by email use `admin export-user`, `set-email` and `rename-user` (see [`installation.md`](./installation.md#4-operator-moderation--administration-cli-admints)) after verifying the requester's identity. Answer within one month (Art. 12(3)).

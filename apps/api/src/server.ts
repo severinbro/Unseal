@@ -13,6 +13,7 @@ import { createDbPool } from './db/pool.js';
 import { createLogger } from './logger.js';
 import { ensureMunicipalitiesSeededIfEnabled } from './municipalities/vg250.js';
 import { PolygonRepository } from './polygons/repository.js';
+import { emitPolygonsDeleted, type WebhookDispatcher } from './util/webhooks.js';
 
 import type { FastifyBaseLogger } from 'fastify';
 import type pg from 'pg';
@@ -24,6 +25,7 @@ async function runAdvisoryLockedStalePrune(
   uploadsDir: string,
   retentionDays: number,
   logger: FastifyBaseLogger,
+  webhookDispatcher: WebhookDispatcher,
 ): Promise<void> {
   const lockClient = await pool.connect();
   let acquired = false;
@@ -38,6 +40,7 @@ async function runAdvisoryLockedStalePrune(
 
     const repository = new PolygonRepository(pool, uploadsDir);
     const pruned = await repository.pruneStaleUnratedPolygons(retentionDays);
+    emitPolygonsDeleted(webhookDispatcher, pruned.deletedIds, false);
     if (pruned.deletedCount > 0) {
       logger.info(
         { deletedCount: pruned.deletedCount, retentionDays },
@@ -111,6 +114,7 @@ export async function startServer(): Promise<void> {
       config.uploadsDir,
       config.staleUnratedPruneDays,
       logger,
+      app.webhookDispatcher,
     );
     void runAdvisoryLockedPrivacyRetention(
       pool,
@@ -167,6 +171,7 @@ export async function startServer(): Promise<void> {
     config.uploadsDir,
     config.staleUnratedPruneDays,
     logger,
+    app.webhookDispatcher,
   );
   void runAdvisoryLockedPrivacyRetention(
     pool,

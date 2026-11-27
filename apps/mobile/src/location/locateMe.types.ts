@@ -2,10 +2,7 @@
 // Copyright (C) 2026 OpenUnseal Contributors
 
 /**
- * Platform-neutral GPS coordinate acquisition result contract.
- *
- * Concrete platform suffix modules resolved via Metro and TypeScript `moduleSuffixes`:
- * - `./locateMe.native` (`expo-location` foreground permission + GPS fix on Android and iOS)
+ * GPS coordinate acquisition result contract, implemented by
  * - `./locateMe.web` (`navigator.geolocation` with HTTPS secure-context validation on Web)
  */
 export type LocateMeResult =

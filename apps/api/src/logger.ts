@@ -54,6 +54,29 @@ const REDACTED_PATHS = [
   '*.*.sessionToken',
 ];
 
+const EMAIL_ADDRESS_RE = /[^\s<>"'(),;:]+@[^\s<>"'(),;:]+\.[a-z]{2,}/gi;
+/** SMTP error fields that name the recipients. */
+const ADDRESS_BEARING_ERROR_FIELDS = ['rejected', 'rejectedErrors', 'envelope'];
+
+/**
+ * Mail and database errors can quote an email address; logs must not contain one.
+ */
+export function serializeErrorWithoutAddresses(err: unknown): unknown {
+  const serialized = pino.stdSerializers.err(err as Error) as unknown;
+  if (typeof serialized !== 'object' || serialized === null) {
+    return serialized;
+  }
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(serialized)) {
+    if (ADDRESS_BEARING_ERROR_FIELDS.includes(key)) {
+      continue;
+    }
+    out[key] =
+      typeof value === 'string' ? value.replace(EMAIL_ADDRESS_RE, '[email]') : value;
+  }
+  return out;
+}
+
 export function createLogger(options: CreateLoggerOptions = {}): Logger {
   const pinoOptions: LoggerOptions = {
     level: options.level ?? process.env.LOG_LEVEL ?? 'info',
@@ -73,7 +96,7 @@ export function createLogger(options: CreateLoggerOptions = {}): Logger {
         }
         return serialized;
       },
-      err: pino.stdSerializers.err,
+      err: serializeErrorWithoutAddresses,
     },
   };
 

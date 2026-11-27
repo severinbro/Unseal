@@ -8,7 +8,7 @@ assignees: []
 
 ## Environment
 
-- **Component:** (Web / Android / iOS / API & PostGIS / Admin CLI)
+- **Component:** (Web app / API & PostGIS / Admin CLI)
 - **OS & Browser / Device:**
 - **Node.js & Docker versions (if self-hosting):**
 

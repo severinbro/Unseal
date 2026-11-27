@@ -10,9 +10,7 @@ import {
 } from '@openunseal/shared';
 
 import {
-  findExistingApkInfo,
   findExistingBrandLogoInfo,
-  resolveRuntimeApkAvailability,
   resolveRuntimeBranding,
 } from '../config.js';
 import { getMigrationFiles } from '../db/migrate.js';
@@ -83,7 +81,6 @@ export function registerSystemRoutes(
   });
 
   app.get('/api/v1/config', async () => {
-    const apkAvailability = resolveRuntimeApkAvailability(app.config);
     const muniStatus = await getMunicipalitiesStatus(app.pool).catch(() => ({
       seeded: false,
       dataYear: null,
@@ -110,8 +107,6 @@ export function registerSystemRoutes(
       orthophoto,
       vg250AttributionEnabled,
       vg250DataYear,
-      apkDownloadUrl: apkAvailability.apkDownloadUrl,
-      apkSha256: apkAvailability.apkSha256,
       branding: resolveRuntimeBranding(app.config),
     });
   });
@@ -151,44 +146,6 @@ export function registerSystemRoutes(
         404,
         'NOT_FOUND',
         'No custom brand logo is configured on this server.',
-      );
-    },
-  );
-
-  app.get(
-    '/downloads/openunseal.apk',
-    {
-      config: {
-        compress: false,
-        rateLimit: {
-          max: 30,
-          timeWindow: '15 minutes',
-        },
-      },
-    },
-    async (_request, reply) => {
-      if (app.config.apkMode !== 'disabled') {
-        const existing = findExistingApkInfo(app.config.apkFilePath);
-        if (existing) {
-          return reply
-            .status(200)
-            .header('Content-Type', 'application/vnd.android.package-archive')
-            .header(
-              'Content-Disposition',
-              'attachment; filename="openunseal.apk"',
-            )
-            .header('Content-Length', String(existing.size))
-            .header('ETag', `"sha256-${existing.sha256}"`)
-            .header('Cache-Control', 'public, max-age=300')
-            .header('X-Content-Type-Options', 'nosniff')
-            .send(createReadStream(existing.filePath));
-        }
-      }
-
-      throw new ApiError(
-        404,
-        'NOT_FOUND',
-        'Android APK package has not been uploaded to this server yet.',
       );
     },
   );

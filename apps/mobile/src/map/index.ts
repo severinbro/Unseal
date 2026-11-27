@@ -2,10 +2,8 @@
 // Copyright (C) 2026 OpenUnseal Contributors
 
 /**
- * Platform-neutral MapLibre map module barrel.
+ * MapLibre map module barrel.
  *
- * Concrete platform suffix modules resolved via Metro and TypeScript `moduleSuffixes`:
- * - `./MapCanvas.native` (`@maplibre/maplibre-react-native` for Android and iOS)
  * - `./MapCanvas.web` (`maplibre-gl` + `maplibre-gl/dist/maplibre-gl.css` for Web)
  */
 export { MapCanvas } from './MapCanvas';

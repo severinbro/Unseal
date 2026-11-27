@@ -133,6 +133,10 @@ export async function purgeExpiredPersonalData(
      SET chat_contact_day = NULL, chat_contact_count = 0
      WHERE chat_contact_day < CURRENT_DATE`,
   );
+  // The creation log only backs the 24-hour quota.
+  await db.query(
+    `DELETE FROM polygon_creations WHERE created_at < NOW() - INTERVAL '25 hours'`,
+  );
   // A lapsed call for help is not kept as a past statement about the ground.
   await db.query(
     `UPDATE polygons SET help_wanted_until = NULL

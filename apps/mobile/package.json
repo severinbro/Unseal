@@ -1,6 +1,6 @@
 {
   "name": "@openunseal/mobile",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "private": true,
   "license": "MPL-2.0",
   "type": "module",
@@ -12,9 +12,7 @@
     "./tokenStorage": "./src/storage/tokenStorage.ts"
   },
   "scripts": {
-    "start": "expo start",
-    "android": "expo run:android",
-    "ios": "expo run:ios",
+    "start": "expo start --web",
     "web": "expo start --web",
     "export:web": "expo export --platform web --output-dir ../../dist-web && node -e \"import('node:fs').then(fs=>fs.copyFileSync('../../THIRD_PARTY_NOTICES.txt','../../dist-web/THIRD_PARTY_NOTICES.txt'))\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -23,12 +21,7 @@
   "dependencies": {
     "@openunseal/shared": "*",
     "@expo/metro-runtime": "~4.0.0",
-    "@maplibre/maplibre-react-native": "^10.0.0",
     "expo": "~52.0.0",
-    "expo-document-picker": "~13.0.3",
-    "expo-image-picker": "~16.0.6",
-    "expo-location": "~18.0.4",
-    "expo-secure-store": "~14.0.0",
     "maplibre-gl": "^4.7.1",
     "react": "18.3.1",
     "react-dom": "18.3.1",

@@ -90,8 +90,6 @@ export interface TranslationDictionary {
     readonly legendContested: string;
     readonly legendInProgress: string;
     readonly legendFinished: string;
-    readonly nativeAttributionOsm: string;
-    readonly nativeAttributionOrtho: string;
   };
   readonly controls: {
     readonly signInShort: string;
@@ -125,10 +123,6 @@ export interface TranslationDictionary {
     readonly layersButtonA11y: string;
     readonly layersButtonTooltip: string;
     readonly layersPopoverTitle: string;
-    readonly apkDownloadA11y: string;
-    readonly apkDownloadCompact: string;
-    readonly apkDownloadFull: string;
-    readonly apkDownloadErrorFallback: string;
     readonly installAppA11y: string;
     readonly installAppFull: string;
     readonly accountSettingsA11y: (pseudonym: string) => string;
@@ -486,10 +480,6 @@ export interface TranslationDictionary {
     readonly outsideGermanyNotice: string;
     readonly webGenericError: (detail: string) => string;
     readonly webRequestFailed: (detail: string) => string;
-    readonly nativePermissionDeniedSettings: string;
-    readonly nativePermissionDeniedPrompt: string;
-    readonly nativeInvalidCoords: string;
-    readonly nativeGenericError: (suffix: string) => string;
   };
   readonly about: {
     readonly modalA11y: string;
@@ -520,7 +510,6 @@ export interface TranslationDictionary {
     readonly termsLinkLabel: string;
     readonly licensesLinkLabel: string;
     readonly sourceCodeLinkLabel: string;
-    readonly apkDownloadButton: string;
     readonly installAppButton: string;
   };
   readonly installApp: {
@@ -533,10 +522,6 @@ export interface TranslationDictionary {
     readonly androidPwaSteps: readonly string[];
     readonly iosPwaTitle: string;
     readonly iosPwaSteps: readonly string[];
-    readonly androidApkTitle: string;
-    readonly androidApkBody: string;
-    readonly apkSha256Label: string;
-    readonly apkDownloadButton: string;
   };
   readonly search: {
     readonly modalA11y: string;
@@ -705,8 +690,6 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       legendContested: '− Umstritten',
       legendInProgress: '⟳ Wird entsiegelt',
       legendFinished: '✓ Entsiegelt',
-      nativeAttributionOsm: `© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap · VG250: © BKG (${ATTRIBUTION_YEAR}) dl-de/by-2-0, Datenquellen (verändert)`,
-      nativeAttributionOrtho: `DOP20/DOP10: © Länder (${ATTRIBUTION_YEAR}; dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; verändert) · VG250: © BKG (${ATTRIBUTION_YEAR})`,
     },
     controls: {
       signInShort: 'Anmelden',
@@ -740,12 +723,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       layersButtonA11y: 'Kartenebenen und Deckkraft öffnen',
       layersButtonTooltip: 'Kartenebenen & Deckkraft',
       layersPopoverTitle: 'Kartenebenen',
-      apkDownloadA11y: 'Android-App als APK-Datei herunterladen',
-      apkDownloadCompact: 'APK',
-      apkDownloadFull: 'Android-APK herunterladen',
-      apkDownloadErrorFallback: 'Android-APK konnte nicht heruntergeladen werden.',
-      installAppA11y: 'Installationshinweise für Web-App (iOS/Android) und Android-APK öffnen',
-      installAppFull: 'App installieren (PWA & Android)',
+      installAppA11y: 'Installationshinweise für die Web-App (iOS/Android) öffnen',
+      installAppFull: 'App installieren (PWA)',
       accountSettingsA11y: (pseudonym) =>
         `Kontoeinstellungen für ${pseudonym}`,
       signInOrRegisterA11y: 'Anmelden oder Konto erstellen',
@@ -996,7 +975,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       deletePhotoA11y: 'Foto löschen',
       photoSignInPrompt:
         'Melde dich an, um eigene Fotos hochzuladen oder Aufnahmen als „Echt“ / „Fake“ zu bewerten.',
-      adminSectionTitle: 'Kommunale / Admin-Verwaltung',
+      adminSectionTitle: 'Admin-Verwaltung',
       statusSelectorLabel: 'Flächenstatus setzen:',
       setStatusProposed: 'Vorgeschlagen',
       setStatusInProgress: '⟳ Wird entsiegelt',
@@ -1061,7 +1040,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       titleRecover: 'Passwort zurücksetzen',
       titleLogin: 'Anmelden',
       zeroPiiSubtitle:
-        'Öffentliches Pseudonym · E-Mail nur für Bestätigung & Recovery',
+        'Öffentliches Pseudonym · E-Mail nur für Kontozwecke',
       privacySubtitle:
         'Öffentliches Pseudonym · E-Mail niemals öffentlich sichtbar',
       closeA11y: 'Kontofenster schließen',
@@ -1112,7 +1091,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       privacyPolicyLinkText: 'Datenschutzerklärung',
       termsConsentConnector: ' gelesen und akzeptiere die ',
       termsLinkText:
-        'Nutzungsbedingungen (inkl. CC0 1.0 / ODbL 1.0 / CC BY 4.0; Mindestalter 16 J. bzw. Einwilligung Erziehungsberechtigter)',
+        'Nutzungsbedingungen (inkl. CC0 1.0 / ODbL 1.0 / CC BY 4.0; ab 16 Jahren, unter 18 mit Zustimmung der Erziehungsberechtigten)',
       verifyPendingBody: (email) =>
         `Wir haben einen Bestätigungslink an ${email} gesendet. Bitte klicke auf den Link in deiner E-Mail und melde dich anschließend hier an.`,
       resendVerificationButton: 'Bestätigungslink erneut senden',
@@ -1154,7 +1133,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       exportDataA11y: 'Alle zu deinem Konto gespeicherten Daten als JSON-Datei herunterladen',
       exportingData: 'Daten werden zusammengestellt…',
       exportDataHint:
-        'Enthält Konto, Vorschläge, Fotos-Links, Kommentare, Abstimmungen und Meldungen (Art. 15 & 20 DSGVO).',
+        'Enthält Konto, Vorschläge, Fotos-Links, Kommentare, Abstimmungen, Meldungen und Direktnachrichten (Art. 15 & 20 DSGVO).',
       exportDataDone: 'Deine Datenkopie wurde erstellt.',
       exportDataFailed: 'Datenexport fehlgeschlagen.',
       logoutA11y: 'Aus aktueller Sitzung abmelden',
@@ -1215,14 +1194,6 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
           : 'Aktueller Standort konnte nicht ermittelt werden.',
       webRequestFailed: (detail) =>
         `Standortabfrage im Browser fehlgeschlagen${detail}`,
-      nativePermissionDeniedSettings:
-        'Standortberechtigung verweigert. Bitte aktiviere den Standortzugriff für OpenUnseal in den Geräteeinstellungen.',
-      nativePermissionDeniedPrompt:
-        'Standortberechtigung verweigert. Bitte erlaube den Standortzugriff, um die Karte auf deine GPS-Position zu zentrieren.',
-      nativeInvalidCoords:
-        'Der Standortdienst des Geräts hat ungültige GPS-Koordinaten geliefert.',
-      nativeGenericError: (suffix) =>
-        `Aktuelle GPS-Position konnte nicht bestimmt werden. Bitte prüfe, ob die Ortungsdienste aktiviert sind.${suffix}`,
     },
     about: {
       modalA11y: 'Über OpenUnseal',
@@ -1251,7 +1222,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         '⟳ Wird entsiegelt / ✓ Entsiegelt: Im Rückbau (blau) bzw. umgesetzt (türkis)',
       footerTitle: 'Datenschutz, Rechtliches & App',
       privacyAndLicenseBody:
-        'Öffentlich erscheint nur dein Pseudonym; E-Mails dienen nur Bestätigung & Recovery (jederzeit nach Art. 17 DSGVO löschbar). Beiträge: CC0 1.0 (eigene Geometrien/Notizen), ODbL 1.0 (GeoJSON-Gesamtexport) & CC BY 4.0 (Fotos/Kommentare). Software: AGPL-3.0-or-later (API) & MPL-2.0 (Client-App, Quellcode frei verfügbar).',
+        'Öffentlich erscheint nur dein Pseudonym; E-Mails dienen nur Kontozwecken (jederzeit nach Art. 17 DSGVO löschbar). Beiträge: CC0 1.0 (eigene Geometrien/Notizen), ODbL 1.0 (GeoJSON-Gesamtexport) & CC BY 4.0 (Fotos/Kommentare). Software: AGPL-3.0-or-later (API) & MPL-2.0 (Client-App, Quellcode frei verfügbar).',
       poweredByOpenUnseal:
         'Betrieben mit OpenUnseal (Open Source: AGPL-3.0-or-later / MPL-2.0)',
       defaultPortalLinkLabel: 'Kommunales Portal',
@@ -1265,7 +1236,6 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       termsLinkLabel: 'Nutzungsbedingungen',
       licensesLinkLabel: 'OSS-Lizenzen',
       sourceCodeLinkLabel: 'Quellcode',
-      apkDownloadButton: 'Android-APK herunterladen',
       installAppButton: 'App installieren',
     },
     search: {
@@ -1371,7 +1341,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       modalA11y: 'OpenUnseal als App installieren',
       title: 'OpenUnseal installieren',
       subtitle:
-        'Nutze die Web-App direkt auf deinem Startbildschirm (PWA) oder lade die Android-APK herunter.',
+        'Lege die Web-App (PWA) auf deinem Startbildschirm ab.',
       closeA11y: 'Installationsdialog schließen',
       close: 'Schließen',
       androidPwaTitle: 'Android: Browser-App (PWA) installieren',
@@ -1386,11 +1356,6 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         'Tippe auf das Teilen-Symbol (Quadrat mit Pfeil nach oben in der Browser-Leiste).',
         'Scrolle nach unten, wähle „Zum Home-Bildschirm“ und bestätige mit „Hinzufügen“.',
       ],
-      androidApkTitle: 'Android: Direkter APK-Download',
-      androidApkBody:
-        'Alternativ zur Browser-App kannst du die Android-App direkt als APK-Datei installieren (Android fragt ggf. nach der Erlaubnis zum Installieren über deinen Browser).',
-      apkSha256Label: 'SHA-256-Prüfsumme:',
-      apkDownloadButton: 'Android-APK herunterladen',
     },
     stats: {
       modalA11y: 'Statistiken',
@@ -1416,7 +1381,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         `Unbewertete Vorschläge (automatische Entfernung nach ${days} Tagen ohne Stimmen, Kommentare oder Fotos)`,
       areaSectionTitle: 'Flächenbilanz',
       areaMappedLabel: 'Kartierte Fläche gesamt',
-      areaUnsealedLabel: 'Bereits entsiegelt',
+      areaUnsealedLabel: 'Als entsiegelt gemeldet',
       votesSectionTitle: 'Flächenbewertungen',
       totalVotesLabel: 'Bewertungen gesamt',
       totalUpvotesLabel: 'Zustimmungen (+)',
@@ -1511,8 +1476,6 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       legendContested: '− Contested',
       legendInProgress: '⟳ In progress',
       legendFinished: '✓ Finished',
-      nativeAttributionOsm: `© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap · VG250: © BKG (${ATTRIBUTION_YEAR}) dl-de/by-2-0, Datenquellen (modified)`,
-      nativeAttributionOrtho: `DOP20/DOP10: © State Surveys (${ATTRIBUTION_YEAR}; dl-de/by-2-0, CC BY 4.0, dl-de/zero-2-0; modified) · VG250: © BKG (${ATTRIBUTION_YEAR})`,
     },
     controls: {
       signInShort: 'Sign in',
@@ -1546,12 +1509,8 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       layersButtonA11y: 'Open map layers and opacity',
       layersButtonTooltip: 'Map layers & opacity',
       layersPopoverTitle: 'Map Layers',
-      apkDownloadA11y: 'Download Android APK package',
-      apkDownloadCompact: 'APK',
-      apkDownloadFull: 'Download Android APK',
-      apkDownloadErrorFallback: 'Unable to start Android APK download.',
-      installAppA11y: 'Open installation guide for web app (iOS/Android) and Android APK',
-      installAppFull: 'Install App (PWA & Android)',
+      installAppA11y: 'Open installation guide for the web app (iOS/Android)',
+      installAppFull: 'Install App (PWA)',
       accountSettingsA11y: (pseudonym) => `Account settings for ${pseudonym}`,
       signInOrRegisterA11y: 'Sign in or register account',
       switchToOrthoA11y: 'Switch to aerial orthophoto layer',
@@ -1783,7 +1742,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       deletePhotoA11y: 'Delete photo',
       photoSignInPrompt:
         'Sign in to upload photos or rate existing photos as “Real” or “Fake”.',
-      adminSectionTitle: 'Municipal / Admin Actions',
+      adminSectionTitle: 'Admin Actions',
       statusSelectorLabel: 'Set site status:',
       setStatusProposed: 'Proposed',
       setStatusInProgress: '⟳ In progress',
@@ -1847,7 +1806,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       titleRecover: 'Reset Password',
       titleLogin: 'Contributor Sign In',
       zeroPiiSubtitle:
-        'Public pseudonym · Email used only for confirmation & recovery',
+        'Public pseudonym · Email used only for your account',
       privacySubtitle:
         'Public pseudonym · Email is never displayed publicly',
       closeA11y: 'Close account modal',
@@ -1895,7 +1854,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       privacyPolicyLinkText: 'Privacy Policy',
       termsConsentConnector: ' and accept the ',
       termsLinkText:
-        'Terms of Use (incl. CC0 1.0 / ODbL 1.0 / CC BY 4.0; age 16+ or guardian consent)',
+        'Terms of Use (incl. CC0 1.0 / ODbL 1.0 / CC BY 4.0; age 16+, under 18 with guardian consent)',
       verifyPendingBody: (email) =>
         `We sent a confirmation link to ${email}. Click the link in your email, then return here to sign in.`,
       resendVerificationButton: 'Resend Confirmation Link',
@@ -1937,7 +1896,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       exportDataA11y: 'Download all data stored for your account as a JSON file',
       exportingData: 'Preparing your data…',
       exportDataHint:
-        'Includes account, proposals, photo links, comments, votes and flags (GDPR Art. 15 & 20).',
+        'Includes account, proposals, photo links, comments, votes, flags and direct messages (GDPR Art. 15 & 20).',
       exportDataDone: 'Your data copy has been created.',
       exportDataFailed: 'Data export failed.',
       logoutA11y: 'Log out of current session',
@@ -1996,14 +1955,6 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
           : 'Unable to retrieve your current location.',
       webRequestFailed: (detail) =>
         `Unable to request browser geolocation${detail}`,
-      nativePermissionDeniedSettings:
-        'Location permission was denied. Enable foreground location access for OpenUnseal in your device settings to center the map on your GPS position.',
-      nativePermissionDeniedPrompt:
-        'Location permission was denied. Grant foreground location access to center the map on your current GPS position.',
-      nativeInvalidCoords:
-        'Device location provider returned invalid GPS coordinates.',
-      nativeGenericError: (suffix) =>
-        `Unable to determine your current GPS position. Ensure device location services are enabled and try again.${suffix}`,
     },
     about: {
       modalA11y: 'About OpenUnseal',
@@ -2032,7 +1983,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         '⟳ In progress / ✓ Finished: Active depaving (blue) or completed (mint)',
       footerTitle: 'Privacy, Legal & App',
       privacyAndLicenseBody:
-        'Only your pseudonym is public; emails are used strictly for confirmation & recovery (erasable anytime under GDPR Art. 17). Contributions: CC0 1.0 (own geometries/notes), ODbL 1.0 (compiled GeoJSON export) & CC BY 4.0 (photos/comments). Software: AGPL-3.0-or-later (API) & MPL-2.0 (Client App, Source Code Form freely available).',
+        'Only your pseudonym is public; emails are used only for your account (erasable anytime under GDPR Art. 17). Contributions: CC0 1.0 (own geometries/notes), ODbL 1.0 (compiled GeoJSON export) & CC BY 4.0 (photos/comments). Software: AGPL-3.0-or-later (API) & MPL-2.0 (Client App, Source Code Form freely available).',
       poweredByOpenUnseal:
         'Powered by OpenUnseal (Open Source: AGPL-3.0-or-later / MPL-2.0)',
       defaultPortalLinkLabel: 'Municipal Portal',
@@ -2046,7 +1997,6 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       termsLinkLabel: 'Terms of Use',
       licensesLinkLabel: 'OSS Licenses',
       sourceCodeLinkLabel: 'Source Code',
-      apkDownloadButton: 'Download Android APK',
       installAppButton: 'Install App',
     },
     search: {
@@ -2150,7 +2100,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
       modalA11y: 'Install OpenUnseal app',
       title: 'Install OpenUnseal',
       subtitle:
-        'Add the web app (PWA) to your home screen on iOS or Android, or download the Android APK directly.',
+        'Add the web app (PWA) to your home screen on iOS or Android.',
       closeA11y: 'Close install instructions dialog',
       close: 'Close',
       androidPwaTitle: 'Android: Install Browser App (PWA)',
@@ -2165,11 +2115,6 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         'Tap the Share button (the square with an upward arrow in the toolbar).',
         'Scroll down, tap “Add to Home Screen”, and confirm with “Add”.',
       ],
-      androidApkTitle: 'Android: Direct APK Download',
-      androidApkBody:
-        'As an alternative to the browser app, Android users can download and install the APK package directly (Android may prompt you to allow installs from your browser).',
-      apkSha256Label: 'SHA-256 checksum:',
-      apkDownloadButton: 'Download Android APK',
     },
     stats: {
       modalA11y: 'Statistics',
@@ -2195,7 +2140,7 @@ export const TRANSLATIONS: Readonly<Record<Locale, TranslationDictionary>> = {
         `Unrated proposals (removed automatically after ${days} days if they have no ratings, comments, or photos)`,
       areaSectionTitle: 'Area Summary',
       areaMappedLabel: 'Total area mapped',
-      areaUnsealedLabel: 'Unsealed so far',
+      areaUnsealedLabel: 'Reported as unsealed',
       votesSectionTitle: 'Polygon Ratings',
       totalVotesLabel: 'Total ratings',
       totalUpvotesLabel: 'Upvotes (+)',
@@ -2286,84 +2231,6 @@ export function formatVg250ShortAttribution(
   return locale === 'de'
     ? `VG250: © BKG (${year}) dl-de/by-2-0, Datenquellen (Daten verändert)`
     : `VG250: © BKG (${year}) dl-de/by-2-0, Datenquellen (modified)`;
-}
-
-export function buildNativeAttributionText(options: {
-  locale: Locale;
-  basemapMode: 'osm' | 'orthophoto';
-  osmStyleUrl?: string | undefined;
-  orthophotoAttribution?: string | null | undefined;
-  orthophotoUrlTemplate?: string | null | undefined;
-  viewportBbox?: readonly [number, number, number, number] | null | undefined;
-  colorScheme?: 'light' | 'dark' | undefined;
-  activeStyleUrl?: string | undefined;
-  vg250AttributionEnabled?: boolean | undefined;
-  vg250DataYear?: number | null | undefined;
-  year?: number | undefined;
-}): string {
-  const dict = getTranslations(options.locale);
-  const currentYear = options.year ?? new Date().getUTCFullYear();
-  const parts: string[] = [];
-
-  if (options.basemapMode === 'orthophoto') {
-    const orthoAttr = options.orthophotoAttribution?.trim() ?? '';
-    const isBuiltinDop20 =
-      Boolean(options.orthophotoUrlTemplate?.includes('/api/v1/tiles/dop20/')) ||
-      orthoAttr.length === 0 ||
-      orthoAttr.startsWith(
-        '© GeoBasis-DE / Vermessungsverwaltungen der Bundesländer (',
-      );
-    if (isBuiltinDop20) {
-      const dynamicDop20 = formatDop20PlainAttribution(options.viewportBbox, {
-        year: currentYear,
-        locale: options.locale,
-      });
-      if (dynamicDop20.length > 0) {
-        parts.push(dynamicDop20);
-      }
-    } else {
-      parts.push(orthoAttr);
-    }
-  }
-
-  const effectiveStyleUrl = options.activeStyleUrl ?? options.osmStyleUrl;
-  let styleHost: string | null = null;
-  let stylePath = '';
-  if (effectiveStyleUrl) {
-    try {
-      const parsed = new URL(effectiveStyleUrl);
-      styleHost = parsed.host;
-      stylePath = parsed.pathname.replace(/\/+$/, '');
-    } catch {
-      styleHost = null;
-    }
-  }
-  const usesOpenFreeMap =
-    effectiveStyleUrl === undefined || styleHost === 'tiles.openfreemap.org';
-  if (usesOpenFreeMap) {
-    const isDarkOpenFreeMap =
-      options.colorScheme === 'dark' &&
-      (options.activeStyleUrl === undefined ||
-        stylePath === '/styles/dark' ||
-        stylePath === '');
-    parts.push(
-      isDarkOpenFreeMap
-        ? '© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · © CARTO (modified) · OpenFreeMap (MIT)'
-        : '© OpenStreetMap (ODbL) · © OpenMapTiles (CC BY 4.0) · OpenFreeMap (MIT)',
-    );
-  } else {
-    parts.push(
-      styleHost ? `Basemap: ${styleHost}` : dict.about.attributionOsmShort,
-    );
-  }
-
-  if (options.vg250AttributionEnabled !== false) {
-    parts.push(
-      formatVg250ShortAttribution(options.locale, options.vg250DataYear),
-    );
-  }
-
-  return parts.join(' · ');
 }
 
 export function localizeDisclaimerText(
@@ -2538,7 +2405,7 @@ const GERMAN_API_ERROR_MESSAGES: Readonly<Record<ErrorCode, string>> = {
   NOT_FOUND: 'Der angeforderte Eintrag wurde nicht gefunden.',
   VALIDATION_ERROR: 'Ungültige Eingabedaten.',
   UNSUPPORTED_MEDIA_TYPE:
-    'Nicht unterstütztes Dateiformat (erlaubt: JPEG, PNG, WebP, HEIC bzw. .geojson/.gpkg).',
+    'Nicht unterstütztes Dateiformat (erlaubt: JPEG, PNG, WebP, AVIF bzw. .geojson/.gpkg).',
   GEOMETRY_INVALID:
     'Ungültige Polygongeometrie: Kanten dürfen sich nicht selbst schneiden.',
   GEOMETRY_SLIVER:

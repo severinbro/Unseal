@@ -17,7 +17,7 @@ By participating in this project, you agree to abide by our [Code of Conduct](./
 
 * **Search existing issues first:** Check [GitHub Issues](https://github.com/severinbro/Unseal/issues) to avoid duplicates.
 * **Bug reports:** Use the [Bug Report template](./.github/ISSUE_TEMPLATE/bug_report.md) and include:
-  * Platform (`Web`, `Android`, `iOS`, or `API / PostGIS`)
+  * Platform (browser and OS, or `API / PostGIS`)
   * Browser or OS version and Node.js / Docker versions (if self-hosting)
   * Steps to reproduce, expected behavior, and observed behavior
   * Never include personal data, private `.env` values, raw EXIF-bearing photos, or production credentials in public issues.
@@ -48,7 +48,7 @@ By participating in this project, you agree to abide by our [Code of Conduct](./
 3. Make your changes while respecting workspace boundaries:
    * `packages/shared` (`MPL-2.0`): Canonical `camelCase` Zod wire schemas, error codes, and client-side geometry pre-checks.
    * `apps/api` (`AGPL-3.0-or-later`): Fastify HTTP service, PostGIS spatial validation, EXIF stripping, BKG VG250 score normalization, GDPR retention, and CLI tools.
-   * `apps/mobile` (`MPL-2.0`): Cross-platform Expo app (`.native` and `.web` adapters, pure TypeScript state reducers, German `de` and English `en` translations).
+   * `apps/mobile` (`MPL-2.0`): Expo web app / PWA (pure TypeScript state reducers, German `de` and English `en` translations).
 4. Build, typecheck, and run the full unit + PostGIS integration test suite before opening a Pull Request:
    ```bash
    npm run build

@@ -4,8 +4,7 @@
 /**
  * Platform-neutral opaque session bearer token contract.
  *
- * Concrete runtime adapters:
- * - `./secureStorage.native` (`expo-secure-store` Keychain / Keystore)
+ * Runtime adapter:
  * - `./secureStorage.web` (`window.localStorage` with `createMemorySessionStorage` fallback)
  */
 export const SESSION_TOKEN_KEY = 'entsiegelung.session_token';

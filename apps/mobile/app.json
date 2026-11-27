@@ -2,42 +2,9 @@
   "expo": {
     "name": "OpenUnseal",
     "slug": "openunseal",
-    "version": "0.2.0",
-    "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "version": "1.1.0",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": false,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#EFF3F0"
-    },
-    "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "de.openunseal.app",
-      "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Erlaubt OpenUnseal, die Karte auf deinen aktuellen GNSS-Standort zu zentrieren.",
-        "NSCameraUsageDescription": "Erlaubt das Aufnehmen von Vor-Ort-Fotos zu vorgeschlagenen Entsiegelungsflächen.",
-        "NSPhotoLibraryUsageDescription": "Erlaubt das Hochladen von Fotos vorgeschlagener Entsiegelungsflächen aus deiner Mediathek."
-      }
-    },
-    "android": {
-      "package": "de.openunseal.app",
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#EFF3F0"
-      },
-      "permissions": [
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION",
-        "CAMERA",
-        "ACCESS_MEDIA_LOCATION"
-      ],
-      "blockedPermissions": [
-        "android.permission.RECORD_AUDIO",
-        "android.permission.WRITE_EXTERNAL_STORAGE"
-      ]
-    },
     "web": {
       "bundler": "metro",
       "output": "single",
@@ -52,25 +19,6 @@
       "orientation": "any",
       "startUrl": "/",
       "scope": "/"
-    },
-    "plugins": [
-      "@maplibre/maplibre-react-native",
-      [
-        "expo-location",
-        {
-          "locationWhenInUsePermission": "Erlaubt OpenUnseal, die Karte auf deinen aktuellen GNSS-Standort zu zentrieren."
-        }
-      ],
-      [
-        "expo-image-picker",
-        {
-          "cameraPermission": "Erlaubt das Aufnehmen von Vor-Ort-Fotos zu vorgeschlagenen Entsiegelungsflächen.",
-          "photosPermission": "Erlaubt das Hochladen von Fotos vorgeschlagener Entsiegelungsflächen aus deiner Mediathek.",
-          "microphonePermission": false
-        }
-      ],
-      "expo-secure-store",
-      "./plugins/withBundledLicenses.cjs"
-    ]
+    }
   }
 }

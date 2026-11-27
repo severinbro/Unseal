@@ -142,8 +142,11 @@ export function registerContentReportRoutes(app: FastifyInstance): void {
           explanation: parsed.explanation,
           reporterName: parsed.reporterName ?? null,
           reporterEmail: parsed.reporterEmail ?? null,
-          reporterPseudonym: authUser?.pseudonym ?? null,
-          reporterUserId: authUser?.id ?? null,
+          // Only a participant can report a direct message, so only then is the account named.
+          reporterPseudonym:
+            parsed.targetType === 'chat_message' ? (authUser?.pseudonym ?? null) : null,
+          reporterUserId:
+            parsed.targetType === 'chat_message' ? (authUser?.id ?? null) : null,
           pageUrl: parsed.pageUrl ?? null,
           submittedAtIso,
           ...(reportedMessage ? { reportedMessage } : {}),

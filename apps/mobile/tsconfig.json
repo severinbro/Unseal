@@ -6,7 +6,7 @@
     "declaration": false,
     "exactOptionalPropertyTypes": true,
     "jsx": "react-jsx",
-    "moduleSuffixes": [".native", ".web", ""]
+    "moduleSuffixes": [".web", ""]
   },
   "include": [
     "App.tsx",

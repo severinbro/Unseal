@@ -300,46 +300,12 @@ export function registerPolygonRoutes(
 
             const exportYear = new Date().getUTCFullYear();
             const vg250Year = muniStatus.dataYear ?? exportYear;
-            const usesBuiltinDop20 = Boolean(
-              app.config.orthophoto?.urlTemplate.includes('/api/v1/tiles/dop20/'),
-            );
-            const hasCcBy40Import = activeImportAttributions.some(
-              (item) => item.license === 'CC-BY-4.0',
-            );
-            const hasDlDeBy20Import = activeImportAttributions.some(
-              (item) => item.license === 'dl-de/by-2-0',
-            );
-
-            const upstreamConditionParts: string[] = [];
-            if (usesBuiltinDop20 || hasCcBy40Import) {
-              upstreamConditionParts.push(
-                'Upstream CC BY 4.0 conditions (https://creativecommons.org/licenses/by/4.0/, including §§ 2(a)(5)(B) & 3(b) prohibiting Effective Technological Measures / DRM; ODbL-1.0 § 4.7(b) parallel-distribution DRM does not override upstream CC BY 4.0) remain concurrently binding on Adapted Material derived from CC BY 4.0 aerial orthophotos or imports.',
-              );
-            }
-            if (usesBuiltinDop20 || vg250Active || hasDlDeBy20Import) {
-              upstreamConditionParts.push(
-                'Upstream Datenlizenz Deutschland - Namensnennung 2.0 (dl-de/by-2-0, https://www.govdata.de/dl-de/by-2-0) source-attribution obligations remain concurrently binding on municipality attributes and elements derived from dl-de/by-2-0 sources; OpenStreetMap-specific agency waivers/addenda apply solely when contributing directly to OpenStreetMap.',
-              );
-            }
-
             const attributionClauses: string[] = [
-              'Compiled polygon dataset licensed under Open Data Commons Open Database License 1.0 (ODbL-1.0, https://opendatacommons.org/licenses/odbl/1-0/), subject to concurrent upstream open-data conditions where applicable; contributors waive their own copyright and database rights in submitted geometries, surface classifications, and notes via CC0 1.0 Universal (https://creativecommons.org/publicdomain/zero/1.0/, incl. Section 3 Public License Fallback) to the extent not derived from attributed basemaps.',
-              'Basemap reference: © OpenStreetMap contributors (ODbL, https://www.openstreetmap.org/copyright).',
+              'Compiled polygon dataset (proposals and their ratings) licensed under Open Data Commons Open Database License 1.0 (ODbL-1.0, https://opendatacommons.org/licenses/odbl/1-0/); contributors waive their own copyright and database rights in submitted geometries, surface classifications, and notes via CC0 1.0 Universal (https://creativecommons.org/publicdomain/zero/1.0/, incl. Section 3 Public License Fallback).',
             ];
-            if (app.config.orthophoto !== null) {
-              if (usesBuiltinDop20) {
-                attributionClauses.push(
-                  `Aerial orthophoto reference: © GeoBasis-DE / German State Survey Offices (${exportYear}; DOP20/DOP10 under dl-de/by-2-0 https://www.govdata.de/dl-de/by-2-0, CC BY 4.0 https://creativecommons.org/licenses/by/4.0/, dl-de/zero-2-0 https://www.govdata.de/dl-de/zero-2-0; Daten verändert; upstream CC BY 4.0 no-DRM and dl-de/by-2-0 attribution terms remain concurrently binding alongside ODbL-1.0).`,
-                );
-              } else if (app.config.orthophoto.attribution.trim().length > 0) {
-                attributionClauses.push(
-                  `Aerial orthophoto reference: ${app.config.orthophoto.attribution.trim()}.`,
-                );
-              }
-            }
             if (vg250Active) {
               attributionClauses.push(
-                `Municipality codes/names derived from VG250: © BKG (${vg250Year}) dl-de/by-2-0 (https://www.govdata.de/dl-de/by-2-0), Datenquellen: ${BKG_VG250_DATENQUELLEN_URL} (Daten verändert; upstream dl-de/by-2-0 attribution remains concurrently binding alongside ODbL-1.0 - pass ?includeMunicipality=false to omit VG250 attributes).`,
+                `Municipality codes/names derived from VG250: © BKG (${vg250Year}) dl-de/by-2-0 (https://www.govdata.de/dl-de/by-2-0), Datenquellen: ${BKG_VG250_DATENQUELLEN_URL} (Daten verändert; pass ?includeMunicipality=false to omit them).`,
               );
             }
             if (activeImportAttributions.length > 0) {
@@ -359,11 +325,7 @@ export function registerPolygonRoutes(
               `Full license and source notices: ${app.config.licensesUrl}.`,
             );
             const exportAttribution = attributionClauses.join(' ');
-            const upstreamConditionsJsonField =
-              upstreamConditionParts.length > 0
-                ? `"upstreamConditions":${JSON.stringify(upstreamConditionParts.join(' '))},`
-                : '';
-            const collectionPrefix = `{"type":"FeatureCollection","license":"ODbL-1.0","licenseUrl":"https://opendatacommons.org/licenses/odbl/1-0/","contributorRights":"CC0-1.0","contributorRightsUrl":"https://creativecommons.org/publicdomain/zero/1.0/",${upstreamConditionsJsonField}"attribution":${JSON.stringify(
+            const collectionPrefix = `{"type":"FeatureCollection","license":"ODbL-1.0","licenseUrl":"https://opendatacommons.org/licenses/odbl/1-0/","contributorRights":"CC0-1.0","contributorRightsUrl":"https://creativecommons.org/publicdomain/zero/1.0/","attribution":${JSON.stringify(
               exportAttribution,
             )},"features":[`;
 
@@ -550,7 +512,7 @@ export function registerPolygonRoutes(
       config: {
         rateLimit: mutatePolygonLimit,
       },
-      preHandler: requireAuth,
+      preHandler: [requireAuth, requireCurrentTerms],
     },
     async (request) => {
       const auth = request.auth;
@@ -803,7 +765,7 @@ export function registerPolygonRoutes(
       config: {
         rateLimit: mutatePolygonLimit,
       },
-      preHandler: requireAuth,
+      preHandler: [requireAuth, requireCurrentTerms],
     },
     async (request) => {
       const auth = request.auth!;

@@ -547,13 +547,6 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
       assert.equal(cfg.orthophoto.tileSize, 256);
       assert.equal(cfg.orthophoto.maxZoom, 20);
       assert.match(cfg.orthophoto.attribution, /GeoBasis-DE/);
-      // Clean checkout has no APK (returns null); if a local dev release APK is built, it is advertised with SHA-256
-      if (cfg.apkDownloadUrl === null) {
-        assert.equal(cfg.apkSha256, null);
-      } else {
-        assert.equal(cfg.apkDownloadUrl, '/downloads/openunseal.apk');
-        assert.match(String(cfg.apkSha256), /^[a-f0-9]{64}$/);
-      }
       assert.equal(cfg.impressumUrl, 'http://127.0.0.1:3000/auth/impressum');
       assert.equal(cfg.termsUrl, 'http://127.0.0.1:3000/auth/terms');
       assert.equal(cfg.licensesUrl, 'http://127.0.0.1:3000/auth/licenses');
@@ -581,13 +574,11 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
       await defaultApp.close();
     }
 
-    // Explicit opt-out ('none') disables built-in DOP20 orthophoto and APK download link
+    // Explicit opt-out ('none') disables the built-in DOP20 orthophoto
     const disabledExtrasCfg = loadEnvConfig({
       ORTHOPHOTO_URL_TEMPLATE: 'none',
-      APK_DOWNLOAD_URL: 'none',
     });
     assert.equal(disabledExtrasCfg.orthophoto, null);
-    assert.equal(disabledExtrasCfg.apkDownloadUrl, null);
 
     // XYZ {z}/{x}/{y} template + 512 tileSize + bounds + abuseContact
     const xyzConfig = loadEnvConfig({
@@ -891,7 +882,7 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
     );
   });
 
-  it('serves Germany DOP20 orthophoto proxy tiles (/api/v1/tiles/dop20/:z/:x/:y.png) and local APK downloads (/downloads/openunseal.apk)', async () => {
+  it('serves Germany DOP20 orthophoto proxy tiles (/api/v1/tiles/dop20/:z/:x/:y.png) and no longer offers an Android APK', async () => {
     const tmpUploads = await fs.mkdtemp(path.join(os.tmpdir(), 'ppgis-apk-dop-'));
     const samplePng = await sharp({
       create: {
@@ -971,44 +962,13 @@ describe('PPGIS-2: PostGIS migrations, runtime config, health, logger redaction,
         `Expected Hessen DOP20 URL to request LAYERS=he_dop_rgb, got: ${wmsFetchUrls.join(', ')}`,
       );
 
-      // Missing APK -> 404 NOT_FOUND and /api/v1/config omits apkDownloadUrl
-      const beforeCfgRes = await app.inject({
-        method: 'GET',
-        url: '/api/v1/config',
-      });
-      assert.equal(beforeCfgRes.statusCode, 200);
-      assert.equal(RuntimeConfigSchema.parse(beforeCfgRes.json()).apkDownloadUrl, null);
-      assert.equal(RuntimeConfigSchema.parse(beforeCfgRes.json()).apkSha256, null);
-
-      const missingApkRes = await app.inject({
-        method: 'GET',
-        url: '/downloads/openunseal.apk',
-      });
-      assert.equal(missingApkRes.statusCode, 404);
-
-      // Present APK -> 200 application/vnd.android.package-archive + ETag + exposed in /api/v1/config
-      const fakeApkBytes = Buffer.from('PK\x03\x04openunseal-test-apk-payload', 'binary');
-      await fs.writeFile(path.join(tmpUploads, 'openunseal.apk'), fakeApkBytes);
-      const afterCfgRes = await app.inject({
-        method: 'GET',
-        url: '/api/v1/config',
-      });
-      assert.equal(afterCfgRes.statusCode, 200);
-      const afterCfg = RuntimeConfigSchema.parse(afterCfgRes.json());
-      assert.equal(afterCfg.apkDownloadUrl, '/downloads/openunseal.apk');
-      assert.match(String(afterCfg.apkSha256), /^[a-f0-9]{64}$/);
-
-      const presentApkRes = await app.inject({
-        method: 'GET',
-        url: '/downloads/openunseal.apk',
-      });
-      assert.equal(presentApkRes.statusCode, 200);
-      assert.match(
-        String(presentApkRes.headers['content-type']),
-        /application\/vnd\.android\.package-archive/,
-      );
-      assert.equal(presentApkRes.headers.etag, `"sha256-${afterCfg.apkSha256}"`);
-      assert.equal(presentApkRes.rawPayload.length, fakeApkBytes.length);
+      // The web app is the only client: no APK route and no APK fields in the config.
+      await fs.writeFile(path.join(tmpUploads, 'openunseal.apk'), Buffer.from('PK\x03\x04', 'binary'));
+      const cfgRes = await app.inject({ method: 'GET', url: '/api/v1/config' });
+      assert.equal(cfgRes.statusCode, 200);
+      assert.equal('apkDownloadUrl' in cfgRes.json(), false);
+      const apkRes = await app.inject({ method: 'GET', url: '/downloads/openunseal.apk' });
+      assert.equal(apkRes.statusCode, 404);
     } finally {
       await app.close();
       await fs.rm(tmpUploads, { recursive: true, force: true });

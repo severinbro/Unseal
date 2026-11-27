@@ -422,13 +422,6 @@ export const RuntimeConfigSchema = z.object({
   licensesUrl: z.string().url().nullable().optional().default(null),
   sourceCodeUrl: z.string().url().nullable().optional().default(null),
   bugReportContact: z.string().nullable().optional().default(null),
-  apkDownloadUrl: z.string().min(1).nullable().optional().default(null),
-  apkSha256: z
-    .string()
-    .regex(/^[0-9a-f]{64}$/i)
-    .nullable()
-    .optional()
-    .default(null),
   authCaptchaRequired: z.boolean().optional().default(false),
   branding: BrandingConfigSchema.optional(),
 });

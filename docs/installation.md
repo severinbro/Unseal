@@ -1,6 +1,6 @@
 # Installation, Development & Build Guide
 
-This guide covers local development, running the automated test suite, building production Web and mobile artifacts, signing release Android APKs, using the administration CLI, and configuring environment variables.
+This guide covers local development, running the automated test suite, building the production web app (PWA), using the administration CLI, and configuring environment variables.
 
 For turnkey Linux VPS deployment with Docker Compose, Caddy HTTPS, DNS, and backups, see [`docs/vps-setup.md`](./vps-setup.md).
 
@@ -12,7 +12,6 @@ For turnkey Linux VPS deployment with Docker Compose, Caddy HTTPS, DNS, and back
 
 * **Node.js `>= 24.0.0`** and `npm`
 * **Docker Engine** with **Docker Compose v2**
-* *(Optional, for native Android builds)* **JDK 17** and the **Android SDK** (`ANDROID_HOME`)
 
 ### Step 1: Clone & Install Dependencies
 
@@ -50,133 +49,32 @@ npm run typecheck
 npm test
 ```
 
-### Step 4: Run the Web App or Test on an Android Smartphone via USB (`adb`)
+### Step 4: Run the Web App
 
-* **Web App:**
-  ```bash
-  npm --workspace apps/mobile run web
-  ```
-* **Android Smartphone over USB Debugging (`adb`):**
-  Because `apps/mobile/android/` is gitignored and generated via Expo Prebuild, generate it once on each machine, forward port `3000`, and install a debug build:
-  ```bash
-  adb reverse tcp:3000 tcp:3000
-  cd apps/mobile
-  npx expo prebuild --platform android
-  ./android/gradlew -p android assembleDebug
-  adb install -r android/app/build/outputs/apk/debug/app-debug.apk
-  ```
-  *(For signed release APKs, see **Section 3** below - never distribute an APK signed with Expo's debug keystore.)*
+```bash
+npm --workspace apps/mobile run web
+```
+
+To try it on a phone in the same network, open the dev server's LAN address in the phone's browser; location access needs HTTPS outside `localhost`.
 
 ---
 
-## 2. Production Web & Mobile Builds
+## 2. Production Web Build (PWA)
 
-Because `@maplibre/maplibre-react-native`, `expo-location`, `expo-image-picker`, `expo-document-picker`, and `expo-secure-store` include native modules, Android and iOS native directories (`apps/mobile/android/` and `apps/mobile/ios/`, both gitignored) are generated per machine with **Expo Prebuild** (`npx expo prebuild`). During prebuild, the configured `./plugins/withBundledLicenses.cjs` plugin automatically copies `apps/mobile/LICENSE` (`LICENSE-MPL-2.0.txt`) and `THIRD_PARTY_NOTICES.txt` into the native application assets so standalone `.apk` and `.ipa` binaries always ship complete offline license texts.
+OpenUnseal ships only as a web app that can be installed as a PWA. Export the static assets into `./dist-web`, which Caddy serves on the VPS:
 
 ```bash
-# Export static production Web assets into ./dist-web (served by Caddy on the VPS)
 EXPO_PUBLIC_API_BASE_URL=https://openunseal.example.org npm --workspace apps/mobile run export:web
-
-# Prebuild native Android / iOS projects pointing at your production VPS
-cd apps/mobile
-EXPO_PUBLIC_API_BASE_URL=https://openunseal.example.org npx expo prebuild
 ```
+
+The export also copies `THIRD_PARTY_NOTICES.txt` next to the app.
 
 ---
 
-## 3. Android Release Signing & Manifest Hardening
-
-Because `apps/mobile/android/` is generated locally by `npx expo prebuild` and excluded from git, Expo's default generated Android template has two issues for production distribution:
-1. It configures `buildTypes.release` to sign with `signingConfigs.debug`.
-2. It places `android.permission.SYSTEM_ALERT_WINDOW` in `src/main/AndroidManifest.xml` (it is only needed for React Native's dev menu in `src/debug/AndroidManifest.xml`).
-
-Perform the following steps on each build machine after running `npx expo prebuild --platform android` (or whenever regenerating `apps/mobile/android/`):
-
-### Step 1: Generate and Back Up a Release Keystore (Once, Outside Git)
+## 3. Operator Moderation & Administration CLI (`admin.ts`)
 
 ```bash
-keytool -genkeypair -v -storetype PKCS12 \
-  -keystore openunseal-release.keystore -alias openunseal-upload \
-  -keyalg RSA -keysize 4096 -validity 10000
-```
-
-Store `openunseal-release.keystore` and its passwords safely outside the repository (losing the keystore prevents signing future in-place APK updates).
-
-### Step 2: Configure `signingConfigs.release` in `apps/mobile/android/app/build.gradle`
-
-In `apps/mobile/android/app/build.gradle`, add a `release` block inside `signingConfigs` and wire `buildTypes.release` to require the `OPENUNSEAL_UPLOAD_*` environment variables (or Gradle properties) instead of falling back to `signingConfigs.debug`:
-
-```groovy
-    signingConfigs {
-        debug {
-            storeFile file('debug.keystore')
-            storePassword 'android'
-            keyAlias 'androiddebugkey'
-            keyPassword 'android'
-        }
-        release {
-            def storePath = System.getenv("OPENUNSEAL_UPLOAD_STORE_FILE") ?: findProperty("OPENUNSEAL_UPLOAD_STORE_FILE")
-            def storePass = System.getenv("OPENUNSEAL_UPLOAD_STORE_PASSWORD") ?: findProperty("OPENUNSEAL_UPLOAD_STORE_PASSWORD")
-            def aliasName = System.getenv("OPENUNSEAL_UPLOAD_KEY_ALIAS") ?: findProperty("OPENUNSEAL_UPLOAD_KEY_ALIAS")
-            def aliasPass = System.getenv("OPENUNSEAL_UPLOAD_KEY_PASSWORD") ?: findProperty("OPENUNSEAL_UPLOAD_KEY_PASSWORD")
-            if (storePath && storePass && aliasName && aliasPass) {
-                storeFile file(storePath)
-                storePassword storePass
-                keyAlias aliasName
-                keyPassword aliasPass
-            }
-        }
-    }
-    buildTypes {
-        debug {
-            signingConfig signingConfigs.debug
-        }
-        release {
-            // Production release builds require a private keystore via OPENUNSEAL_UPLOAD_* env vars or Gradle properties.
-            if (!signingConfigs.release.storeFile) {
-                gradle.taskGraph.whenReady { taskGraph ->
-                    if (taskGraph.allTasks.any { it.name.toLowerCase().contains("release") }) {
-                        throw new GradleException(
-                            "Release signing keystore not configured. Set OPENUNSEAL_UPLOAD_STORE_FILE, OPENUNSEAL_UPLOAD_STORE_PASSWORD, OPENUNSEAL_UPLOAD_KEY_ALIAS, and OPENUNSEAL_UPLOAD_KEY_PASSWORD."
-                        )
-                    }
-                }
-            }
-            signingConfig signingConfigs.release
-            shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
-            minifyEnabled enableProguardInReleaseBuilds
-            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
-            crunchPngs (findProperty('android.enablePngCrunchInReleaseBuilds')?.toBoolean() ?: true)
-        }
-    }
-```
-
-### Step 3: Remove `SYSTEM_ALERT_WINDOW` from the Main Manifest
-
-Inspect `apps/mobile/android/app/src/main/AndroidManifest.xml` and remove `<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>` if present (it should exist only in `apps/mobile/android/app/src/debug/AndroidManifest.xml`).
-
-### Step 4: Build & Optionally Host the Signed Release APK
-
-Store your APK build and signing exports in a gitignored `.env.apk` file at the repository root (copied from [`.env.apk.example`](../.env.apk.example)):
-
-```bash
-cp .env.apk.example .env.apk
-chmod 600 .env.apk
-# Edit .env.apk with your production EXPO_PUBLIC_API_BASE_URL and OPENUNSEAL_UPLOAD_* values
-
-source .env.apk && (cd apps/mobile/android && ./gradlew assembleRelease --no-daemon)
-```
-
-The signed APK is written to `apps/mobile/android/app/build/outputs/apk/release/app-release.apk`.
-
-To distribute it directly from your VPS at `/downloads/openunseal.apk`, place the signed APK at `<UPLOADS_DIR>/openunseal.apk` (or configure `APK_FILE_PATH` on the server). The API automatically detects the file and advertises both `apkDownloadUrl` and its computed SHA-256 checksum (`apkSha256`) on `/api/v1/config` (displayed in the web app's Install modal).
-
----
-
-## 4. Operator Moderation & Administration CLI (`admin.ts`)
-
-```bash
-# 1. Grant or revoke administrator privileges (enables "finished" status & .geojson/.gpkg import)
+# 1. Grant or revoke administrator privileges (enables status changes on public ground & .geojson/.gpkg import)
 docker compose exec api node apps/api/dist/cli/admin.js grant-admin <pseudonym>
 docker compose exec api node apps/api/dist/cli/admin.js revoke-admin <pseudonym>
 
@@ -223,7 +121,7 @@ Users can download their own data in the app (*Konto → Meine Daten herunterlad
 
 ---
 
-## 5. Environment Variable Reference
+## 4. Environment Variable Reference
 
 | Variable | Default | Description |
 | :--- | :--- | :--- |
@@ -244,7 +142,6 @@ Users can download their own data in the app (*Konto → Meine Daten herunterlad
 | `CORS_ORIGIN` | `*` | Allowed browser CORS origin(s), comma-separated. |
 | `OSM_STYLE_URL` / `OSM_DARK_STYLE_URL` | `https://tiles.openfreemap.org/styles/liberty` / `.../styles/dark` | Light and dark mode MapLibre vector style JSON URLs. |
 | `ORTHOPHOTO_*` | *(built-in Germany DOP20)* | Built-in server-proxied German DOP20 aerial orthophotos (`/api/v1/tiles/dop20/{z}/{x}/{y}.png`); set `ORTHOPHOTO_URL_TEMPLATE=none` to disable or override with a custom `EPSG:3857` URL. |
-| `APK_DOWNLOAD_URL` / `APK_FILE_PATH` / `APK_SHA256` | *(auto)* / `<UPLOADS_DIR>/openunseal.apk` / *(auto SHA-256)* | Optional direct Android `.apk` download link (`none` to hide button; auto-hidden when no APK file exists), server file path, and SHA-256 checksum. |
 | `INITIAL_LNG` / `LAT` / `ZOOM` | `8.2739` / `49.9989` / `15` | Default initial viewport camera (Mainz Cathedral). |
 | `MAX_DAILY_POLYGONS_PER_USER` | `25` | Rolling 24-hour polygon creation cap per user. |
 | `SESSION_TTL_DAYS` | `30` | Bearer session lifetime in days. |
@@ -257,14 +154,14 @@ Users can download their own data in the app (*Konto → Meine Daten herunterlad
 | `REQUIRE_JURISDICTION` / `STALE_UNRATED_PRUNE_DAYS` / `NEW_USER_*` | `when_seeded` / `30` / `14`, `3` | VG250 jurisdiction enforcement, stale unrated proposal pruning days, and new-user badge thresholds. |
 | `OVERPASS_API_URL` | *(empty → disabled)* | Overpass API endpoint for live public/private land-use lookups. Only a grid-aligned 0.005° section is sent. Check the endpoint's terms of use before enabling; `/auth/privacy` names the host. |
 | `CHAT_RETENTION_DAYS` | `365` | Days until direct messages are deleted (stated on `/auth/privacy`). |
-| `DISCLAIMER_TEXT` / `ABUSE_CONTACT` | *(civic notice)* / *(empty)* | Public notice and optional moderation contact shown in inspector, legal pages & bug-report modal. |
-| `OPERATOR_NAME` / `OPERATOR_ADDRESS` / `OPERATOR_EMAIL` / `OPERATOR_PHONE` | *(empty)* | Legal operator identity rendered on `/auth/impressum` & `/auth/privacy` (§ 5 DDG / § 18 MStV / Art. 13 GDPR); `\n` separates address lines. |
-| `IMPRESSUM_URL` / `PRIVACY_POLICY_URL` / `TERMS_URL` / `LICENSES_URL` / `SOURCE_CODE_URL` | `<PUBLIC_BASE_URL>/auth/{impressum,privacy,terms,licenses}` | Override URLs for hosted legal notices and AGPL-3.0/MPL-2.0 source code repository link. |
-| `BUG_REPORT_TO` | *(falls back to `OPERATOR_EMAIL`)* | Recipient email for `/api/v1/bug-reports` (`none` or unset disables bug-report email submission with HTTP 503). |
+| `DISCLAIMER_TEXT` / `ABUSE_CONTACT` | *(civic notice)* / *(empty)* | Public notice and optional moderation contact shown in inspector, About dialog & legal pages. |
+| `OPERATOR_NAME` / `OPERATOR_ADDRESS` / `OPERATOR_EMAIL` / `OPERATOR_PHONE` | *(empty)* | Legal operator identity rendered on `/auth/impressum` & `/auth/privacy` (§ 5 DDG / Art. 13 GDPR); `\n` separates address lines. |
+| `IMPRESSUM_URL` / `PRIVACY_POLICY_URL` / `TERMS_URL` / `LICENSES_URL` / `SOURCE_CODE_URL` | `<PUBLIC_BASE_URL>/auth/{impressum,privacy,terms,licenses}` / `https://github.com/severinbro/Unseal` | Override URLs for hosted legal notices and AGPL-3.0/MPL-2.0 source code repository link. |
+| `BUG_REPORT_TO` | *(falls back to `OPERATOR_EMAIL`)* | Recipient email for `/api/v1/bug-reports` (unset falls back to `OPERATOR_EMAIL`, then `ABUSE_CONTACT`; `none` disables bug-report submission with HTTP 503). |
 | `APP_NAME` / `APP_SUBTITLE_DE` / `APP_SUBTITLE_EN` | `OpenUnseal` / *(default)* | Optional municipal instance name and localized subtitles shown in the web/mobile UI, hosted `/auth/*` pages, and transactional emails (upstream AGPL/MPL Open-Source attribution stays preserved). |
 | `BRAND_LOGO_FILE` / `BRAND_LOGO_URL` | *(built-in OpenUnseal mark)* | Custom logo file (PNG/JPG/WebP/SVG ≤ 2 MiB, served same-origin at `/api/v1/branding/logo`) or external `https://` URL (external hosts are disclosed automatically on `/auth/privacy`). |
 | `BRAND_ACCENT_COLOR` / `BRAND_ACCENT_DARK_COLOR` | `#176642` / `#34C785` | Optional 6-digit hex brand accent colors for light and dark themes (dark variant and contrasting ink colors derive automatically when omitted; map status legend colors remain unchanged). |
 | `INTRO_ENABLED` | `true` | Set `false` to skip the animated splash intro overlay on startup. |
 | `MUNICIPAL_PORTAL_URL` / `MUNICIPAL_PORTAL_LABEL` | *(empty)* | Optional external link (e.g. municipal homepage or climate portal) rendered in the About modal and `/auth/impressum`. |
-| `WEBHOOK_URL` / `WEBHOOK_SECRET` / `WEBHOOK_EVENTS` / `WEBHOOK_TIMEOUT_MS` / `WEBHOOK_ALLOW_PRIVATE_NETWORKS` | *(disabled)* / *(empty)* / all 3 / `5000` / `false` | Optional async outbound webhook (`polygon.created`, `polygon.status_changed`, `polygon.deleted`) transmitting exclusively public, non-PII polygon data with optional HMAC-SHA256 signing (`X-OpenUnseal-Signature-256`) and SSRF protection against private/metadata IP ranges. |
+| `WEBHOOK_URL` / `WEBHOOK_SECRET` / `WEBHOOK_EVENTS` / `WEBHOOK_TIMEOUT_MS` / `WEBHOOK_ALLOW_PRIVATE_NETWORKS` | *(disabled)* / *(empty)* / all 3 / `5000` / `false` | Optional async outbound webhook (`polygon.created`, `polygon.status_changed`, `polygon.deleted`) transmitting public polygon data only (no pseudonyms, emails, user IDs or IPs) with optional HMAC-SHA256 signing (`X-OpenUnseal-Signature-256`) and SSRF protection against private/metadata IP ranges. |
 | `EXPO_PUBLIC_API_BASE_URL` | `http://127.0.0.1:3000` | Base API URL baked into Expo mobile/web builds at bundle time. |

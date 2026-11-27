@@ -30,6 +30,8 @@ export interface DeleteOrBanUserParams {
 export interface DeleteOrBanUserResult {
   deletedUser: boolean;
   deletedPolygonCount: number;
+  /** Ids of the polygons removed with the account, for `polygon.deleted` webhooks. */
+  deletedPolygonIds: string[];
   recomputedPolygonIds: string[];
   deletedPhotoFiles: string[];
 }
@@ -245,6 +247,7 @@ export async function deleteOrBanUserAccount(
     return {
       deletedUser: false,
       deletedPolygonCount: 0,
+      deletedPolygonIds: [],
       recomputedPolygonIds: [],
       deletedPhotoFiles: [],
     };
@@ -351,6 +354,7 @@ export async function deleteOrBanUserAccount(
   }
 
   let deletedPolygonCount = 0;
+  let deletedPolygonIds: string[] = [];
   let remainingPolygonIdsToRecompute: string[];
   const deletedPhotoFiles: string[] = [];
 
@@ -383,11 +387,12 @@ export async function deleteOrBanUserAccount(
     await client.query('DELETE FROM polygon_photos WHERE user_id = $1', [
       userRow.id,
     ]);
-    const delPolyRes = await client.query(
-      'DELETE FROM polygons WHERE user_id = $1',
+    const delPolyRes = await client.query<{ id: string }>(
+      'DELETE FROM polygons WHERE user_id = $1 RETURNING id',
       [userRow.id],
     );
     deletedPolygonCount = delPolyRes.rowCount ?? 0;
+    deletedPolygonIds = delPolyRes.rows.map((r) => r.id);
     const authoredSet = new Set(authoredPolygonIds);
     remainingPolygonIdsToRecompute = uniqueSortedUuids(
       [
@@ -398,13 +403,23 @@ export async function deleteOrBanUserAccount(
       ].filter((id) => !authoredSet.has(id)),
     );
   } else {
+    // The polygons stay, but only their author could withdraw these statements.
+    await client.query(
+      `UPDATE polygons
+       SET open_for_public_access = FALSE,
+           allow_chat_contact = FALSE,
+           help_wanted_until = NULL,
+           entitlement_confirmed_at = NULL
+       WHERE user_id = $1`,
+      [userRow.id],
+    );
     remainingPolygonIdsToRecompute = uniqueSortedUuids([
       ...votedPolygonIds,
       ...flaggedPolygonIds,
     ]);
   }
 
-  // Direct messages are erased with the account in every mode.
+  // The account's sent direct messages are erased in every mode.
   await detachUserFromChats(client, userRow.id);
 
   await client.query('DELETE FROM users WHERE id = $1', [userRow.id]);
@@ -416,6 +431,7 @@ export async function deleteOrBanUserAccount(
   return {
     deletedUser: true,
     deletedPolygonCount,
+    deletedPolygonIds,
     recomputedPolygonIds: remainingPolygonIdsToRecompute,
     deletedPhotoFiles,
   };

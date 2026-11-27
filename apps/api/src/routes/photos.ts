@@ -15,7 +15,11 @@ import {
   UuidParamSchema,
 } from '@openunseal/shared';
 
-import { optionalAuth, requireAuth } from '../auth/session.js';
+import {
+  optionalAuth,
+  requireAuth,
+  requireCurrentTerms,
+} from '../auth/session.js';
 import { processUploadedPhoto } from '../photos/processor.js';
 import { PhotoRepository } from '../photos/repository.js';
 import {
@@ -107,7 +111,7 @@ export function registerPhotoRoutes(
       config: {
         rateLimit: uploadLimit,
       },
-      preHandler: requireAuth,
+      preHandler: [requireAuth, requireCurrentTerms],
     },
     async (request, reply) => {
       const auth = request.auth!;

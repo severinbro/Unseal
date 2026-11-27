@@ -101,7 +101,7 @@ export function MapPreview(props: MapPreviewProps): React.JSX.Element {
             resizeMode="cover"
             accessible={false}
           />
-          <Text numberOfLines={1} style={styles.credit} testID="map-preview-credit">
+          <Text numberOfLines={2} style={styles.credit} testID="map-preview-credit">
             {snapshot.credit}
           </Text>
         </>

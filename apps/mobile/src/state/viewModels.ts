@@ -161,8 +161,6 @@ export interface MapControlsModel {
   polygonFilter: PolygonFilter;
   highlightMineOnly: boolean;
   orthophotoAttribution: string | null;
-  apkDownloadUrl: string | null;
-  apkSha256: string | null;
   canStartDraw: boolean;
   drawDisabledReason: string | null;
   showZoomInPrompt: boolean;
@@ -258,8 +256,6 @@ export function deriveMapControlsModel(
     polygonFilter: state.polygonFilter,
     highlightMineOnly: state.currentUser !== null && state.highlightMineOnly,
     orthophotoAttribution: state.config?.orthophoto?.attribution ?? null,
-    apkDownloadUrl: state.config?.apkDownloadUrl ?? null,
-    apkSha256: state.config?.apkSha256 ?? null,
     canStartDraw:
       state.configStatus === 'ready' &&
       state.mode === 'browse' &&

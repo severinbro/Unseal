@@ -26,7 +26,7 @@ import {
 import { MIN_TOUCH_TARGET_DP } from '../state/viewModels';
 import { useTheme } from '../theme/themeContext';
 import { RADII, type ThemePalette } from '../theme/tokens';
-import { AndroidGlyph, triggerApkDownload } from './MapControlsBar';
+import { InstallAppGlyph } from './MapControlsBar';
 
 const DEFAULT_CANONICAL_SOURCE_CODE_URL =
   'https://github.com/severinbro/Unseal';
@@ -47,11 +47,9 @@ export interface AboutModalProps {
   termsUrl?: string | undefined;
   licensesUrl?: string | undefined;
   sourceCodeUrl?: string | null | undefined;
-  apkDownloadUrl: string | null;
   abuseContact: string | null;
   onClose: () => void;
   onOpenInstallApp?: () => void;
-  onDownloadError?: (message: string) => void;
 }
 
 function safeHostOf(url: string | undefined): string | null {
@@ -92,11 +90,9 @@ export function AboutModal({
   termsUrl,
   licensesUrl,
   sourceCodeUrl,
-  apkDownloadUrl,
   abuseContact,
   onClose,
   onOpenInstallApp,
-  onDownloadError,
 }: AboutModalProps): React.JSX.Element | null {
   const { palette } = useTheme();
   const styles = useMemo(() => createStyles(palette), [palette]);
@@ -116,29 +112,7 @@ export function AboutModal({
   const headingSubtitle = customSubtitle ?? t.subtitle;
   const portalUrl = branding?.portalUrl?.trim() || null;
   const portalLabel = branding?.portalLabel?.trim() || t.defaultPortalLinkLabel;
-  const hasApkDownloadUrl =
-    apkDownloadUrl !== null && apkDownloadUrl.length > 0;
-  const showApkButton =
-    Platform.OS === 'web' &&
-    (onOpenInstallApp !== undefined || hasApkDownloadUrl);
-
-  const handleApkPress = (): void => {
-    if (onOpenInstallApp) {
-      onOpenInstallApp();
-      return;
-    }
-    if (!apkDownloadUrl) {
-      return;
-    }
-    void triggerApkDownload(apkDownloadUrl).catch((err: unknown) => {
-      const detail = localizeError(
-        err,
-        dict.controls.apkDownloadErrorFallback,
-        locale,
-      );
-      onDownloadError?.(detail);
-    });
-  };
+  const showInstallButton = Platform.OS === 'web' && onOpenInstallApp !== undefined;
 
   return (
     <View
@@ -439,30 +413,26 @@ export function AboutModal({
             );
           })()}
 
-          {showApkButton ? (
+          {showInstallButton ? (
             <Pressable
-              testID="about-download-apk-button"
+              testID="about-install-app-button"
               accessibilityRole="button"
-              accessibilityLabel={
-                onOpenInstallApp
-                  ? dict.controls.installAppA11y
-                  : dict.controls.apkDownloadA11y
-              }
-              onPress={handleApkPress}
+              accessibilityLabel={dict.controls.installAppA11y}
+              onPress={onOpenInstallApp}
               style={({ pressed }) => [
                 styles.touchButton,
                 styles.primaryButton,
-                styles.apkButtonRow,
+                styles.installButtonRow,
                 pressed ? styles.primaryButtonPressed : null,
               ]}
             >
-              <AndroidGlyph
+              <InstallAppGlyph
                 color={palette.inkOnAccent}
                 eyeColor={palette.accentPrimary}
                 size={18}
               />
               <Text style={styles.primaryButtonLabel}>
-                {onOpenInstallApp ? t.installAppButton : t.apkDownloadButton}
+                {t.installAppButton}
               </Text>
             </Pressable>
           ) : null}
@@ -645,7 +615,7 @@ function createStyles(PALETTE: ThemePalette) {
     borderWidth: 1,
     borderColor: PALETTE.accentPrimaryStrong,
   },
-  apkButtonRow: {
+  installButtonRow: {
     flexDirection: 'row',
     gap: 7,
   },
