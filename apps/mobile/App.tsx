@@ -961,7 +961,6 @@ export function App(props: AppProps = {}): React.JSX.Element {
   const [feedOpened, setFeedOpened] = useState(false);
   const [zonesOn, setZonesOn] = useState(false);
   const [zones, setZones] = useState<SpaceZoneCollection | null>(null);
-  const chatScrollRef = useRef<ScrollView | null>(null);
   const social = getSocialCopy(state.locale);
   const userId = state.currentUser?.id ?? null;
 
@@ -1175,11 +1174,6 @@ export function App(props: AppProps = {}): React.JSX.Element {
     },
     [apiClient, showPolygonOnMap],
   );
-
-  const scrollChatToEnd = useCallback((): void => {
-    // After layout, so the newest message has its final position.
-    setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: false }), 0);
-  }, []);
 
   const handleChatError = useCallback(
     async (err: unknown): Promise<boolean> => {
@@ -2221,6 +2215,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
           onImportPress={handleAdminImport}
           onExportError={(message) => setLocationNotice(message)}
           activeMainTab={state.activeMainTab}
+          chatOpen={chatStart !== null && state.currentUser !== null}
           unreadChats={unreadChats}
           onSelectMainTab={(tab) => {
             setMoreMenuOpen(false);
@@ -2233,7 +2228,7 @@ export function App(props: AppProps = {}): React.JSX.Element {
             if (state.currentUser === null) {
               dispatch({ type: 'OPEN_AUTH_MODAL', view: 'login' });
             } else {
-              setChatStart({});
+              setChatStart((prev) => (prev === null ? {} : null));
             }
           }}
         />
@@ -2708,38 +2703,47 @@ export function App(props: AppProps = {}): React.JSX.Element {
           />
           <View
             style={[
-              styles.modalDialogWrapper,
-              { maxWidth: Math.max(layout.modalMaxWidth, layout.isCompact ? 0 : 520) },
+              styles.chatWindowWrapper,
+              {
+                maxWidth: layout.isCompact
+                  ? layout.modalMaxWidth
+                  : Math.min(920, Math.max(640, layout.width - 32)),
+                height: layout.isCompact
+                  ? Math.round(layout.height * 0.88)
+                  : Math.min(680, Math.max(420, Math.round(layout.height * 0.84))),
+              },
             ]}
           >
-            <ScrollView
-              ref={chatScrollRef}
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={styles.modalScrollContent}
-            >
-              <DirectChatModal
-                locale={state.locale}
-                user={state.currentUser}
-                client={apiClient}
-                start={chatStart}
-                retentionDays={
-                  state.config.chatRetentionDays ??
-                  CHAT_LIMITS.DEFAULT_RETENTION_DAYS
-                }
-                resolveUploadUrl={resolveUploadUrl}
-                onUserUpdated={(user) => dispatch({ type: 'USER_UPDATED', user })}
-                onShowPolygon={handleShowPolygonById}
-                onReport={(messageId) =>
-                  setContentReportTarget({
-                    targetType: 'chat_message',
-                    targetId: messageId,
-                  })
-                }
-                onError={handleChatError}
-                onScrollToEnd={scrollChatToEnd}
-                onClose={() => setChatStart(null)}
-              />
-            </ScrollView>
+            <DirectChatModal
+              locale={state.locale}
+              user={state.currentUser}
+              client={apiClient}
+              start={chatStart}
+              compact={layout.isCompact}
+              retentionDays={
+                state.config.chatRetentionDays ??
+                CHAT_LIMITS.DEFAULT_RETENTION_DAYS
+              }
+              resolveUploadUrl={resolveUploadUrl}
+              onUserUpdated={(user) => dispatch({ type: 'USER_UPDATED', user })}
+              onThreadsUpdated={(list) =>
+                setUnreadChats(
+                  list.reduce(
+                    (sum, th) => sum + (th.isBlockedByMe ? 0 : th.unreadCount),
+                    0,
+                  ),
+                )
+              }
+              onShowPolygon={handleShowPolygonById}
+              onReport={(messageId) =>
+                setContentReportTarget({
+                  targetType: 'chat_message',
+                  targetId: messageId,
+                })
+              }
+              onError={handleChatError}
+              onClose={() => setChatStart(null)}
+            />
           </View>
         </KeyboardAvoidingView>
       ) : null}
@@ -3169,6 +3173,7 @@ function createStyles(PALETTE: ThemePalette, isDark: boolean) {
   mapStage: {
     flex: 1,
     position: 'relative',
+    zIndex: 1,
     backgroundColor: PALETTE.bgMapCanvas,
     overflow: 'hidden',
   },
@@ -3177,8 +3182,8 @@ function createStyles(PALETTE: ThemePalette, isDark: boolean) {
   },
   feedOverlay: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 60,
-    elevation: 60,
+    zIndex: 30,
+    elevation: 30,
   },
   legendPrivateSwatch: {
     width: 14,
@@ -3390,7 +3395,8 @@ function createStyles(PALETTE: ThemePalette, isDark: boolean) {
     right: 0,
     bottom: 0,
     left: 0,
-    zIndex: 50,
+    zIndex: 100,
+    elevation: 100,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 16,
@@ -3413,7 +3419,15 @@ function createStyles(PALETTE: ThemePalette, isDark: boolean) {
     maxHeight: '90%',
     borderRadius: RADII.sheet,
     overflow: 'hidden',
-    zIndex: 51,
+    zIndex: 101,
+    elevation: 101,
+  },
+  chatWindowWrapper: {
+    width: '100%',
+    borderRadius: RADII.sheet,
+    overflow: 'hidden',
+    zIndex: 101,
+    elevation: 101,
   },
   modalScrollContent: {
     flexGrow: 0,

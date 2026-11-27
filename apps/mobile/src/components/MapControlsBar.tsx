@@ -123,6 +123,7 @@ export interface MapControlsBarProps {
   onExportError: (message: string) => void;
   /** Which of the main views is shown; the icons for them sit in the navbar. */
   activeMainTab?: 'map' | 'feed';
+  chatOpen?: boolean;
   unreadChats?: number;
   onSelectMainTab?: (tab: 'map' | 'feed') => void;
   onOpenChat?: () => void;
@@ -1065,6 +1066,7 @@ export function MapControlsBar({
   onOpenAbout,
   onOpenAccount,
   activeMainTab = 'map',
+  chatOpen = false,
   unreadChats = 0,
   onSelectMainTab,
   onOpenChat,
@@ -1272,7 +1274,7 @@ export function MapControlsBar({
                 : social.chat,
               social.chat,
               ChatGlyph,
-              false,
+              chatOpen,
               onOpenChat,
               unreadChats,
             )}

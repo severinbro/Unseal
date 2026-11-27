@@ -7,6 +7,7 @@ import { describe, it } from 'node:test';
 import {
   PolygonFeatureSchema,
   type ChatMessage,
+  type ChatThread,
   type PolygonFeature,
   type PolygonFeedItem,
 } from '@openunseal/shared';
@@ -407,5 +408,84 @@ describe('social client state', () => {
       assert.ok(s.width > 0 && s.width < 150);
     }
     assert.deepEqual(computeSilhouetteSegments([], 120, 90), []);
+  });
+
+  it('filters, formats, and sorts messenger threads and timestamps', async () => {
+    const {
+      avatarInitial,
+      filterThreads,
+      formatChatDayLabel,
+      formatChatTime,
+      isSameCalendarDay,
+      upsertThreadInList,
+    } = await import('../src/state/chatMessages');
+
+    const makeThread = (
+      id: string,
+      counterpartPseudonym: string,
+      lastMessageAt: string | null,
+      lastMessagePreview: string | null = null,
+    ): ChatThread => ({
+      id,
+      counterpartPseudonym,
+      counterpartActive: counterpartPseudonym !== 'deleted',
+      isBlockedByMe: false,
+      canSend: true,
+      messageCount: lastMessageAt ? 1 : 0,
+      unreadCount: 0,
+      lastMessageAt,
+      lastMessagePreview,
+      lastMessageSenderPseudonym: null,
+      requestState: 'none',
+    });
+
+    const t1 = makeThread('t1', 'Alice_M', '2026-11-26T10:00:00.000Z', 'Courtyard photo');
+    const t2 = makeThread('t2', 'Bob_K', '2026-11-27T09:15:00.000Z', 'Hello neighbour');
+    const t3 = makeThread('t3', 'Clara', null, null);
+
+    assert.equal(filterThreads([t1, t2], '   ').length, 2);
+    assert.deepEqual(filterThreads([t1, t2], 'alice').map((t) => t.id), ['t1']);
+    assert.deepEqual(filterThreads([t1, t2], 'NEIGHBOUR').map((t) => t.id), ['t2']);
+
+    assert.equal(avatarInitial('alice'), 'A');
+    assert.equal(avatarInitial('deleted'), '?');
+    assert.equal(avatarInitial('   '), '?');
+
+    const nowMs = new Date(2026, 10, 27, 15, 0, 0).getTime();
+    const todayIso = new Date(2026, 10, 27, 9, 5, 0).toISOString();
+    const yesterdayIso = new Date(2026, 10, 26, 18, 30, 0).toISOString();
+    const olderIso = new Date(2026, 10, 10, 12, 0, 0).toISOString();
+
+    assert.equal(isSameCalendarDay(todayIso, new Date(nowMs).toISOString()), true);
+    assert.equal(isSameCalendarDay(todayIso, yesterdayIso), false);
+    assert.equal(isSameCalendarDay('invalid', todayIso), false);
+
+    assert.equal(
+      formatChatDayLabel(todayIso, 'de', { today: 'Heute', yesterday: 'Gestern' }, nowMs),
+      'Heute',
+    );
+    assert.equal(
+      formatChatDayLabel(yesterdayIso, 'en', { today: 'Today', yesterday: 'Yesterday' }, nowMs),
+      'Yesterday',
+    );
+    assert.match(
+      formatChatDayLabel(olderIso, 'de', { today: 'Heute', yesterday: 'Gestern' }, nowMs),
+      /^10\.11\.2026$/,
+    );
+    assert.equal(
+      formatChatDayLabel('not-a-date', 'en', { today: 'Today', yesterday: 'Yesterday' }, nowMs),
+      '',
+    );
+
+    assert.match(formatChatTime(todayIso, 'de'), /^\d{2}:\d{2}$/);
+    assert.equal(formatChatTime('bad', 'en'), '');
+
+    const ordered = upsertThreadInList([t1, t2], t3);
+    assert.deepEqual(ordered.map((t) => t.id), ['t3', 't2', 't1']);
+    const updatedT1 = makeThread('t1', 'Alice_M', '2026-11-27T12:00:00.000Z', 'Updated');
+    assert.deepEqual(
+      upsertThreadInList([t2, t1], updatedT1).map((t) => t.id),
+      ['t1', 't2'],
+    );
   });
 });
